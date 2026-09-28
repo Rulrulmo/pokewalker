@@ -68,6 +68,7 @@ struct Walk: Codable, Equatable {
     var weather: Weather? = nil, weatherAt: Int? = nil  // nil = sunny; total steps at the last roll
     var nextEvent: Int? = nil                           // total steps of the companion's next little event
     var egg: Egg? = nil
+    var bestChain: Int? = nil
 
     var here: Course { courses[course] }
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.
@@ -126,6 +127,17 @@ struct Walk: Codable, Equatable {
         guard !left.isEmpty, Double.random(in: 0..<1, using: &r) < legendOdds.base + legendOdds.perChain * Double(min(chain, 4)) else { return nil }
         return left.randomElement(using: &r)
     }
+
+    // MARK: radar chains
+    /// After a catch / KO at chain length `chain`, does the grass rustle again? 85 %, then 8 points less per link, never under 35 %.
+    static func chainGoesOn(_ chain: Int) -> Double { max(0.35, 0.85 - 0.08 * Double(chain)) }
+    /// The reward for reaching link `n`: 2n watts, and every 5th link the course's rarest item. Returns the item, if any.
+    mutating func chainReward(_ n: Int) -> String? {
+        watts = min(9999, watts + 2 * n); bestChain = max(bestChain ?? 0, n)
+        guard n % 5 == 0 else { return nil }
+        let i = here.items[0].item; _ = keep(i); return i
+    }
+    static func chainShinyOdds(_ chain: Int) -> Int { max(1, shinyOdds / (1 + 2 * chain)) }
 
     // MARK: box
     /// Lets box[i] go; a few watts back as thanks (level / 2, at least 1).
@@ -206,12 +218,12 @@ struct Walk: Codable, Equatable {
     mutating func spend(_ w: Int) -> Bool { guard watts >= w else { return false }; watts -= w; return true }
 
     /// The walker's draw: rarest carried slot first, "far enough and rand(100) < chance" wins, the commonest is the fallback.
-    /// chain = radar chain length: each link makes the A/B slots 25 % likelier (up to 4 links). Boosts (chain, weather) stop at 90 % so it never
+    /// chain = radar chain length: each link makes the A/B slots 20 % likelier (up to 8 links). Boosts (chain, weather) stop at 90 % so it never
     /// collapses onto one species (a 75 % B slot used to hit 100 % at 2 links and shut the rest out).
     func encounter<R: RandomNumberGenerator>(_ r: inout R, chain: Int = 0) -> Slot {
         let boost = (weather ?? .sunny).types
         for i in picks {
-            let s = here.slots[i], rare = i < 4 ? 1 + 0.25 * Double(min(chain, 4)) : 1
+            let s = here.slots[i], rare = i < 4 ? 1 + 0.2 * Double(min(chain, 8)) : 1
             let boosted = s.chance * rare * (monTypes[s.dex].contains { boost.contains($0) } ? 1.5 : 1)
             let chance = boosted > s.chance ? min(boosted, max(s.chance, 90)) : s.chance
             if effSteps >= s.steps, Double.random(in: 0..<100, using: &r) < chance { return s }

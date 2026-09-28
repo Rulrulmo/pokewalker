@@ -254,6 +254,7 @@ final class WalkerView: NSView {
     var screen = Screen.home
     var lastInput = Date(), lastStep = Date.distantPast, lastSave = Date(), levelled = false
     var boxByLevel = false
+    var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
     lazy var lastSeason = state.season
     var shown: FB? = nil                                                   // last composed frame; draw() only when it changes
     var emote: (kind: Int, until: Date)? = nil                             // ♪ ♥ ! bubble over the companion
@@ -342,12 +343,17 @@ final class WalkerView: NSView {
         let fb = compose(now)
         if fb.px != shown?.px || fb.col != shown?.col || now.timeIntervalSince(pressedAt) < 0.3 { shown = fb; needsDisplay = true }   // idle home = ~2 redraws a second
     }
-    /// Caught or beaten => the radar keeps going (a chain): free, the "!" gets shorter, the rarer slots likelier.
+    /// Caught or beaten => maybe the grass rustles again (a chain): free, the "!" gets shorter, rarer slots and 이로치 likelier, watts each link.
     func after(_ b: Battle, _ end: Beat, _ now: Date) -> Screen {
         switch end {
         case .caught, .won:
             if end == .caught { _ = state.keep(b.wild) }
-            return .radar(bush: Int.random(in: 0..<4, using: &rng), cursor: 0, since: now, chain: b.chain + 1)
+            guard Double.random(in: 0..<1, using: &rng) < Walk.chainGoesOn(b.chain) else {
+                return .say(b.chain > 0 ? ["풀숲이 조용해졌다", "연쇄 \(b.chain)에서 끝"] : ["풀숲이", "조용해졌다"], next: .home, since: now)
+            }
+            let n = b.chain + 1, item = state.chainReward(n)
+            chainNote = "+\(2 * n)W" + (item.map { " · " + $0 } ?? "")
+            return .radar(bush: Int.random(in: 0..<4, using: &rng), cursor: 0, since: now, chain: n)
         default: return .home
         }
     }
@@ -386,7 +392,7 @@ final class WalkerView: NSView {
             if c == b, u >= 1.5 {
                 let s = state.encounter(&rng, chain: chain), l = state.legend(&rng, chain: chain)
                 let m = Mon(dex: l ?? s.dex, level: l == nil ? s.level : l == 493 ? 80 : 50, female: l == nil ? s.female : Bool.random(using: &rng),
-                            shiny: Int.random(in: 0..<max(1, shinyOdds / (1 + chain)), using: &rng) == 0 ? true : nil)   // chains raise 이로치 odds too
+                            shiny: Int.random(in: 0..<Walk.chainShinyOdds(chain), using: &rng) == 0 ? true : nil)   // chains raise 이로치 odds too
                 let b = Battle(wild: m, edge: Battle.edge(state.companion.level, m.level), chain: chain, hard: l != nil); state.see(m.dex); screen = .beats(b, [.appear], since: now, from: b)
             } else { screen = .say(chain > 0 ? ["빗나갔다...", "연쇄 끝 (\(chain))"] : ["아무것도", "없었다..."], next: .home, since: now) }
         case .battle(var b, let sel):
@@ -472,7 +478,7 @@ final class WalkerView: NSView {
             for k in 0..<menuItems.count { fb.fill(36 + 5 * k, 58, 3, 3, k == i ? 3 : 1) }
         case .radar(let b, let c, let since, let chain):
             let u = now.timeIntervalSince(since), live = (1.5...(1.5 + radarWindow(chain))).contains(u)
-            if chain > 0, u < 1.5 { fb.text("연쇄 \(chain)!", 0, 26, 3, center: true) }
+            if chain > 0, u < 1.5 { fb.text("연쇄 \(chain)!", 0, 13, 3, center: true); if let n = chainNote { fb.text(n, 0, 25, 2, center: true, small: true) } }   // between the bush rows
             for k in 0..<4 {
                 let x = 14 + (k % 2) * 56, y = 8 + (k / 2) * 28, shake = live && k == b ? (half == 0 ? -1 : 1) : 0
                 fb.draw(bush, x + shake, y, greens)
@@ -511,8 +517,8 @@ final class WalkerView: NSView {
             } else {
                 let days = Array(([state.today] + state.history).prefix(8)), top = max(1, days.max()!)
                 for (k, v) in days.enumerated() { let h = v * 34 / top, x = 84 - 11 * k; fb.fill(x, 60 - h, 8, h, k == 0 ? 3 : 2); fb.fill(x, 61, 8, 1, 1) }
-                fb.text("\(top)", 94, 14, 1, right: true, small: true)
-                fb.text("합계 \(state.total)", 2, 14, 2, small: true)
+                fb.text("\(top)", 94, 23, 1, right: true, small: true)
+                fb.text("합계 \(state.total)" + (state.bestChain.map { " · 최고 연쇄 \($0)" } ?? ""), 2, 14, 2, small: true)
             }
         case .bag(let p):
             let m = p < bagPages - 1 ? state.caught[safe: p] : nil

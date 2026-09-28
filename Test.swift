@@ -164,10 +164,16 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     check(low < even && even < high && high > 950, "higher level: fewer misses, fewer hits taken", "\(low) \(even) \(high)")
     check(Battle.edge(50, 8) == 2 && Battle.edge(5, 30) == -1 && Battle.edge(12, 8) == 0, "level edge clamps to -1 ... 2")
 
+    // 7a chain odds and rewards
+    check(Walk.chainGoesOn(0) == 0.85 && abs(Walk.chainGoesOn(3) - 0.61) < 1e-9 && Walk.chainGoesOn(10) == 0.35, "chain goes on 85 %, -8 points a link, floor 35 %")
+    w = Walk(); check(w.chainReward(1) == nil && w.watts == 2 && w.chainReward(4) == nil && w.watts == 10, "each link pays 2n W")
+    check(w.chainReward(5) == courses[0].items[0].item && w.items == [courses[0].items[0].item] && w.bestChain == 5, "link 5: the course's rarest item, best chain kept")
+    check(Walk.chainShinyOdds(0) == 128 && Walk.chainShinyOdds(5) == 11 && Walk.chainShinyOdds(10) == 6, "이로치 1/128 -> ~1/11 at 5 -> ~1/6 at 10")
+
     // 7b radar chain, companion events, box
     w = Walk(); w.picks = [0, 2, 4]; w.courseSteps = 2000
     func aShare(_ c: Int) -> Double { var n = 0; for _ in 0..<20000 where w.encounter(&r, chain: c).steps == 2000 { n += 1 }; return Double(n) / 200 }
-    let a0 = aShare(0), a4 = aShare(4); check(abs(a0 - 70) < 1.5 && abs(a4 - 90) < 1.5, "chain 4: A slot 70 % -> 90 % (capped)", "\(a0) \(a4)")
+    let a0 = aShare(0), a4 = aShare(4); check(abs(a0 - 70) < 1.5 && abs(a4 - 90) < 1.5, "chain 4: A slot 70 % -> 90 % (x1.8, capped)", "\(a0) \(a4)")
     w.courseSteps = 732; var seenB = Set<Int>(); for _ in 0..<2000 { seenB.insert(w.encounter(&r, chain: 6).dex) }
     check(seenB.count == 2, "6-chain before the A threshold still mixes B and C (was B only)", "\(seenB)")
     var grass = Set<[Int]>(); for _ in 0..<200 { w.newGrass(&r); grass.insert(w.picks) }
@@ -214,7 +220,8 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     check(on(v) { if case .beats(_, [.ran], _, _) = $0 { return true }; return false }, "tapping 도망 runs")
     let caughtB = Battle(wild: Mon(dex: 16, level: 3, female: false), chain: 1)
     v.screen = .beats(caughtB, [.thrown, .caught], since: Date().addingTimeInterval(-30), from: caughtB); v.tick(nil)
-    check(on(v) { if case .radar(_, _, _, 2) = $0 { return true }; return false } && v.state.caught.last?.dex == 16, "a catch keeps it and continues the radar chain")
+    let chained = on(v) { if case .radar(_, _, _, 2) = $0 { return true }; return false }, ended = on(v) { if case .say = $0 { return true }; return false }
+    check((chained || ended) && v.state.caught.last?.dex == 16, "a catch keeps it, then the chain goes on or quietly ends")
     v.press(3); check(on(v) { if case .home = $0 { return true }; return false }, "⌂ goes home")
     v.state.box = [Mon(dex: 16, level: 20, female: false)]; let wBefore = v.state.watts
     v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(2); v.press(1); v.press(2); v.press(1)
