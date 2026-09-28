@@ -346,7 +346,7 @@ final class WalkerView: NSView {
         }
         if now.timeIntervalSince(lastSave) > 60 { save(nil) }
         updateStatus()
-        side?.show(window?.isVisible == true ? sideModel(now) : nil, beside: window)
+        side?.show(window?.isVisible == true ? sideModel(now) : nil, dex: window?.isVisible == true ? dexModel() : nil, beside: window)
         guard window?.isVisible ?? true else { return }                                         // hidden in the menu bar: rules keep running, nothing to draw
         let fb = compose(now)
         if fb.px != shown?.px || fb.col != shown?.col || now.timeIntervalSince(pressedAt) < 0.3 { shown = fb; needsDisplay = true }   // idle home = ~2 redraws a second
@@ -727,6 +727,41 @@ final class WalkerView: NSView {
                          mine: .init(name: monNames[mine.mon.dex], level: mine.mon.level, hp: mine.hp, max: mine.maxHP, out: true), myBalls: b.mine.count > 1 ? b.mine.map(\.alive) : [],
                          trainer: b.trainer, message: msg, mode: mode)
     }
+    func evoText(_ e: Evo) -> String {
+        let when = e.time.map { $0 == "day" ? "낮" : "밤" }, sex = e.female.map { $0 ? "♀" : "♂" }
+        let place = e.place.map { ["cave": "동굴 코스", "forest": "숲 코스"][$0] ?? "얼음 산길" }
+        switch e.way {
+        case .level: let parts = [e.level > 0 ? "Lv.\(e.level)" : nil, when, sex, place, e.item.map { $0 + " 소지" }, e.party.map { monNames[$0] + " 보유" }].compactMap { $0 }; return parts.isEmpty ? "레벨 업" : parts.joined(separator: " · ")
+        case .friend: return (["친밀도(함께 1만 걸음)"] + [when].compactMap { $0 }).joined(separator: " · ")
+        case .item: return e.item! + " 사용" + (sex.map { " · " + $0 } ?? "")
+        case .trade: return "커넥트(통신)" + (e.item.map { " · " + $0 + " 소지" } ?? "")
+        }
+    }
+    /// What the side panel shows on the Pokédex screen; nil elsewhere.
+    func dexModel() -> DexModel? {
+        guard case .dex(let i) = screen else { return nil }
+        let list = seenList, d = list[safe: i] ?? state.companion.dex
+        let owned = Set(state.owned ?? []), seen = Set(list), st = owned.contains(d) ? 2 : seen.contains(d) ? 1 : 0
+        var found: [String] = [], evos: [String] = []
+        if st > 0 {
+            for (ci, c) in courses.enumerated() {
+                let tag = c.legends.contains(d) ? "전설" : c.slots.contains { $0.dex == d } ? "" : c.extra.contains { $0.dex == d } ? "추가" : c.guests.contains(d) ? "손님" : nil
+                if let tag { found.append((state.unlocked(ci) ? "" : "🔒") + c.name + (tag.isEmpty ? "" : " (\(tag))")) }
+            }
+            if eggPool.contains(d) { found.append("알에서 부화") }
+            for e in evolutions where e.to == d { found.append(monNames[e.from] + "에서 진화") }
+            if d == 292 { found.append("토중몬 → 아이스크 진화 때") }
+            if found.count > 3 { let n = found.count - 2; found = Array(found.prefix(2)) + ["외 \(n)곳"] }
+            let mine = evolutions.filter { $0.from == d }                                          // one line per target, its ways joined (리피아: 숲 코스 / 리프의돌)
+            evos = mine.map(\.to).reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } }.map { to in "→ " + monNames[to] + " · " + mine.filter { $0.to == to }.map(evoText).joined(separator: " / ") }
+            if evos.count > 2 { let n = evos.count - 1; evos = [evos[0], "외 \(n)갈래"] }
+        }
+        let lo = max(1, min(484, d - 4)), strip = Array(lo..<(lo + 10))
+        return DexModel(num: d, name: st > 0 ? monNames[d] : "???", status: st, shiny: (state.shinyOwned ?? []).contains(d), types: st > 0 ? monTypes[d] : [],
+                        stats: st > 0 ? baseStats[d] : [], found: found, evos: evos, owned: owned.count, seen: seen.count,
+                        strip: strip, stripStatus: strip.map { owned.contains($0) ? 2 : seen.contains($0) ? 1 : 0 })
+    }
+    func dexJump(_ n: Int) { if let i = seenList.firstIndex(of: n) { lastInput = Date(); screen = .dex(i); shown = nil } }
     func sidePick(_ k: Int) {                                                                   // a click on the side panel = selecting that row, then ●
         lastInput = Date()
         switch screen {
@@ -1171,6 +1206,14 @@ struct SideModel: Equatable {
     enum Mode: Equatable { case none, menu([String], Int), moves([MoveBtn], Int), party([Card], Int) }
     var foe: Card; var foeBalls: [Bool]; var mine: Card; var myBalls: [Bool]; var trainer: String?; var message: String; var mode: Mode
 }
+/// The Pokédex page on the side panel.
+struct DexModel: Equatable {
+    var num: Int; var name: String; var status: Int                    // 0 not met, 1 seen, 2 caught
+    var shiny: Bool; var types: [String]; var stats: [Int]
+    var found: [String]; var evos: [String]                            // where to meet it; what it becomes and how
+    var owned, seen: Int
+    var strip: [Int], stripStatus: [Int]                               // the numbers around it, with their status
+}
 let typeColor: [String: NSColor] = ["normal": (168, 168, 120), "fire": (240, 128, 48), "water": (104, 144, 240), "grass": (120, 200, 80), "electric": (238, 196, 40),
     "ice": (120, 200, 200), "fighting": (192, 48, 40), "poison": (160, 64, 160), "ground": (210, 176, 90), "flying": (150, 130, 230), "psychic": (248, 88, 136),
     "bug": (160, 176, 32), "rock": (184, 160, 56), "ghost": (112, 88, 152), "dragon": (112, 56, 248), "dark": (112, 88, 72), "steel": (160, 160, 190)]
@@ -1178,6 +1221,7 @@ let typeColor: [String: NSColor] = ["normal": (168, 168, 120), "fire": (240, 128
 
 final class SideView: NSView {
     var model: SideModel?
+    var dex: DexModel?
     var hits: [(NSRect, Int)] = []                                         // clickable rows: index, or -1 = back
     weak var walker: WalkerView?
     override var isFlipped: Bool { true }
@@ -1186,11 +1230,12 @@ final class SideView: NSView {
     override func mouseDown(with e: NSEvent) {
         let p = convert(e.locationInWindow, from: nil)
         guard let k = hits.first(where: { $0.0.contains(p) })?.1 else { return }
-        if k < 0 { walker?.press(3) } else { walker?.sidePick(k) }
+        if k >= 1000 { walker?.dexJump(k - 1000) } else if k < 0 { walker?.press(3) } else { walker?.sidePick(k) }
     }
     override func resetCursorRects() { for (r, _) in hits { addCursorRect(r, cursor: .pointingHand) } }
     override func draw(_ dirty: NSRect) {
         hits = []
+        if let d = dex { drawDex(d); return }
         guard let m = model else { return }
         _ = fontsReady
         let u = PX, k = CGFloat(max(1, Int(PX / 2))), W = bounds.width
@@ -1307,6 +1352,72 @@ final class SideView: NSView {
         window?.invalidateCursorRects(for: self)
     }
 }
+extension SideView {
+    /// The Pokédex page: a red handheld-dex body, a white entry card (types, base stats), where to find it, how it evolves, and a number strip.
+    func drawDex(_ d: DexModel) {
+        _ = fontsReady
+        let u = PX, k = CGFloat(max(1, Int(PX / 2))), W = bounds.width
+        let ink = NSColor(red: 0.10, green: 0.11, blue: 0.16, alpha: 1), dim = NSColor(red: 0.45, green: 0.47, blue: 0.53, alpha: 1)
+        let f9 = NSFont(name: "Galmuri9", size: 10 * k) ?? .systemFont(ofSize: 10 * k), f7 = NSFont(name: "Galmuri7", size: 8 * k) ?? .systemFont(ofSize: 8 * k)
+        func text(_ s: String, _ x: CGFloat, _ y: CGFloat, _ f: NSFont, _ c: NSColor, right: CGFloat? = nil, center: CGFloat? = nil, maxW: CGFloat? = nil) {
+            var s = s; if let maxW { while s.count > 1, (s as NSString).size(withAttributes: [.font: f]).width > maxW { s = String(s.dropLast(2)) + "…" } }
+            let w = (s as NSString).size(withAttributes: [.font: f]).width
+            (s as NSString).draw(at: NSPoint(x: center.map { $0 - w / 2 } ?? right.map { $0 - w } ?? x, y: y), withAttributes: [.font: f, .foregroundColor: c])
+        }
+        func round(_ r: NSRect, _ rad: CGFloat) -> NSBezierPath { NSBezierPath(roundedRect: r, xRadius: rad, yRadius: rad) }
+        // body: Pokédex red, a darker hinge line, the little blue lens
+        let body = round(bounds.insetBy(dx: u / 2, dy: u / 2), 9 * u)
+        NSGraphicsContext.saveGraphicsState(); body.addClip()
+        NSGradient(starting: NSColor(red: 0.90, green: 0.24, blue: 0.22, alpha: 1), ending: NSColor(red: 0.66, green: 0.12, blue: 0.13, alpha: 1))!.draw(in: bounds, angle: -90)
+        NSGraphicsContext.restoreGraphicsState()
+        ink.setStroke(); body.lineWidth = 1.2; body.stroke()
+        round(NSRect(x: 6 * u, y: 5 * u, width: 8 * u, height: 8 * u), 4 * u).fill(with: .white)
+        round(NSRect(x: 7 * u, y: 6 * u, width: 6 * u, height: 6 * u), 3 * u).fill(with: NSColor(red: 0.30, green: 0.62, blue: 0.95, alpha: 1))
+        text("도감", 17 * u, 5 * u, f9, .white)
+        text("잡음 \(d.owned) · 봤음 \(d.seen)", 0, 6.5 * u, f7, NSColor(white: 1, alpha: 0.85), right: W - 7 * u)
+        // entry card
+        let card = NSRect(x: 5 * u, y: 17 * u, width: W - 10 * u, height: 55 * u)
+        round(card, 4 * u).fill(with: NSColor(white: 0.98, alpha: 1)); ink.setStroke(); let cp = round(card, 4 * u); cp.lineWidth = u; cp.stroke()
+        text(String(format: "No.%03d  ", d.num) + d.name, card.minX + 4 * u, card.minY + 2 * u, f9, d.status > 0 ? ink : dim)
+        if d.status > 0 {
+            let tag = d.status == 2 ? (d.shiny ? "★ 이로치" : "잡음") : "봤음", tw = (tag as NSString).size(withAttributes: [.font: f7]).width + 5 * u
+            let tr = NSRect(x: card.maxX - 4 * u - tw, y: card.minY + 3 * u, width: tw, height: 7 * u)
+            round(tr, 3.5 * u).fill(with: d.status == 2 ? NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1) : dim); text(tag, 0, tr.minY - 0.5 * u, f7, .white, center: tr.midX)
+            var x = card.minX + 4 * u
+            for ty in d.types {
+                let s = typeKo[ty] ?? ty, w = (s as NSString).size(withAttributes: [.font: f7]).width + 6 * u, r = NSRect(x: x, y: card.minY + 13 * u, width: w, height: 7 * u)
+                round(r, 2 * u).fill(with: typeColor[ty] ?? .gray); text(s, 0, r.minY - 0.5 * u, f7, .white, center: r.midX); x += w + 2 * u
+            }
+            for (j, (label, v)) in zip(["HP", "공격", "방어", "특공", "특방", "스피드"], d.stats).enumerated() {
+                let y = card.minY + 23 * u + CGFloat(j) * 5.2 * u, bx = card.minX + 22 * u, bw = card.width - 38 * u
+                text(label, card.minX + 4 * u, y - 1.5 * u, f7, dim)
+                round(NSRect(x: bx, y: y, width: bw, height: 3 * u), 1.5 * u).fill(with: NSColor(white: 0.88, alpha: 1))
+                let c = v >= 100 ? NSColor(red: 0.28, green: 0.72, blue: 0.40, alpha: 1) : v >= 60 ? NSColor(red: 0.95, green: 0.70, blue: 0.20, alpha: 1) : NSColor(red: 0.90, green: 0.36, blue: 0.30, alpha: 1)
+                round(NSRect(x: bx, y: y, width: bw * CGFloat(min(v, 180)) / 180, height: 3 * u), 1.5 * u).fill(with: c)
+                text("\(v)", 0, y - 1.5 * u, f7, ink, right: card.maxX - 4 * u)
+            }
+        } else { text("아직 만나지 못했다", 0, card.midY - 4 * u, f9, dim, center: card.midX) }
+        // where + evolutions
+        let info = NSRect(x: 5 * u, y: 75 * u, width: W - 10 * u, height: 50 * u)
+        round(info, 4 * u).fill(with: NSColor(white: 0.98, alpha: 1)); let ip = round(info, 4 * u); ip.lineWidth = u; ink.setStroke(); ip.stroke()
+        if d.status > 0 {
+            text("만나는 곳", info.minX + 4 * u, info.minY + 1.5 * u, f7, NSColor(red: 0.80, green: 0.20, blue: 0.18, alpha: 1))
+            for (j, s) in (d.found.isEmpty ? ["알 수 없음"] : d.found).enumerated() { text("· " + s, info.minX + 4 * u, info.minY + (8.5 + 6.5 * CGFloat(j)) * u, f7, ink, maxW: info.width - 8 * u) }
+            text("진화", info.minX + 4 * u, info.minY + 29 * u, f7, NSColor(red: 0.80, green: 0.20, blue: 0.18, alpha: 1))
+            for (j, s) in (d.evos.isEmpty ? ["더 이상 진화하지 않는다"] : d.evos).enumerated() { text(s, info.minX + 4 * u, info.minY + (36 + 6.5 * CGFloat(j)) * u, f7, d.evos.isEmpty ? dim : ink, maxW: info.width - 8 * u) }
+        }
+        // number strip: ● caught, ○ seen, · not met; click a met one to go there
+        let cw = (W - 10 * u) / 10
+        for (j, (n, s)) in zip(d.strip, d.stripStatus).enumerated() {
+            let r = NSRect(x: 5 * u + CGFloat(j) * cw, y: 128 * u, width: cw - u, height: 11 * u)
+            round(r, 2 * u).fill(with: n == d.num ? NSColor.white : s == 2 ? NSColor(white: 1, alpha: 0.85) : s == 1 ? NSColor(white: 1, alpha: 0.45) : NSColor(white: 0, alpha: 0.18))
+            text(s == 2 ? "●" : s == 1 ? "○" : "·", 0, r.minY, f7, n == d.num ? NSColor(red: 0.8, green: 0.2, blue: 0.18, alpha: 1) : ink, center: r.midX)
+            text("\(n % 1000)", 0, r.minY + 4.5 * u, f7, s == 0 ? NSColor(white: 1, alpha: 0.6) : ink, center: r.midX)
+            if s > 0 { hits.append((r, 1000 + n)) }
+        }
+        window?.invalidateCursorRects(for: self)
+    }
+}
 extension NSBezierPath { func fill(with c: NSColor) { c.setFill(); fill() } }
 /// The panel beside the device; a child window, so it moves with it. Sits on whichever side has room.
 final class SidePanel: NSPanel {
@@ -1316,8 +1427,8 @@ final class SidePanel: NSPanel {
         isOpaque = false; backgroundColor = .clear; hasShadow = true; level = .floating; hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]; contentView = view
     }
-    func show(_ m: SideModel?, beside parent: NSWindow?) {
-        guard let m, let parent else { if isVisible { parent?.removeChildWindow(self); orderOut(nil) }; view.model = nil; return }
+    func show(_ m: SideModel?, dex: DexModel?, beside parent: NSWindow?) {
+        guard m != nil || dex != nil, let parent else { if isVisible { parent?.removeChildWindow(self); orderOut(nil) }; view.model = nil; view.dex = nil; return }
         let size = NSSize(width: 116 * PX, height: 144 * PX)
         if !isVisible {
             let f = parent.frame, room = parent.screen?.visibleFrame ?? f
@@ -1325,7 +1436,7 @@ final class SidePanel: NSPanel {
             setFrame(NSRect(x: x, y: f.maxY - size.height, width: size.width, height: size.height), display: false)
             parent.addChildWindow(self, ordered: .above); orderFrontRegardless()
         } else if frame.size != size { setContentSize(size) }
-        if view.model != m { view.model = m; view.needsDisplay = true }
+        if view.model != m || view.dex != dex { view.model = m; view.dex = dex; view.needsDisplay = true }
     }
 }
 
