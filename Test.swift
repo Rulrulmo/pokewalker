@@ -127,10 +127,32 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     check(odd.isEmpty, "attack-only battles end won (wild 0 HP) or lost (ours 0 HP)", "\(odd)")
     check(won > 350, "attacking first wins most fights", "\(won)")
     var bt = Battle(wild: Mon(dex: 16, level: 5, female: false)); check(bt.act(.run, &r) == [.ran], "run ends at once")
+    func winRate(_ edge: Int) -> Int {
+        var n = 0
+        for _ in 0..<1000 { var b = Battle(wild: Mon(dex: 16, level: 5, female: false)); b.edge = edge; var beats: [Beat] = []; while !(beats.last?.ends ?? false) { beats = b.act(.attack, &r) }; if beats.last == .won { n += 1 } }
+        return n
+    }
+    let (low, even, high) = (winRate(-1), winRate(0), winRate(2))
+    check(low < even && even < high && high > 950, "higher level: fewer misses, fewer hits taken", "\(low) \(even) \(high)")
+    check(Battle.edge(50, 8) == 2 && Battle.edge(5, 30) == -1 && Battle.edge(12, 8) == 0, "level edge clamps to -1 ... 2")
+
+    // 7b radar chain, companion events, box
+    w = Walk(); w.picks = [0, 2, 4]; w.courseSteps = 2000
+    func aShare(_ c: Int) -> Double { var n = 0; for _ in 0..<20000 where w.encounter(&r, chain: c).steps == 2000 { n += 1 }; return Double(n) / 200 }
+    let a0 = aShare(0), a4 = aShare(4); check(abs(a0 - 70) < 1.5 && a4 > 99, "chain 4: A slot 70 % -> 100 %", "\(a0) \(a4)")
+    w = Walk(); check(w.eventDue && w.petEvent(&r) == nil && !w.eventDue, "first event call only schedules")
+    var found = 0; for _ in 0..<400 { w.total = w.nextEvent!; if w.petEvent(&r) != nil { found += 1 } }
+    check((60...140).contains(found) && w.items.count == 3, "1 in 4 events brings an item back", "\(found)")
+    w = Walk(); w.box = [Mon(dex: 16, level: 30, female: false), Mon(dex: 1, level: 5, female: false), Mon(dex: 16, level: 8, female: false)]
+    w.sortBox(byLevel: false); check(w.box.map(\.dex) == [1, 16, 16] && w.box[1].level == 30, "sort by number (then level)")
+    w.sortBox(byLevel: true); check(w.box.map(\.level) == [30, 8, 5], "sort by level")
+    check(w.release(0) == 15 && w.watts == 15 && w.box.count == 2, "releasing gives level / 2 watts")
 
     // 8 data + art
-    check(courses.count == 20 && courses.allSatisfy { $0.slots.count == 6 && $0.items.count == 10 }, "20 courses x 6 slots x 10 items")
-    check(courses.map(\.watts) == courses.map(\.watts).sorted(), "courses unlock in order")
+    check(courses.count == 27 && courses.allSatisfy { $0.slots.count == 6 && $0.items.count == 10 }, "27 courses x 6 slots x 10 items")
+    check(courses.prefix(20).map(\.watts) == courses.prefix(20).map(\.watts).sorted() && courses.suffix(7).map(\.dex) == [10, 20, 30, 45, 60, 80, 100], "watts courses in order, then the 7 event courses by Pokédex count")
+    w = Walk(); w.earned = 999_999; check(w.unlocked(19) && !w.unlocked(20), "event course needs the dex, not watts")
+    w.owned = Array(1...10); check(w.unlocked(20) && courses[20].name == "노란 숲", "10 caught -> 노란 숲")
     check(monNames.count == 494 && monTypes.count == 494 && monNames[25] == "피카츄", "493 names + types")
     check(spriteData.count == 493 * 2 * 768, "sprites.bin in the bundle")
     check(colorData.count == 493 * 3162, "color.bin in the bundle")
@@ -143,6 +165,30 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     check(blank.isEmpty, "every course Pokémon has a sprite", "\(blank)")
     let td = textDots("포켓 레이더"); check(td.joined().contains(true) && td.count == 11, "Korean text renders to 11-row dots", td.map { String($0.map { $0 ? "#" : "." }) }.joined(separator: "\n"))
     check(josa("피카츄", "을", "를") == "피카츄를" && josa("꼬렛", "을", "를") == "꼬렛을", "josa")
+
+    // 9 UI flows: the real view, driven through press() / touch() / tick()
+    func on(_ v: WalkerView, _ p: (Screen) -> Bool) -> Bool { p(v.screen) }
+    var s0w = Walk(); s0w.watts = 100
+    let v = WalkerView(state: s0w); v.persist = false
+    v.press(2); check(on(v) { if case .menu(0) = $0 { return true }; return false }, "home ▶ opens the menu")
+    v.press(1); check(v.state.watts == 90 && on(v) { if case .radar = $0 { return true }; return false }, "radar costs 10W")
+    v.screen = .radar(bush: 2, cursor: 0, since: Date().addingTimeInterval(-2), chain: 0)
+    v.press(2); v.press(2); v.press(1)
+    check(on(v) { if case .beats(_, [.appear], _, _) = $0 { return true }; return false } && v.state.seen?.isEmpty == false, "▶▶● on the shaking bush: a wild one appears (and is seen)")
+    if case .beats(let b, _, _, _) = v.screen { v.screen = .battle(b, sel: 0) }
+    _ = v.touch(v.moveRanges()[3].lowerBound + 1, 56)
+    check(on(v) { if case .beats(_, [.ran], _, _) = $0 { return true }; return false }, "tapping 도망 runs")
+    let caughtB = Battle(wild: Mon(dex: 16, level: 3, female: false), chain: 1)
+    v.screen = .beats(caughtB, [.thrown, .caught], since: Date().addingTimeInterval(-30), from: caughtB); v.tick(nil)
+    check(on(v) { if case .radar(_, _, _, 2) = $0 { return true }; return false } && v.state.caught.last?.dex == 16, "a catch keeps it and continues the radar chain")
+    v.press(3); check(on(v) { if case .home = $0 { return true }; return false }, "⌂ goes home")
+    v.state.box = [Mon(dex: 16, level: 20, female: false)]; let wBefore = v.state.watts
+    v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(2); v.press(1); v.press(2); v.press(1)
+    check(v.state.box.isEmpty && v.state.watts == wBefore + 10, "box: ● 놓아주기 예 releases for level / 2 W")
+    v.state.box = [Mon(dex: 1, level: 7, female: false)]; v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(1)
+    check(v.state.companion.dex == 1 && v.state.box.first?.dex == 25, "box: ● 함께 swaps the companion")
+    v.screen = .menu(6); v.press(1); check(on(v) { if case .dex = $0 { return true }; return false }, "menu 도감 opens the dex")
+    _ = v.touch(80, 30); _ = v.touch(10, 30); _ = v.touch(48, 30); check(on(v) { if case .menu(6) = $0 { return true }; return false }, "dex taps: ▶ ◀ then ● back to the menu")
 
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0

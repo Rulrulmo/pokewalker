@@ -4,7 +4,7 @@ import Foundation
 struct Slot { let dex, level, steps: Int; let chance: Double; let female: Bool }   // steps = min course steps before it can appear
 struct Find { let item: String; let steps, chance: Int }
 enum Art { case field, forest, mountain, beach, lake, town, cave }
-struct Course { let name: String; let watts: Int; let types: [String]; let art: Art; let slots: [Slot]; let items: [Find] }   // slots: A A B B C C, items rarest first
+struct Course { let name: String; let watts: Int; let dex: Int; let types: [String]; let art: Art; let slots: [Slot]; let items: [Find] }   // slots: A A B B C C, items rarest first; dex = Pokédex count (event courses)
 
 /// Gen IV evolution, mapped onto a walker (see tools/gen.py): level = on level-up at `level`+; friend = on level-up after `friendSteps` together;
 /// item = use a stone from the bag; trade = Connect while it's the companion. `item` on level/trade = must be in the bag (and is used up).
@@ -57,12 +57,13 @@ struct Walk: Codable, Equatable {
     var seen: [Int]? = nil, owned: [Int]? = nil         // Pokédex, sorted; Optional so older saves decode (see `dex()`)
     var shinyOwned: [Int]? = nil                        // species ever owned as 이로치 (the dex shows those colours too)
     var weather: Weather? = nil, weatherAt: Int? = nil  // nil = sunny; total steps at the last roll
+    var nextEvent: Int? = nil                           // total steps of the companion's next little event
 
     var here: Course { courses[course] }
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.
     var bonus: Bool { monTypes[companion.dex].contains { here.types.contains($0) } }
     var effSteps: Int { bonus ? courseSteps * 4 / 3 : courseSteps }
-    func unlocked(_ i: Int) -> Bool { earned >= courses[i].watts }
+    func unlocked(_ i: Int) -> Bool { earned >= courses[i].watts && (owned ?? []).count >= courses[i].dex }
 
     static func key(_ d: Date) -> String { let c = Calendar.current.dateComponents([.year, .month, .day], from: d); return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!) }
 
@@ -88,6 +89,21 @@ struct Walk: Codable, Equatable {
         watts = min(9999, watts + w); earned += w
         return companion.gain(n)
     }
+
+    // MARK: companion events: every 150-400 steps it emotes, and 1 in 4 times brings back an item from the course
+    var eventDue: Bool { nextEvent.map { total >= $0 } ?? true }
+    /// Returns the found item (already kept), or nil for just an emote.
+    mutating func petEvent<R: RandomNumberGenerator>(_ r: inout R) -> String? {
+        let first = nextEvent == nil
+        nextEvent = total + Int.random(in: 150...400, using: &r)
+        guard !first, Int.random(in: 0..<4, using: &r) == 0 else { return nil }
+        let i = dowse(&r); _ = keep(i); return i
+    }
+
+    // MARK: box
+    /// Lets box[i] go; a few watts back as thanks (level / 2, at least 1).
+    mutating func release(_ i: Int) -> Int { let w = max(1, box.remove(at: i).level / 2); watts = min(9999, watts + w); return w }
+    mutating func sortBox(byLevel: Bool) { box.sort { byLevel ? ($0.points, $1.dex) > ($1.points, $0.dex) : ($0.dex, $1.points) < ($1.dex, $0.points) } }
 
     // MARK: weather
     var weatherDue: Bool { total / weatherSteps != (weatherAt ?? 0) / weatherSteps }
@@ -151,10 +167,12 @@ struct Walk: Codable, Equatable {
     mutating func spend(_ w: Int) -> Bool { guard watts >= w else { return false }; watts -= w; return true }
 
     /// The walker's draw: rarest carried slot first, "far enough and rand(100) < chance" wins, the commonest is the fallback.
-    func encounter<R: RandomNumberGenerator>(_ r: inout R) -> Slot {
+    /// chain = radar chain length: each link makes the A/B slots 25 % likelier (up to 4 links).
+    func encounter<R: RandomNumberGenerator>(_ r: inout R, chain: Int = 0) -> Slot {
         let boost = (weather ?? .sunny).types
         for i in picks {
-            let s = here.slots[i], chance = min(100, s.chance * (monTypes[s.dex].contains { boost.contains($0) } ? 1.5 : 1))
+            let s = here.slots[i], rare = i < 4 ? 1 + 0.25 * Double(min(chain, 4)) : 1
+            let chance = min(100, s.chance * rare * (monTypes[s.dex].contains { boost.contains($0) } ? 1.5 : 1))
             if effSteps >= s.steps, Double.random(in: 0..<100, using: &r) < chance { return s }
         }
         return here.slots[picks[2]]
@@ -209,6 +227,10 @@ enum Beat: Equatable {
 struct Battle: Equatable {
     var wild: Mon
     var wildHP = 4, myHP = 4
+    var edge = 0                                     // -1 ... 2: (our level - its level) / 10; see `edge(_:_:)`
+    var chain = 0                                    // radar chain this fight belongs to
+
+    static func edge(_ me: Int, _ it: Int) -> Int { min(2, max(-1, (me - it) / 10)) }
 
     /// Replays one beat's HP effect (the UI shows HP dropping mid-exchange, not all at once).
     mutating func apply(_ b: Beat) {
@@ -220,7 +242,7 @@ struct Battle: Equatable {
     mutating func act<R: RandomNumberGenerator>(_ m: Move, _ r: inout R) -> [Beat] {
         var out: [Beat] = []
         func itsTurn(evading: Bool) {
-            guard Int.random(in: 0..<2, using: &r) == 0 else { return }                    // it attacks half the time
+            guard Int.random(in: 0..<10, using: &r) < 5 - edge else { return }             // it attacks half the time; 30 % if we're far above it, 60 % if below
             if evading { out.append(.dodged); return }
             out.append(.struck); myHP -= 1
             if myHP <= 0 { out.append(.lost) }
@@ -228,7 +250,7 @@ struct Battle: Equatable {
         switch m {
         case .run: return [.ran]
         case .attack:
-            if Int.random(in: 0..<5, using: &r) == 0 { out.append(.missed) }
+            if Int.random(in: 0..<20, using: &r) < 4 - edge { out.append(.missed) }       // 20 % miss; 10 % far above, 25 % below
             else { let crit = Int.random(in: 0..<8, using: &r) == 0; wildHP -= crit ? 2 : 1; out.append(.hit(crit: crit)) }
             if wildHP <= 0 { wildHP = 0; out.append(.won); return out }
             itsTurn(evading: false)

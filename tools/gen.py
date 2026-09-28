@@ -102,25 +102,31 @@ for r in csv.DictReader(open(get('pokemon_types_past.csv'))):
 types.update(past)
 assert len(ko) == N and len(types) == N
 
-ITEM_FIX = {'EnergyPowder': 'Energy Powder', 'Moonstone': 'Moon Stone', 'Tomato Berry': 'Tamato Berry', 'X Special': 'X Sp. Atk',
+ITEM_FIX = {'EnergyPowder': 'Energy Powder', 'Thunderstone': 'Thunder Stone', 'BlackGlasses': 'Black Glasses', 'NeverMeltIce': 'Never-Melt Ice', 'TwistedSpoon': 'Twisted Spoon', 'DeepSeaScale': 'Deep Sea Scale', 'DeepSeaTooth': 'Deep Sea Tooth', 'BrightPowder': 'Bright Powder', 'SilphScope': 'Silph Scope', 'Moonstone': 'Moon Stone', 'Tomato Berry': 'Tamato Berry', 'X Special': 'X Sp. Atk',
             'PokéDoll': 'Poke Doll', 'SilverPowder': 'Silver Powder', 'X Defend': 'X Defense', 'Parlyz Heal': 'Paralyze Heal', 'TinyMushroom': 'Tiny Mushroom'}
 def item_ko(n):
     m = re.match(r'TM(\d+)', n)
     if m: return '기술머신' + m.group(1)
-    return ko_item[en_item[ITEM_FIX.get(n, n).lower().replace('é', 'e')]]
+    key = lambda x: re.sub(r'[^a-z]', '', x.lower().replace('é', 'e'))                 # "ThunderStone" == "Thunder Stone"
+    loose = {key(k): v for k, v in en_item.items()}
+    return ko_item[en_item.get(ITEM_FIX.get(n, n).lower().replace('é', 'e')) or loose[key(ITEM_FIX.get(n, n))]]
 
-# --- courses (the 20 regular ones; the event courses need things this app can't do)
+# --- courses: the 20 regular ones (unlocked by lifetime watts) + the 7 event ones, which here unlock by Pokédex count instead
 KO = {'Refreshing Field': '상쾌한 들판', 'Noisy Forest': '웅성웅성 숲', 'Rugged Road': '울퉁불퉁 산길', 'Beautiful Beach': '아름다운 해변',
       'Suburban Area': '교외', 'Dim Cave': '어둑어둑 동굴', 'Blue Lake': '푸른 호수', 'Town Outskirts': '마을 변두리', 'Hoenn Field': '호연 들판',
       'Warm Beach': '따뜻한 해변', 'Volcano Path': '화산 길', 'Treehouse': '나무 위 집', 'Scary Cave': '무서운 동굴', 'Sinnoh Field': '신오 들판',
-      'Icy Mountain Rd.': '얼음 산길', 'Big Forest': '커다란 숲', 'White Lake': '하얀 호수', 'Stormy Beach': '거친 해변', 'Resort': '리조트', 'Quiet Cave': '고요한 동굴'}
+      'Icy Mountain Rd.': '얼음 산길', 'Big Forest': '커다란 숲', 'White Lake': '하얀 호수', 'Stormy Beach': '거친 해변', 'Resort': '리조트', 'Quiet Cave': '고요한 동굴',
+      'Beyond the Sea': '바다 건너편', 'Night Skys Edge': '밤하늘의 끝', 'Yellow Forest': '노란 숲', 'Rally': '랠리', 'Sightseeing': '쇼핑',
+      "Winner's Path": '챔피언의 길', 'Amity Meadow': '우정의 초원'}
+EVENT = {'Yellow Forest': (10, 'forest'), 'Beyond the Sea': (20, 'beach'), 'Night Skys Edge': (30, 'field'), 'Rally': (45, 'town'),
+         'Sightseeing': (60, 'town'), "Winner's Path": (80, 'mountain'), 'Amity Meadow': (100, 'field')}   # Pokédex count, picture
 ART = {'Field': 'field', 'Forest': 'forest', 'Treehouse': 'forest', 'Road': 'mountain', 'Path': 'mountain', 'Beach': 'beach', 'Lake': 'lake',
        'Area': 'town', 'Outskirts': 'town', 'Resort': 'town', 'Cave': 'cave', 'Rd.': 'mountain'}
 t = open(get('serebii.html'), encoding='latin-1').read()
 t = re.sub(r'<(script|style).*?</\1>', '', t, flags=re.S)
 t = re.sub(r'<[^>]+>', ' ', t); t = html.unescape(t)
 L = [re.sub(r'\s+', ' ', l).strip() for l in t.split('\n')]; L = [l for l in L if l]
-starts = [i for i, l in enumerate(L) if l.startswith('Unlock Criterea')][:20]
+starts = [i for i, l in enumerate(L) if l.startswith('Unlock Criterea')][:27]
 TYPES = 'normal fire water grass electric ice fighting poison ground flying psychic bug rock ghost dragon dark steel'.split()
 courses = []
 for k, s in enumerate(starts):
@@ -150,8 +156,9 @@ for k, s in enumerate(starts):
     for r in rows[2:]:
         if float(r[0][1]) == 0:
             assert any(abs((1 - av / 100) * bv - float(r[2][1])) < 0.6 for av in a for bv in b), (name, r, a, b)
-    art = next(v for k2, v in ART.items() if name.endswith(k2) or name == k2)
-    courses.append(dict(name=KO[name], watts=watts, types=ctypes, art=art,
+    dexNeed, art = EVENT.get(name) or (0, next(v for k2, v in ART.items() if name.endswith(k2) or name == k2))
+    if name in EVENT: watts = 0
+    courses.append(dict(name=KO[name], watts=watts, dex=dexNeed, types=ctypes, art=art,
                         slots=[(mons[i][0], lv[i], st[i], chance[i], mons[i][1]) for i in range(6)], items=items))
 
 def s(x): return '"' + x.replace('"', '\\"') + '"'
@@ -200,9 +207,10 @@ with open('Data.swift', 'w') as f:
     for frm, to, way, level, item, fem, time, place, party in evos:
         f.write(f'    Evo(from: {frm}, to: {to}, way: .{way}, level: {level}, item: {s(item) if item else "nil"}, female: {fem}, time: {s(time) if time else "nil"}, place: {s(place) if place else "nil"}, party: {party or "nil"}),\n')
     f.write(']\n\n')
+    courses = courses[:20] + sorted(courses[20:], key=lambda c: c['dex'])
     f.write('let courses: [Course] = [\n')
     for c in courses:
-        f.write(f'    Course(name: {s(c["name"])}, watts: {c["watts"]}, types: [{", ".join(s(x) for x in c["types"])}], art: .{c["art"]},\n')
+        f.write(f'    Course(name: {s(c["name"])}, watts: {c["watts"]}, dex: {c["dex"]}, types: [{", ".join(s(x) for x in c["types"])}], art: .{c["art"]},\n')
         f.write('           slots: [' + ', '.join(f'Slot(dex: {d}, level: {l}, steps: {st}, chance: {ch:g}, female: {str(fe).lower()})' for d, l, st, ch, fe in c['slots']) + '],\n')
         f.write('           items: [' + ', '.join(f'Find(item: {s(n)}, steps: {st}, chance: {ch})' for n, st, ch in c['items']) + ']),\n')
     f.write(']\n')
