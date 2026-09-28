@@ -1018,6 +1018,7 @@ final class WalkerView: NSView {
         for (i, w) in Walk.shop.enumerated() {
             let it = shm.addItem(withTitle: "\(w.item) — \(w.watts)W", action: state.watts >= w.watts ? #selector(buyShop(_:)) : nil, keyEquivalent: ""); it.target = self; it.tag = i
         }
+        for (i, l) in Walk.legendShop.enumerated() where l.watts > 0 { shm.addItem(.separator()); legendItem(shm, i, l.dex, "\(l.watts.formatted())W", state.watts >= l.watts) }
         sh.submenu = shm
         let bh2 = m.addItem(withTitle: "BP 교환소 · \(state.bp ?? 0)BP", action: nil, keyEquivalent: ""), bpm = NSMenu()
         for (i, w) in Walk.bpShop.enumerated() {
@@ -1027,6 +1028,7 @@ final class WalkerView: NSView {
             let owned = (state.bought ?? []).contains(s.name)
             let it = bpm.addItem(withTitle: "기기 색: \(s.name) — \(owned ? "보유" : "\(s.bp)BP")", action: !owned && (state.bp ?? 0) >= s.bp ? #selector(buyShell(_:)) : nil, keyEquivalent: ""); it.target = self; it.tag = i
         }
+        for (i, l) in Walk.legendShop.enumerated() where l.bp > 0 { bpm.addItem(.separator()); legendItem(bpm, i, l.dex, "\(l.bp)BP", (state.bp ?? 0) >= l.bp) }
         bh2.submenu = bpm
         let wares = state.evolutionItems()
         if !wares.isEmpty {                                                                     // HGSS sold these for Pokéathlon points; here, watts
@@ -1114,6 +1116,21 @@ final class WalkerView: NSView {
     }
     @objc func setCourse(_ i: NSMenuItem) { state.setCourse(i.tag, &rng); screen = .say(["커넥트 완료", state.here.name], next: .home, since: Date()); save(nil) }
     let price = 1000
+    func legendItem(_ menu: NSMenu, _ i: Int, _ dex: Int, _ cost: String, _ afford: Bool) {
+        let owned = state.legendBought(dex)
+        let it = menu.addItem(withTitle: "전설: \(monNames[dex]) Lv.\(Walk.legendShop[i].level) — \(owned ? "보유" : cost)", action: !owned && afford ? #selector(buyLegend(_:)) : nil, keyEquivalent: "")
+        it.target = self; it.tag = i
+    }
+    @objc func buyLegend(_ i: NSMenuItem) {
+        let l = Walk.legendShop[i.tag]
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert(); a.messageText = "\(monNames[l.dex])을(를) 데려올까요?"
+        a.informativeText = (l.watts > 0 ? "\(l.watts.formatted())W" : "\(l.bp)BP") + "가 들어요. 한 번만 살 수 있어요."
+        a.addButton(withTitle: "데려오기"); a.addButton(withTitle: "취소")
+        guard a.runModal() == .alertFirstButtonReturn, let m = state.buyLegend(i.tag) else { return }
+        screen = .say(["전설의 " + monNames[m.dex] + "!", "Lv.\(m.level) · 워커에 왔다"], next: .home, since: Date()); save(nil)
+        notify("unlock", "전설의 \(monNames[m.dex])", "Lv.\(m.level)이 워커에 왔어요")
+    }
     @objc func buyShop(_ i: NSMenuItem) { let w = Walk.shop[i.tag]; guard state.buy(w.item, watts: w.watts) else { return }; screen = .say([josa(w.item, "을", "를"), "샀다! (-\(w.watts)W)"], next: .home, since: Date()); save(nil) }
     @objc func buyBP(_ i: NSMenuItem) { let w = Walk.bpShop[i.tag]; guard state.buy(w.item, bp: w.bp) else { return }; screen = .say([josa(w.item, "을", "를"), "받았다! (-\(w.bp)BP)"], next: .home, since: Date()); save(nil) }
     @objc func buyShell(_ i: NSMenuItem) {

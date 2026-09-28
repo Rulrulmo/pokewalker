@@ -223,6 +223,15 @@ struct Walk: Codable, Equatable {
     // MARK: shops
     static let shop: [(item: String, watts: Int)] = [("상처약", 20), ("좋은상처약", 60), ("고급상처약", 150), ("풀회복약", 300), ("기력의조각", 200), ("슈퍼볼", 40), ("하이퍼볼", 100)]
     static let bpShop: [(item: String, bp: Int)] = [("하이퍼볼", 2), ("고급상처약", 3), ("풀회복약", 5), ("부활초", 6), ("이상한사탕", 8)]
+    /// Two legends for the patient: 칠색조 for a full tank of watts (9,999 is the cap), 뮤츠 for 300 BP (~30 tower sets). Once each.
+    static let legendShop: [(dex: Int, level: Int, watts: Int, bp: Int)] = [(250, 50, 9999, 0), (150, 70, 0, 300)]
+    func legendBought(_ dex: Int) -> Bool { (bought ?? []).contains("legend:\(dex)") }
+    mutating func buyLegend(_ i: Int) -> Mon? {
+        let l = Walk.legendShop[i]
+        guard !legendBought(l.dex), watts >= l.watts, (bp ?? 0) >= l.bp else { return nil }
+        watts -= l.watts; bp = (bp ?? 0) - l.bp; bought = (bought ?? []) + ["legend:\(l.dex)"]
+        let m = Mon(dex: l.dex, level: l.level, female: false); _ = keep(m); return m
+    }
     mutating func buy(_ item: String, watts price: Int) -> Bool { guard spend(price) else { return false }; bag.append(item); return true }
     mutating func buy(_ item: String, bp price: Int) -> Bool { guard (bp ?? 0) >= price else { return false }; bp = (bp ?? 0) - price; bag.append(item); return true }
 

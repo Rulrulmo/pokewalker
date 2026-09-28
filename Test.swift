@@ -209,6 +209,10 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     var up = w.box[1]; _ = up.gainBattleExp(50_000); w.writeBack([-1, 1], [w.companion, up]); check(w.box[1].level > 30, "tower EXP goes back to the box")
     w.watts = 100; check(w.buy("슈퍼볼", watts: 40) && w.watts == 60 && w.bag.last == "슈퍼볼" && !w.buy("풀회복약", watts: 300), "W shop")
     check(w.buy("이상한사탕", bp: 8) && w.bp == 4 && !w.buy("이상한사탕", bp: 8), "BP exchange")
+    w = Walk(); w.watts = 9998; check(w.buyLegend(0) == nil, "칠색조 needs the full 9,999 W")
+    w.watts = 9999; check(w.buyLegend(0)?.dex == 250 && w.watts == 0 && w.caught.last?.level == 50 && w.buyLegend(0) == nil, "칠색조: 9,999 W, once")
+    w.bp = 299; check(w.buyLegend(1) == nil, "뮤츠 needs 300 BP"); w.bp = 300
+    check(w.buyLegend(1)?.dex == 150 && w.bp == 0 && w.legendBought(150) && (w.owned ?? []).contains(150), "뮤츠: 300 BP, once, in the dex")
 
     // 7a chain odds and rewards
     check(Walk.chainGoesOn(0) == 0.85 && abs(Walk.chainGoesOn(3) - 0.61) < 1e-9 && Walk.chainGoesOn(10) == 0.35, "chain goes on 85 %, -8 points a link, floor 35 %")
