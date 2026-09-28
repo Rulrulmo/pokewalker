@@ -130,12 +130,26 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
         for (dy, r) in t.enumerated() { for (dx, on) in r.enumerated() where on { set(x0 + dx, y + dy, shade) } }
         return w
     }
+    /// Rain streaks, drifting snow, fog bands over a w x h box (the course picture, the battle stage).
+    mutating func weatherFX(_ wx: Weather, _ x0: Int, _ y0: Int, _ w: Int, _ h: Int, _ t: Double, cave: Bool = false) {
+        let f = Int(t * 10)
+        for y in 0..<h { for x in 0..<w {
+            let (X, Y) = (x0 + x, y0 + y)
+            switch wx {
+            case .rain: if (x * 7 + (y - f * 2 + 1000) + x / 3 * 5) % 11 == 0, (x + y) % 3 != 0 { set(X, Y, 2, rgb(80, 130, 220)) }
+            case .snow: if (UInt32(truncatingIfNeeded: (x + (y + f / 3) / 4 % 2) &* 73_856_093) ^ UInt32(truncatingIfNeeded: (y - f / 2 + 10_000) &* 19_349_663)) % 41 == 0 { set(X, Y, 1, px[Y * 96 + X] == 0 && col[Y * 96 + X] == 0 ? rgb(150, 176, 214) : rgb(252, 252, 255)) }   // blue-grey on the bare screen, white on pictures   // hashed flakes, falling and swaying
+            case .fog: if (y + f / 6) % 6 == 0, (x + y * 3 + f / 3) % 3 != 0 { set(X, Y, 1, cave ? rgb(150, 144, 150) : rgb(206, 210, 218)) }
+            case .sunny: break
+            }
+        } }
+    }
     mutating func invert(_ x: Int, _ y: Int, _ w: Int, _ h: Int) { for yy in y..<y + h { for xx in x..<x + w where (0..<96).contains(xx) && (0..<64).contains(yy) { px[yy * 96 + xx] = 3 - px[yy * 96 + xx]; col[yy * 96 + xx] = 0 } } }
     /// 32x24 picture of the course, framed.
-    mutating func course(_ a: Art, _ x: Int, _ y: Int) {
+    mutating func course(_ a: Art, _ x: Int, _ y: Int, weather w: Weather = .sunny, t: Double = 0) {
         // colour: sky above the course's horizon, its ground/water below
         let horizon = [Art.field: 14, .forest: 17, .mountain: 19, .beach: 10, .lake: 12, .town: 19, .cave: 0][a]!
-        let sky = [rgb(160, 208, 250), rgb(255, 222, 96), rgb(70, 150, 80), rgb(36, 44, 56)]
+        let grey = w == .rain || w == .fog || w == .snow && a != .cave
+        let sky = [grey ? rgb(172, 182, 196) : rgb(160, 208, 250), grey ? rgb(200, 204, 212) : rgb(255, 222, 96), rgb(70, 150, 80), rgb(36, 44, 56)]   // overcast: no sun
         let ground: [UInt32] = switch a {
         case .field, .forest, .town: [rgb(130, 204, 96), rgb(100, 180, 80), rgb(70, 150, 64), rgb(36, 80, 44)]
         case .mountain: [rgb(186, 156, 112), rgb(160, 130, 96), rgb(128, 100, 72), rgb(60, 44, 36)]
@@ -176,6 +190,7 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
             for dy in 0..<24 { for dx in 0..<32 { p(dx, dy, (dx * 5 + dy * 3) % 7 == 0 ? 3 : 2) } }
             for dy in 6..<24 { for dx in 8..<24 { let ex = Double(dx) - 15.5, ey = Double(dy) - 24; if ex * ex / 64 + ey * ey / 324 < 1 { p(dx, dy, 3) } } }
         }
+        weatherFX(w, x + 1, y + 1, 30, 22, t, cave: a == .cave)
         for dx in 0..<32 { p(dx, 0, 3); p(dx, 23, 3) }; for dy in 0..<24 { p(0, dy, 3); p(31, dy, 3) }
     }
 }
@@ -218,6 +233,7 @@ final class WalkerView: NSView {
         let now = Date(), before = state.total
         if state.sync(counter: WalkerView.counter(), boot: WalkerView.boot(), at: now) { levelled = true }
         if state.total != before { lastStep = now }
+        if state.weatherDue, state.rollWeather(&rng), case .home = screen { screen = .say([(state.weather ?? .sunny).news], next: .home, since: now) }
         if levelled, case .home = screen {                                                    // shown when it's back home, not mid-menu
             levelled = false
             if let e = state.levelEvolution(now) { startEvolving(e, now) }
@@ -317,7 +333,7 @@ final class WalkerView: NSView {
         case .home:
             let f = now.timeIntervalSince(lastStep) < 3 ? half : Int(t) % 2        // steps coming in => walks twice as fast
             fb.mon(me, f, 32, 0)
-            fb.course(state.here.art, 1, 22)
+            fb.course(state.here.art, 1, 22, weather: state.weather ?? .sunny, t: t)
             fb.text("\(state.watts)W", 1, 1, 2, small: true)
             for i in 0..<state.caught.count { fb.draw(ball, 1 + 8 * i, 13, ballPal) }
             for i in 0..<state.items.count { fb.draw(gem, 26 + 4 * i, 15, gemPal) }
@@ -361,7 +377,8 @@ final class WalkerView: NSView {
                 fb.text(state.here.name, 2, 14)
                 fb.text("오늘  \(state.today)걸음", 2, 26)
                 fb.text("합계  \(state.total)걸음", 2, 38)
-                fb.text("\(state.days)일째 · 도감 \(Set(([me] + state.caught + state.box).map(\.dex)).count)", 2, 50, 2)
+                let w = state.weather ?? .sunny
+                fb.text("날씨 \(w.name) · " + w.types.map { typeKo[$0] ?? $0 }.joined(separator: "·") + "↑", 2, 50, 2)
             } else {
                 let days = Array(([state.today] + state.history).prefix(8)), top = max(1, days.max()!)
                 for (k, v) in days.enumerated() { let h = v * 34 / top, x = 84 - 11 * k; fb.fill(x, 60 - h, 8, h, k == 0 ? 3 : 2); fb.fill(x, 61, 8, 1, 1) }
@@ -387,7 +404,9 @@ final class WalkerView: NSView {
             if owned { fb.draw(ball, 88, 2, ballPal) }
             fb.fill(0, 12, 96, 1, 2)
             let m = Mon(dex: d, level: 1, female: false)
-            if owned { fb.mon(m, half, 0, 14) } else { fb.mon(m, 0, 0, 14, tint: (3, rgb(70, 74, 84))) }       // only seen: a shadow
+            let shinyNow = (state.shinyOwned ?? []).contains(d) && Int(t / 2) % 2 == 1                        // caught as 이로치: both colours, 2 s each
+            if owned { fb.mon(Mon(dex: d, level: 1, female: false, shiny: shinyNow ? true : nil), half, 0, 14) } else { fb.mon(m, 0, 0, 14, tint: (3, rgb(70, 74, 84))) }   // only seen: a shadow
+            if shinyNow { fb.text("★이로치", 94, 32, 3, right: true, small: true) }
             fb.text(monTypes[d].map { typeKo[$0] ?? $0 }.joined(separator: "·"), 94, 16, 2, right: true, small: true)
             fb.text(owned ? "잡음" : "봤음", 94, 42, 2, right: true, small: true)
             fb.text("\(i + 1)/\(max(1, list.count))", 94, 52, 1, right: true, small: true)
@@ -454,6 +473,7 @@ final class WalkerView: NSView {
     func stage(_ fb: inout FB, _ b: Battle, _ now: Date, _ p: Pose) {
         let t = now.timeIntervalSinceReferenceDate, f = Int(t * 2) % 2
         for y in 41..<48 { for x in 14..<82 { let ex = Double(x - 48) / 34, ey = Double(y - 44) / 3.6; if ex * ex + ey * ey < 1 { fb.set(x, y, 1, ex * ex + ey * ey > 0.7 ? rgb(150, 200, 110) : rgb(186, 222, 146)) } } }   // the grass pad they stand on
+        defer { fb.weatherFX(state.weather ?? .sunny, 0, 12, 96, 38, t) }                         // over the fighters, under the HUD
         switch p {
         case .idle(let m):
             fb.mon(m, f, 16, 0)
@@ -530,8 +550,13 @@ final class WalkerView: NSView {
         ch.submenu = cm
         let ph = m.addItem(withTitle: "함께 걷기 · \(state.companion.shiny == true ? "★ " : "")\(monNames[state.companion.dex])", action: nil, keyEquivalent: ""), pm = NSMenu()
         if state.box.isEmpty && state.caught.isEmpty { pm.addItem(withTitle: "잡은 포켓몬이 없다", action: nil, keyEquivalent: "") }
-        for (tag, b, whereIs) in state.caught.enumerated().map({ (-1 - $0, $1, " · 워커") }) + state.box.enumerated().map({ ($0, $1, "") }) {   // tag < 0 = on the walker
-            let it = pm.addItem(withTitle: "\(b.shiny == true ? "★ " : "")\(monNames[b.dex]) Lv.\(b.level)\(whereIs)", action: #selector(pair(_:)), keyEquivalent: ""); it.target = self; it.tag = tag
+        let all = state.caught.enumerated().map { (-1 - $0, $1, " · 워커") } + state.box.enumerated().map { ($0, $1, "") }   // tag < 0 = on the walker
+        for (dex, group) in Dictionary(grouping: all, by: { $0.1.dex }).sorted(by: { $0.key < $1.key }) {     // one row per species, the individuals inside
+            let head = pm.addItem(withTitle: "\(monNames[dex])\(group.contains { $0.1.shiny == true } ? " ★" : "") · \(group.count)", action: nil, keyEquivalent: ""), sm = NSMenu()
+            for (tag, b, whereIs) in group.sorted(by: { $0.1.points > $1.1.points }) {
+                let it = sm.addItem(withTitle: "\(b.shiny == true ? "★ " : "")Lv.\(b.level) \(b.female ? "♀" : "♂")\(whereIs)", action: #selector(pair(_:)), keyEquivalent: ""); it.target = self; it.tag = tag
+            }
+            head.submenu = sm
         }
         ph.submenu = pm
         let now = Date(), stones = state.stoneEvolutions(now)

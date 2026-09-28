@@ -93,7 +93,23 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     w.companion.female = true; check(w.stoneEvolutions(at(10)).isEmpty, "킬리아 ♀: no 엘레이드")
     w = Walk(); w.box = [Mon(dex: 16, level: 5, female: false)]; w.dex(); _ = w.keep(Mon(dex: 19, level: 5, female: false)); w.see(84)
     check(w.owned == [16, 19, 25] && w.seen == [16, 19, 25, 84], "dex: owned ⊂ seen, backfilled from what's here")
+    _ = w.keep(Mon(dex: 130, level: 20, female: false, shiny: true)); check(w.shinyOwned == [130], "catching a 이로치 records it for the dex")
     check((try? JSONDecoder().decode(Walk.self, from: Data(String(decoding: try! JSONEncoder().encode(Walk()), as: UTF8.self).utf8))) != nil, "saves without dex fields decode")
+
+    // 6c weather: rerolled every 1000 steps, boosts its types
+    w = Walk(); check(!w.weatherDue, "no weather roll before 1000 steps")
+    w.walk(999, at: at(10)); check(!w.weatherDue, "999 steps: still no roll"); w.walk(1, at: at(10)); check(w.weatherDue, "1000 steps: roll")
+    _ = w.rollWeather(&r); check(!w.weatherDue && w.weatherAt == 1000, "rolled once per 1000")
+    w = Walk(); w.setCourse(5, &r); var kinds = Set<Weather>(); for _ in 0..<300 { _ = w.rollWeather(&r); kinds.insert(w.weather!) }
+    check(kinds == [.sunny, .fog], "caves only get fog", "\(kinds)")
+    w = Walk(); w.picks = [0, 2, 4]; w.courseSteps = 500                                   // 상쾌한 들판 at 500+: B 니드런 75 %, C 구구 25 %
+    func bShare() -> Double { var n = 0; for _ in 0..<20000 where w.encounter(&r).steps == w.here.slots[2].steps { n += 1 }; return Double(n) / 200 }
+    let plain = bShare(); w.weather = .fog; let fog = bShare()
+    check(abs(plain - 75) < 1.5 && abs(fog - 75) < 1.5, "fog boosts nothing here (니드런 is poison)", "\(plain) \(fog)")
+    w.companion = Mon(dex: 1, level: 5, female: false)                                       // grass boost: none of these are grass either
+    w.weather = .sunny; check(abs(bShare() - 75) < 1.5, "sunny: fire/grass only")
+    w.course = 3; w.picks = [0, 2, 4]; w.courseSteps = 1500; w.weather = .rain           // 아름다운 해변 B 고라파덕 (water) 75 % -> 100 %
+    check(bShare() > 99, "rain: water B slot 75 % -> 100 %", "\(bShare())")
 
     // 7 battle
     var hits = 0, won = 0

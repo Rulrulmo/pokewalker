@@ -12,6 +12,15 @@ enum EvoWay { case level, friend, item, trade }
 struct Evo { let from, to: Int; let way: EvoWay; let level: Int; let item: String?; let female: Bool?; let time: String?; let place: String?; let party: Int? }
 let friendSteps = 10_000                 // stands in for friendship 220 (Gen IV: +1 per 128 steps from ~70 is ~19k; levels add more)
 
+/// Rerolled every `weatherSteps` steps; the matching types show up 1.5x as often. Not in the original walker.
+enum Weather: String, Codable, CaseIterable {
+    case sunny, rain, snow, fog
+    var name: String { ["맑음", "비", "눈", "안개"][Weather.allCases.firstIndex(of: self)!] }
+    var types: [String] { [["fire", "grass"], ["water", "electric"], ["ice"], ["ghost", "psychic"]][Weather.allCases.firstIndex(of: self)!] }
+    var news: String { ["날씨가 맑아졌다!", "비가 내리기 시작했다!", "눈이 내리기 시작했다!", "안개가 끼었다!"][Weather.allCases.firstIndex(of: self)!] }
+}
+let weatherSteps = 1000
+
 struct Mon: Codable, Equatable {
     var dex: Int; var level: Int; var female: Bool
     var shiny: Bool? = nil               // Optionals: saves from before these fields still decode
@@ -46,6 +55,8 @@ struct Walk: Codable, Equatable {
     var box: [Mon] = [], bag: [String] = []             // sent back by Connect; overflow goes straight here
     var counter: UInt32 = 0, boot: Double = 0           // system input-event counter at the last poll, and the boot it belongs to
     var seen: [Int]? = nil, owned: [Int]? = nil         // Pokédex, sorted; Optional so older saves decode (see `dex()`)
+    var shinyOwned: [Int]? = nil                        // species ever owned as 이로치 (the dex shows those colours too)
+    var weather: Weather? = nil, weatherAt: Int? = nil  // nil = sunny; total steps at the last roll
 
     var here: Course { courses[course] }
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.
@@ -78,11 +89,31 @@ struct Walk: Codable, Equatable {
         return companion.gain(n)
     }
 
+    // MARK: weather
+    var weatherDue: Bool { total / weatherSteps != (weatherAt ?? 0) / weatherSteps }
+    /// Odds by course kind: beaches rain, mountains snow (얼음 산길 nearly always), caves only ever fog.
+    mutating func rollWeather<R: RandomNumberGenerator>(_ r: inout R) -> Bool {
+        weatherAt = total
+        let odds: [Weather: Int] = switch here.art {
+        case .beach, .lake: [.sunny: 45, .rain: 40, .fog: 15]
+        case .mountain: here.name == "얼음 산길" ? [.snow: 70, .sunny: 20, .fog: 10] : [.sunny: 45, .snow: 30, .rain: 15, .fog: 10]
+        case .cave: [.sunny: 70, .fog: 30]
+        default: [.sunny: 50, .rain: 30, .fog: 10, .snow: 10]
+        }
+        var k = Int.random(in: 0..<odds.values.reduce(0, +), using: &r), pick = Weather.sunny
+        for w in Weather.allCases { if let n = odds[w] { if k < n { pick = w; break }; k -= n } }
+        defer { weather = pick }
+        return pick != (weather ?? .sunny)
+    }
+
     // MARK: Pokédex
     mutating func see(_ d: Int) { if !(seen ?? []).contains(d) { seen = ((seen ?? []) + [d]).sorted() } }
-    mutating func own(_ d: Int) { see(d); if !(owned ?? []).contains(d) { owned = ((owned ?? []) + [d]).sorted() } }
+    mutating func own(_ d: Int, shiny: Bool? = nil) {
+        see(d); if !(owned ?? []).contains(d) { owned = ((owned ?? []) + [d]).sorted() }
+        if shiny == true, !(shinyOwned ?? []).contains(d) { shinyOwned = ((shinyOwned ?? []) + [d]).sorted() }
+    }
     /// Backfills the dex from what's already here (saves from before the Pokédex).
-    mutating func dex() { for m in [companion] + caught + box { own(m.dex) } }
+    mutating func dex() { for m in [companion] + caught + box { own(m.dex, shiny: m.shiny) } }
 
     // MARK: evolution
     static func isDay(_ now: Date) -> Bool { (4..<20).contains(Calendar.current.component(.hour, from: now)) }   // HGSS morning + day
@@ -106,7 +137,7 @@ struct Walk: Codable, Equatable {
     func evolutionItems() -> [String] { Array(Set(evolutions.filter { $0.from == companion.dex }.compactMap(\.item))).sorted() }
     mutating func evolve(_ e: Evo) {
         if let i = e.item { if let k = bag.firstIndex(of: i) { bag.remove(at: k) } else if let k = items.firstIndex(of: i) { items.remove(at: k) } }
-        companion.dex = e.to; own(e.to)
+        companion.dex = e.to; own(e.to, shiny: companion.shiny)
     }
 
     /// Steps = keys + clicks since the last poll. Same boot and a counter that only grew => the gap (also while the app was quit) counts;
@@ -121,7 +152,11 @@ struct Walk: Codable, Equatable {
 
     /// The walker's draw: rarest carried slot first, "far enough and rand(100) < chance" wins, the commonest is the fallback.
     func encounter<R: RandomNumberGenerator>(_ r: inout R) -> Slot {
-        for i in picks { let s = here.slots[i]; if effSteps >= s.steps, Double.random(in: 0..<100, using: &r) < s.chance { return s } }
+        let boost = (weather ?? .sunny).types
+        for i in picks {
+            let s = here.slots[i], chance = min(100, s.chance * (monTypes[s.dex].contains { boost.contains($0) } ? 1.5 : 1))
+            if effSteps >= s.steps, Double.random(in: 0..<100, using: &r) < chance { return s }
+        }
         return here.slots[picks[2]]
     }
     func dowse<R: RandomNumberGenerator>(_ r: inout R) -> String {
@@ -130,7 +165,7 @@ struct Walk: Codable, Equatable {
     }
 
     /// Returns false when the walker was full and it went straight to the box / bag.
-    mutating func keep(_ m: Mon) -> Bool { own(m.dex); if caught.count < 3 { caught.append(m); return true }; box.append(m); return false }
+    mutating func keep(_ m: Mon) -> Bool { own(m.dex, shiny: m.shiny); if caught.count < 3 { caught.append(m); return true }; box.append(m); return false }
     mutating func keep(_ i: String) -> Bool { if items.count < 3 { items.append(i); return true }; bag.append(i); return false }
     mutating func connect() { box += caught; bag += items; caught = []; items = [] }
 
