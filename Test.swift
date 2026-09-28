@@ -182,6 +182,14 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     var hb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); hb.mine[0].hp = 10
     let hbeats = hb.turn(.item, &r, heal: 50); check(hbeats.first == .healed(50) && hb.mine[0].hp <= 60 && hb.mine[0].hp > 10, "potion first, then it may attack")
     var rb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); check(rb.turn(.run, &r) == [.ran], "run ends a wild fight at once")
+    var lb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: Mon(dex: 25, level: 5, female: false)); lb.mine[0].hp = 10
+    let lmax = lb.mine[0].maxHP; lb.apply(.gained(exp: 5000, level: nil))
+    check(lb.mine[0].mon.level > 5 && lb.mine[0].hp == 10 + lb.mine[0].maxHP - lmax, "a level-up mid-fight raises current HP by the same amount")
+    let fv = WalkerView(state: { var s = Walk(); s.bag = ["기력의조각"]; return s }()); fv.persist = false
+    var fainted = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); fainted.mine[0].hp = 0
+    if case .beats(let nb, let rbeats, _, let from) = fv.after(fainted, .lost, Date()), case .revived(let h)? = rbeats.first {
+        check(nb.mine[0].hp == h && h == pika50.stats[0] / 2 && from.mine[0].hp == 0, "a revive leaves the fight at the revived HP (not 0)")
+    } else { check(false, "a revive leaves the fight at the revived HP (not 0)") }
     var tb = Battle(party: [pika50, lax50], trainer: "베테랑 민수", foes: [Mon(dex: 16, level: 3, female: false), Mon(dex: 19, level: 3, female: false)])
     check(tb.turn(.swap(1), &r).first == .sendOut(.me, 1) && tb.me == 1, "switching sends the other one in")
     tb.theirs[0].hp = 1; var tbeats: [Beat] = []; while !tbeats.contains(.fainted(.it)) { tbeats = tb.turn(.fight(tb.mine[tb.me].mon.moves.last!), &r) }

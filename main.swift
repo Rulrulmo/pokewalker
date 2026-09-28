@@ -260,7 +260,9 @@ final class WalkerView: NSView {
     var boxByLevel = false
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
     var usedItem = "몬스터볼"                                                // the potion / ball / revive the current beat names
-    var towerRefs: [Int] = [], towerRun = false                            // who's in the tower party (see Walk.party), and whether a run is on
+    var towerRefs: [Int] = [], towerRun = false
+    var sideOn = false                                                     // the battle side panel exists (not in --selftest): the LCD shows the stage only
+    weak var side: SidePanel?                            // who's in the tower party (see Walk.party), and whether a run is on
     lazy var lastSeason = state.season
     var shown: FB? = nil                                                   // last composed frame; draw() only when it changes
     var emote: (kind: Int, until: Date)? = nil                             // ♪ ♥ ! bubble over the companion
@@ -344,6 +346,7 @@ final class WalkerView: NSView {
         }
         if now.timeIntervalSince(lastSave) > 60 { save(nil) }
         updateStatus()
+        side?.show(window?.isVisible == true ? sideModel(now) : nil, beside: window)
         guard window?.isVisible ?? true else { return }                                         // hidden in the menu bar: rules keep running, nothing to draw
         let fb = compose(now)
         if fb.px != shown?.px || fb.col != shown?.col || now.timeIntervalSince(pressedAt) < 0.3 { shown = fb; needsDisplay = true }   // idle home = ~2 redraws a second
@@ -351,8 +354,9 @@ final class WalkerView: NSView {
     /// End of a fight. Wild: EXP goes to the companion; caught or beaten => maybe the grass rustles again (a chain). Tower: BP and the next trainer.
     func after(_ b: Battle, _ end: Beat, _ now: Date) -> Screen {
         if end == .lost, let r = state.useRevive() {                                              // a revive in the bag: back up, the fight goes on
-            var nb = b; let hp = max(1, nb.mine[nb.me].maxHP * r.pct / 100); usedItem = r.item
-            return .beats(nb, [.revived(hp)], since: now, from: nb)
+            var nb = b; let from = b, hp = max(1, nb.mine[nb.me].maxHP * r.pct / 100); usedItem = r.item
+            nb.apply(.revived(hp))                                                                 // the fight goes on from the revived HP (it used to stay at 0)
+            return .beats(nb, [.revived(hp)], since: now, from: from)
         }
         let before = state.companion.level
         if b.trainer != nil { state.writeBack(towerRefs, b.mine.map(\.mon)) } else { state.companion = b.mine[0].mon }
@@ -551,6 +555,13 @@ final class WalkerView: NSView {
                 if live && k == b && Int(t * 6) % 2 == 0 { fb.draw(bang, x + 15, y - 6, redPal) }
                 if k == c { fb.text("▶", x - 2, y, 3, right: true) }
             }
+        case .battle(let b, _) where sideOn, .moves(let b, _) where sideOn, .party(let b, _) where sideOn:
+            stage(&fb, b, now, .idle, hud: false)                                                   // the side panel carries names, HP, menus
+        case .beats where sideOn:
+            let s = beatState(now)!
+            stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), hud: false)
+            if case .used(_, _, _, _, true) = s.beat, (0.45..<0.6).contains(s.u) { fb.invert(0, 0, 96, 64) }
+            if s.beat == .appear, legendDex.contains(s.from.wild.dex), s.u < 0.5, Int(s.u * 10) % 2 == 0 { fb.invert(0, 0, 96, 64) }
         case .battle(let b, let sel):
             stage(&fb, b, now, .idle)
             let opts = battleMenu(b)
@@ -571,7 +582,7 @@ final class WalkerView: NSView {
             for (k, f) in b.mine.enumerated() {
                 let y = 16 + 15 * k
                 fb.text((k == b.me ? "▶" : "") + monNames[f.mon.dex] + " Lv.\(f.mon.level)", 2, y, f.alive ? 3 : 1, small: true)
-                hpBar(&fb, 2, y + 10, 60, f.hp, f.maxHP); fb.text("\(f.hp)/\(f.maxHP)", 94, y + 3, 2, right: true, small: true)
+                hpBar(&fb, 2, y + 9, 60, f.hp, f.maxHP); fb.text("\(f.hp)/\(f.maxHP)", 94, y + 3, 2, right: true, small: true)
                 if k == sel { fb.invert(0, y - 1, 96, 14) }
             }
         case .beats(_, let beats, let since, let from):
@@ -686,6 +697,46 @@ final class WalkerView: NSView {
         return fb
     }
     var bagPages: Int { max(1, state.caught.count) + 1 }
+    /// Where a playing turn is right now: HP as of this moment, names before this beat's damage lands.
+    func beatState(_ now: Date) -> (hp: Battle, names: Battle, beat: Beat, u: Double, from: Battle)? {
+        guard case .beats(_, let beats, let since, let from) = screen else { return nil }
+        var u = now.timeIntervalSince(since), i = 0
+        while i < beats.count - 1, u >= beats[i].length { u -= beats[i].length; i += 1 }
+        var hp = from
+        for (k, bt) in beats.enumerated() where k < i { hp.apply(bt) }
+        let names = hp
+        if case .used = beats[i] { if u >= 0.45 { hp.apply(beats[i]) } } else if case .gained = beats[i] {} else { hp.apply(beats[i]) }
+        return (hp, names, beats[i], u, from)
+    }
+    /// What the side panel shows; nil = no battle on (panel hidden).
+    func sideModel(_ now: Date) -> SideModel? {
+        let b: Battle, msg: String, mode: SideModel.Mode
+        switch screen {
+        case .battle(let x, let sel): b = x; msg = "무엇을 할까?"; mode = .menu(battleMenu(x), sel)
+        case .moves(let x, let sel):
+            b = x; msg = "어떤 기술을 쓸까?"
+            mode = .moves(x.mine[x.me].mon.moves.map { id in let m = moveTable[id]!; return .init(name: m.name, type: m.type, power: m.power, effect: effectiveness(m.type, on: x.theirs[x.it].mon.dex)) }, sel)
+        case .party(let x, let sel): b = x; msg = "누구로 교체할까?"; mode = .party(x.mine.enumerated().map { .init(name: monNames[$1.mon.dex], level: $1.mon.level, hp: $1.hp, max: $1.maxHP, out: $0 == x.me) }, sel)
+        case .beats:
+            guard let s = beatState(now) else { return nil }
+            b = s.hp; msg = message(s.beat, s.u, s.names); mode = .none
+        default: return nil
+        }
+        let foe = b.theirs[b.it], mine = b.mine[b.me]
+        return SideModel(foe: .init(name: monNames[foe.mon.dex], level: foe.mon.level, hp: foe.hp, max: foe.maxHP, out: true), foeBalls: b.trainer == nil ? [] : b.theirs.map(\.alive),
+                         mine: .init(name: monNames[mine.mon.dex], level: mine.mon.level, hp: mine.hp, max: mine.maxHP, out: true), myBalls: b.mine.count > 1 ? b.mine.map(\.alive) : [],
+                         trainer: b.trainer, message: msg, mode: mode)
+    }
+    func sidePick(_ k: Int) {                                                                   // a click on the side panel = selecting that row, then ●
+        lastInput = Date()
+        switch screen {
+        case .battle(let b, _): screen = .battle(b, sel: k)
+        case .moves(let b, _): screen = .moves(b, sel: k)
+        case .party(let b, _): screen = .party(b, sel: k)
+        default: return
+        }
+        press(1)
+    }
     func battleMenu(_ b: Battle) -> [String] { b.trainer == nil ? ["공격", "볼", "도구", "도망"] : ["공격", "도구", "교체", "기권"] }
     /// Menu labels' x ranges (drawn and tapped from the same layout).
     func menuRanges(_ labels: [String]) -> [Range<Int>] {
@@ -693,9 +744,13 @@ final class WalkerView: NSView {
         for n in labels { let w = (textDots(n, small: true).first?.count ?? 0) + 4; out.append(x..<x + w); x += w + 3 }
         return out
     }
+    /// A framed 4-row bar: dark outline, green / yellow / red fill, dark grey where HP is gone. Any HP left shows at least one dot.
     func hpBar(_ fb: inout FB, _ x: Int, _ y: Int, _ w: Int, _ hp: Int, _ max: Int) {
-        let f = hp * w / Swift.max(1, max), c = hp * 5 > max * 2 ? rgb(72, 200, 90) : hp * 5 > max ? rgb(240, 200, 50) : rgb(230, 70, 60)
-        for dx in 0..<w { fb.set(x + dx, y, dx < f ? 2 : 1, dx < f ? c : rgb(210, 210, 204)); fb.set(x + dx, y + 1, dx < f ? 2 : 1, dx < f ? c : rgb(210, 210, 204)) }
+        let inner = w - 2, f = hp <= 0 ? 0 : Swift.max(1, hp * inner / Swift.max(1, max))
+        let c = hp * 5 > max * 2 ? rgb(72, 200, 90) : hp * 5 > max ? rgb(240, 200, 50) : rgb(230, 70, 60)
+        for dx in 0..<w { fb.set(x + dx, y, 3, rgb(40, 44, 52)); fb.set(x + dx, y + 3, 3, rgb(40, 44, 52)) }
+        for dy in 1...2 { fb.set(x, y + dy, 3, rgb(40, 44, 52)); fb.set(x + w - 1, y + dy, 3, rgb(40, 44, 52))
+            for dx in 0..<inner { fb.set(x + 1 + dx, y + dy, dx < f ? 1 : 2, dx < f ? c : rgb(120, 124, 132)) } }
     }
     /// What the 64x48 stage shows: one fighter at full size (the other one is never squeezed to half resolution).
     enum Pose {
@@ -733,31 +788,33 @@ final class WalkerView: NSView {
         case .lost: return .nobody
         }
     }
-    func stage(_ fb: inout FB, _ b: Battle, _ now: Date, _ p: Pose) {
-        let t = now.timeIntervalSinceReferenceDate, f = Int(t * 2) % 2
+    func stage(_ fb: inout FB, _ b: Battle, _ now: Date, _ p: Pose, hud: Bool = true) {
+        let t = now.timeIntervalSinceReferenceDate, f = Int(t * 2) % 2, oy = hud ? 0 : 8        // no HUD: the stage sits lower, centred
         let pad: (UInt32, UInt32) = switch state.season {                                                         // the pad they stand on, by season
         case .spring: (rgb(150, 206, 120), rgb(196, 230, 160)); case .summer: (rgb(130, 190, 96), rgb(176, 216, 136))
         case .autumn: (rgb(200, 150, 80), rgb(226, 190, 120)); case .winter: (rgb(200, 212, 228), rgb(236, 242, 250))
         }
-        for y in 41..<48 { for x in 14..<82 { let ex = Double(x - 48) / 34, ey = Double(y - 44) / 3.6; if ex * ex + ey * ey < 1 { fb.set(x, y, 1, ex * ex + ey * ey > 0.7 ? pad.0 : pad.1) } } }
-        defer { fb.weatherFX(state.weather ?? .sunny, 0, 12, 96, 38, t) }                         // over the fighters, under the HUD
+        for y in 41..<48 { for x in 14..<82 { let ex = Double(x - 48) / 34, ey = Double(y - 44) / 3.6; if ex * ex + ey * ey < 1 { fb.set(x, y + oy, 1, ex * ex + ey * ey > 0.7 ? pad.0 : pad.1) } } }
+        defer { fb.weatherFX(state.weather ?? .sunny, 0, hud ? 12 : 0, 96, hud ? 38 : 64, t) }                         // over the fighters, under the HUD
         let foe = b.theirs[b.it].mon, mine = b.mine[b.me].mon
         switch p {
         case .idle:
-            fb.mon(foe, f, 16, 0)
-            if foe.shiny == true { for (k, (sx, sy)) in [(6, 4), (50, 8), (28, 1), (56, 30)].enumerated() where (Int(t * 4) + k) % 3 == 0 { fb.draw(spark, 16 + sx - 6, sy, sparkPal) } }
-        case .show(let s, let dx, let dy, let flash, let visible): if visible { fb.mon(s == .me ? mine : foe, f, 16 + dx, dy, flip: s == .me, flash: flash) }
-        case .ball(let x, let y, let tilt, let burst, let stars):
+            fb.mon(foe, f, 16, oy)
+            if foe.shiny == true { for (k, (sx, sy)) in [(6, 4), (50, 8), (28, 1), (56, 30)].enumerated() where (Int(t * 4) + k) % 3 == 0 { fb.draw(spark, 16 + sx - 6, sy + oy, sparkPal) } }
+        case .show(let s, let dx, let dy, let flash, let visible): if visible { fb.mon(s == .me ? mine : foe, f, 16 + dx, dy + oy, flip: s == .me, flash: flash) }
+        case .ball(let x, let y0, let tilt, let burst, let stars):
+            let y = y0 + oy
             if burst { fb.draw(burstArt, x - 2, y - 2, sparkPal, scale: 2) }
             let top = usedItem == "하이퍼볼" ? rgb(44, 44, 52) : usedItem.hasSuffix("볼") && usedItem != "몬스터볼" ? rgb(60, 110, 220) : rgb(222, 52, 44)   // 슈퍼볼 & co blue, 하이퍼볼 black
             fb.draw(tilt.map { ballTilt[$0] } ?? ball, x, y, [ballPal[0], ballPal[1], top, ballPal[3]], scale: 2)
             if stars { for (sx, sy) in [(-8, -4), (16, -5), (-9, 9), (17, 8)] { fb.draw(spark, x + sx, y + sy, sparkPal) } }
         case .nobody: break
         }
+        guard hud else { return }
         // HUD: theirs top-left (name, Lv, bar; a trainer's remaining balls), ours top-right; each on its own plate so the sprite's head can't muddle it
         let lw = max(38, (textDots(monNames[foe.dex] + " \(foe.level)", small: true).first?.count ?? 0) + 2) + (b.trainer != nil ? 13 : 0)
         let rw = max(38, (textDots("\(monNames[mine.dex]) \(mine.level)", small: true).first?.count ?? 0) + 2)
-        for (x0, w) in [(0, lw), (96 - rw, rw)] { for y in 0..<12 { for x in x0..<min(96, x0 + w) { fb.set(x, y, 0) } } }
+        for (x0, w) in [(0, lw), (96 - rw, rw)] { for y in 0..<14 { for x in x0..<min(96, x0 + w) { fb.set(x, y, 0) } } }
         fb.text(monNames[foe.dex] + " \(foe.level)", 1, 0, 3, small: true)
         hpBar(&fb, 1, 9, 36, b.theirs[b.it].hp, b.theirs[b.it].maxHP)
         if b.trainer != nil { for (k, x) in b.theirs.enumerated() { fb.draw(gem, 39 + 4 * k, 9, x.alive ? ballPal : [ballPal[3], ballPal[3], ballPal[3], ballPal[3]]) } }
@@ -1107,6 +1164,127 @@ final class WalkerView: NSView {
     }
 }
 
+// MARK: - battle side panel: names, HP, messages and big buttons next to the device, so the 96x64 screen keeps the stage
+struct SideModel: Equatable {
+    struct Card: Equatable { var name: String; var level, hp, max: Int; var out: Bool }
+    struct MoveBtn: Equatable { var name, type: String; var power: Int; var effect: Double }
+    enum Mode: Equatable { case none, menu([String], Int), moves([MoveBtn], Int), party([Card], Int) }
+    var foe: Card; var foeBalls: [Bool]; var mine: Card; var myBalls: [Bool]; var trainer: String?; var message: String; var mode: Mode
+}
+let typeColor: [String: NSColor] = ["normal": (168, 168, 120), "fire": (240, 128, 48), "water": (104, 144, 240), "grass": (120, 200, 80), "electric": (238, 196, 40),
+    "ice": (120, 200, 200), "fighting": (192, 48, 40), "poison": (160, 64, 160), "ground": (210, 176, 90), "flying": (150, 130, 230), "psychic": (248, 88, 136),
+    "bug": (160, 176, 32), "rock": (184, 160, 56), "ghost": (112, 88, 152), "dragon": (112, 56, 248), "dark": (112, 88, 72), "steel": (160, 160, 190)]
+    .mapValues { NSColor(red: CGFloat($0.0) / 255, green: CGFloat($0.1) / 255, blue: CGFloat($0.2) / 255, alpha: 1) }
+
+final class SideView: NSView {
+    var model: SideModel?
+    var hits: [(NSRect, Int)] = []                                         // clickable rows: index, or -1 = back
+    weak var walker: WalkerView?
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
+    override func mouseDown(with e: NSEvent) {
+        let p = convert(e.locationInWindow, from: nil)
+        guard let k = hits.first(where: { $0.0.contains(p) })?.1 else { return }
+        if k < 0 { walker?.press(3) } else { walker?.sidePick(k) }
+    }
+    override func resetCursorRects() { for (r, _) in hits { addCursorRect(r, cursor: .pointingHand) } }
+    override func draw(_ dirty: NSRect) {
+        hits = []
+        guard let m = model else { return }
+        let u = PX, k = CGFloat(max(1, Int(PX / 2))), ink = NSColor(white: 0.12, alpha: 1), accent = shells[theme].top
+        func font(_ big: Bool) -> NSFont { _ = fontsReady; return NSFont(name: "Galmuri9", size: (big ? 10 : 10) * k) ?? .systemFont(ofSize: 10 * k) }
+        func small() -> NSFont { NSFont(name: "Galmuri7", size: 8 * k) ?? .systemFont(ofSize: 8 * k) }
+        func text(_ s: String, _ x: CGFloat, _ y: CGFloat, _ f: NSFont, _ c: NSColor = NSColor(white: 0.12, alpha: 1), right: CGFloat? = nil) {
+            let a: [NSAttributedString.Key: Any] = [.font: f, .foregroundColor: c]
+            let w = (s as NSString).size(withAttributes: a).width
+            (s as NSString).draw(at: NSPoint(x: right.map { $0 - w } ?? x, y: y), withAttributes: a)
+        }
+        let card = NSBezierPath(roundedRect: bounds.insetBy(dx: u, dy: u), xRadius: 10 * u, yRadius: 10 * u)
+        NSColor(white: 0.97, alpha: 1).setFill(); card.fill(); ink.withAlphaComponent(0.7).setStroke(); card.lineWidth = 1; card.stroke()
+        accent.setFill(); NSBezierPath(roundedRect: NSRect(x: 12 * u, y: 3 * u, width: bounds.width - 24 * u, height: 2 * u), xRadius: u, yRadius: u).fill()
+        NSGraphicsContext.current!.shouldAntialias = false
+        func bar(_ c: SideModel.Card, _ y: CGFloat, numbers: Bool) {
+            let x = 10 * u, w = bounds.width - 20 * u, h = 4 * u, f = c.max > 0 ? CGFloat(c.hp) / CGFloat(c.max) : 0
+            ink.setFill(); NSRect(x: x - u / 2, y: y - u / 2, width: w + u, height: h + u).fill()
+            NSColor(white: 0.45, alpha: 1).setFill(); NSRect(x: x, y: y, width: w, height: h).fill()
+            (f > 0.4 ? NSColor(red: 0.28, green: 0.78, blue: 0.35, alpha: 1) : f > 0.2 ? NSColor(red: 0.94, green: 0.78, blue: 0.2, alpha: 1) : NSColor(red: 0.9, green: 0.27, blue: 0.24, alpha: 1)).setFill()
+            NSRect(x: x, y: y, width: c.hp > 0 ? max(u, (w * f).rounded(.down)) : 0, height: h).fill()
+            if numbers { text("\(c.hp) / \(c.max)", 0, y + h + u, small(), NSColor(white: 0.35, alpha: 1), right: x + w) }
+        }
+        func balls(_ bs: [Bool], _ y: CGFloat) { for (i, a) in bs.enumerated() { (a ? NSColor(red: 0.87, green: 0.2, blue: 0.17, alpha: 1) : NSColor(white: 0.7, alpha: 1)).setFill(); NSBezierPath(ovalIn: NSRect(x: bounds.width - (14 + 6 * CGFloat(bs.count - 1 - i)) * u, y: y, width: 4 * u, height: 4 * u)).fill() } }
+        // cards: theirs (bar only, like the games), ours (with numbers)
+        text(m.trainer ?? "야생 포켓몬", 10 * u, 9 * u, small(), NSColor(white: 0.35, alpha: 1))
+        text("Lv.\(m.foe.level)", 0, 9 * u, small(), NSColor(white: 0.35, alpha: 1), right: bounds.width - 10 * u)
+        text(m.foe.name, 10 * u, 16 * u, font(true)); balls(m.foeBalls, 18 * u)
+        bar(m.foe, 29 * u, numbers: false)
+        text(m.mine.name, 10 * u, 38 * u, font(true)); text("Lv.\(m.mine.level)", 0, 40 * u, small(), NSColor(white: 0.35, alpha: 1), right: bounds.width - 10 * u)
+        for (i, a) in m.myBalls.enumerated() { (a ? NSColor(red: 0.87, green: 0.2, blue: 0.17, alpha: 1) : NSColor(white: 0.7, alpha: 1)).setFill(); NSBezierPath(ovalIn: NSRect(x: (10 + 6 * CGFloat(i)) * u, y: 56 * u, width: 4 * u, height: 4 * u)).fill() }   // under our bar, left
+        bar(m.mine, 50 * u, numbers: true)
+        // message
+        let box = NSRect(x: 8 * u, y: 64 * u, width: bounds.width - 16 * u, height: 20 * u)
+        NSColor(white: 0.9, alpha: 1).setFill(); NSBezierPath(roundedRect: box, xRadius: 3 * u, yRadius: 3 * u).fill()
+        (m.message as NSString).draw(in: box.insetBy(dx: 3 * u, dy: 2 * u), withAttributes: [.font: font(false), .foregroundColor: ink])
+        // actions
+        let top = 88 * u, gw = (bounds.width - 20 * u) / 2, gh = 22 * u
+        func cell(_ i: Int) -> NSRect { NSRect(x: 8 * u + CGFloat(i % 2) * (gw + 4 * u), y: top + CGFloat(i / 2) * (gh + 4 * u), width: gw, height: gh) }
+        func button(_ r: NSRect, _ fill: NSColor, _ on: Bool, _ idx: Int) {
+            let p = NSBezierPath(roundedRect: r, xRadius: 3 * u, yRadius: 3 * u)
+            fill.setFill(); p.fill(); (on ? accent : ink.withAlphaComponent(0.5)).setStroke(); p.lineWidth = on ? 1.6 * u : 1; p.stroke()
+            hits.append((r, idx))
+        }
+        switch m.mode {
+        case .none: break
+        case .menu(let opts, let sel):
+            for (i, o) in opts.enumerated() { let r = cell(i); button(r, .white, i == sel, i); text(o, r.minX + 5 * u, r.midY - 6 * k, font(true)) }
+        case .moves(let ms, let sel):
+            for (i, mv) in ms.enumerated() {
+                let r = cell(i), c = typeColor[mv.type] ?? .gray
+                button(r, c.blended(withFraction: 0.72, of: .white)!, i == sel, i)
+                text(mv.name, r.minX + 4 * u, r.minY + 2 * u, font(true))
+                text((typeKo[mv.type] ?? mv.type) + " \(mv.power)", r.minX + 4 * u, r.minY + 13 * u, small(), c.blended(withFraction: 0.35, of: .black)!)
+                let e = mv.effect == 0 ? "× 없음" : mv.effect > 1 ? "▲ 굉장" : mv.effect < 1 ? "▼ 별로" : ""
+                text(e, 0, r.minY + 13 * u, small(), mv.effect > 1 ? NSColor(red: 0.8, green: 0.2, blue: 0.15, alpha: 1) : NSColor(white: 0.35, alpha: 1), right: r.maxX - 3 * u)
+            }
+        case .party(let ps, let sel):
+            for (i, p) in ps.enumerated() {
+                let r = NSRect(x: 8 * u, y: top + CGFloat(i) * 17 * u, width: bounds.width - 16 * u, height: 15 * u)
+                button(r, p.hp > 0 ? .white : NSColor(white: 0.88, alpha: 1), i == sel, i)
+                text((p.out ? "▶ " : "") + p.name + " Lv.\(p.level)", r.minX + 4 * u, r.minY + 2 * u, small(), p.hp > 0 ? ink : NSColor(white: 0.55, alpha: 1))
+                text("\(p.hp)/\(p.max)", 0, r.minY + 2 * u, small(), NSColor(white: 0.35, alpha: 1), right: r.maxX - 4 * u)
+                let bw = r.width - 8 * u, f = p.max > 0 ? CGFloat(p.hp) / CGFloat(p.max) : 0
+                NSColor(white: 0.45, alpha: 1).setFill(); NSRect(x: r.minX + 4 * u, y: r.minY + 10 * u, width: bw, height: 2 * u).fill()
+                (f > 0.4 ? NSColor(red: 0.28, green: 0.78, blue: 0.35, alpha: 1) : f > 0.2 ? NSColor(red: 0.94, green: 0.78, blue: 0.2, alpha: 1) : NSColor(red: 0.9, green: 0.27, blue: 0.24, alpha: 1)).setFill()
+                NSRect(x: r.minX + 4 * u, y: r.minY + 10 * u, width: bw * f, height: 2 * u).fill()
+            }
+        }
+        if case .moves = m.mode { let r = NSRect(x: box.maxX - 22 * u, y: box.maxY - 9 * u, width: 20 * u, height: 8 * u); hits.append((r, -1)); text("◀ 뒤로", 0, r.minY, small(), accent.blended(withFraction: 0.3, of: .black)!, right: r.maxX) }
+        if case .party = m.mode { let r = NSRect(x: box.maxX - 22 * u, y: box.maxY - 9 * u, width: 20 * u, height: 8 * u); hits.append((r, -1)); text("◀ 뒤로", 0, r.minY, small(), accent.blended(withFraction: 0.3, of: .black)!, right: r.maxX) }
+        NSGraphicsContext.current!.shouldAntialias = true
+        window?.invalidateCursorRects(for: self)
+    }
+}
+/// The panel beside the device; a child window, so it moves with it. Sits on whichever side has room.
+final class SidePanel: NSPanel {
+    let view = SideView()
+    init() {
+        super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
+        isOpaque = false; backgroundColor = .clear; hasShadow = true; level = .floating; hidesOnDeactivate = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]; contentView = view
+    }
+    func show(_ m: SideModel?, beside parent: NSWindow?) {
+        guard let m, let parent else { if isVisible { parent?.removeChildWindow(self); orderOut(nil) }; view.model = nil; return }
+        let size = NSSize(width: 116 * PX, height: 144 * PX)
+        if !isVisible {
+            let f = parent.frame, room = parent.screen?.visibleFrame ?? f
+            let x = f.maxX + 6 + size.width <= room.maxX ? f.maxX + 6 : f.minX - 6 - size.width
+            setFrame(NSRect(x: x, y: f.maxY - size.height, width: size.width, height: size.height), display: false)
+            parent.addChildWindow(self, ordered: .above); orderFrontRegardless()
+        } else if frame.size != size { setContentSize(size) }
+        if view.model != m { view.model = m; view.needsDisplay = true }
+    }
+}
+
 // MARK: - app
 if CommandLine.arguments.contains("--selftest") { exit(selftest() ? 0 : 1) }     // after the globals above: main.swift initialises them in order
 let app = NSApplication.shared
@@ -1151,6 +1329,7 @@ if !panel.setFrameUsingName("pokewalker"), let s = NSScreen.screens.first {
 panel.setFrameAutosaveName("pokewalker")
 panel.setContentSize(devSize)
 if !UserDefaults.standard.bool(forKey: "hidden") { panel.orderFrontRegardless() }
+let sidePanel = SidePanel(); sidePanel.view.walker = view; view.side = sidePanel; view.sideOn = true
 panel.makeFirstResponder(view)
 
 let timer = Timer(timeInterval: 0.1, target: view, selector: #selector(WalkerView.tick(_:)), userInfo: nil, repeats: true)

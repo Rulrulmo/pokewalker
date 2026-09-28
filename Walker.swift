@@ -470,7 +470,7 @@ struct Battle: Equatable {
         case .used(let s, _, let d, _, _): if s == .me { theirs[it].hp = max(0, theirs[it].hp - d) } else { mine[me].hp = max(0, mine[me].hp - d) }
         case .healed(let n): mine[me].hp = min(mine[me].maxHP, mine[me].hp + n)
         case .revived(let n): mine[me].hp = n
-        case .gained(let e, _): _ = mine[me].mon.gainBattleExp(e)
+        case .gained(let e, _): let old = mine[me].maxHP; if mine[me].mon.gainBattleExp(e) { mine[me].hp += mine[me].maxHP - old }   // a level-up raises current HP too
         default: break
         }
     }
