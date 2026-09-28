@@ -2,17 +2,17 @@ import AppKit
 
 // MARK: - geometry (points; flipped view). All in device dots x PX, so the size menu scales everything.
 var PX = CGFloat(max(2, UserDefaults.standard.integer(forKey: "px")))    // 2 / 3 / 4
-let dev = (w: CGFloat(120), h: CGFloat(118))
+let dev = (w: CGFloat(144), h: CGFloat(144))                                                  // a Poké Ball: 144-dot circle, screen where the button would be
 var devSize: NSSize { NSSize(width: dev.w * PX, height: dev.h * PX) }
-var lcdRect: NSRect { NSRect(x: 12 * PX, y: 18 * PX, width: 96 * PX, height: 64 * PX) }      // 96x64 dots, 4 greys, like the real one
-var buttons: [(c: NSPoint, r: CGFloat)] { [(NSPoint(x: 36 * PX, y: 97 * PX), 4.6 * PX), (NSPoint(x: 60 * PX, y: 99 * PX), 6.6 * PX), (NSPoint(x: 84 * PX, y: 97 * PX), 4.6 * PX)] }   // left, enter, right
+var lcdRect: NSRect { NSRect(x: 24 * PX, y: 40 * PX, width: 96 * PX, height: 64 * PX) }      // 96x64 dots, 4 greys, like the real one; centred on the ball
+var buttons: [(c: NSPoint, r: CGFloat)] { [(NSPoint(x: 49 * PX, y: 121 * PX), 4.4 * PX), (NSPoint(x: 72 * PX, y: 125 * PX), 6 * PX), (NSPoint(x: 95 * PX, y: 121 * PX), 4.4 * PX)] }   // left, enter, right: on the white half, following its curve
 
-struct Shell { let name: String; let body, ring: NSColor }
+struct Shell { let name: String; let top: NSColor }                  // the top half; the bottom is always white, the band black
 let shells: [Shell] = [
-    Shell(name: "화이트", body: NSColor(white: 0.95, alpha: 1), ring: NSColor(white: 0.78, alpha: 1)),
-    Shell(name: "하트골드", body: NSColor(red: 0.93, green: 0.80, blue: 0.45, alpha: 1), ring: NSColor(red: 0.70, green: 0.52, blue: 0.20, alpha: 1)),
-    Shell(name: "소울실버", body: NSColor(red: 0.80, green: 0.83, blue: 0.87, alpha: 1), ring: NSColor(red: 0.50, green: 0.55, blue: 0.62, alpha: 1)),
-    Shell(name: "블랙", body: NSColor(white: 0.17, alpha: 1), ring: NSColor(white: 0.35, alpha: 1)),
+    Shell(name: "몬스터볼", top: NSColor(red: 0.89, green: 0.20, blue: 0.19, alpha: 1)),
+    Shell(name: "슈퍼볼", top: NSColor(red: 0.22, green: 0.46, blue: 0.86, alpha: 1)),
+    Shell(name: "하이퍼볼", top: NSColor(red: 0.17, green: 0.17, blue: 0.19, alpha: 1)),
+    Shell(name: "마스터볼", top: NSColor(red: 0.47, green: 0.27, blue: 0.66, alpha: 1)),
 ]
 var theme = min(max(UserDefaults.standard.integer(forKey: "shell"), 0), shells.count - 1)
 struct LCD { let name: String; let shades: [NSColor] }             // shade 0 (blank) ... 3 (black)
@@ -370,17 +370,21 @@ final class WalkerView: NSView {
 
     // MARK: drawing
     override func draw(_ dirty: NSRect) {
-        let t = shells[theme], l = lcds[lcdStyle], light = (t.body.usingColorSpace(.deviceRGB)?.brightnessComponent ?? 0) > 0.6
-        let bodyRect = NSRect(origin: .zero, size: devSize).insetBy(dx: PX, dy: PX)
-        let body = NSBezierPath(roundedRect: bodyRect, xRadius: 46 * PX, yRadius: 46 * PX)          // the round Pokéwalker
-        NSGradient(starting: t.body.blended(withFraction: 0.05, of: .white)!, ending: t.body.blended(withFraction: 0.08, of: .black)!)!.draw(in: body, angle: -90)
-        NSColor(white: 0, alpha: light ? 0.18 : 0.5).setStroke(); body.lineWidth = 1; body.stroke()
-        let ring = NSBezierPath(roundedRect: bodyRect.insetBy(dx: 4 * PX, dy: 4 * PX), xRadius: 42 * PX, yRadius: 42 * PX)
-        t.ring.withAlphaComponent(0.55).setStroke(); ring.lineWidth = 0.8 * PX; ring.stroke()
-        NSColor(white: 0.08, alpha: 1).setFill()                                                          // IR window on top
-        NSBezierPath(roundedRect: NSRect(x: 50 * PX, y: 5 * PX, width: 20 * PX, height: 5 * PX), xRadius: 2.5 * PX, yRadius: 2.5 * PX).fill()
-        let bezel = NSBezierPath(roundedRect: lcdRect.insetBy(dx: -4 * PX, dy: -4 * PX), xRadius: 5 * PX, yRadius: 5 * PX)
-        t.ring.setFill(); bezel.fill()
+        let t = shells[theme], l = lcds[lcdStyle], ink = NSColor(white: 0.10, alpha: 1), white = NSColor(white: 0.96, alpha: 1)
+        let ballRect = NSRect(origin: .zero, size: devSize).insetBy(dx: PX, dy: PX), ball = NSBezierPath(ovalIn: ballRect)
+        // flat halves: top colour, white bottom, black band through the middle; one hairline, depth from the window shadow
+        NSGraphicsContext.saveGraphicsState(); ball.addClip()
+        t.top.setFill(); NSRect(x: 0, y: 0, width: devSize.width, height: 72 * PX).fill()
+        white.setFill(); NSRect(x: 0, y: 72 * PX, width: devSize.width, height: 72 * PX).fill()
+        if theme == 2 { NSColor(red: 0.98, green: 0.80, blue: 0.20, alpha: 1).setFill(); for x in [30, 106] { NSRect(x: CGFloat(x) * PX, y: 0, width: 8 * PX, height: 34 * PX).fill() } }   // Ultra Ball's yellow
+        if theme == 3 { NSColor(red: 0.93, green: 0.40, blue: 0.62, alpha: 1).setFill(); for x in [18, 110] { NSBezierPath(ovalIn: NSRect(x: CGFloat(x) * PX, y: 22 * PX, width: 16 * PX, height: 12 * PX)).fill() } }   // Master Ball's pink spots
+        ink.setFill(); NSRect(x: 0, y: 68 * PX, width: devSize.width, height: 8 * PX).fill()
+        NSGraphicsContext.restoreGraphicsState()
+        ink.withAlphaComponent(0.6).setStroke(); ball.lineWidth = 1; ball.stroke()
+        // the screen sits where the ball's button is: black ring, white ring, black bezel
+        for (out, r, c) in [(8.0, 11.0, ink), (5.0, 8.0, white), (2.0, 4.0, ink)] as [(CGFloat, CGFloat, NSColor)] {
+            c.setFill(); NSBezierPath(roundedRect: lcdRect.insetBy(dx: -out * PX, dy: -out * PX), xRadius: r * PX, yRadius: r * PX).fill()
+        }
         l.shades[0].setFill(); lcdRect.fill()
         let fb = compose(Date()), gap = PX >= 3 ? 1 / (window?.backingScaleFactor ?? 2) : 0
         let paths = (0..<4).map { _ in NSBezierPath() }
@@ -390,15 +394,15 @@ final class WalkerView: NSView {
         NSGraphicsContext.current!.shouldAntialias = true
         NSGradient(starting: NSColor(white: 0, alpha: 0.22), ending: .clear)!.draw(in: NSRect(x: lcdRect.minX, y: lcdRect.minY, width: lcdRect.width, height: 2 * PX), angle: 90)
         let now = Date()
-        for (i, b) in buttons.enumerated() {
+        for (i, b) in buttons.enumerated() {                                                          // little Poké Ball buttons: white cap, black ring
             let down = pressed == i && now.timeIntervalSince(pressedAt) < 0.15
             let cap = NSBezierPath(ovalIn: NSRect(x: b.c.x - b.r, y: b.c.y - b.r, width: 2 * b.r, height: 2 * b.r))
-            t.ring.blended(withFraction: down ? 0.35 : 0, of: .black)!.setFill(); cap.fill()
-            NSColor(white: 0, alpha: 0.25).setStroke(); cap.lineWidth = 1; cap.stroke()
+            (down ? NSColor(white: 0.78, alpha: 1) : white).setFill(); cap.fill()
+            ink.setStroke(); cap.lineWidth = 1.1 * PX; cap.stroke()
         }
         let centred = NSMutableParagraphStyle(); centred.alignment = .center
-        ("Pokéwalker" as NSString).draw(in: NSRect(x: 30 * PX, y: 107 * PX, width: 60 * PX, height: 5 * PX),
-            withAttributes: [.font: NSFont.systemFont(ofSize: 3 * PX, weight: .bold), .foregroundColor: NSColor(white: light ? 0.3 : 0.8, alpha: 0.5), .paragraphStyle: centred])
+        ("Pokéwalker" as NSString).draw(in: NSRect(x: 42 * PX, y: 20 * PX, width: 60 * PX, height: 6 * PX),
+            withAttributes: [.font: NSFont.systemFont(ofSize: 3.4 * PX, weight: .heavy), .foregroundColor: NSColor(white: 1, alpha: 0.85), .paragraphStyle: centred, .kern: 0.3 * PX])
     }
 }
 
