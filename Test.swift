@@ -212,6 +212,10 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     w.sortBox(byLevel: false); check(w.box.map(\.dex) == [1, 16, 16] && w.box[1].level == 30, "sort by number (then level)")
     w.sortBox(byLevel: true); check(w.box.map(\.level) == [30, 8, 5], "sort by level")
     check(w.release(0) == 15 && w.watts == 15 && w.box.count == 2, "releasing gives level / 2 watts")
+    w = Walk(); w.box = [Mon(dex: 29, level: 5, female: true), Mon(dex: 29, level: 12, female: true), Mon(dex: 16, level: 5, female: false), Mon(dex: 29, level: 5, female: true, shiny: true), Mon(dex: 29, level: 8, female: false)]
+    let dup = w.releaseDuplicates(of: 29)
+    check(dup.count == 2 && dup.watts == 6 && w.box.map(\.level) == [12, 5, 5] && w.box.filter { $0.dex == 29 }.count == 2 && w.box.contains { $0.shiny == true },
+          "duplicates: keeps the 이로치 and the best, releases the rest", "\(dup) \(w.box)")
 
     // 8 data + art
     check(courses.count == 35 && courses.allSatisfy { $0.slots.count == 6 && $0.items.count == 10 }, "35 courses x 6 slots x 10 items")
@@ -260,7 +264,11 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
 
     v.state.box = (1...120).map { Mon(dex: $0 * 4 % 493 + 1, level: 5, female: false, shiny: $0 % 17 == 0 ? true : nil) }
     let walkMenu = v.buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu
-    check((walkMenu?.items.count ?? 99) <= 20 && walkMenu?.items.contains { $0.title.hasPrefix("★ 이로치") } == true, "big box: 함께 걷기 stays short (recent, shinies, dex ranges)", "\(walkMenu?.items.count ?? -1)")
+    v.state.box += (0..<40).map { Mon(dex: 29, level: 1 + $0 % 25, female: $0 % 2 == 0) }
+    let nido = v.buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title.hasPrefix("니드런♀") }?.submenu
+    check((nido?.items.count ?? 99) <= 12 && nido?.items.contains { $0.title.hasPrefix("그 밖") } == true && nido?.items.last?.title.hasPrefix("중복 놓아주기") == true,
+          "40 니드런♀: ≤ 12 rows, the rest under 그 밖, and 중복 놓아주기", "\(nido?.items.count ?? -1)")
+        check((walkMenu?.items.count ?? 99) <= 20 && walkMenu?.items.contains { $0.title.hasPrefix("★ 이로치") } == true, "big box: 함께 걷기 stays short (recent, shinies, dex ranges)", "\(walkMenu?.items.count ?? -1)")
 
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0

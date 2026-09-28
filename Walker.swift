@@ -219,6 +219,14 @@ struct Walk: Codable, Equatable {
 
     // MARK: box
     /// Lets box[i] go; a few watts back as thanks (level / 2, at least 1).
+    /// Box duplicates of one species: keeps every 이로치 and the best of the rest, lets the others go. Returns (how many, watts).
+    mutating func releaseDuplicates(of dex: Int) -> (count: Int, watts: Int) {
+        let plain = box.indices.filter { box[$0].dex == dex && box[$0].shiny != true }
+        guard let best = plain.max(by: { box[$0].points < box[$1].points }) else { return (0, 0) }
+        var n = 0, w = 0
+        for i in plain.filter({ $0 != best }).sorted(by: >) { w += release(i); n += 1 }                   // from the back, so indices stay valid
+        return (n, w)
+    }
     mutating func release(_ i: Int) -> Int { let w = max(1, box.remove(at: i).level / 2); watts = min(9999, watts + w); return w }
     mutating func sortBox(byLevel: Bool) { box.sort { byLevel ? ($0.points, $1.dex) > ($1.points, $0.dex) : ($0.dex, $1.points) < ($1.dex, $0.points) } }
 

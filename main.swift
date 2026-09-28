@@ -753,15 +753,33 @@ final class WalkerView: NSView {
         let ph = m.addItem(withTitle: "함께 걷기 · \(state.companion.shiny == true ? "★ " : "")\(monNames[state.companion.dex])", action: nil, keyEquivalent: ""), pm = NSMenu()
         if state.box.isEmpty && state.caught.isEmpty { pm.addItem(withTitle: "잡은 포켓몬이 없다", action: nil, keyEquivalent: "") }
         let all = state.caught.enumerated().map { (-1 - $0, $1, " · 워커") } + state.box.enumerated().map { ($0, $1, "") }   // tag < 0 = on the walker
-        func individual(_ into: NSMenu, _ e: (Int, Mon, String), named: Bool) {
+        func individual(_ into: NSMenu, _ e: (Int, Mon, String), named: Bool, count: Int = 1) {
             let (tag, b, whereIs) = e
-            let it = into.addItem(withTitle: "\(b.shiny == true ? "★ " : "")\(named ? monNames[b.dex] + " " : "")Lv.\(b.level) \(b.female ? "♀" : "♂")\(whereIs)", action: #selector(pair(_:)), keyEquivalent: "")
+            let it = into.addItem(withTitle: "\(b.shiny == true ? "★ " : "")\(named ? monNames[b.dex] + " " : "")Lv.\(b.level) \(b.female ? "♀" : "♂")\(whereIs)\(count > 1 ? " ×\(count)" : "")", action: #selector(pair(_:)), keyEquivalent: "")
             it.target = self; it.tag = tag
         }
         func species(_ into: NSMenu, _ groups: [(key: Int, value: [(Int, Mon, String)])]) {        // one row per species, the individuals inside
             for (dex, group) in groups {
                 let head = into.addItem(withTitle: "\(monNames[dex])\(group.contains { $0.1.shiny == true } ? " ★" : "") · \(group.count)", action: nil, keyEquivalent: ""), sm = NSMenu()
-                for e in group.sorted(by: { $0.1.points > $1.1.points }) { individual(sm, e, named: false) }
+                // look-alikes (same level, sex, 이로치, place) are one row "×n"; picking it takes the one with the most EXP
+                let rows = Dictionary(grouping: group, by: { "\($0.1.shiny == true)|\($0.1.level)|\($0.1.female)|\($0.2)" }).values
+                    .map { (best: $0.max(by: { $0.1.points < $1.1.points })!, n: $0.count) }
+                    .sorted { ($0.best.1.shiny == true ? 1 : 0, $0.best.1.points) > ($1.best.1.shiny == true ? 1 : 0, $1.best.1.points) }
+                for r in rows.prefix(rows.count > 10 ? 8 : 10) { individual(sm, r.best, named: false, count: r.n) }
+                if rows.count > 10 {                                                                   // the long tail, by level band
+                    let rest = rows.dropFirst(8), mh = sm.addItem(withTitle: "그 밖 \(rest.reduce(0) { $0 + $1.n })마리", action: nil, keyEquivalent: ""), mm = NSMenu()
+                    for (band, rs) in Dictionary(grouping: rest, by: { ($0.best.1.level - 1) / 10 }).sorted(by: { $0.key > $1.key }) {
+                        let bh = mm.addItem(withTitle: "Lv.\(band * 10 + 1)–\(band * 10 + 10) · \(rs.reduce(0) { $0 + $1.n })마리", action: nil, keyEquivalent: ""), bm = NSMenu()
+                        for r in rs { individual(bm, r.best, named: false, count: r.n) }
+                        bh.submenu = bm
+                    }
+                    mh.submenu = mm
+                }
+                let dupes = state.box.filter { $0.dex == dex && $0.shiny != true }.count - 1
+                if dupes > 0 {
+                    sm.addItem(.separator())
+                    let it = sm.addItem(withTitle: "중복 놓아주기 · 상자의 \(dupes)마리", action: #selector(releaseDupes(_:)), keyEquivalent: ""); it.target = self; it.tag = dex
+                }
                 head.submenu = sm
             }
         }
@@ -843,6 +861,17 @@ final class WalkerView: NSView {
         m.addItem(.separator())
         m.addItem(withTitle: "종료", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q").target = NSApp
         return m
+    }
+    @objc func releaseDupes(_ i: NSMenuItem) {
+        let dex = i.tag, n = state.box.filter { $0.dex == dex && $0.shiny != true }.count - 1
+        guard n > 0 else { return }
+        NSApp.activate(ignoringOtherApps: true)                                                   // the only time it takes focus: a real confirmation
+        let a = NSAlert(); a.messageText = "\(monNames[dex]) \(n)마리를 놓아줄까요?"
+        a.informativeText = "상자에서 이로치와 가장 레벨이 높은 1마리만 남아요. 되돌릴 수 없어요."
+        a.addButton(withTitle: "놓아주기"); a.addButton(withTitle: "취소")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        let r = state.releaseDuplicates(of: dex)
+        screen = .say(["\(r.count)마리를 놓아줬다", "+\(r.watts)W"], next: .home, since: Date()); save(nil)
     }
     @objc func testNotify(_ i: NSMenuItem) { notify("pet", josa(monNames[state.companion.dex], "이", "가") + " 인사해요", "알림이 이렇게 와요 · 지금 \(state.watts)W") }
     @objc func toggleNotify(_ i: NSMenuItem) { let k = notifyKinds[i.tag].0; UserDefaults.standard.set(!notifyOn(k), forKey: "notify.\(k)") }
