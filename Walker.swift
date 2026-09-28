@@ -42,8 +42,8 @@ let legendOdds = (base: 0.02, perChain: 0.01)          // a legend course's rada
 
 /// What a bag item does here. The real walker only ferried items to the game; this app has no game, so they get jobs of their own.
 enum ItemKind: Equatable {
-    case heal(Int)                 // battle: restores this many HP pips
-    case revive(Int)               // used by itself when we faint, back up with this many
+    case heal(Int)                 // battle: restores this many HP (999 = all)
+    case revive(Int)               // used by itself when the last one faints: back up with this % of max HP
     case ball(Double)              // thrown instead of the basic ball: catch chance x this
     case candy                     // 이상한사탕: +1 level
     case berry                     // fed: +500 friendship steps
@@ -51,11 +51,11 @@ enum ItemKind: Equatable {
     case sell(Int)                 // watts at the exchange
 
     static func of(_ i: String) -> ItemKind {
-        let heal = ["상처약": 1, "좋은상처약": 2, "고급상처약": 3, "풀회복약": 4, "회복약": 4, "오랭열매": 1, "자뭉열매": 2, "맛있는물": 1, "미네랄사이다": 2,
-                    "후르츠밀크": 2, "튼튼밀크": 3, "힘의가루": 2, "힘의뿌리": 3]
+        let heal = ["상처약": 20, "좋은상처약": 50, "고급상처약": 200, "풀회복약": 999, "회복약": 999, "오랭열매": 10, "자뭉열매": 30, "맛있는물": 50, "미네랄사이다": 60,
+                    "후르츠밀크": 80, "튼튼밀크": 100, "힘의가루": 50, "힘의뿌리": 200]   // Gen IV amounts
         if let n = heal[i] { return .heal(n) }
-        if i == "기력의조각" { return .revive(2) }
-        if i == "부활초" { return .revive(4) }
+        if i == "기력의조각" { return .revive(50) }
+        if i == "부활초" { return .revive(100) }
         if i == "하이퍼볼" { return .ball(2) }
         if i.hasSuffix("볼"), i != "몬스터볼" { return .ball(1.5) }
         if i == "이상한사탕" { return .candy }
@@ -107,6 +107,8 @@ struct Walk: Codable, Equatable {
     var nextEvent: Int? = nil                           // total steps of the companion's next little event
     var egg: Egg? = nil
     var bestChain: Int? = nil
+    var bp: Int? = nil, towerStreak: Int? = nil, towerBest: Int? = nil   // Battle Tower points, current and best win streak
+    var bought: [String]? = nil                                        // one-off BP buys (device colours)
 
     var here: Course { courses[course] }
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.
@@ -192,7 +194,7 @@ struct Walk: Codable, Equatable {
         guard let pick = heals.first(where: { $0.1 >= missing }) ?? heals.last, take(pick.0) else { return nil }
         return (pick.0, min(pick.1, missing))
     }
-    mutating func useRevive() -> (item: String, hp: Int)? {
+    mutating func useRevive() -> (item: String, pct: Int)? {
         let r = inventory.compactMap { i -> (String, Int)? in if case .revive(let n) = ItemKind.of(i) { return (i, n) }; return nil }.sorted { $0.1 < $1.1 }
         guard let pick = r.first, take(pick.0) else { return nil }                              // the cheaper one first
         return pick
@@ -217,6 +219,48 @@ struct Walk: Codable, Equatable {
         var n = 0; while take(i) { n += 1 }
         watts = min(9999, watts + n * p); return n * p
     }
+
+    // MARK: shops
+    static let shop: [(item: String, watts: Int)] = [("상처약", 20), ("좋은상처약", 60), ("고급상처약", 150), ("풀회복약", 300), ("기력의조각", 200), ("슈퍼볼", 40), ("하이퍼볼", 100)]
+    static let bpShop: [(item: String, bp: Int)] = [("하이퍼볼", 2), ("고급상처약", 3), ("풀회복약", 5), ("부활초", 6), ("이상한사탕", 8)]
+    mutating func buy(_ item: String, watts price: Int) -> Bool { guard spend(price) else { return false }; bag.append(item); return true }
+    mutating func buy(_ item: String, bp price: Int) -> Bool { guard (bp ?? 0) >= price else { return false }; bp = (bp ?? 0) - price; bag.append(item); return true }
+
+    // MARK: Battle Tower: 3 against a trainer's 3, 50 W to enter, BP per win
+    static let towerFee = 50
+    /// The party: the companion and the two strongest others (walker + box). ref -1 = companion, -2-i = caught[i], i = box[i].
+    func party() -> [(ref: Int, mon: Mon)] {
+        let others = caught.enumerated().map { (-2 - $0.offset, $0.element) } + box.enumerated().map { ($0.offset, $0.element) }
+        return [(-1, companion)] + others.sorted { $0.1.points > $1.1.points }.prefix(2).map { (ref: $0.0, mon: $0.1) }
+    }
+    /// Writes a fight's EXP back to whoever took part (skips a ref that no longer points at the same species).
+    mutating func writeBack(_ refs: [Int], _ mons: [Mon]) {
+        for (r, m) in zip(refs, mons) {
+            if r == -1, companion.dex == m.dex { companion = m }
+            else if r <= -2, caught.indices.contains(-2 - r), caught[-2 - r].dex == m.dex { caught[-2 - r] = m }
+            else if r >= 0, box.indices.contains(r), box[r].dex == m.dex { box[r] = m }
+        }
+    }
+    /// The next trainer: 3 non-legends at the party's average level + streak / 3 (+0-2), fully evolved from Lv.30.
+    func towerFoes<R: RandomNumberGenerator>(_ r: inout R) -> (trainer: String, foes: [Mon]) {
+        let ps = party().map(\.mon), avg = ps.map(\.level).reduce(0, +) / max(1, ps.count)
+        let legends = Set(courses.flatMap(\.legends))
+        let names = ["엘리트 트레이너", "베테랑", "아가씨", "등산가", "연구원", "격투가", "사이킥", "드래곤 조련사", "모범 소년", "레인저"]
+        let given = ["민수", "지은", "현우", "서연", "도윤", "하은", "준호", "유나", "태양", "보라"]
+        let foes = (0..<3).map { _ -> Mon in
+            let lv = min(100, max(5, avg + (towerStreak ?? 0) / 3 + Int.random(in: 0...2, using: &r)))
+            let pool = (1...493).filter { d in !legends.contains(d) && d != 292 && (stageOf[d] == 0 || stageOf[d] == 1 && lv >= 20 || stageOf[d] >= 2 && lv >= 35)
+                                              && (lv < 30 || !evolutions.contains { $0.from == d }) }
+            return Mon(dex: pool.randomElement(using: &r)!, level: lv, female: Bool.random(using: &r))
+        }
+        return (names.randomElement(using: &r)! + " " + given.randomElement(using: &r)!, foes)
+    }
+    /// A win: streak + 1, BP = 1 (+1 per full 7 already won), +3 on every 7th. Returns the BP.
+    mutating func towerWin() -> Int {
+        let s = (towerStreak ?? 0) + 1; towerStreak = s; towerBest = max(towerBest ?? 0, s)
+        let g = 1 + (s - 1) / 7 + (s % 7 == 0 ? 3 : 0); bp = (bp ?? 0) + g; return g
+    }
+    mutating func towerEnd() { towerBest = max(towerBest ?? 0, towerStreak ?? 0); towerStreak = 0 }
 
     // MARK: box
     /// Lets box[i] go; a few watts back as thanks (level / 2, at least 1).
@@ -352,74 +396,147 @@ extension DateFormatter {
     static let day: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.calendar = Calendar.current; f.timeZone = .current; return f }()
 }
 
-// MARK: - battle: 4 HP each; attack / evade / throw a ball / run
-enum Move: Int, CaseIterable { case attack, evade, capture, item, run }
+// MARK: - battle (Gen IV rules, no status conditions): stats from base stats and level, 4 learned moves, type chart, speed order, the Gen IV catch formula
+struct MoveInfo { let name, type: String; let power, accuracy: Int; let special: Bool; let priority: Int }   // accuracy 0 = never misses
+
+extension Mon {
+    /// HP Atk Def SpA SpD Spe. Gen IV formula with IVs 15 and no EVs.
+    var stats: [Int] {
+        let b = baseStats[dex], l = level
+        return (0..<6).map { $0 == 0 ? (2 * b[0] + 15) * l / 100 + l + 10 : (2 * b[$0] + 15) * l / 100 + 5 }
+    }
+    /// The last 4 damaging moves learned by this level (발버둥 if none yet).
+    var moves: [Int] {
+        let ls = learnsets[dex]
+        var out: [Int] = []
+        for k in stride(from: 0, to: ls.count, by: 2) where ls[k] <= level { out.removeAll { $0 == ls[k + 1] }; out.append(ls[k + 1]) }
+        return out.isEmpty ? [165] : Array(out.suffix(4))
+    }
+    /// Battle EXP only (walking EXP also counts friendship steps). Returns true on a level-up.
+    mutating func gainBattleExp(_ n: Int) -> Bool {
+        let before = level, e = points + n
+        exp = e; level = max(level, Mon.level(dex: dex, exp: e)); return level > before
+    }
+}
+func effectiveness(_ type: String, on d: Int) -> Double { monTypes[d].reduce(1) { $0 * (typeChart[type]?[$1] ?? 1) } }
+
+enum Side: Equatable { case me, it }
+struct Fighter: Equatable {
+    var mon: Mon; var hp: Int
+    init(_ m: Mon) { mon = m; hp = m.stats[0] }
+    var maxHP: Int { mon.stats[0] }
+    var alive: Bool { hp > 0 }
+}
+enum Move: Equatable { case fight(Int), capture, item, swap(Int), run }
 enum Beat: Equatable {
-    case appear                                      // the encounter itself (plays before the first menu)
-    case hit(crit: Bool), missed                     // our attack
-    case struck, dodged                              // its attack: landed / we evaded it
-    case thrown, broke, caught, fled, ran            // ball, ball broke free, got it, it ran, we ran
-    case healed(Int), revived(Int)                   // a potion / a revive (HP back)
-    case won, lost                                   // it fainted (no catch), we fainted
+    case appear                                      // a wild one slides in
+    case sendOut(Side, Int)                          // that side's fighter #i comes in
+    case used(Side, move: Int, damage: Int, effect: Double, crit: Bool)
+    case missed(Side, move: Int)
+    case fainted(Side)
+    case thrown(shakes: Int), broke, caught          // the ball rocks `shakes` times, then breaks open or clicks
+    case healed(Int), revived(Int)                   // HP back
+    case gained(exp: Int, level: Int?)               // after a KO; level if it went up
+    case fled, ran, won, lost
     var ends: Bool { [.caught, .fled, .ran, .won, .lost].contains(self) }
     var length: Double {                             // seconds on screen
         switch self {
-        case .appear: 1.6
-        case .broke: 2.0
-        case .caught: 2.6
-        case .thrown: 1.25
-        case .won, .lost: 1.4
+        case .appear, .sendOut: 1.4
+        case .used(_, _, _, let e, let c): e != 1 || c ? 1.9 : 1.3
+        case .thrown(let s): 1.25 + 0.6 * Double(s)
+        case .caught: 1.8
+        case .broke: 1.2
+        case .fainted, .won, .lost: 1.4
+        case .gained(_, let l): l == nil ? 1.2 : 1.8
         default: 1.2
         }
     }
 }
 struct Battle: Equatable {
-    var wild: Mon
-    var wildHP = 4, myHP = 4
-    var edge = 0                                     // -1 ... 2: (our level - its level) / 10; see `edge(_:_:)`
+    var mine: [Fighter], theirs: [Fighter]
+    var me = 0, it = 0
+    var trainer: String? = nil
     var chain = 0                                    // radar chain this fight belongs to
-    var hard = false                                 // a legend: balls work half as well
+    var wild: Mon { theirs[it].mon }
 
-    static func edge(_ me: Int, _ it: Int) -> Int { min(2, max(-1, (me - it) / 10)) }
+    init(wild: Mon, companion: Mon, chain: Int = 0) { mine = [Fighter(companion)]; theirs = [Fighter(wild)]; self.chain = chain }
+    init(party: [Mon], trainer: String, foes: [Mon]) { mine = party.map(Fighter.init); theirs = foes.map(Fighter.init); self.trainer = trainer }
 
-    /// Replays one beat's HP effect (the UI shows HP dropping mid-exchange, not all at once).
+    /// Replays one beat onto the HP / who's out (the UI shows it happening mid-turn).
     mutating func apply(_ b: Beat) {
-        if case .healed(let n) = b { myHP = min(4, myHP + n) }
-        if case .revived(let n) = b { myHP = n }
-        if case .hit(let crit) = b { wildHP = max(0, wildHP - (crit ? 2 : 1)) }
-        if b == .struck { myHP = max(0, myHP - 1) }
+        switch b {
+        case .sendOut(.me, let i): me = i
+        case .sendOut(.it, let i): it = i
+        case .used(let s, _, let d, _, _): if s == .me { theirs[it].hp = max(0, theirs[it].hp - d) } else { mine[me].hp = max(0, mine[me].hp - d) }
+        case .healed(let n): mine[me].hp = min(mine[me].maxHP, mine[me].hp + n)
+        case .revived(let n): mine[me].hp = n
+        case .gained(let e, _): _ = mine[me].mon.gainBattleExp(e)
+        default: break
+        }
     }
 
-    /// One exchange. The last beat `ends` the battle when it's over.
-    /// heal = HP the chosen potion restores (UI picks and uses it up); ball = the thrown ball's multiplier.
-    mutating func act<R: RandomNumberGenerator>(_ m: Move, _ r: inout R, heal: Int = 0, ball: Double = 1) -> [Beat] {
+    static func damage<R: RandomNumberGenerator>(_ a: Mon, _ d: Mon, _ id: Int, _ r: inout R) -> (damage: Int, effect: Double, crit: Bool) {
+        let m = moveTable[id]!, sa = a.stats, sd = d.stats
+        let atk = m.special ? sa[3] : sa[1], def = max(1, m.special ? sd[4] : sd[2])
+        let base = (2 * a.level / 5 + 2) * m.power * atk / def / 50 + 2
+        let eff = effectiveness(m.type, on: d.dex), crit = Int.random(in: 0..<16, using: &r) == 0
+        let x = Double(base) * (monTypes[a.dex].contains(m.type) ? 1.5 : 1) * eff * (crit ? 2 : 1) * Double.random(in: 0.85...1, using: &r)
+        return (eff == 0 ? 0 : max(1, Int(x)), eff, crit)
+    }
+    /// The other side's pick: mostly the move that hits hardest on paper, sometimes any.
+    func foeMove<R: RandomNumberGenerator>(_ r: inout R) -> Int {
+        let a = theirs[it].mon, d = mine[me].mon, ms = a.moves
+        if Int.random(in: 0..<5, using: &r) == 0 { return ms.randomElement(using: &r)! }
+        return ms.max { x, y in
+            func v(_ i: Int) -> Double { let m = moveTable[i]!; return Double(m.power) * (monTypes[a.dex].contains(m.type) ? 1.5 : 1) * effectiveness(m.type, on: d.dex) * Double(m.accuracy == 0 ? 100 : m.accuracy) }
+            return v(x) < v(y)
+        }!
+    }
+
+    /// One turn. The last beat `ends` the battle when it's over. heal = HP of the potion the UI picked; ball = its catch multiplier.
+    mutating func turn<R: RandomNumberGenerator>(_ m: Move, _ r: inout R, heal: Int = 0, ball: Double = 1) -> [Beat] {
         var out: [Beat] = []
-        func itsTurn(evading: Bool) {
-            guard Int.random(in: 0..<10, using: &r) < 5 - edge else { return }             // it attacks half the time; 30 % if we're far above it, 60 % if below
-            if evading { out.append(.dodged); return }
-            out.append(.struck); myHP -= 1
-            if myHP <= 0 { out.append(.lost) }
+        /// One attack; returns true when it ended the battle.
+        func attack(_ s: Side, _ id: Int) -> Bool {
+            let a = s == .me ? mine[me].mon : theirs[it].mon, d = s == .me ? theirs[it].mon : mine[me].mon, acc = moveTable[id]!.accuracy
+            if acc > 0, Int.random(in: 0..<100, using: &r) >= acc { out.append(.missed(s, move: id)); return false }
+            let h = Battle.damage(a, d, id, &r)
+            out.append(.used(s, move: id, damage: h.damage, effect: h.effect, crit: h.crit)); apply(out.last!)
+            if s == .me, !theirs[it].alive {
+                out.append(.fainted(.it))
+                let e = baseExp[theirs[it].mon.dex] * theirs[it].mon.level / 7 * (trainer == nil ? 2 : 3) / 2
+                var probe = mine[me].mon; let up = probe.gainBattleExp(e)
+                out.append(.gained(exp: e, level: up ? probe.level : nil)); apply(out.last!)
+                if let n = theirs.indices.first(where: { theirs[$0].alive }) { out.append(.sendOut(.it, n)); apply(out.last!); return false }
+                out.append(.won); return true
+            }
+            if s == .it, !mine[me].alive {
+                out.append(.fainted(.me))
+                if let n = mine.indices.first(where: { mine[$0].alive }) { out.append(.sendOut(.me, n)); apply(out.last!); return false }
+                out.append(.lost); return true
+            }
+            return false
         }
         switch m {
         case .run: return [.ran]
-        case .item:
-            myHP = min(4, myHP + heal); out.append(.healed(heal))
-            itsTurn(evading: false)
-        case .attack:
-            if Int.random(in: 0..<20, using: &r) < 4 - edge { out.append(.missed) }       // 20 % miss; 10 % far above, 25 % below
-            else { let crit = Int.random(in: 0..<8, using: &r) == 0; wildHP -= crit ? 2 : 1; out.append(.hit(crit: crit)) }
-            if wildHP <= 0 { wildHP = 0; out.append(.won); return out }
-            itsTurn(evading: false)
-        case .evade:
-            itsTurn(evading: true)
-            if Int.random(in: 0..<5, using: &r) == 0 { out.append(.fled) }
+        case .item: out.append(.healed(heal)); apply(out.last!)
+        case .swap(let i): out.append(.sendOut(.me, i)); apply(out.last!)
         case .capture:
-            out.append(.thrown)
-            if Double.random(in: 0..<1, using: &r) < min(0.95, Double(5 - wildHP) / (hard ? 10 : 5) * ball) { out.append(.caught); return out }   // 4 HP 20 % ... 1 HP 80 % (legends half), x ball
+            let f = theirs[it], a = Double((3 * f.maxHP - 2 * f.hp) * catchRate[f.mon.dex]) * ball / Double(3 * f.maxHP)
+            let b = a >= 255 ? 65536 : 65536 / pow(255 / max(a, 0.1), 0.1875)
+            var shakes = 0
+            while shakes < 4, Double(Int.random(in: 0..<65536, using: &r)) < b { shakes += 1 }
+            out.append(.thrown(shakes: min(shakes, 3)))
+            if shakes == 4 { out.append(.caught); return out }
             out.append(.broke)
-            if Int.random(in: 0..<4, using: &r) == 0 { out.append(.fled); return out }
-            itsTurn(evading: false)
+        case .fight(let id):
+            let foe = foeMove(&r), mp = moveTable[id]!.priority, fp = moveTable[foe]!.priority
+            let meFirst = mp != fp ? mp > fp : mine[me].mon.stats[5] != theirs[it].mon.stats[5] ? mine[me].mon.stats[5] > theirs[it].mon.stats[5] : Bool.random(using: &r)
+            if meFirst { if attack(.me, id) || out.contains(.fainted(.it)) { return out }; _ = attack(.it, foe) }       // a fresh replacement doesn't get a free hit
+            else { if attack(.it, foe) || out.contains(.fainted(.me)) { return out }; _ = attack(.me, id) }
+            return out
         }
+        _ = attack(.it, foeMove(&r))                                                         // after a ball / potion / switch, it attacks
         return out
     }
 }

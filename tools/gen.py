@@ -28,7 +28,9 @@ SRC = {
        for i in (422, 423) for s in ('', 's')},
     'serebii.html': 'https://www.serebii.net/heartgoldsoulsilver/pokewalker-area.shtml',
     **{f + '.csv': API + f + '.csv' for f in ['pokemon_species_names', 'item_names', 'pokemon_types', 'pokemon_types_past', 'types',
-                                              'pokemon_evolution', 'pokemon_species', 'experience', 'items', 'type_names', 'pokemon_habitats']},
+                                              'pokemon_evolution', 'pokemon_species', 'experience', 'items', 'type_names', 'pokemon_habitats',
+                                              'pokemon_stats', 'pokemon', 'moves', 'move_names', 'pokemon_moves', 'type_efficacy', 'type_efficacy_past',
+                                              'version_groups', 'move_changelog', 'pokemon_stats_past']},
 }
 N = 493  # HGSS national dex
 
@@ -267,6 +269,51 @@ with open('Data.swift', 'w') as f:
     assert reach2 == set(range(1, N + 1)), sorted(set(range(1, N + 1)) - reach2)
     f.write('let eggPool: [Int] = [' + ', '.join(map(str, pool)) + ']   // every line not on a course\n')
     f.write('let eggCycles: [Int] = [0, ' + ', '.join(sp[i]['hatch_counter'] for i in range(1, N + 1)) + ']   // x 255 steps (Gen IV)\n')
+    # --- battles (Gen IV as in HGSS): base stats, base EXP, catch rate, level-up learnsets (damaging moves only — no status conditions here),
+    # move data rolled back to HGSS through the changelog (e.g. 10만볼트 95, not today's 90), and the Gen IV type chart (no Fairy; Steel resists Ghost / Dark)
+    stats = {}
+    for r in csv.DictReader(open(get('pokemon_stats.csv'))):
+        if int(r['pokemon_id']) <= N: stats.setdefault(int(r['pokemon_id']), {})[int(r['stat_id'])] = int(r['base_stat'])
+    past = {}
+    for r in csv.DictReader(open(get('pokemon_stats_past.csv'))):                          # Gen VI raised some (피카츄 방어 30 -> 40): take the value that held in Gen IV
+        d, k, g = int(r['pokemon_id']), int(r['stat_id']), int(r['generation_id'])
+        if d <= N and k <= 6 and g >= 4 and g < past.get((d, k), (99, 0))[0]: past[(d, k)] = (g, int(r['base_stat']))
+    for (d, k), (_, v) in past.items(): stats[d][k] = v
+    bexp = {int(r['id']): int(r['base_experience'] or 50) for r in csv.DictReader(open(get('pokemon.csv'))) if int(r['id']) <= N}
+    vg = {r['id']: int(r['order']) for r in csv.DictReader(open(get('version_groups.csv')))}
+    HG = vg['10']
+    mv = {int(r['id']): dict(r) for r in csv.DictReader(open(get('moves.csv'))) if int(r['generation_id']) <= 4}
+    for r in sorted(csv.DictReader(open(get('move_changelog.csv'))), key=lambda r: vg[r['changed_in_version_group_id']], reverse=True):
+        m = mv.get(int(r['move_id']))
+        if m is None or vg[r['changed_in_version_group_id']] <= HG: continue
+        for k in ('type_id', 'power', 'accuracy', 'priority'):
+            if r[k]: m[k] = r[k]                                                        # newest-first, so the earliest change after HGSS wins
+    mko = {int(r['move_id']): r['name'] for r in csv.DictReader(open(get('move_names.csv'))) if r['local_language_id'] == '3'}
+    damaging = {i for i, m in mv.items() if m['power'] and int(m['power']) > 1 and m['damage_class_id'] != '1'}
+    learn = {}
+    for r in csv.DictReader(open(get('pokemon_moves.csv'))):
+        d, i = int(r['pokemon_id']), int(r['move_id'])
+        if d <= N and r['version_group_id'] == '10' and r['pokemon_move_method_id'] == '1' and i in damaging:
+            learn.setdefault(d, set()).add((int(r['level']), i))
+    used = {165} | {i for s in learn.values() for _, i in s}                          # 165 발버둥: for anyone with nothing to hit with yet
+    tid = {r['id']: r['identifier'] for r in csv.DictReader(open(get('types.csv')))}
+    chart = {}
+    for r in csv.DictReader(open(get('type_efficacy.csv'))):
+        if r['damage_factor'] != '100' and tid[r['damage_type_id']] in TYPES and tid[r['target_type_id']] in TYPES:
+            chart.setdefault(tid[r['damage_type_id']], {})[tid[r['target_type_id']]] = int(r['damage_factor']) / 100
+    for r in csv.DictReader(open(get('type_efficacy_past.csv'))):
+        if int(r['generation_id']) >= 4: chart.setdefault(tid[r['damage_type_id']], {})[tid[r['target_type_id']]] = int(r['damage_factor']) / 100
+    assert chart['ghost']['steel'] == 0.5 and chart['electric']['water'] == 2 and chart['normal']['ghost'] == 0
+    def stage(d): f = sp[d]['evolves_from_species_id']; return 0 if not f else 1 + stage(int(f))
+    f.write('let baseStats: [[Int]] = [[], ' + ', '.join('[' + ', '.join(str(stats[d][k]) for k in range(1, 7)) + ']' for d in range(1, N + 1)) + ']   // HP Atk Def SpA SpD Spe\n')
+    f.write('let baseExp: [Int] = [0, ' + ', '.join(str(bexp[d]) for d in range(1, N + 1)) + ']\n')
+    f.write('let catchRate: [Int] = [0, ' + ', '.join(sp[d]['capture_rate'] for d in range(1, N + 1)) + ']\n')
+    f.write('let stageOf: [Int] = [0, ' + ', '.join(str(stage(d)) for d in range(1, N + 1)) + ']\n')
+    f.write('let moveTable: [Int: MoveInfo] = [\n' + ''.join(
+        f'    {i}: MoveInfo(name: {s(mko[i])}, type: {s(tid[mv[i]["type_id"]])}, power: {mv[i]["power"]}, accuracy: {mv[i]["accuracy"] or 0}, special: {str(mv[i]["damage_class_id"] == "3").lower()}, priority: {mv[i]["priority"]}),\n'
+        for i in sorted(used)) + ']\n')
+    f.write('let learnsets: [[Int]] = [[], ' + ', '.join('[' + ', '.join(f'{l}, {i}' for l, i in sorted(learn.get(d, set()))) + ']' for d in range(1, N + 1)) + ']   // level, move, level, move ...\n')
+    f.write('let typeChart: [String: [String: Double]] = [' + ', '.join(f'{s(a)}: [' + ', '.join(f'{s(b)}: {v:g}' for b, v in sorted(row.items())) + ']' for a, row in sorted(chart.items())) + ']\n')
     f.write('let courses: [Course] = [\n')
     for c in courses:
         f.write(f'    Course(name: {s(c["name"])}, watts: {c["watts"]}, dex: {c["dex"]}, legends: [{", ".join(map(str, c.get("legends", [])))}], types: [{", ".join(s(x) for x in c["types"])}], art: .{c["art"]},\n')

@@ -137,53 +137,67 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     w = Walk(); check((0..<500).allSatisfy { _ in w.legend(&r, chain: 4) == nil }, "never on normal courses")
     w = Walk(); w.companion = Mon(dex: 290, level: 20, female: false); let nin = w.levelEvolution(at(10))!
     w.evolve(nin); check(w.companion.dex == 291 && w.caught.map(\.dex) == [292], "토중몬 -> 아이스크 leaves 껍질몬")
-    var hardHits = 0; for _ in 0..<2000 { var b = Battle(wild: Mon(dex: 150, level: 50, female: false), hard: true); b.wildHP = 1; if b.act(.capture, &r).contains(.caught) { hardHits += 1 } }
-    check((700...900).contains(hardHits), "legends: 1 HP ball 40 %", "\(hardHits)")
 
     // 6f items
-    check(ItemKind.of("상처약") == .heal(1) && ItemKind.of("풀회복약") == .heal(4) && ItemKind.of("기력의조각") == .revive(2) && ItemKind.of("하이퍼볼") == .ball(2)
+    check(ItemKind.of("상처약") == .heal(20) && ItemKind.of("풀회복약") == .heal(999) && ItemKind.of("기력의조각") == .revive(50) && ItemKind.of("하이퍼볼") == .ball(2)
           && ItemKind.of("네트볼") == .ball(1.5) && ItemKind.of("라즈열매") == .berry && ItemKind.of("천둥의돌") == .evolution && ItemKind.of("금구슬") == .sell(100)
           && ItemKind.of("마비치료제") == .sell(10) && ItemKind.of("기술머신68") == .sell(50), "item kinds")
     let allItems = Set(courses.flatMap { $0.items.map(\.item) })
     check(allItems.allSatisfy { if case .sell(let p) = ItemKind.of($0) { return p > 0 }; return true }, "every course item has a use or a price")
     w = Walk(); w.items = ["상처약"]; w.bag = ["고급상처약", "좋은상처약"]
-    check(w.useHeal(missing: 2)! == ("좋은상처약", 2) && w.useHeal(missing: 4)! == ("고급상처약", 3) && w.useHeal(missing: 4)! == ("상처약", 1) && w.useHeal(missing: 1) == nil,
-          "potions: smallest that fills the gap, else the biggest")
-    w.bag = ["부활초", "기력의조각"]; check(w.useRevive()! == ("기력의조각", 2) && w.bag == ["부활초"], "revive: the cheaper one first")
+    check(w.useHeal(missing: 40)! == ("좋은상처약", 40) && w.useHeal(missing: 300)! == ("고급상처약", 200) && w.useHeal(missing: 300)! == ("상처약", 20) && w.useHeal(missing: 1) == nil,
+          "potions (Gen IV HP): smallest that fills the gap, else the biggest")
+    w.bag = ["부활초", "기력의조각"]; check(w.useRevive()! == ("기력의조각", 50) && w.bag == ["부활초"], "revive: the cheaper one first (half HP)")
     w.bag = ["슈퍼볼", "하이퍼볼"]; check(w.useBall()! == ("하이퍼볼", 2) && w.useBall()! == ("슈퍼볼", 1.5) && w.useBall() == nil, "best ball first")
     w = Walk(); w.bag = ["이상한사탕"]; check(w.feedCandy() && w.companion.level == 6 && w.companion.points == 216 && !w.feedCandy(), "이상한사탕: exactly one level")
     w.bag = ["라즈열매"]; check(w.feedBerry("라즈열매") && w.companion.walked == 500 && !w.feedBerry("상처약"), "berries feed friendship, potions don't")
     w.items = ["금구슬"]; w.bag = ["금구슬", "마비치료제", "천둥의돌"]
     check(w.sell("금구슬") == 200 && w.sell("천둥의돌") == 0 && w.watts == 200 && w.bag == ["마비치료제", "천둥의돌"], "selling: all of a kind; evolution items aren't for sale")
-    var hb = Battle(wild: Mon(dex: 16, level: 5, female: false)); hb.myHP = 1
-    let hbeats = hb.act(.item, &r, heal: 2); check(hbeats.first == .healed(2) && (hb.myHP == 3 || hb.myHP == 2), "battle item heals, then it may attack")
-    var ballHits = 0; for _ in 0..<2000 { var b = Battle(wild: Mon(dex: 16, level: 5, female: false)); if b.act(.capture, &r, ball: 2).contains(.caught) { ballHits += 1 } }
-    check((700...900).contains(ballHits), "하이퍼볼 doubles it: full HP 20 % -> 40 %", "\(ballHits)")
+    // 7 battle (Gen IV rules)
+    let pika50 = Mon(dex: 25, level: 50, female: false), gyara50 = Mon(dex: 130, level: 50, female: false), lax50 = Mon(dex: 143, level: 50, female: false)
+    check(pika50.stats == [102, 67, 42, 62, 52, 102], "stats: Gen IV base stats (방어 30, 특방 40) and formula, IV 15, no EV", "\(pika50.stats)")
+    check(pika50.moves.count <= 4 && pika50.moves.allSatisfy { moveTable[$0] != nil } && Mon(dex: 129, level: 5, female: false).moves == [165], "4 learned damaging moves; 잉어킹 Lv.5 only has 발버둥")
+    check(effectiveness("electric", on: 130) == 4 && effectiveness("ground", on: 16) == 0 && effectiveness("ghost", on: 208) == 0.5, "type chart (Gen IV: Steel resists Ghost)")
+    check(moveTable[85]!.power == 95 && moveTable[98]!.priority == 1, "HGSS move data: 10만볼트 95, 전광석화 +1")
+    var dG = 0, dS = 0; for _ in 0..<200 { dG += Battle.damage(pika50, gyara50, 85, &r).damage; dS += Battle.damage(pika50, lax50, 85, &r).damage }
+    check(dG > 3 * dS, "10만볼트: 4x on 갸라도스 vs 1x on 잠만보", "\(dG) \(dS)")
+    var ob = Battle(wild: lax50, companion: pika50); let ofirst = ob.turn(.fight(85), &r).first
+    check({ if case .used(.me, _, _, _, _) = ofirst { return true }; if case .missed(.me, _) = ofirst { return true }; return false }(), "the faster one moves first")
+    var pb = Battle(wild: Mon(dex: 135, level: 50, female: false), companion: lax50); let pfirst = pb.turn(.fight(98), &r).first
+    check({ if case .used(.me, 98, _, _, _) = pfirst { return true }; return false }(), "전광석화 goes first even from a slow 잠만보")
+    var ends = Set<String>(), bad: [Beat] = []
+    for _ in 0..<300 {
+        var b = Battle(wild: Mon(dex: 16, level: 6, female: false), companion: Mon(dex: 25, level: 8, female: false)), beats: [Beat] = []
+        while !(beats.last?.ends ?? false) { beats = b.turn(.fight(b.mine[0].mon.moves.last!), &r) }
+        if beats.last == .won, b.theirs[0].hp == 0 { ends.insert("won") } else if beats.last == .lost, b.mine[0].hp == 0 { ends.insert("lost") } else { bad = beats }
+    }
+    check(bad.isEmpty && ends.contains("won"), "fights end won (it at 0 HP) or lost (ours at 0)", "\(bad)")
+    var xb = Battle(wild: Mon(dex: 16, level: 10, female: false), companion: Mon(dex: 25, level: 5, female: false)); xb.theirs[0].hp = 1
+    let xbeats = xb.turn(.fight(84), &r)
+    if xbeats.contains(.fainted(.it)) { check(xbeats.contains { if case .gained(let e, _) = $0 { return e == baseExp[16] * 10 / 7 }; return false } && xb.mine[0].mon.points == 125 + baseExp[16] * 10 / 7, "a KO pays base EXP x level / 7") }
+    func catches(_ m: Mon, hp: Int?, ball: Double) -> Int { var n = 0; for _ in 0..<2000 { var b = Battle(wild: m, companion: pika50); if let hp { b.theirs[0].hp = hp }; if b.turn(.capture, &r, ball: ball).contains(.caught) { n += 1 } }; return n }
+    let pFull = catches(Mon(dex: 16, level: 5, female: false), hp: nil, ball: 1), p1 = catches(Mon(dex: 16, level: 5, female: false), hp: 1, ball: 1)
+    let mew = catches(Mon(dex: 150, level: 50, female: false), hp: 1, ball: 2)
+    check((780...980).contains(pFull) && p1 > 1900 && (60...240).contains(mew), "Gen IV catch formula: 구구 full ~44 %, 1 HP ~100 %, 뮤츠 1 HP + 하이퍼볼 ~6 %", "\(pFull) \(p1) \(mew)")
+    var hb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); hb.mine[0].hp = 10
+    let hbeats = hb.turn(.item, &r, heal: 50); check(hbeats.first == .healed(50) && hb.mine[0].hp <= 60 && hb.mine[0].hp > 10, "potion first, then it may attack")
+    var rb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); check(rb.turn(.run, &r) == [.ran], "run ends a wild fight at once")
+    var tb = Battle(party: [pika50, lax50], trainer: "베테랑 민수", foes: [Mon(dex: 16, level: 3, female: false), Mon(dex: 19, level: 3, female: false)])
+    check(tb.turn(.swap(1), &r).first == .sendOut(.me, 1) && tb.me == 1, "switching sends the other one in")
+    tb.theirs[0].hp = 1; var tbeats: [Beat] = []; while !tbeats.contains(.fainted(.it)) { tbeats = tb.turn(.fight(tb.mine[tb.me].mon.moves.last!), &r) }
+    check(tbeats.contains(.sendOut(.it, 1)) && tb.it == 1 && !tbeats.contains(.won), "a trainer sends the next one out")
 
-    // 7 battle
-    var hits = 0, won = 0
-    for _ in 0..<2000 { var bt = Battle(wild: Mon(dex: 16, level: 5, female: false)); bt.wildHP = 1; if bt.act(.capture, &r).contains(.caught) { hits += 1 } }
-    check((1500...1700).contains(hits), "ball at 1 HP ~80 %", "\(hits)")
-    hits = 0
-    for _ in 0..<2000 { var bt = Battle(wild: Mon(dex: 16, level: 5, female: false)); if bt.act(.capture, &r).contains(.caught) { hits += 1 } }
-    check((300...500).contains(hits), "ball at full HP ~20 %", "\(hits)")
-    var odd: [Beat] = []
-    for _ in 0..<500 {
-        var bt = Battle(wild: Mon(dex: 16, level: 5, female: false)), beats: [Beat] = []
-        while !(beats.last?.ends ?? false) { beats = bt.act(.attack, &r) }
-        if beats.last == .won, bt.wildHP == 0 { won += 1 } else if !(beats.last == .lost && bt.myHP == 0) { odd = beats }
-    }
-    check(odd.isEmpty, "attack-only battles end won (wild 0 HP) or lost (ours 0 HP)", "\(odd)")
-    check(won > 350, "attacking first wins most fights", "\(won)")
-    var bt = Battle(wild: Mon(dex: 16, level: 5, female: false)); check(bt.act(.run, &r) == [.ran], "run ends at once")
-    func winRate(_ edge: Int) -> Int {
-        var n = 0
-        for _ in 0..<1000 { var b = Battle(wild: Mon(dex: 16, level: 5, female: false)); b.edge = edge; var beats: [Beat] = []; while !(beats.last?.ends ?? false) { beats = b.act(.attack, &r) }; if beats.last == .won { n += 1 } }
-        return n
-    }
-    let (low, even, high) = (winRate(-1), winRate(0), winRate(2))
-    check(low < even && even < high && high > 950, "higher level: fewer misses, fewer hits taken", "\(low) \(even) \(high)")
-    check(Battle.edge(50, 8) == 2 && Battle.edge(5, 30) == -1 && Battle.edge(12, 8) == 0, "level edge clamps to -1 ... 2")
+    // 7c Battle Tower + shops
+    w = Walk(); w.companion = Mon(dex: 25, level: 20, female: false); w.box = [Mon(dex: 16, level: 5, female: false), Mon(dex: 143, level: 30, female: false), Mon(dex: 19, level: 12, female: false)]
+    check(w.party().map(\.ref) == [-1, 1, 2] && w.party().map(\.mon.dex) == [25, 143, 19], "party: companion + the two strongest")
+    let legendSet = Set(courses.flatMap(\.legends))
+    let tf = w.towerFoes(&r); check(tf.foes.count == 3 && tf.foes.allSatisfy { (20...23).contains($0.level) && !legendSet.contains($0.dex) }, "tower foes: 3 non-legends at the party's level", "\(tf.foes)")
+    var g: [Int] = []; for _ in 0..<8 { g.append(w.towerWin()) }
+    check(g == [1, 1, 1, 1, 1, 1, 4, 2] && w.bp == 12 && w.towerBest == 8, "BP: 1 a win, +3 on the 7th, 2 a win after 7", "\(g)")
+    w.towerEnd(); check(w.towerStreak == 0 && w.towerBest == 8, "a loss ends the streak, best kept")
+    var up = w.box[1]; _ = up.gainBattleExp(50_000); w.writeBack([-1, 1], [w.companion, up]); check(w.box[1].level > 30, "tower EXP goes back to the box")
+    w.watts = 100; check(w.buy("슈퍼볼", watts: 40) && w.watts == 60 && w.bag.last == "슈퍼볼" && !w.buy("풀회복약", watts: 300), "W shop")
+    check(w.buy("이상한사탕", bp: 8) && w.bp == 4 && !w.buy("이상한사탕", bp: 8), "BP exchange")
 
     // 7a chain odds and rewards
     check(Walk.chainGoesOn(0) == 0.85 && abs(Walk.chainGoesOn(3) - 0.61) < 1e-9 && Walk.chainGoesOn(10) == 0.35, "chain goes on 85 %, -8 points a link, floor 35 %")
@@ -249,10 +263,10 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     v.press(2); v.press(2); v.press(1)
     check(on(v) { if case .beats(_, [.appear], _, _) = $0 { return true }; return false } && v.state.seen?.isEmpty == false, "▶▶● on the shaking bush: a wild one appears (and is seen)")
     if case .beats(let b, _, _, _) = v.screen { v.screen = .battle(b, sel: 0) }
-    _ = v.touch(v.moveRanges()[4].lowerBound + 1, 56)
+    if case .battle(let bb, _) = v.screen { _ = v.touch(v.menuRanges(v.battleMenu(bb))[3].lowerBound + 1, 56) }
     check(on(v) { if case .beats(_, [.ran], _, _) = $0 { return true }; return false }, "tapping 도망 runs")
-    let caughtB = Battle(wild: Mon(dex: 16, level: 3, female: false), chain: 1)
-    v.screen = .beats(caughtB, [.thrown, .caught], since: Date().addingTimeInterval(-30), from: caughtB); v.tick(nil)
+    let caughtB = Battle(wild: Mon(dex: 16, level: 3, female: false), companion: v.state.companion, chain: 1)
+    v.screen = .beats(caughtB, [.thrown(shakes: 3), .caught], since: Date().addingTimeInterval(-30), from: caughtB); v.tick(nil)
     let chained = on(v) { if case .radar(_, _, _, 2) = $0 { return true }; return false }, ended = on(v) { if case .say = $0 { return true }; return false }
     check((chained || ended) && v.state.caught.last?.dex == 16, "a catch keeps it, then the chain goes on or quietly ends")
     v.press(3); check(on(v) { if case .home = $0 { return true }; return false }, "⌂ goes home")
