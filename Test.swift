@@ -201,7 +201,7 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     // 7c Battle Tower + shops
     w = Walk(); w.companion = Mon(dex: 25, level: 20, female: false); w.box = [Mon(dex: 16, level: 5, female: false), Mon(dex: 143, level: 30, female: false), Mon(dex: 19, level: 12, female: false)]
     check(w.party().map(\.ref) == [-1, 1, 2] && w.party().map(\.mon.dex) == [25, 143, 19], "party: companion + the two strongest")
-    let legendSet = Set(courses.flatMap(\.legends))
+    let legendSet = Set(courses.flatMap(\.legends) + [150, 250])
     let tf = w.towerFoes(&r); check(tf.foes.count == 3 && tf.foes.allSatisfy { (20...23).contains($0.level) && !legendSet.contains($0.dex) }, "tower foes: 3 non-legends at the party's level", "\(tf.foes)")
     var g: [Int] = []; for _ in 0..<8 { g.append(w.towerWin()) }
     check(g == [1, 1, 1, 1, 1, 1, 4, 2] && w.bp == 12 && w.towerBest == 8, "BP: 1 a win, +3 on the 7th, 2 a win after 7", "\(g)")
@@ -252,7 +252,8 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     check(courses.count == 35 && courses.allSatisfy { $0.slots.count == 6 && $0.items.count == 10 }, "35 courses x 6 slots x 10 items")
     check(courses.prefix(20).map(\.watts) == courses.prefix(20).map(\.watts).sorted() && courses[20..<27].map(\.dex) == [10, 20, 30, 45, 60, 80, 100]
           && courses.suffix(8).map(\.dex) == [150, 170, 190, 210, 230, 260, 300, 350], "watts courses, then 7 event + 8 legend courses by Pokédex count")
-    check(courses.flatMap(\.legends).count == 35 && Set(courses.flatMap(\.legends)).count == 35, "35 legends, each on exactly one course")
+    check(courses.flatMap(\.legends).count == 33 && Set(courses.flatMap(\.legends)).count == 33 && !courses.contains { $0.legends.contains(250) || $0.legends.contains(150) },
+          "33 legends on courses, each once; 칠색조 / 뮤츠 are shop-only")
     w = Walk(); w.earned = 999_999; check(w.unlocked(19) && !w.unlocked(20), "event course needs the dex, not watts")
     w.owned = Array(1...10); check(w.unlocked(20) && courses[20].name == "노란 숲", "10 caught -> 노란 숲")
     check(monNames.count == 494 && monTypes.count == 494 && monNames[25] == "피카츄", "493 names + types")

@@ -253,7 +253,7 @@ struct Walk: Codable, Equatable {
     /// The next trainer: 3 non-legends at the party's average level + streak / 3 (+0-2), fully evolved from Lv.30.
     func towerFoes<R: RandomNumberGenerator>(_ r: inout R) -> (trainer: String, foes: [Mon]) {
         let ps = party().map(\.mon), avg = ps.map(\.level).reduce(0, +) / max(1, ps.count)
-        let legends = Set(courses.flatMap(\.legends))
+        let legends = Set(courses.flatMap(\.legends) + Walk.legendShop.map(\.dex))           // shop legends too: never a tower foe
         let names = ["엘리트 트레이너", "베테랑", "아가씨", "등산가", "연구원", "격투가", "사이킥", "드래곤 조련사", "모범 소년", "레인저"]
         let given = ["민수", "지은", "현우", "서연", "도윤", "하은", "준호", "유나", "태양", "보라"]
         let foes = (0..<3).map { _ -> Mon in

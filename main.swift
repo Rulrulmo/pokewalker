@@ -765,6 +765,7 @@ final class WalkerView: NSView {
                 if let tag { found.append((state.unlocked(ci) ? "" : "🔒") + c.name + (tag.isEmpty ? "" : " (\(tag))")) }
             }
             if eggPool.contains(d) { found.append("알에서 부화") }
+            if let l = Walk.legendShop.first(where: { $0.dex == d }) { found.append(l.watts > 0 ? "상점 · \(l.watts.formatted())W" : "BP 교환소 · \(l.bp)BP") }
             for e in evolutions where e.to == d { found.append(monNames[e.from] + "에서 진화") }
             if d == 292 { found.append("토중몬 → 아이스크 진화 때") }
             if found.count > 3 { let n = found.count - 2; found = Array(found.prefix(2)) + ["외 \(n)곳"] }
