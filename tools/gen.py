@@ -289,7 +289,9 @@ with open('Data.swift', 'w') as f:
         for k in ('type_id', 'power', 'accuracy', 'priority'):
             if r[k]: m[k] = r[k]                                                        # newest-first, so the earliest change after HGSS wins
     mko = {int(r['move_id']): r['name'] for r in csv.DictReader(open(get('move_names.csv'))) if r['local_language_id'] == '3'}
-    damaging = {i for i, m in mv.items() if m['power'] and int(m['power']) > 1 and m['damage_class_id'] != '1'}
+    # moves this engine can't do right: 속이기 (first turn + flinch), ones that need sleep / a charge / an item / a delay, and self-KOs that would just be free 200-power hits
+    UNFIT = {252, 264, 138, 173, 387, 363, 374, 248, 353, 120, 153}
+    damaging = {i for i, m in mv.items() if m['power'] and int(m['power']) > 1 and m['damage_class_id'] != '1' and i not in UNFIT}
     learn = {}
     for r in csv.DictReader(open(get('pokemon_moves.csv'))):
         d, i = int(r['pokemon_id']), int(r['move_id'])

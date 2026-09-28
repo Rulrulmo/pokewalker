@@ -1233,120 +1233,130 @@ final class SideView: NSView {
         if k >= 1000 { walker?.dexJump(k - 1000) } else if k < 0 { walker?.press(3) } else { walker?.sidePick(k) }
     }
     override func resetCursorRects() { for (r, _) in hits { addCursorRect(r, cursor: .pointingHand) } }
+    // text: Galmuri at 3x its pixel size on a Retina screen (15 / 12 pt at the normal size), so every glyph pixel is whole
+    var s: CGFloat { PX / 2 }
+    var body: NSFont { _ = fontsReady; return NSFont(name: "Galmuri9", size: 15 * s) ?? .systemFont(ofSize: 15 * s) }
+    var small: NSFont { _ = fontsReady; return NSFont(name: "Galmuri7", size: 12 * s) ?? .systemFont(ofSize: 12 * s) }
+    var big: NSFont { _ = fontsReady; return NSFont(name: "Galmuri9", size: 20 * s) ?? .systemFont(ofSize: 20 * s) }
+    static let ink = NSColor(red: 0.10, green: 0.11, blue: 0.16, alpha: 1), dim = NSColor(red: 0.42, green: 0.45, blue: 0.52, alpha: 1)
+    func width(_ str: String, _ f: NSFont) -> CGFloat { (str as NSString).size(withAttributes: [.font: f]).width }
+    /// Plain text with its top-left at (x, y); `right` aligns its end there instead.
+    func text(_ str: String, _ x: CGFloat, _ y: CGFloat, _ f: NSFont, _ c: NSColor, shadow: NSColor? = nil, right: CGFloat? = nil, maxW: CGFloat? = nil) {
+        var str = str
+        if let maxW { while str.count > 1, width(str, f) > maxW { str = String(str.dropLast(2)) + "…" } }
+        let x0 = right.map { $0 - width(str, f) } ?? x
+        if let shadow { (str as NSString).draw(at: NSPoint(x: x0 + s * 1.5, y: y + s * 1.5), withAttributes: [.font: f, .foregroundColor: shadow]) }
+        (str as NSString).draw(at: NSPoint(x: x0, y: y), withAttributes: [.font: f, .foregroundColor: c])
+    }
+    /// Text centred in `r` by its ink, not its line box (the pixel font's leading made labels ride high).
+    func label(_ str: String, in r: NSRect, _ f: NSFont, _ c: NSColor, shadow: NSColor? = nil, alignLeft: CGFloat? = nil, alignRight: CGFloat? = nil) {
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: str, attributes: [.font: f]))
+        let ink = CTLineGetImageBounds(line, nil), w = width(str, f)
+        let y = r.midY - f.ascender + ink.origin.y + ink.height / 2
+        let x = alignLeft.map { r.minX + $0 } ?? alignRight.map { r.maxX - $0 - w } ?? r.midX - w / 2
+        text(str, x, y, f, c, shadow: shadow)
+    }
+    func round(_ r: NSRect, _ rad: CGFloat) -> NSBezierPath { NSBezierPath(roundedRect: r, xRadius: rad, yRadius: rad) }
+    func hpColor(_ f: CGFloat) -> NSColor { f > 0.5 ? NSColor(red: 0.30, green: 0.82, blue: 0.40, alpha: 1) : f > 0.2 ? NSColor(red: 0.98, green: 0.78, blue: 0.16, alpha: 1) : NSColor(red: 0.95, green: 0.28, blue: 0.24, alpha: 1) }
+
     override func draw(_ dirty: NSRect) {
         hits = []
         if let d = dex { drawDex(d); return }
         guard let m = model else { return }
-        _ = fontsReady
-        let u = PX, k = CGFloat(max(1, Int(PX / 2))), W = bounds.width
-        let ink = NSColor(red: 0.10, green: 0.11, blue: 0.16, alpha: 1), paper = NSColor(white: 0.98, alpha: 1), dim = NSColor(red: 0.42, green: 0.45, blue: 0.52, alpha: 1)
-        func f9(_ big: Bool = false) -> NSFont { NSFont(name: "Galmuri9", size: (big ? 20 : 10) * k) ?? .systemFont(ofSize: 10 * k) }
-        func f7() -> NSFont { NSFont(name: "Galmuri7", size: 8 * k) ?? .systemFont(ofSize: 8 * k) }
-        func size(_ s: String, _ f: NSFont) -> NSSize { (s as NSString).size(withAttributes: [.font: f]) }
-        /// Pixel text; `shadow` = the DS-style drop shadow under white labels.
-        func text(_ s: String, _ x: CGFloat, _ y: CGFloat, _ f: NSFont, _ c: NSColor, shadow: NSColor? = nil, right: CGFloat? = nil, center: CGFloat? = nil) {
-            let w = size(s, f).width, x0 = center.map { $0 - w / 2 } ?? right.map { $0 - w } ?? x
-            if let shadow { (s as NSString).draw(at: NSPoint(x: x0 + k, y: y + k), withAttributes: [.font: f, .foregroundColor: shadow]) }
-            (s as NSString).draw(at: NSPoint(x: x0, y: y), withAttributes: [.font: f, .foregroundColor: c])
-        }
-        func round(_ r: NSRect, _ rad: CGFloat) -> NSBezierPath { NSBezierPath(roundedRect: r, xRadius: rad, yRadius: rad) }
-        func hpColor(_ f: CGFloat) -> NSColor { f > 0.5 ? NSColor(red: 0.30, green: 0.82, blue: 0.40, alpha: 1) : f > 0.2 ? NSColor(red: 0.98, green: 0.78, blue: 0.16, alpha: 1) : NSColor(red: 0.95, green: 0.28, blue: 0.24, alpha: 1) }
-        /// "HP" tag + bar, the HGSS way: dark track, a pale groove, the colour on top.
+        let u = PX, W = bounds.width, H = bounds.height, ink = SideView.ink, dim = SideView.dim, paper = NSColor(white: 0.98, alpha: 1)
+        /// "HP" tag + bar, the HGSS way: dark track, the colour on top with a little shine.
         func bar(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ hp: Int, _ max: Int) {
-            let f = max > 0 ? CGFloat(hp) / CGFloat(max) : 0
-            round(NSRect(x: x, y: y, width: 12 * u, height: 5 * u), 1.5 * u).fill(with: ink)
-            text("HP", x + 2 * u, y - 0.5 * u, f7(), NSColor(red: 1, green: 0.78, blue: 0.2, alpha: 1))
-            let tr = NSRect(x: x + 12 * u, y: y, width: w - 12 * u, height: 5 * u)
-            round(tr, 1.5 * u).fill(with: ink)
-            let inner = tr.insetBy(dx: u, dy: u)
+            let f = max > 0 ? CGFloat(hp) / CGFloat(max) : 0, tag = NSRect(x: x, y: y, width: 15 * u, height: 7 * u)
+            round(tag, 2 * u).fill(with: ink); label("HP", in: tag, small, NSColor(red: 1, green: 0.78, blue: 0.2, alpha: 1))
+            let tr = NSRect(x: tag.maxX - u, y: y, width: w - 14 * u, height: 7 * u)
+            round(tr, 2 * u).fill(with: ink)
+            let inner = tr.insetBy(dx: 1.5 * u, dy: 1.5 * u), fw = hp > 0 ? Swift.max(u, inner.width * f) : 0
             NSColor(white: 0.30, alpha: 1).setFill(); inner.fill()
-            hpColor(f).setFill(); NSRect(x: inner.minX, y: inner.minY, width: hp > 0 ? Swift.max(u, inner.width * f) : 0, height: inner.height).fill()
-            NSColor(white: 1, alpha: 0.35).setFill(); NSRect(x: inner.minX, y: inner.minY, width: hp > 0 ? Swift.max(u, inner.width * f) : 0, height: inner.height / 3).fill()   // shine
+            hpColor(f).setFill(); NSRect(x: inner.minX, y: inner.minY, width: fw, height: inner.height).fill()
+            NSColor(white: 1, alpha: 0.35).setFill(); NSRect(x: inner.minX, y: inner.minY, width: fw, height: inner.height / 3).fill()
         }
         // backdrop: deep blue with faint diagonal stripes (the HGSS bottom screen)
         let bgPath = round(bounds.insetBy(dx: u / 2, dy: u / 2), 9 * u)
         NSGraphicsContext.saveGraphicsState(); bgPath.addClip()
         NSGradient(starting: NSColor(red: 0.20, green: 0.30, blue: 0.52, alpha: 1), ending: NSColor(red: 0.10, green: 0.15, blue: 0.30, alpha: 1))!.draw(in: bounds, angle: -90)
         NSColor(white: 1, alpha: 0.05).setStroke()
-        for i in stride(from: -bounds.height, to: W, by: 6 * u) { let p = NSBezierPath(); p.move(to: NSPoint(x: i, y: 0)); p.line(to: NSPoint(x: i + bounds.height, y: bounds.height)); p.lineWidth = 2 * u; p.stroke() }
+        for i in stride(from: -H, to: W, by: 6 * u) { let p = NSBezierPath(); p.move(to: NSPoint(x: i, y: 0)); p.line(to: NSPoint(x: i + H, y: H)); p.lineWidth = 2 * u; p.stroke() }
         NSGraphicsContext.restoreGraphicsState()
         ink.setStroke(); bgPath.lineWidth = 1.2; bgPath.stroke()
-
-        // HP boxes
         func box(_ r: NSRect) { round(r.offsetBy(dx: 0, dy: u), 4 * u).fill(with: NSColor(white: 0, alpha: 0.35)); let p = round(r, 4 * u); p.fill(with: paper); ink.setStroke(); p.lineWidth = u; p.stroke() }
-        let fr = NSRect(x: 6 * u, y: 6 * u, width: W - 12 * u, height: 21 * u)
+        func teamDots(_ bs: [Bool], _ r: NSRect) { for (i, a) in bs.enumerated() { round(NSRect(x: r.minX + CGFloat(i) * 7 * u, y: r.minY, width: 5 * u, height: 5 * u), 2.5 * u).fill(with: a ? NSColor(red: 0.9, green: 0.22, blue: 0.2, alpha: 1) : NSColor(white: 0.7, alpha: 1)) } }
+        // their box: name, Lv, (a trainer's team), bar
+        let fr = NSRect(x: 6 * u, y: 6 * u, width: W - 12 * u, height: 26 * u)
         box(fr)
-        text(m.foe.name, fr.minX + 4 * u, fr.minY + 2 * u, f9(), ink)
-        text("Lv\(m.foe.level)", 0, fr.minY + 2.5 * u, f7(), dim, right: fr.maxX - 4 * u)
-        for (i, a) in m.foeBalls.enumerated() { round(NSRect(x: fr.maxX - 22 * u - CGFloat(m.foeBalls.count - 1 - i) * 5 * u, y: fr.minY + 4 * u, width: 4 * u, height: 4 * u), 2 * u).fill(with: a ? NSColor(red: 0.9, green: 0.22, blue: 0.2, alpha: 1) : NSColor(white: 0.7, alpha: 1)) }   // a trainer's team, left of the Lv
-        bar(fr.minX + 4 * u, fr.minY + 13 * u, fr.width - 8 * u, m.foe.hp, m.foe.max)
-        let mr = NSRect(x: 6 * u, y: 31 * u, width: W - 12 * u, height: 28 * u)
+        label(m.foe.name, in: NSRect(x: fr.minX, y: fr.minY + 2 * u, width: fr.width, height: 10 * u), body, ink, alignLeft: 5 * u)
+        label("Lv\(m.foe.level)", in: NSRect(x: fr.minX, y: fr.minY + 2 * u, width: fr.width, height: 10 * u), small, dim, alignRight: 5 * u)
+        if !m.foeBalls.isEmpty { teamDots(m.foeBalls, NSRect(x: fr.maxX - 32 * u - CGFloat(m.foeBalls.count) * 7 * u, y: fr.minY + 4.5 * u, width: 0, height: 0)) }
+        bar(fr.minX + 5 * u, fr.minY + 15 * u, fr.width - 10 * u, m.foe.hp, m.foe.max)
+        // ours: + HP numbers (and the team)
+        let mr = NSRect(x: 6 * u, y: 36 * u, width: W - 12 * u, height: 36 * u)
         box(mr)
-        text(m.mine.name, mr.minX + 4 * u, mr.minY + 2 * u, f9(), ink)
-        text("Lv\(m.mine.level)", 0, mr.minY + 2.5 * u, f7(), dim, right: mr.maxX - 4 * u)
-        bar(mr.minX + 4 * u, mr.minY + 13 * u, mr.width - 8 * u, m.mine.hp, m.mine.max)
-        text("\(m.mine.hp) / \(m.mine.max)", 0, mr.minY + 19.5 * u, f7(), ink, right: mr.maxX - 4 * u)
-        for (i, a) in m.myBalls.enumerated() { round(NSRect(x: mr.minX + 4 * u + CGFloat(i) * 5 * u, y: mr.minY + 21 * u, width: 4 * u, height: 4 * u), 2 * u).fill(with: a ? NSColor(red: 0.9, green: 0.22, blue: 0.2, alpha: 1) : NSColor(white: 0.7, alpha: 1)) }
-
+        label(m.mine.name, in: NSRect(x: mr.minX, y: mr.minY + 2 * u, width: mr.width, height: 10 * u), body, ink, alignLeft: 5 * u)
+        label("Lv\(m.mine.level)", in: NSRect(x: mr.minX, y: mr.minY + 2 * u, width: mr.width, height: 10 * u), small, dim, alignRight: 5 * u)
+        bar(mr.minX + 5 * u, mr.minY + 15 * u, mr.width - 10 * u, m.mine.hp, m.mine.max)
+        label("\(m.mine.hp) / \(m.mine.max)", in: NSRect(x: mr.minX, y: mr.minY + 24 * u, width: mr.width, height: 9 * u), body, ink, alignRight: 5 * u)
+        if !m.myBalls.isEmpty { teamDots(m.myBalls, NSRect(x: mr.minX + 5 * u, y: mr.minY + 26 * u, width: 0, height: 0)) }
         // message: the DS dialogue box, double frame
-        let msg = NSRect(x: 6 * u, y: 63 * u, width: W - 12 * u, height: 23 * u)
+        let msg = NSRect(x: 6 * u, y: 77 * u, width: W - 12 * u, height: 30 * u)
         round(msg, 3 * u).fill(with: ink); round(msg.insetBy(dx: u, dy: u), 2.5 * u).fill(with: NSColor(red: 0.62, green: 0.70, blue: 0.86, alpha: 1)); round(msg.insetBy(dx: 2 * u, dy: 2 * u), 2 * u).fill(with: paper)
-        (m.message as NSString).draw(in: msg.insetBy(dx: 5 * u, dy: 4 * u), withAttributes: [.font: f9(), .foregroundColor: ink])
-
+        (m.message as NSString).draw(in: msg.insetBy(dx: 5 * u, dy: 4 * u), withAttributes: [.font: body, .foregroundColor: ink])
         // buttons
         func button(_ r: NSRect, _ c: NSColor, _ on: Bool, _ idx: Int) {
             round(r.offsetBy(dx: 0, dy: 1.5 * u), 4 * u).fill(with: c.blended(withFraction: 0.55, of: .black)!)                       // the lip
             let p = round(r, 4 * u)
             NSGraphicsContext.saveGraphicsState(); p.addClip()
             NSGradient(starting: c.blended(withFraction: 0.18, of: .white)!, ending: c)!.draw(in: r, angle: -90)
-            NSColor(white: 1, alpha: 0.28).setFill(); NSRect(x: r.minX, y: r.minY, width: r.width, height: 2 * u).fill()                   // top shine
+            NSColor(white: 1, alpha: 0.28).setFill(); NSRect(x: r.minX, y: r.minY, width: r.width, height: 2 * u).fill()
             NSGraphicsContext.restoreGraphicsState()
             (on ? NSColor.white : c.blended(withFraction: 0.6, of: .black)!).setStroke(); p.lineWidth = on ? 2 * u : u; p.stroke()
             hits.append((r, idx))
         }
-        let shadow = NSColor(white: 0, alpha: 0.45), top = 91 * u, bottom = bounds.height - 6 * u
+        let shadow = NSColor(white: 0, alpha: 0.45), top = 112 * u, bottom = H - 7 * u
         let colors: [String: NSColor] = ["공격": NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1), "볼": NSColor(red: 0.95, green: 0.72, blue: 0.14, alpha: 1),
                                          "도구": NSColor(red: 0.28, green: 0.70, blue: 0.36, alpha: 1), "교체": NSColor(red: 0.28, green: 0.70, blue: 0.36, alpha: 1),
                                          "도망": NSColor(red: 0.24, green: 0.50, blue: 0.90, alpha: 1), "기권": NSColor(red: 0.50, green: 0.52, blue: 0.58, alpha: 1)]
         switch m.mode {
         case .none: break
         case .menu(let opts, let sel):                                                            // big FIGHT, three below
-            let big = NSRect(x: 6 * u, y: top, width: W - 12 * u, height: 26 * u)
-            button(big, colors[opts[0]] ?? .red, sel == 0, 0)
-            text(opts[0], 0, big.midY - 12 * k, f9(true), .white, shadow: shadow, center: big.midX)
-            let bw = (W - 12 * u - 6 * u) / 3
+            let bigR = NSRect(x: 6 * u, y: top, width: W - 12 * u, height: 26 * u)
+            button(bigR, colors[opts[0]] ?? .red, sel == 0, 0); label(opts[0], in: bigR, big, .white, shadow: shadow)
+            let bw = (W - 12 * u - 6 * u) / 3, y2 = bigR.maxY + 5 * u
             for i in 1..<opts.count {
-                let r = NSRect(x: 6 * u + CGFloat(i - 1) * (bw + 3 * u), y: big.maxY + 5 * u, width: bw, height: bottom - big.maxY - 5 * u)
-                button(r, colors[opts[i]] ?? .gray, sel == i, i)
-                text(opts[i], 0, r.midY - 6 * k, f9(), .white, shadow: shadow, center: r.midX)
+                let r = NSRect(x: 6 * u + CGFloat(i - 1) * (bw + 3 * u), y: y2, width: bw, height: bottom - y2)
+                button(r, colors[opts[i]] ?? .gray, sel == i, i); label(opts[i], in: r, body, .white, shadow: shadow)
             }
         case .moves(let ms, let sel):                                                             // four type-coloured plates
             let gw = (W - 12 * u - 4 * u) / 2, gh = (bottom - top - 4 * u) / 2
             for (i, mv) in ms.enumerated() {
                 let r = NSRect(x: 6 * u + CGFloat(i % 2) * (gw + 4 * u), y: top + CGFloat(i / 2) * (gh + 4 * u), width: gw, height: gh), c = typeColor[mv.type] ?? .gray
                 button(r, c, i == sel, i)
-                text(mv.name, 0, r.minY + 3 * u, f9(), .white, shadow: shadow, center: r.midX)
-                let badge = NSRect(x: r.minX + 3 * u, y: r.maxY - 8 * u, width: size(typeKo[mv.type] ?? "", f7()).width + 4 * u, height: 6 * u)
-                round(badge, 3 * u).fill(with: NSColor(white: 0, alpha: 0.3))
-                text(typeKo[mv.type] ?? mv.type, badge.minX + 2 * u, badge.minY - 0.5 * u, f7(), .white)
-                let e = mv.effect == 0 ? "×" : mv.effect > 1 ? "▲" : mv.effect < 1 ? "▼" : "\(mv.power)"
-                text(e, 0, badge.minY - 0.5 * u, f7(), mv.effect > 1 ? NSColor(red: 1, green: 0.95, blue: 0.5, alpha: 1) : .white, shadow: shadow, right: r.maxX - 3 * u)
+                label(mv.name, in: NSRect(x: r.minX, y: r.minY + 1.5 * u, width: r.width, height: r.height * 0.52), body, .white, shadow: shadow)
+                let tk = typeKo[mv.type] ?? mv.type, badge = NSRect(x: r.minX + 3 * u, y: r.maxY - 9.5 * u, width: width(tk, small) + 6 * u, height: 7.5 * u)
+                round(badge, 3.5 * u).fill(with: NSColor(white: 0, alpha: 0.3)); label(tk, in: badge, small, .white)
+                let e = mv.effect == 0 ? "× 없음" : mv.effect > 1 ? "▲ 굉장" : mv.effect < 1 ? "▼ 별로" : "위력 \(mv.power)"
+                label(e, in: NSRect(x: r.minX, y: badge.minY, width: r.width, height: badge.height), small,
+                      mv.effect > 1 ? NSColor(red: 1, green: 0.95, blue: 0.5, alpha: 1) : .white, shadow: shadow, alignRight: 3 * u)
             }
         case .party(let ps, let sel):
             let rh = (bottom - top - 2 * 3 * u) / 3
             for (i, p) in ps.enumerated() {
                 let r = NSRect(x: 6 * u, y: top + CGFloat(i) * (rh + 3 * u), width: W - 12 * u, height: rh)
                 button(r, p.hp > 0 ? NSColor(red: 0.28, green: 0.56, blue: 0.80, alpha: 1) : NSColor(white: 0.45, alpha: 1), i == sel, i)
-                text((p.out ? "▶ " : "") + p.name, r.minX + 4 * u, r.minY + 1.5 * u, f7(), .white, shadow: shadow)
-                text("Lv\(p.level)  \(p.hp)/\(p.max)", 0, r.minY + 1.5 * u, f7(), .white, shadow: shadow, right: r.maxX - 4 * u)
-                let br = NSRect(x: r.minX + 4 * u, y: r.maxY - 4 * u, width: r.width - 8 * u, height: 2 * u), f = p.max > 0 ? CGFloat(p.hp) / CGFloat(p.max) : 0
+                let row = NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height - 4 * u)
+                label((p.out ? "▶ " : "") + p.name + "  Lv\(p.level)", in: row, small, .white, shadow: shadow, alignLeft: 4 * u)
+                label("\(p.hp)/\(p.max)", in: row, small, .white, shadow: shadow, alignRight: 4 * u)
+                let br = NSRect(x: r.minX + 4 * u, y: r.maxY - 4.5 * u, width: r.width - 8 * u, height: 2 * u), f = p.max > 0 ? CGFloat(p.hp) / CGFloat(p.max) : 0
                 ink.setFill(); br.fill(); hpColor(f).setFill(); NSRect(x: br.minX, y: br.minY, width: br.width * f, height: br.height).fill()
             }
         }
         switch m.mode {                                                                           // "◀ 뒤로" on the dialogue box
         case .moves, .party:
-            let r = NSRect(x: msg.maxX - 24 * u, y: msg.maxY - 10 * u, width: 20 * u, height: 7 * u)
-            round(r, 3.5 * u).fill(with: ink); text("◀ 뒤로", 0, r.minY - 0.5 * u, f7(), .white, center: r.midX); hits.append((r, -1))
+            let r = NSRect(x: msg.maxX - 30 * u, y: msg.maxY - 12 * u, width: 26 * u, height: 9 * u)
+            round(r, 4.5 * u).fill(with: ink); label("◀ 뒤로", in: r, small, .white); hits.append((r, -1))
         default: break
         }
         window?.invalidateCursorRects(for: self)
@@ -1355,68 +1365,64 @@ final class SideView: NSView {
 extension SideView {
     /// The Pokédex page: a red handheld-dex body, a white entry card (types, base stats), where to find it, how it evolves, and a number strip.
     func drawDex(_ d: DexModel) {
-        _ = fontsReady
-        let u = PX, k = CGFloat(max(1, Int(PX / 2))), W = bounds.width
-        let ink = NSColor(red: 0.10, green: 0.11, blue: 0.16, alpha: 1), dim = NSColor(red: 0.45, green: 0.47, blue: 0.53, alpha: 1)
-        let f9 = NSFont(name: "Galmuri9", size: 10 * k) ?? .systemFont(ofSize: 10 * k), f7 = NSFont(name: "Galmuri7", size: 8 * k) ?? .systemFont(ofSize: 8 * k)
-        func text(_ s: String, _ x: CGFloat, _ y: CGFloat, _ f: NSFont, _ c: NSColor, right: CGFloat? = nil, center: CGFloat? = nil, maxW: CGFloat? = nil) {
-            var s = s; if let maxW { while s.count > 1, (s as NSString).size(withAttributes: [.font: f]).width > maxW { s = String(s.dropLast(2)) + "…" } }
-            let w = (s as NSString).size(withAttributes: [.font: f]).width
-            (s as NSString).draw(at: NSPoint(x: center.map { $0 - w / 2 } ?? right.map { $0 - w } ?? x, y: y), withAttributes: [.font: f, .foregroundColor: c])
-        }
-        func round(_ r: NSRect, _ rad: CGFloat) -> NSBezierPath { NSBezierPath(roundedRect: r, xRadius: rad, yRadius: rad) }
-        // body: Pokédex red, a darker hinge line, the little blue lens
-        let body = round(bounds.insetBy(dx: u / 2, dy: u / 2), 9 * u)
-        NSGraphicsContext.saveGraphicsState(); body.addClip()
+        let u = PX, W = bounds.width, ink = SideView.ink, dim = SideView.dim, red = NSColor(red: 0.80, green: 0.20, blue: 0.18, alpha: 1)
+        let bodyPath = round(bounds.insetBy(dx: u / 2, dy: u / 2), 9 * u)
+        NSGraphicsContext.saveGraphicsState(); bodyPath.addClip()
         NSGradient(starting: NSColor(red: 0.90, green: 0.24, blue: 0.22, alpha: 1), ending: NSColor(red: 0.66, green: 0.12, blue: 0.13, alpha: 1))!.draw(in: bounds, angle: -90)
         NSGraphicsContext.restoreGraphicsState()
-        ink.setStroke(); body.lineWidth = 1.2; body.stroke()
-        round(NSRect(x: 6 * u, y: 5 * u, width: 8 * u, height: 8 * u), 4 * u).fill(with: .white)
-        round(NSRect(x: 7 * u, y: 6 * u, width: 6 * u, height: 6 * u), 3 * u).fill(with: NSColor(red: 0.30, green: 0.62, blue: 0.95, alpha: 1))
-        text("도감", 17 * u, 5 * u, f9, .white)
-        text("잡음 \(d.owned) · 봤음 \(d.seen)", 0, 6.5 * u, f7, NSColor(white: 1, alpha: 0.85), right: W - 7 * u)
+        ink.setStroke(); bodyPath.lineWidth = 1.2; bodyPath.stroke()
+        round(NSRect(x: 6 * u, y: 5 * u, width: 10 * u, height: 10 * u), 5 * u).fill(with: .white)                  // the blue lens
+        round(NSRect(x: 7.5 * u, y: 6.5 * u, width: 7 * u, height: 7 * u), 3.5 * u).fill(with: NSColor(red: 0.30, green: 0.62, blue: 0.95, alpha: 1))
+        let head = NSRect(x: 0, y: 4 * u, width: W, height: 12 * u)
+        label("도감", in: head, body, .white, alignLeft: 19 * u)
+        label("잡음 \(d.owned) · 봤음 \(d.seen)", in: head, small, NSColor(white: 1, alpha: 0.9), alignRight: 7 * u)
+        func panel(_ r: NSRect) { let p = round(r, 4 * u); p.fill(with: NSColor(white: 0.98, alpha: 1)); ink.setStroke(); p.lineWidth = u; p.stroke() }
         // entry card
-        let card = NSRect(x: 5 * u, y: 17 * u, width: W - 10 * u, height: 55 * u)
-        round(card, 4 * u).fill(with: NSColor(white: 0.98, alpha: 1)); ink.setStroke(); let cp = round(card, 4 * u); cp.lineWidth = u; cp.stroke()
-        text(String(format: "No.%03d  ", d.num) + d.name, card.minX + 4 * u, card.minY + 2 * u, f9, d.status > 0 ? ink : dim)
+        let card = NSRect(x: 5 * u, y: 19 * u, width: W - 10 * u, height: 76 * u)
+        panel(card)
+        let title = NSRect(x: card.minX, y: card.minY + 2 * u, width: card.width, height: 11 * u)
+        label(String(format: "No.%03d  ", d.num) + d.name, in: title, body, d.status > 0 ? ink : dim, alignLeft: 5 * u)
         if d.status > 0 {
-            let tag = d.status == 2 ? (d.shiny ? "★ 이로치" : "잡음") : "봤음", tw = (tag as NSString).size(withAttributes: [.font: f7]).width + 5 * u
-            let tr = NSRect(x: card.maxX - 4 * u - tw, y: card.minY + 3 * u, width: tw, height: 7 * u)
-            round(tr, 3.5 * u).fill(with: d.status == 2 ? NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1) : dim); text(tag, 0, tr.minY - 0.5 * u, f7, .white, center: tr.midX)
-            var x = card.minX + 4 * u
+            let tag = d.status == 2 ? (d.shiny ? "★ 이로치" : "잡음") : "봤음", tw = width(tag, small) + 8 * u
+            let tr = NSRect(x: card.maxX - 5 * u - tw, y: title.minY + 1.5 * u, width: tw, height: 8 * u)
+            round(tr, 4 * u).fill(with: d.status == 2 ? NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1) : dim); label(tag, in: tr, small, .white)
+            var x = card.minX + 5 * u
             for ty in d.types {
-                let s = typeKo[ty] ?? ty, w = (s as NSString).size(withAttributes: [.font: f7]).width + 6 * u, r = NSRect(x: x, y: card.minY + 13 * u, width: w, height: 7 * u)
-                round(r, 2 * u).fill(with: typeColor[ty] ?? .gray); text(s, 0, r.minY - 0.5 * u, f7, .white, center: r.midX); x += w + 2 * u
+                let str = typeKo[ty] ?? ty, r = NSRect(x: x, y: card.minY + 15 * u, width: width(str, small) + 9 * u, height: 8.5 * u)
+                round(r, 2.5 * u).fill(with: typeColor[ty] ?? .gray); label(str, in: r, small, .white); x += r.width + 3 * u
             }
-            for (j, (label, v)) in zip(["HP", "공격", "방어", "특공", "특방", "스피드"], d.stats).enumerated() {
-                let y = card.minY + 23 * u + CGFloat(j) * 5.2 * u, bx = card.minX + 22 * u, bw = card.width - 38 * u
-                text(label, card.minX + 4 * u, y - 1.5 * u, f7, dim)
-                round(NSRect(x: bx, y: y, width: bw, height: 3 * u), 1.5 * u).fill(with: NSColor(white: 0.88, alpha: 1))
+            for (j, (name, v)) in zip(["HP", "공격", "방어", "특공", "특방", "스피드"], d.stats).enumerated() {
+                let row = NSRect(x: card.minX, y: card.minY + 26 * u + CGFloat(j) * 8 * u, width: card.width, height: 8 * u)
+                label(name, in: row, small, dim, alignLeft: 5 * u)
+                label("\(v)", in: row, small, ink, alignRight: 5 * u)
+                let bx = card.minX + 29 * u, bw = card.width - 29 * u - 20 * u, br = NSRect(x: bx, y: row.midY - 1.75 * u, width: bw, height: 3.5 * u)
+                round(br, 1.75 * u).fill(with: NSColor(white: 0.88, alpha: 1))
                 let c = v >= 100 ? NSColor(red: 0.28, green: 0.72, blue: 0.40, alpha: 1) : v >= 60 ? NSColor(red: 0.95, green: 0.70, blue: 0.20, alpha: 1) : NSColor(red: 0.90, green: 0.36, blue: 0.30, alpha: 1)
-                round(NSRect(x: bx, y: y, width: bw * CGFloat(min(v, 180)) / 180, height: 3 * u), 1.5 * u).fill(with: c)
-                text("\(v)", 0, y - 1.5 * u, f7, ink, right: card.maxX - 4 * u)
+                round(NSRect(x: bx, y: br.minY, width: bw * CGFloat(min(v, 180)) / 180, height: br.height), 1.75 * u).fill(with: c)
             }
-        } else { text("아직 만나지 못했다", 0, card.midY - 4 * u, f9, dim, center: card.midX) }
+        } else { label("아직 만나지 못했다", in: card, body, dim) }
         // where + evolutions
-        let info = NSRect(x: 5 * u, y: 75 * u, width: W - 10 * u, height: 50 * u)
-        round(info, 4 * u).fill(with: NSColor(white: 0.98, alpha: 1)); let ip = round(info, 4 * u); ip.lineWidth = u; ink.setStroke(); ip.stroke()
+        let info = NSRect(x: 5 * u, y: 99 * u, width: W - 10 * u, height: 66 * u)
+        panel(info)
         if d.status > 0 {
-            text("만나는 곳", info.minX + 4 * u, info.minY + 1.5 * u, f7, NSColor(red: 0.80, green: 0.20, blue: 0.18, alpha: 1))
-            for (j, s) in (d.found.isEmpty ? ["알 수 없음"] : d.found).enumerated() { text("· " + s, info.minX + 4 * u, info.minY + (8.5 + 6.5 * CGFloat(j)) * u, f7, ink, maxW: info.width - 8 * u) }
-            text("진화", info.minX + 4 * u, info.minY + 29 * u, f7, NSColor(red: 0.80, green: 0.20, blue: 0.18, alpha: 1))
-            for (j, s) in (d.evos.isEmpty ? ["더 이상 진화하지 않는다"] : d.evos).enumerated() { text(s, info.minX + 4 * u, info.minY + (36 + 6.5 * CGFloat(j)) * u, f7, d.evos.isEmpty ? dim : ink, maxW: info.width - 8 * u) }
+            func line(_ str: String, _ j: CGFloat, _ c: NSColor, _ f: NSFont) { label(str, in: NSRect(x: info.minX, y: info.minY + 2 * u + j * 8.5 * u, width: info.width - 5 * u, height: 8.5 * u), f, c, alignLeft: 5 * u) }
+            line("만나는 곳", 0, red, small)
+            for (j, str) in (d.found.isEmpty ? ["알 수 없음"] : d.found).enumerated() { line("· " + fit(str, info.width - 14 * u), CGFloat(1 + j), ink, small) }
+            line("진화", 4, red, small)
+            for (j, str) in (d.evos.isEmpty ? ["더 이상 진화하지 않는다"] : d.evos).enumerated() { line(fit(str, info.width - 10 * u), CGFloat(5 + j), d.evos.isEmpty ? dim : ink, small) }
         }
-        // number strip: ● caught, ○ seen, · not met; click a met one to go there
+        // number strip: white = caught, pale = seen, dark = not met; click a met one to go there
         let cw = (W - 10 * u) / 10
-        for (j, (n, s)) in zip(d.strip, d.stripStatus).enumerated() {
-            let r = NSRect(x: 5 * u + CGFloat(j) * cw, y: 128 * u, width: cw - u, height: 11 * u)
-            round(r, 2 * u).fill(with: n == d.num ? NSColor.white : s == 2 ? NSColor(white: 1, alpha: 0.85) : s == 1 ? NSColor(white: 1, alpha: 0.45) : NSColor(white: 0, alpha: 0.18))
-            text(s == 2 ? "●" : s == 1 ? "○" : "·", 0, r.minY, f7, n == d.num ? NSColor(red: 0.8, green: 0.2, blue: 0.18, alpha: 1) : ink, center: r.midX)
-            text("\(n % 1000)", 0, r.minY + 4.5 * u, f7, s == 0 ? NSColor(white: 1, alpha: 0.6) : ink, center: r.midX)
-            if s > 0 { hits.append((r, 1000 + n)) }
+        for (j, (n, st)) in zip(d.strip, d.stripStatus).enumerated() {
+            let r = NSRect(x: 5 * u + CGFloat(j) * cw, y: 169 * u, width: cw - 1.5 * u, height: 12 * u)
+            round(r, 2.5 * u).fill(with: st == 2 ? NSColor.white : st == 1 ? NSColor(white: 1, alpha: 0.55) : NSColor(white: 0, alpha: 0.2))
+            if n == d.num { let p = round(r, 2.5 * u); NSColor(red: 1, green: 0.85, blue: 0.2, alpha: 1).setStroke(); p.lineWidth = 1.5 * u; p.stroke() }
+            label("\(n)", in: r, small, st == 0 ? NSColor(white: 1, alpha: 0.7) : n == d.num ? red : ink)
+            if st > 0 { hits.append((r, 1000 + n)) }
         }
         window?.invalidateCursorRects(for: self)
     }
+    func fit(_ str: String, _ w: CGFloat) -> String { var x = str; while x.count > 1, width(x, small) > w { x = String(x.dropLast(2)) + "…" }; return x }
 }
 extension NSBezierPath { func fill(with c: NSColor) { c.setFill(); fill() } }
 /// The panel beside the device; a child window, so it moves with it. Sits on whichever side has room.
@@ -1429,7 +1435,7 @@ final class SidePanel: NSPanel {
     }
     func show(_ m: SideModel?, dex: DexModel?, beside parent: NSWindow?) {
         guard m != nil || dex != nil, let parent else { if isVisible { parent?.removeChildWindow(self); orderOut(nil) }; view.model = nil; view.dex = nil; return }
-        let size = NSSize(width: 116 * PX, height: 144 * PX)
+        let size = NSSize(width: 140 * PX, height: (dex != nil ? 186 : 172) * PX)                 // roomy enough for 15 / 12 pt text
         if !isVisible {
             let f = parent.frame, room = parent.screen?.visibleFrame ?? f
             let x = f.maxX + 6 + size.width <= room.maxX ? f.maxX + 6 : f.minX - 6 - size.width

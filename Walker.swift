@@ -483,10 +483,11 @@ struct Battle: Equatable {
         let x = Double(base) * (monTypes[a.dex].contains(m.type) ? 1.5 : 1) * eff * (crit ? 2 : 1) * Double.random(in: 0.85...1, using: &r)
         return (eff == 0 ? 0 : max(1, Int(x)), eff, crit)
     }
-    /// The other side's pick: mostly the move that hits hardest on paper, sometimes any.
+    /// The other side's pick. Wild ones pick at random, as in the games; a trainer mostly takes the move that hits hardest on paper, sometimes any.
+    /// (Always-hardest made wild 두두 & co. spam 전광석화 and move first every single turn.)
     func foeMove<R: RandomNumberGenerator>(_ r: inout R) -> Int {
         let a = theirs[it].mon, d = mine[me].mon, ms = a.moves
-        if Int.random(in: 0..<5, using: &r) == 0 { return ms.randomElement(using: &r)! }
+        if trainer == nil || Int.random(in: 0..<5, using: &r) == 0 { return ms.randomElement(using: &r)! }
         return ms.max { x, y in
             func v(_ i: Int) -> Double { let m = moveTable[i]!; return Double(m.power) * (monTypes[a.dex].contains(m.type) ? 1.5 : 1) * effectiveness(m.type, on: d.dex) * Double(m.accuracy == 0 ? 100 : m.accuracy) }
             return v(x) < v(y)

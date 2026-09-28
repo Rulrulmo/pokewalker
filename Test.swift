@@ -163,6 +163,9 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     check(dG > 3 * dS, "10만볼트: 4x on 갸라도스 vs 1x on 잠만보", "\(dG) \(dS)")
     var ob = Battle(wild: lax50, companion: pika50); let ofirst = ob.turn(.fight(85), &r).first
     check({ if case .used(.me, _, _, _, _) = ofirst { return true }; if case .missed(.me, _) = ofirst { return true }; return false }(), "the faster one moves first")
+    check(!moveTable.keys.contains(252) && !moveTable.keys.contains(153) && !Mon(dex: 115, level: 21, female: true).moves.contains(252), "속이기 / 대폭발 aren't in the move pool")
+    var firstVsDoduo = 0; for _ in 0..<600 { var b = Battle(wild: Mon(dex: 84, level: 8, female: false), companion: Mon(dex: 115, level: 21, female: true)); if case .used(.me, _, _, _, _)? = b.turn(.fight(4), &r).first { firstVsDoduo += 1 } else if case .missed(.me, _)? = b.turn(.fight(4), &r).first { firstVsDoduo += 1 } }
+    check(firstVsDoduo > 250, "a faster 캥카 now usually beats a wild 두두 to it (it only sometimes picks 전광석화)", "\(firstVsDoduo)")
     var pb = Battle(wild: Mon(dex: 135, level: 50, female: false), companion: lax50); let pfirst = pb.turn(.fight(98), &r).first
     check({ if case .used(.me, 98, _, _, _) = pfirst { return true }; return false }(), "전광석화 goes first even from a slow 잠만보")
     var ends = Set<String>(), bad: [Beat] = []
