@@ -282,6 +282,7 @@ final class WalkerView: NSView {
             notify("weather", state.season.name + "이 왔어요", ["꽃이 피었어요", "햇볕이 쨍쨍해요", "단풍이 들었어요", "눈이 쌓여요"][state.season.rawValue] + " · 게임 속 \(seasonDays)일마다 계절이 바뀌어요")
             if case .home = screen { screen = .say([state.season.name + "이 왔다!"], next: .home, since: now) }
         }
+        if state.weatherDue { state.newGrass(&rng) }                                            // a new game day: the grass holds other Pokémon too
         if state.weatherDue, state.rollWeather(&rng) {
             let w = state.weather ?? .sunny
             notify("weather", w.news, w.types.map { typeKo[$0] ?? $0 }.joined(separator: "·") + " 타입이 자주 나와요 · " + state.here.name)

@@ -110,7 +110,7 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     w.companion = Mon(dex: 1, level: 5, female: false)                                       // grass boost: none of these are grass either
     w.weather = .sunny; check(abs(bShare() - 75) < 1.5, "sunny: fire/grass only")
     w.course = 3; w.picks = [0, 2, 4]; w.courseSteps = 1500; w.weather = .rain           // 아름다운 해변 B 고라파덕 (water) 75 % -> 100 %
-    check(bShare() > 99, "rain: water B slot 75 % -> 100 %", "\(bShare())")
+    check(abs(bShare() - 90) < 1.5, "rain: water B slot 87 % -> 90 % (capped)", "\(bShare())")
 
     // 6e game time on steps
     w = Walk(); check(w.hour == 6 && w.season == .spring && w.isDay, "step 0 = 6:00, spring")
@@ -167,7 +167,11 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     // 7b radar chain, companion events, box
     w = Walk(); w.picks = [0, 2, 4]; w.courseSteps = 2000
     func aShare(_ c: Int) -> Double { var n = 0; for _ in 0..<20000 where w.encounter(&r, chain: c).steps == 2000 { n += 1 }; return Double(n) / 200 }
-    let a0 = aShare(0), a4 = aShare(4); check(abs(a0 - 70) < 1.5 && a4 > 99, "chain 4: A slot 70 % -> 100 %", "\(a0) \(a4)")
+    let a0 = aShare(0), a4 = aShare(4); check(abs(a0 - 70) < 1.5 && abs(a4 - 90) < 1.5, "chain 4: A slot 70 % -> 90 % (capped)", "\(a0) \(a4)")
+    w.courseSteps = 732; var seenB = Set<Int>(); for _ in 0..<2000 { seenB.insert(w.encounter(&r, chain: 6).dex) }
+    check(seenB.count == 2, "6-chain before the A threshold still mixes B and C (was B only)", "\(seenB)")
+    var grass = Set<[Int]>(); for _ in 0..<200 { w.newGrass(&r); grass.insert(w.picks) }
+    check(grass.count == 8 && grass.allSatisfy { [0, 1].contains($0[0]) && [2, 3].contains($0[1]) && [4, 5].contains($0[2]) }, "new day: one of each group's two, all 8 mixes happen")
     w = Walk(); check(w.eventDue && w.petEvent(&r) == nil && !w.eventDue, "first event call only schedules")
     var found = 0; for _ in 0..<400 { w.total = w.nextEvent!; if w.petEvent(&r) != nil { found += 1 } }
     check((60...140).contains(found) && w.items.count == 3, "1 in 4 events brings an item back", "\(found)")

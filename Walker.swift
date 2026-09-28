@@ -206,12 +206,14 @@ struct Walk: Codable, Equatable {
     mutating func spend(_ w: Int) -> Bool { guard watts >= w else { return false }; watts -= w; return true }
 
     /// The walker's draw: rarest carried slot first, "far enough and rand(100) < chance" wins, the commonest is the fallback.
-    /// chain = radar chain length: each link makes the A/B slots 25 % likelier (up to 4 links).
+    /// chain = radar chain length: each link makes the A/B slots 25 % likelier (up to 4 links). Boosts (chain, weather) stop at 90 % so it never
+    /// collapses onto one species (a 75 % B slot used to hit 100 % at 2 links and shut the rest out).
     func encounter<R: RandomNumberGenerator>(_ r: inout R, chain: Int = 0) -> Slot {
         let boost = (weather ?? .sunny).types
         for i in picks {
             let s = here.slots[i], rare = i < 4 ? 1 + 0.25 * Double(min(chain, 4)) : 1
-            let chance = min(100, s.chance * rare * (monTypes[s.dex].contains { boost.contains($0) } ? 1.5 : 1))
+            let boosted = s.chance * rare * (monTypes[s.dex].contains { boost.contains($0) } ? 1.5 : 1)
+            let chance = boosted > s.chance ? min(boosted, max(s.chance, 90)) : s.chance
             if effSteps >= s.steps, Double.random(in: 0..<100, using: &r) < chance { return s }
         }
         return here.slots[picks[2]]
@@ -227,9 +229,10 @@ struct Walk: Codable, Equatable {
     mutating func connect() { box += caught; bag += items; caught = []; items = [] }
 
     mutating func setCourse<R: RandomNumberGenerator>(_ i: Int, _ r: inout R) {
-        connect(); course = i; courseSteps = 0
-        picks = [Int.random(in: 0...1, using: &r), Int.random(in: 2...3, using: &r), Int.random(in: 4...5, using: &r)]
+        connect(); course = i; courseSteps = 0; newGrass(&r)
     }
+    /// Which of each group's two the grass holds: rolled on every pairing and every new game day (with the weather).
+    mutating func newGrass<R: RandomNumberGenerator>(_ r: inout R) { picks = [Int.random(in: 0...1, using: &r), Int.random(in: 2...3, using: &r), Int.random(in: 4...5, using: &r)] }
     /// Walk with box[i] (or, onWalker, caught[i]) instead; the old companion takes its place. Course progress stays
     /// (the real device re-pairs and restarts the course, which just punishes trying a new partner).
     mutating func pair(_ i: Int, onWalker: Bool = false) {
