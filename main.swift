@@ -1234,28 +1234,23 @@ final class SideView: NSView {
     }
     override func resetCursorRects() { for (r, _) in hits { addCursorRect(r, cursor: .pointingHand) } }
     // text: Galmuri at 3x its pixel size on a Retina screen (15 / 12 pt at the normal size), so every glyph pixel is whole
-    /// One font pixel, in points: a whole number of screen pixels (3 on Retina = 1.5 pt, 2 on a 1x screen = 2 pt) — a pixel font
-    /// at 1.5x on a 1x monitor smears. The panel's layout unit follows it, so the whole panel grows on 1x screens instead.
-    static func glyph(_ backing: CGFloat) -> CGFloat { max(1, (1.5 * backing * PX / 2).rounded()) / backing }
-    static func unit(_ backing: CGFloat) -> CGFloat { glyph(backing) * 4 / 3 }
+    /// The panel's layout unit (the device's dot size, a bit smaller): about as tall as the device. The panel is plain UI in the
+    /// system font — sharp at any scale; the pixel look stays on the LCD. (Pixel text had to be 2x on 1x monitors, making it huge.)
+    static func unit(_ backing: CGFloat) -> CGFloat { PX * 0.85 }
     var backing: CGFloat { window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2 }
-    var s: CGFloat { SideView.glyph(backing) / 1.5 }
-    var body: NSFont { _ = fontsReady; return NSFont(name: "Galmuri9", size: 10 * SideView.glyph(backing)) ?? .systemFont(ofSize: 15 * s) }
-    var small: NSFont { _ = fontsReady; return NSFont(name: "Galmuri7", size: 8 * SideView.glyph(backing)) ?? .systemFont(ofSize: 12 * s) }
-    var big: NSFont { _ = fontsReady; return NSFont(name: "Galmuri9", size: 20 * SideView.glyph(backing)) ?? .systemFont(ofSize: 20 * s) }
+    var u0: CGFloat { SideView.unit(backing) }
+    var body: NSFont { .systemFont(ofSize: 7.5 * u0, weight: .medium) }
+    var small: NSFont { .systemFont(ofSize: 6 * u0, weight: .regular) }
+    var big: NSFont { .systemFont(ofSize: 10.5 * u0, weight: .bold) }
     static let ink = NSColor(red: 0.10, green: 0.11, blue: 0.16, alpha: 1), dim = NSColor(red: 0.42, green: 0.45, blue: 0.52, alpha: 1)
     func width(_ str: String, _ f: NSFont) -> CGFloat { (str as NSString).size(withAttributes: [.font: f]).width }
     /// Plain text with its top-left at (x, y); `right` aligns its end there instead.
     func text(_ str: String, _ x: CGFloat, _ y: CGFloat, _ f: NSFont, _ c: NSColor, shadow: NSColor? = nil, right: CGFloat? = nil, maxW: CGFloat? = nil) {
         var str = str
         if let maxW { while str.count > 1, width(str, f) > maxW { str = String(str.dropLast(2)) + "…" } }
-        // snap the origin and the baseline to whole screen pixels and draw without anti-aliasing: hard pixel edges, like the LCD
-        let b = backing, snap = { (v: CGFloat) in (v * b).rounded() / b }
-        let x0 = snap(right.map { $0 - width(str, f) } ?? x), y0 = snap(y + f.ascender) - f.ascender, g = SideView.glyph(b)
-        NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current?.shouldAntialias = false; NSGraphicsContext.current?.cgContext.setShouldSmoothFonts(false)
-        if let shadow { (str as NSString).draw(at: NSPoint(x: x0 + g, y: y0 + g), withAttributes: [.font: f, .foregroundColor: shadow]) }
-        (str as NSString).draw(at: NSPoint(x: x0, y: y0), withAttributes: [.font: f, .foregroundColor: c])
-        NSGraphicsContext.restoreGraphicsState()
+        let x0 = right.map { $0 - width(str, f) } ?? x, g = max(1, f.pointSize / 14)
+        if let shadow { (str as NSString).draw(at: NSPoint(x: x0, y: y + g), withAttributes: [.font: f, .foregroundColor: shadow]) }
+        (str as NSString).draw(at: NSPoint(x: x0, y: y), withAttributes: [.font: f, .foregroundColor: c])
     }
     /// Text centred in `r` by its ink, not its line box (the pixel font's leading made labels ride high).
     func label(_ str: String, in r: NSRect, _ f: NSFont, _ c: NSColor, shadow: NSColor? = nil, alignLeft: CGFloat? = nil, alignRight: CGFloat? = nil) {
