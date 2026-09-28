@@ -139,6 +139,26 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     var hardHits = 0; for _ in 0..<2000 { var b = Battle(wild: Mon(dex: 150, level: 50, female: false), hard: true); b.wildHP = 1; if b.act(.capture, &r).contains(.caught) { hardHits += 1 } }
     check((700...900).contains(hardHits), "legends: 1 HP ball 40 %", "\(hardHits)")
 
+    // 6f items
+    check(ItemKind.of("상처약") == .heal(1) && ItemKind.of("풀회복약") == .heal(4) && ItemKind.of("기력의조각") == .revive(2) && ItemKind.of("하이퍼볼") == .ball(2)
+          && ItemKind.of("네트볼") == .ball(1.5) && ItemKind.of("라즈열매") == .berry && ItemKind.of("천둥의돌") == .evolution && ItemKind.of("금구슬") == .sell(100)
+          && ItemKind.of("마비치료제") == .sell(10) && ItemKind.of("기술머신68") == .sell(50), "item kinds")
+    let allItems = Set(courses.flatMap { $0.items.map(\.item) })
+    check(allItems.allSatisfy { if case .sell(let p) = ItemKind.of($0) { return p > 0 }; return true }, "every course item has a use or a price")
+    w = Walk(); w.items = ["상처약"]; w.bag = ["고급상처약", "좋은상처약"]
+    check(w.useHeal(missing: 2)! == ("좋은상처약", 2) && w.useHeal(missing: 4)! == ("고급상처약", 3) && w.useHeal(missing: 4)! == ("상처약", 1) && w.useHeal(missing: 1) == nil,
+          "potions: smallest that fills the gap, else the biggest")
+    w.bag = ["부활초", "기력의조각"]; check(w.useRevive()! == ("기력의조각", 2) && w.bag == ["부활초"], "revive: the cheaper one first")
+    w.bag = ["슈퍼볼", "하이퍼볼"]; check(w.useBall()! == ("하이퍼볼", 2) && w.useBall()! == ("슈퍼볼", 1.5) && w.useBall() == nil, "best ball first")
+    w = Walk(); w.bag = ["이상한사탕"]; check(w.feedCandy() && w.companion.level == 6 && w.companion.points == 216 && !w.feedCandy(), "이상한사탕: exactly one level")
+    w.bag = ["라즈열매"]; check(w.feedBerry("라즈열매") && w.companion.walked == 500 && !w.feedBerry("상처약"), "berries feed friendship, potions don't")
+    w.items = ["금구슬"]; w.bag = ["금구슬", "마비치료제", "천둥의돌"]
+    check(w.sell("금구슬") == 200 && w.sell("천둥의돌") == 0 && w.watts == 200 && w.bag == ["마비치료제", "천둥의돌"], "selling: all of a kind; evolution items aren't for sale")
+    var hb = Battle(wild: Mon(dex: 16, level: 5, female: false)); hb.myHP = 1
+    let hbeats = hb.act(.item, &r, heal: 2); check(hbeats.first == .healed(2) && (hb.myHP == 3 || hb.myHP == 2), "battle item heals, then it may attack")
+    var ballHits = 0; for _ in 0..<2000 { var b = Battle(wild: Mon(dex: 16, level: 5, female: false)); if b.act(.capture, &r, ball: 2).contains(.caught) { ballHits += 1 } }
+    check((700...900).contains(ballHits), "하이퍼볼 doubles it: full HP 20 % -> 40 %", "\(ballHits)")
+
     // 7 battle
     var hits = 0, won = 0
     for _ in 0..<2000 { var bt = Battle(wild: Mon(dex: 16, level: 5, female: false)); bt.wildHP = 1; if bt.act(.capture, &r).contains(.caught) { hits += 1 } }
@@ -216,7 +236,7 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     v.press(2); v.press(2); v.press(1)
     check(on(v) { if case .beats(_, [.appear], _, _) = $0 { return true }; return false } && v.state.seen?.isEmpty == false, "▶▶● on the shaking bush: a wild one appears (and is seen)")
     if case .beats(let b, _, _, _) = v.screen { v.screen = .battle(b, sel: 0) }
-    _ = v.touch(v.moveRanges()[3].lowerBound + 1, 56)
+    _ = v.touch(v.moveRanges()[4].lowerBound + 1, 56)
     check(on(v) { if case .beats(_, [.ran], _, _) = $0 { return true }; return false }, "tapping 도망 runs")
     let caughtB = Battle(wild: Mon(dex: 16, level: 3, female: false), chain: 1)
     v.screen = .beats(caughtB, [.thrown, .caught], since: Date().addingTimeInterval(-30), from: caughtB); v.tick(nil)

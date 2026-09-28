@@ -30,6 +30,35 @@ struct Egg: Codable, Equatable { var dex: Int; var left: Int }
 enum PetFind: Equatable { case item(String), egg(Int) }
 let legendOdds = (base: 0.02, perChain: 0.01)          // a legend course's radar: 2 % + 1 % per chain link (up to 4)
 
+/// What a bag item does here. The real walker only ferried items to the game; this app has no game, so they get jobs of their own.
+enum ItemKind: Equatable {
+    case heal(Int)                 // battle: restores this many HP pips
+    case revive(Int)               // used by itself when we faint, back up with this many
+    case ball(Double)              // thrown instead of the basic ball: catch chance x this
+    case candy                     // 이상한사탕: +1 level
+    case berry                     // fed: +500 friendship steps
+    case evolution                 // stones and held items
+    case sell(Int)                 // watts at the exchange
+
+    static func of(_ i: String) -> ItemKind {
+        let heal = ["상처약": 1, "좋은상처약": 2, "고급상처약": 3, "풀회복약": 4, "회복약": 4, "오랭열매": 1, "자뭉열매": 2, "맛있는물": 1, "미네랄사이다": 2,
+                    "후르츠밀크": 2, "튼튼밀크": 3, "힘의가루": 2, "힘의뿌리": 3]
+        if let n = heal[i] { return .heal(n) }
+        if i == "기력의조각" { return .revive(2) }
+        if i == "부활초" { return .revive(4) }
+        if i == "하이퍼볼" { return .ball(2) }
+        if i.hasSuffix("볼"), i != "몬스터볼" { return .ball(1.5) }
+        if i == "이상한사탕" { return .candy }
+        if evolutions.contains(where: { $0.item == i }) { return .evolution }
+        if i.hasSuffix("열매") { return .berry }
+        let price = ["금구슬": 100, "큰진주": 80, "별의조각": 60, "하트비늘": 30, "진주": 30, "큰버섯": 30, "별의모래": 20, "작은버섯": 10]
+        if let p = price[i] { return .sell(p) }
+        if i.hasPrefix("기술머신") { return .sell(50) }
+        if i.hasPrefix("PP") || ["포인트업", "사포닌", "리보플라빈", "이펙트가드", "스페셜업", "스페셜가드", "디펜드업", "스피드업", "플러스파워", "크리티컬커터", "잘-맞히기"].contains(i) { return .sell(20) }
+        return .sell(10)
+    }
+}
+
 struct Mon: Codable, Equatable {
     var dex: Int; var level: Int; var female: Bool
     var shiny: Bool? = nil               // Optionals: saves from before these fields still decode
@@ -138,6 +167,46 @@ struct Walk: Codable, Equatable {
         let i = here.items[0].item; _ = keep(i); return i
     }
     static func chainShinyOdds(_ chain: Int) -> Int { max(1, shinyOdds / (1 + 2 * chain)) }
+
+    // MARK: using items (walker's 3 first, then the bag)
+    func count(_ i: String) -> Int { (items + bag).filter { $0 == i }.count }
+    mutating func take(_ i: String) -> Bool {
+        if let k = items.firstIndex(of: i) { items.remove(at: k); return true }
+        if let k = bag.firstIndex(of: i) { bag.remove(at: k); return true }
+        return false
+    }
+    var inventory: [String] { Array(Set(items + bag)).sorted() }
+    /// The smallest potion that fills the gap, else the biggest there is. Used up.
+    mutating func useHeal(missing: Int) -> (item: String, hp: Int)? {
+        let heals = inventory.compactMap { i -> (String, Int)? in if case .heal(let n) = ItemKind.of(i) { return (i, n) }; return nil }.sorted { $0.1 < $1.1 }
+        guard let pick = heals.first(where: { $0.1 >= missing }) ?? heals.last, take(pick.0) else { return nil }
+        return (pick.0, min(pick.1, missing))
+    }
+    mutating func useRevive() -> (item: String, hp: Int)? {
+        let r = inventory.compactMap { i -> (String, Int)? in if case .revive(let n) = ItemKind.of(i) { return (i, n) }; return nil }.sorted { $0.1 < $1.1 }
+        guard let pick = r.first, take(pick.0) else { return nil }                              // the cheaper one first
+        return pick
+    }
+    mutating func useBall() -> (item: String, boost: Double)? {
+        let b = inventory.compactMap { i -> (String, Double)? in if case .ball(let x) = ItemKind.of(i) { return (i, x) }; return nil }.sorted { $0.1 > $1.1 }
+        guard let pick = b.first, take(pick.0) else { return nil }
+        return pick
+    }
+    mutating func feedCandy() -> Bool {
+        guard companion.level < 100, take("이상한사탕") else { return false }
+        let e = expTable[growthRate[companion.dex]][companion.level + 1]
+        companion.exp = e; companion.level = Mon.level(dex: companion.dex, exp: e); return true          // levels, not steps: friendship untouched
+    }
+    mutating func feedBerry(_ i: String) -> Bool {
+        guard ItemKind.of(i) == .berry, take(i) else { return false }
+        companion.walked = (companion.walked ?? 0) + 500; return true
+    }
+    /// Sells every one of `i`; returns the watts.
+    mutating func sell(_ i: String) -> Int {
+        guard case .sell(let p) = ItemKind.of(i) else { return 0 }
+        var n = 0; while take(i) { n += 1 }
+        watts = min(9999, watts + n * p); return n * p
+    }
 
     // MARK: box
     /// Lets box[i] go; a few watts back as thanks (level / 2, at least 1).
@@ -259,12 +328,13 @@ extension DateFormatter {
 }
 
 // MARK: - battle: 4 HP each; attack / evade / throw a ball / run
-enum Move: Int, CaseIterable { case attack, evade, capture, run }
+enum Move: Int, CaseIterable { case attack, evade, capture, item, run }
 enum Beat: Equatable {
     case appear                                      // the encounter itself (plays before the first menu)
     case hit(crit: Bool), missed                     // our attack
     case struck, dodged                              // its attack: landed / we evaded it
     case thrown, broke, caught, fled, ran            // ball, ball broke free, got it, it ran, we ran
+    case healed(Int), revived(Int)                   // a potion / a revive (HP back)
     case won, lost                                   // it fainted (no catch), we fainted
     var ends: Bool { [.caught, .fled, .ran, .won, .lost].contains(self) }
     var length: Double {                             // seconds on screen
@@ -289,12 +359,15 @@ struct Battle: Equatable {
 
     /// Replays one beat's HP effect (the UI shows HP dropping mid-exchange, not all at once).
     mutating func apply(_ b: Beat) {
+        if case .healed(let n) = b { myHP = min(4, myHP + n) }
+        if case .revived(let n) = b { myHP = n }
         if case .hit(let crit) = b { wildHP = max(0, wildHP - (crit ? 2 : 1)) }
         if b == .struck { myHP = max(0, myHP - 1) }
     }
 
     /// One exchange. The last beat `ends` the battle when it's over.
-    mutating func act<R: RandomNumberGenerator>(_ m: Move, _ r: inout R) -> [Beat] {
+    /// heal = HP the chosen potion restores (UI picks and uses it up); ball = the thrown ball's multiplier.
+    mutating func act<R: RandomNumberGenerator>(_ m: Move, _ r: inout R, heal: Int = 0, ball: Double = 1) -> [Beat] {
         var out: [Beat] = []
         func itsTurn(evading: Bool) {
             guard Int.random(in: 0..<10, using: &r) < 5 - edge else { return }             // it attacks half the time; 30 % if we're far above it, 60 % if below
@@ -304,6 +377,9 @@ struct Battle: Equatable {
         }
         switch m {
         case .run: return [.ran]
+        case .item:
+            myHP = min(4, myHP + heal); out.append(.healed(heal))
+            itsTurn(evading: false)
         case .attack:
             if Int.random(in: 0..<20, using: &r) < 4 - edge { out.append(.missed) }       // 20 % miss; 10 % far above, 25 % below
             else { let crit = Int.random(in: 0..<8, using: &r) == 0; wildHP -= crit ? 2 : 1; out.append(.hit(crit: crit)) }
@@ -314,7 +390,7 @@ struct Battle: Equatable {
             if Int.random(in: 0..<5, using: &r) == 0 { out.append(.fled) }
         case .capture:
             out.append(.thrown)
-            if Double.random(in: 0..<1, using: &r) < Double(5 - wildHP) / (hard ? 10 : 5) { out.append(.caught); return out }   // 4 HP 20 % ... 1 HP 80 % (legends half)
+            if Double.random(in: 0..<1, using: &r) < min(0.95, Double(5 - wildHP) / (hard ? 10 : 5) * ball) { out.append(.caught); return out }   // 4 HP 20 % ... 1 HP 80 % (legends half), x ball
             out.append(.broke)
             if Int.random(in: 0..<4, using: &r) == 0 { out.append(.fled); return out }
             itsTurn(evading: false)

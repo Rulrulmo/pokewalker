@@ -233,7 +233,7 @@ final class NotifyDelegate: NSObject, UNUserNotificationCenterDelegate {
 // MARK: - screens
 var statusItem: NSStatusItem? = nil
 let menuItems = ["포켓 레이더", "다우징", "커넥트", "트레이너 카드", "포켓몬 · 도구", "상자", "도감"]
-let moveNames = ["공격", "피하기", "볼", "도망"]
+let moveNames = ["공격", "피하기", "볼", "도구", "도망"]
 indirect enum Screen {
     case home
     case menu(Int)
@@ -255,6 +255,7 @@ final class WalkerView: NSView {
     var lastInput = Date(), lastStep = Date.distantPast, lastSave = Date(), levelled = false
     var boxByLevel = false
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
+    var usedItem = "몬스터볼"                                                // the potion / ball / revive the current beat names
     lazy var lastSeason = state.season
     var shown: FB? = nil                                                   // last composed frame; draw() only when it changes
     var emote: (kind: Int, until: Date)? = nil                             // ♪ ♥ ! bubble over the companion
@@ -354,6 +355,10 @@ final class WalkerView: NSView {
             let n = b.chain + 1, item = state.chainReward(n)
             chainNote = "+\(2 * n)W" + (item.map { " · " + $0 } ?? "")
             return .radar(bush: Int.random(in: 0..<4, using: &rng), cursor: 0, since: now, chain: n)
+        case .lost:
+            guard let r = state.useRevive() else { return .home }                                  // a revive in the bag: back up, the fight (and chain) goes on
+            var nb = b; nb.myHP = r.hp; usedItem = r.item
+            return .beats(nb, [.revived(r.hp)], since: now, from: nb)
         default: return .home
         }
     }
@@ -396,8 +401,19 @@ final class WalkerView: NSView {
                 let b = Battle(wild: m, edge: Battle.edge(state.companion.level, m.level), chain: chain, hard: l != nil); state.see(m.dex); screen = .beats(b, [.appear], since: now, from: b)
             } else { screen = .say(chain > 0 ? ["빗나갔다...", "연쇄 끝 (\(chain))"] : ["아무것도", "없었다..."], next: .home, since: now) }
         case .battle(var b, let sel):
-            if k == 0 { screen = .battle(b, sel: (sel + 3) % 4) } else if k == 2 { screen = .battle(b, sel: (sel + 1) % 4) }
-            else { let from = b, beats = b.act(Move(rawValue: sel)!, &rng); screen = .beats(b, beats, since: now, from: from) }
+            let n = moveNames.count
+            if k == 0 { screen = .battle(b, sel: (sel + n - 1) % n) } else if k == 2 { screen = .battle(b, sel: (sel + 1) % n) }
+            else {
+                let m = Move(rawValue: sel)!, from = b
+                var heal = 0, boost = 1.0
+                if m == .item {
+                    guard b.myHP < 4 else { screen = .say(["HP가 가득하다"], next: .battle(b, sel: sel), since: now); return }
+                    guard let h = state.useHeal(missing: 4 - b.myHP) else { screen = .say(["쓸 수 있는", "회복 도구가 없다"], next: .battle(b, sel: sel), since: now); return }
+                    heal = h.hp; usedItem = h.item
+                }
+                if m == .capture { if let x = state.useBall() { boost = x.boost; usedItem = x.item } else { usedItem = "몬스터볼" } }
+                let beats = b.act(m, &rng, heal: heal, ball: boost); screen = .beats(b, beats, since: now, from: from)
+            }
         case .dowse(let c, let prize, let tries, _):
             if k != 1 { screen = .dowse(cursor: (c + (k == 0 ? 5 : 1)) % 6, prize: prize, tries: tries, hint: nil); return }
             if c == prize {
@@ -487,7 +503,7 @@ final class WalkerView: NSView {
             }
         case .battle(let b, let sel):
             stage(&fb, b, now, .idle(b.wild))
-            for (k, r) in moveRanges().enumerated() { fb.text(moveNames[k], r.lowerBound + 1, 52); if k == sel { fb.invert(r.lowerBound, 52, r.count, 12) } }
+            for (k, r) in moveRanges().enumerated() { fb.text(moveNames[k], r.lowerBound + 1, 52, 3, small: true); if k == sel { fb.invert(r.lowerBound, 52, r.count, 12) } }
         case .beats(_, let beats, let since, let from):
             var u = now.timeIntervalSince(since), i = 0
             while i < beats.count - 1, u >= beats[i].length { u -= beats[i].length; i += 1 }
@@ -595,7 +611,7 @@ final class WalkerView: NSView {
     /// Battle menu labels' x ranges (drawn and tapped from the same layout).
     func moveRanges() -> [Range<Int>] {
         var x = 1, out: [Range<Int>] = []
-        for n in moveNames { let w = (textDots(n).first?.count ?? 0) + 2; out.append(x..<x + w); x += w + 3 }
+        for n in moveNames { let w = (textDots(n, small: true).first?.count ?? 0) + 2; out.append(x..<x + w); x += w + 1 }
         return out
     }
     /// What the 64x48 stage shows: one fighter at full size (the other one is never squeezed to half resolution).
@@ -629,6 +645,7 @@ final class WalkerView: NSView {
             if b == .caught { return .ball(x: 41, y: 30, tilt: nil, burst: false, stars: Int(u * 8) % 2 == 0) }
             if u < end + 0.25 { return .ball(x: 41, y: 30, tilt: nil, burst: true, stars: false) }
             return .wild(dx: 0, dy: 0, flash: u < end + 0.4, visible: true)
+        case .healed, .revived: return .me(dx: 0, dy: Int(-4 * arc(0.2, 0.4)), visible: u > 0.3 || Int(u * 12) % 2 == 0)   // a little hop, sparkling
         case .fled: return .wild(dx: Int(-90 * min(1, u / 0.6)), dy: 0, flash: false, visible: true)
         case .ran: return .me(dx: Int(90 * min(1, u / 0.6)), dy: 0, visible: true)
         case .won: return u < 0.35 ? .wild(dx: 0, dy: 0, flash: false, visible: blink) : .wild(dx: 0, dy: Int(60 * min(1, (u - 0.35) / 0.6)), flash: false, visible: true)
@@ -651,7 +668,8 @@ final class WalkerView: NSView {
         case .me(let dx, let dy, let visible): if visible { fb.mon(state.companion, f, 16 + dx, dy, flip: true) }
         case .ball(let x, let y, let tilt, let burst, let stars):
             if burst { fb.draw(burstArt, x - 2, y - 2, sparkPal, scale: 2) }
-            fb.draw(tilt.map { ballTilt[$0] } ?? ball, x, y, ballPal, scale: 2)
+            let top = usedItem == "하이퍼볼" ? rgb(44, 44, 52) : usedItem.hasSuffix("볼") && usedItem != "몬스터볼" ? rgb(60, 110, 220) : rgb(222, 52, 44)   // 슈퍼볼 & co blue, 하이퍼볼 black
+            fb.draw(tilt.map { ballTilt[$0] } ?? ball, x, y, [ballPal[0], ballPal[1], top, ballPal[3]], scale: 2)
             if stars { for (sx, sy) in [(-8, -4), (16, -5), (-9, 9), (17, 8)] { fb.draw(spark, x + sx, y + sy, sparkPal) } }
         }
         for i in 0..<4 { fb.draw(i < b.wildHP ? pip.full : pip.empty, 2 + 4 * i, 2) }                    // HUD: theirs top-left, ours (with a ball) top-right
@@ -669,7 +687,9 @@ final class WalkerView: NSView {
         case .missed: return u < 0.45 ? me + "의 공격!" : "빗나갔다!"
         case .struck: return it + "의 공격!"
         case .dodged: return u < 0.45 ? it + "의 공격!" : "휙! 피했다!"
-        case .thrown: return "가랏, 몬스터볼!"
+        case .thrown: return "가랏, " + usedItem + "!"
+        case .healed(let n): return usedItem + " · HP +\(n)"
+        case .revived: return josa(usedItem, "으로", "로") + " 되살아났다!"
         case .broke: return u < 1.2 ? dots : "앗! 나와버렸다!"
         case .caught: return u < 1.8 ? dots : "딸깍! " + josa(it, "을", "를") + " 잡았다!"
         case .fled: return josa(it, "은", "는") + " 도망쳤다..."
@@ -746,9 +766,33 @@ final class WalkerView: NSView {
             for (i, w) in wares.enumerated() { let it = xm.addItem(withTitle: "\(w)\(state.bag.contains(w) ? " (있음)" : "")", action: state.watts >= price ? #selector(buy(_:)) : nil, keyEquivalent: ""); it.target = self; it.tag = i }
             xh.submenu = xm
         }
-        if !state.bag.isEmpty {
-            let bh = m.addItem(withTitle: "가방 · \(state.bag.count)개", action: nil, keyEquivalent: ""), bm = NSMenu()
-            for (n, k) in Dictionary(state.bag.map { ($0, 1) }, uniquingKeysWith: +).sorted(by: { $0.key < $1.key }) { bm.addItem(withTitle: "\(n) ×\(k)", action: nil, keyEquivalent: "") }
+        let inv = state.inventory
+        if !inv.isEmpty {                                                                         // everything carried: walker + bag
+            let bh = m.addItem(withTitle: "가방 · \(state.items.count + state.bag.count)개", action: nil, keyEquivalent: ""), bm = NSMenu()
+            if state.count("이상한사탕") > 0 { bm.addItem(withTitle: "이상한사탕 먹이기 (×\(state.count("이상한사탕")))", action: #selector(useCandy(_:)), keyEquivalent: "").target = self }
+            let berries = inv.filter { ItemKind.of($0) == .berry }
+            if !berries.isEmpty {
+                let fh = bm.addItem(withTitle: "열매 먹이기 · 친밀도 +500걸음", action: nil, keyEquivalent: ""), fm = NSMenu()
+                for b in berries { let it = fm.addItem(withTitle: "\(b) ×\(state.count(b))", action: #selector(useBerry(_:)), keyEquivalent: ""); it.target = self; it.representedObject = b }
+                fh.submenu = fm
+            }
+            let wares = inv.compactMap { i -> (String, Int)? in if case .sell(let p) = ItemKind.of(i) { return (i, p) }; return nil }
+            if !wares.isEmpty {
+                let total = wares.reduce(0) { $0 + $1.1 * state.count($1.0) }
+                let sh = bm.addItem(withTitle: "팔기 · 전부 \(total)W", action: nil, keyEquivalent: ""), sm = NSMenu()
+                sm.addItem(withTitle: "전부 팔기 (\(total)W)", action: #selector(sellAll(_:)), keyEquivalent: "").target = self
+                sm.addItem(.separator())
+                for (i, p) in wares { let it = sm.addItem(withTitle: "\(i) ×\(state.count(i)) — \(p * state.count(i))W", action: #selector(sellOne(_:)), keyEquivalent: ""); it.target = self; it.representedObject = i }
+                sh.submenu = sm
+            }
+            bm.addItem(.separator())
+            for i in inv {
+                let use: String = switch ItemKind.of(i) {
+                case .heal(let n): "배틀 HP +\(n)"; case .revive(let n): "쓰러지면 HP \(n)로 부활"; case .ball(let x): "포획 ×\(x == 2 ? "2" : "1.5")"
+                case .candy: "레벨 +1"; case .berry: "친밀도 +500걸음"; case .evolution: "진화"; case .sell(let p): "\(p)W"
+                }
+                bm.addItem(withTitle: "\(i) ×\(state.count(i)) · \(use)", action: nil, keyEquivalent: "")
+            }
             bh.submenu = bm
         }
         func sub(_ title: String, _ items: [(String, Int)], _ current: Int, _ sel: Selector) {
@@ -787,6 +831,19 @@ final class WalkerView: NSView {
     }
     @objc func setCourse(_ i: NSMenuItem) { state.setCourse(i.tag, &rng); screen = .say(["커넥트 완료", state.here.name], next: .home, since: Date()); save(nil) }
     let price = 1000
+    @objc func useCandy(_ i: NSMenuItem) {
+        guard state.feedCandy() else { return }
+        levelled = true; screen = .home; save(nil)                                              // the home screen shows the level-up (or an evolution)
+    }
+    @objc func useBerry(_ i: NSMenuItem) {
+        guard let b = i.representedObject as? String, state.feedBerry(b) else { return }
+        screen = .say([josa(monNames[state.companion.dex], "이", "가") + " " + josa(b, "을", "를"), "맛있게 먹었다!"], next: .home, since: Date()); save(nil)
+    }
+    @objc func sellOne(_ i: NSMenuItem) { guard let n = i.representedObject as? String else { return }; let w = state.sell(n); screen = .say([n + " 판매", "+\(w)W"], next: .home, since: Date()); save(nil) }
+    @objc func sellAll(_ i: NSMenuItem) {
+        let w = state.inventory.reduce(0) { $0 + state.sell($1) }
+        screen = .say(["전부 팔았다", "+\(w)W"], next: .home, since: Date()); save(nil)
+    }
     @objc func useStone(_ i: NSMenuItem) { let s = state.stoneEvolutions(Date()); guard s.indices.contains(i.tag) else { return }; startEvolving(s[i.tag], Date()) }
     @objc func buy(_ i: NSMenuItem) {
         let w = state.evolutionItems(); guard w.indices.contains(i.tag), state.spend(price) else { return }
