@@ -1234,19 +1234,28 @@ final class SideView: NSView {
     }
     override func resetCursorRects() { for (r, _) in hits { addCursorRect(r, cursor: .pointingHand) } }
     // text: Galmuri at 3x its pixel size on a Retina screen (15 / 12 pt at the normal size), so every glyph pixel is whole
-    var s: CGFloat { PX / 2 }
-    var body: NSFont { _ = fontsReady; return NSFont(name: "Galmuri9", size: 15 * s) ?? .systemFont(ofSize: 15 * s) }
-    var small: NSFont { _ = fontsReady; return NSFont(name: "Galmuri7", size: 12 * s) ?? .systemFont(ofSize: 12 * s) }
-    var big: NSFont { _ = fontsReady; return NSFont(name: "Galmuri9", size: 20 * s) ?? .systemFont(ofSize: 20 * s) }
+    /// One font pixel, in points: a whole number of screen pixels (3 on Retina = 1.5 pt, 2 on a 1x screen = 2 pt) — a pixel font
+    /// at 1.5x on a 1x monitor smears. The panel's layout unit follows it, so the whole panel grows on 1x screens instead.
+    static func glyph(_ backing: CGFloat) -> CGFloat { max(1, (1.5 * backing * PX / 2).rounded()) / backing }
+    static func unit(_ backing: CGFloat) -> CGFloat { glyph(backing) * 4 / 3 }
+    var backing: CGFloat { window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2 }
+    var s: CGFloat { SideView.glyph(backing) / 1.5 }
+    var body: NSFont { _ = fontsReady; return NSFont(name: "Galmuri9", size: 10 * SideView.glyph(backing)) ?? .systemFont(ofSize: 15 * s) }
+    var small: NSFont { _ = fontsReady; return NSFont(name: "Galmuri7", size: 8 * SideView.glyph(backing)) ?? .systemFont(ofSize: 12 * s) }
+    var big: NSFont { _ = fontsReady; return NSFont(name: "Galmuri9", size: 20 * SideView.glyph(backing)) ?? .systemFont(ofSize: 20 * s) }
     static let ink = NSColor(red: 0.10, green: 0.11, blue: 0.16, alpha: 1), dim = NSColor(red: 0.42, green: 0.45, blue: 0.52, alpha: 1)
     func width(_ str: String, _ f: NSFont) -> CGFloat { (str as NSString).size(withAttributes: [.font: f]).width }
     /// Plain text with its top-left at (x, y); `right` aligns its end there instead.
     func text(_ str: String, _ x: CGFloat, _ y: CGFloat, _ f: NSFont, _ c: NSColor, shadow: NSColor? = nil, right: CGFloat? = nil, maxW: CGFloat? = nil) {
         var str = str
         if let maxW { while str.count > 1, width(str, f) > maxW { str = String(str.dropLast(2)) + "…" } }
-        let x0 = right.map { $0 - width(str, f) } ?? x
-        if let shadow { (str as NSString).draw(at: NSPoint(x: x0 + s * 1.5, y: y + s * 1.5), withAttributes: [.font: f, .foregroundColor: shadow]) }
-        (str as NSString).draw(at: NSPoint(x: x0, y: y), withAttributes: [.font: f, .foregroundColor: c])
+        // snap the origin and the baseline to whole screen pixels and draw without anti-aliasing: hard pixel edges, like the LCD
+        let b = backing, snap = { (v: CGFloat) in (v * b).rounded() / b }
+        let x0 = snap(right.map { $0 - width(str, f) } ?? x), y0 = snap(y + f.ascender) - f.ascender, g = SideView.glyph(b)
+        NSGraphicsContext.saveGraphicsState(); NSGraphicsContext.current?.shouldAntialias = false; NSGraphicsContext.current?.cgContext.setShouldSmoothFonts(false)
+        if let shadow { (str as NSString).draw(at: NSPoint(x: x0 + g, y: y0 + g), withAttributes: [.font: f, .foregroundColor: shadow]) }
+        (str as NSString).draw(at: NSPoint(x: x0, y: y0), withAttributes: [.font: f, .foregroundColor: c])
+        NSGraphicsContext.restoreGraphicsState()
     }
     /// Text centred in `r` by its ink, not its line box (the pixel font's leading made labels ride high).
     func label(_ str: String, in r: NSRect, _ f: NSFont, _ c: NSColor, shadow: NSColor? = nil, alignLeft: CGFloat? = nil, alignRight: CGFloat? = nil) {
@@ -1263,7 +1272,7 @@ final class SideView: NSView {
         hits = []
         if let d = dex { drawDex(d); return }
         guard let m = model else { return }
-        let u = PX, W = bounds.width, H = bounds.height, ink = SideView.ink, dim = SideView.dim, paper = NSColor(white: 0.98, alpha: 1)
+        let u = SideView.unit(backing), W = bounds.width, H = bounds.height, ink = SideView.ink, dim = SideView.dim, paper = NSColor(white: 0.98, alpha: 1)
         /// "HP" tag + bar, the HGSS way: dark track, the colour on top with a little shine.
         func bar(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ hp: Int, _ max: Int) {
             let f = max > 0 ? CGFloat(hp) / CGFloat(max) : 0, tag = NSRect(x: x, y: y, width: 15 * u, height: 7 * u)
@@ -1303,7 +1312,10 @@ final class SideView: NSView {
         // message: the DS dialogue box, double frame
         let msg = NSRect(x: 6 * u, y: 77 * u, width: W - 12 * u, height: 30 * u)
         round(msg, 3 * u).fill(with: ink); round(msg.insetBy(dx: u, dy: u), 2.5 * u).fill(with: NSColor(red: 0.62, green: 0.70, blue: 0.86, alpha: 1)); round(msg.insetBy(dx: 2 * u, dy: 2 * u), 2 * u).fill(with: paper)
-        (m.message as NSString).draw(in: msg.insetBy(dx: 5 * u, dy: 4 * u), withAttributes: [.font: body, .foregroundColor: ink])
+        var lines: [String] = [], cur = ""                                                        // wrap by hand so each line goes through the pixel-snapped text()
+        for ch in m.message { if width(cur + String(ch), body) > msg.width - 10 * u { lines.append(cur); cur = "" }; cur.append(ch) }
+        lines.append(cur)
+        for (j, l) in lines.prefix(2).enumerated() { text(l.trimmingCharacters(in: .whitespaces), msg.minX + 5 * u, msg.minY + 4 * u + CGFloat(j) * 11 * u, body, ink) }
         // buttons
         func button(_ r: NSRect, _ c: NSColor, _ on: Bool, _ idx: Int) {
             round(r.offsetBy(dx: 0, dy: 1.5 * u), 4 * u).fill(with: c.blended(withFraction: 0.55, of: .black)!)                       // the lip
@@ -1365,7 +1377,7 @@ final class SideView: NSView {
 extension SideView {
     /// The Pokédex page: a red handheld-dex body, a white entry card (types, base stats), where to find it, how it evolves, and a number strip.
     func drawDex(_ d: DexModel) {
-        let u = PX, W = bounds.width, ink = SideView.ink, dim = SideView.dim, red = NSColor(red: 0.80, green: 0.20, blue: 0.18, alpha: 1)
+        let u = SideView.unit(backing), W = bounds.width, ink = SideView.ink, dim = SideView.dim, red = NSColor(red: 0.80, green: 0.20, blue: 0.18, alpha: 1)
         let bodyPath = round(bounds.insetBy(dx: u / 2, dy: u / 2), 9 * u)
         NSGraphicsContext.saveGraphicsState(); bodyPath.addClip()
         NSGradient(starting: NSColor(red: 0.90, green: 0.24, blue: 0.22, alpha: 1), ending: NSColor(red: 0.66, green: 0.12, blue: 0.13, alpha: 1))!.draw(in: bounds, angle: -90)
@@ -1435,7 +1447,7 @@ final class SidePanel: NSPanel {
     }
     func show(_ m: SideModel?, dex: DexModel?, beside parent: NSWindow?) {
         guard m != nil || dex != nil, let parent else { if isVisible { parent?.removeChildWindow(self); orderOut(nil) }; view.model = nil; view.dex = nil; return }
-        let size = NSSize(width: 140 * PX, height: (dex != nil ? 186 : 172) * PX)                 // roomy enough for 15 / 12 pt text
+        let u = SideView.unit(parent.backingScaleFactor), size = NSSize(width: 140 * u, height: (dex != nil ? 186 : 172) * u)   // grows with the text on a 1x screen
         if !isVisible {
             let f = parent.frame, room = parent.screen?.visibleFrame ?? f
             let x = f.maxX + 6 + size.width <= room.maxX ? f.maxX + 6 : f.minX - 6 - size.width
