@@ -74,6 +74,27 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     check(w.companion.dex == 16 && w.caught[0].dex == 4, "pair with a Pokémon still on the walker")
     check(Walk().unlocked(1) && !Walk().unlocked(2), "courses unlock by lifetime watts")
 
+    // 6b levels, evolution, dex
+    var pk = Mon(dex: 25, level: 5, female: false)
+    check(!pk.gain(90) && pk.gain(1) && pk.level == 6 && pk.points == 216, "1 step = 1 EXP: 피카츄 Lv.5 -> 6 after 91 steps (medium fast)", "\(pk)")
+    w = Walk(); w.walk(500, at: at(10)); let e0 = w.companion.points
+    w.box = [Mon(dex: 16, level: 5, female: false)]; w.pair(0); w.walk(50, at: at(10)); w.pair(0)
+    check(w.companion.points == e0 && w.box[0].points == Mon(dex: 16, level: 5, female: false).points + 50, "each Pokémon keeps its own EXP across swaps")
+    w = Walk(); w.companion = Mon(dex: 16, level: 17, female: false); check(w.levelEvolution(at(10)) == nil, "구구 Lv.17: not yet")
+    w.companion.level = 18; check(w.levelEvolution(at(10))?.to == 17, "구구 Lv.18 -> 피죤")
+    w.companion = Mon(dex: 133, level: 20, female: false, walked: friendSteps)
+    check(w.levelEvolution(at(10, 12))?.to == 196 && w.levelEvolution(at(10, 22))?.to == 197, "이브이: friendship by day 에브이, by night 블래키")
+    w.setCourse(1, &r); w.companion.walked = 0; check(w.levelEvolution(at(10))?.to == 470, "이브이 levelling in the forest -> 리피아")
+    w = Walk(); check(w.stoneEvolutions(at(10)).isEmpty, "피카츄 without a stone: nothing")
+    w.bag = ["천둥의돌"]; let st = w.stoneEvolutions(at(10))
+    check(st.map(\.to) == [26], "피카츄 + 천둥의돌 -> 라이츄"); w.evolve(st[0]); check(w.companion.dex == 26 && w.bag.isEmpty && w.owned == [26], "evolving uses the stone and fills the dex")
+    w = Walk(); w.companion = Mon(dex: 64, level: 20, female: false); check(w.tradeEvolution(at(10))?.to == 65, "윤겔라 + Connect -> 후딘")
+    w.companion = Mon(dex: 281, level: 25, female: false); w.bag = ["각성의돌"]; check(w.stoneEvolutions(at(10)).map(\.to) == [475], "킬리아 ♂ + 각성의돌 -> 엘레이드")
+    w.companion.female = true; check(w.stoneEvolutions(at(10)).isEmpty, "킬리아 ♀: no 엘레이드")
+    w = Walk(); w.box = [Mon(dex: 16, level: 5, female: false)]; w.dex(); _ = w.keep(Mon(dex: 19, level: 5, female: false)); w.see(84)
+    check(w.owned == [16, 19, 25] && w.seen == [16, 19, 25, 84], "dex: owned ⊂ seen, backfilled from what's here")
+    check((try? JSONDecoder().decode(Walk.self, from: Data(String(decoding: try! JSONEncoder().encode(Walk()), as: UTF8.self).utf8))) != nil, "saves without dex fields decode")
+
     // 7 battle
     var hits = 0, won = 0
     for _ in 0..<2000 { var bt = Battle(wild: Mon(dex: 16, level: 5, female: false)); bt.wildHP = 1; if bt.act(.capture, &r).contains(.caught) { hits += 1 } }

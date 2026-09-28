@@ -6,7 +6,27 @@ struct Find { let item: String; let steps, chance: Int }
 enum Art { case field, forest, mountain, beach, lake, town, cave }
 struct Course { let name: String; let watts: Int; let types: [String]; let art: Art; let slots: [Slot]; let items: [Find] }   // slots: A A B B C C, items rarest first
 
-struct Mon: Codable, Equatable { var dex: Int; var level: Int; var female: Bool; var shiny: Bool? = nil }   // Optional: saves from before shinies still decode
+/// Gen IV evolution, mapped onto a walker (see tools/gen.py): level = on level-up at `level`+; friend = on level-up after `friendSteps` together;
+/// item = use a stone from the bag; trade = Connect while it's the companion. `item` on level/trade = must be in the bag (and is used up).
+enum EvoWay { case level, friend, item, trade }
+struct Evo { let from, to: Int; let way: EvoWay; let level: Int; let item: String?; let female: Bool?; let time: String?; let place: String?; let party: Int? }
+let friendSteps = 10_000                 // stands in for friendship 220 (Gen IV: +1 per 128 steps from ~70 is ~19k; levels add more)
+
+struct Mon: Codable, Equatable {
+    var dex: Int; var level: Int; var female: Bool
+    var shiny: Bool? = nil               // Optionals: saves from before these fields still decode
+    var exp: Int? = nil                  // nil = the minimum for `level`
+    var walked: Int? = nil               // steps as the companion (friendship)
+
+    var points: Int { exp ?? expTable[growthRate[dex]][level] }
+    static func level(dex: Int, exp: Int) -> Int { let t = expTable[growthRate[dex]]; return (1...100).last { t[$0] <= exp } ?? 1 }
+    /// 1 step = 1 EXP, like HGSS. Returns true on a level-up.
+    mutating func gain(_ n: Int) -> Bool {
+        let e = points + n, before = level
+        exp = e; walked = (walked ?? 0) + n; level = max(level, Mon.level(dex: dex, exp: e))
+        return level > before
+    }
+}
 /// 이로치 odds. Gen IV is 1/8192, which at a few radar fights a day would never show up.
 let shinyOdds = 128
 
@@ -25,6 +45,7 @@ struct Walk: Codable, Equatable {
     var caught: [Mon] = [], items: [String] = []        // on the walker, max 3 each
     var box: [Mon] = [], bag: [String] = []             // sent back by Connect; overflow goes straight here
     var counter: UInt32 = 0, boot: Double = 0           // system input-event counter at the last poll, and the boot it belongs to
+    var seen: [Int]? = nil, owned: [Int]? = nil         // Pokédex, sorted; Optional so older saves decode (see `dex()`)
 
     var here: Course { courses[course] }
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.
@@ -47,19 +68,53 @@ struct Walk: Codable, Equatable {
         today = 0; day = k
     }
 
-    mutating func walk(_ n: Int, at now: Date) {
+    /// Returns true when the companion levelled up.
+    @discardableResult mutating func walk(_ n: Int, at now: Date) -> Bool {
         rollover(now)
-        guard n > 0 else { return }
+        guard n > 0 else { return false }
         today += n; total += n; courseSteps += n; remainder += n
         let w = remainder / 20; remainder %= 20
         watts = min(9999, watts + w); earned += w
+        return companion.gain(n)
+    }
+
+    // MARK: Pokédex
+    mutating func see(_ d: Int) { if !(seen ?? []).contains(d) { seen = ((seen ?? []) + [d]).sorted() } }
+    mutating func own(_ d: Int) { see(d); if !(owned ?? []).contains(d) { owned = ((owned ?? []) + [d]).sorted() } }
+    /// Backfills the dex from what's already here (saves from before the Pokédex).
+    mutating func dex() { for m in [companion] + caught + box { own(m.dex) } }
+
+    // MARK: evolution
+    static func isDay(_ now: Date) -> Bool { (4..<20).contains(Calendar.current.component(.hour, from: now)) }   // HGSS morning + day
+    func allows(_ e: Evo, _ m: Mon, _ now: Date) -> Bool {
+        if let f = e.female, f != m.female { return false }
+        if let t = e.time, (t == "day") != Walk.isDay(now) { return false }
+        if let i = e.item, !(bag + items).contains(i) { return false }
+        if let p = e.party, !(caught + box).contains(where: { $0.dex == p }) { return false }
+        if let p = e.place { switch p { case "cave": if here.art != .cave { return false }; case "forest": if here.art != .forest { return false }; default: if here.name != "얼음 산길" { return false } } }
+        return true
+    }
+    /// What the companion becomes on this level-up, if anything. Several fits (Wurmple, Tyrogue): picked by its steps, fixed per moment.
+    func levelEvolution(_ now: Date) -> Evo? {
+        let m = companion
+        let fits = evolutions.filter { $0.from == m.dex && ($0.way == .level && m.level >= $0.level || $0.way == .friend && (m.walked ?? 0) >= friendSteps) && allows($0, m, now) }
+        return fits.isEmpty ? nil : fits[(m.walked ?? 0) % fits.count]
+    }
+    func stoneEvolutions(_ now: Date) -> [Evo] { evolutions.filter { $0.from == companion.dex && $0.way == .item && allows($0, companion, now) } }
+    func tradeEvolution(_ now: Date) -> Evo? { evolutions.first { $0.from == companion.dex && $0.way == .trade && allows($0, companion, now) } }
+    /// Items the companion could evolve with (for the W shop).
+    func evolutionItems() -> [String] { Array(Set(evolutions.filter { $0.from == companion.dex }.compactMap(\.item))).sorted() }
+    mutating func evolve(_ e: Evo) {
+        if let i = e.item { if let k = bag.firstIndex(of: i) { bag.remove(at: k) } else if let k = items.firstIndex(of: i) { items.remove(at: k) } }
+        companion.dex = e.to; own(e.to)
     }
 
     /// Steps = keys + clicks since the last poll. Same boot and a counter that only grew => the gap (also while the app was quit) counts;
     /// anything else (reboot, logout, first run) just re-baselines.
-    mutating func sync(counter c: UInt32, boot b: Double, at now: Date) {
-        walk(b == boot && c >= counter ? Int(c - counter) : 0, at: now)
-        counter = c; boot = b
+    /// Returns true when the companion levelled up.
+    @discardableResult mutating func sync(counter c: UInt32, boot b: Double, at now: Date) -> Bool {
+        defer { counter = c; boot = b }
+        return walk(b == boot && c >= counter ? Int(c - counter) : 0, at: now)
     }
 
     mutating func spend(_ w: Int) -> Bool { guard watts >= w else { return false }; watts -= w; return true }
@@ -75,7 +130,7 @@ struct Walk: Codable, Equatable {
     }
 
     /// Returns false when the walker was full and it went straight to the box / bag.
-    mutating func keep(_ m: Mon) -> Bool { if caught.count < 3 { caught.append(m); return true }; box.append(m); return false }
+    mutating func keep(_ m: Mon) -> Bool { own(m.dex); if caught.count < 3 { caught.append(m); return true }; box.append(m); return false }
     mutating func keep(_ i: String) -> Bool { if items.count < 3 { items.append(i); return true }; bag.append(i); return false }
     mutating func connect() { box += caught; bag += items; caught = []; items = [] }
 
