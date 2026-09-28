@@ -277,7 +277,14 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     v.screen = .beats(caughtB, [.thrown(shakes: 3), .caught], since: Date().addingTimeInterval(-30), from: caughtB); v.tick(nil)
     let chained = on(v) { if case .radar(_, _, _, 2) = $0 { return true }; return false }, ended = on(v) { if case .say = $0 { return true }; return false }
     check((chained || ended) && v.state.caught.last?.dex == 16, "a catch keeps it, then the chain goes on or quietly ends")
-    v.press(3); check(on(v) { if case .home = $0 { return true }; return false }, "⌂ goes home")
+    var hpB = Battle(wild: Mon(dex: 143, level: 30, female: false), companion: Mon(dex: 25, level: 30, female: false))
+    v.screen = .moves(hpB, sel: 0); v.press(1)
+    if case .beats(let after, _, _, let before) = v.screen {
+        check(after.theirs[0].hp < before.theirs[0].hp || after.mine[0].hp < before.mine[0].hp, "the battle kept after a turn is the one AFTER it (HP stays down next turn)")
+        v.screen = .beats(after, [.appear], since: Date().addingTimeInterval(-30), from: after); v.tick(nil)
+        if case .battle(let next, _) = v.screen { check(next.theirs[0].hp == after.theirs[0].hp && next.mine[0].hp == after.mine[0].hp, "next turn's menu shows the same HP") }
+    } else { check(false, "the battle kept after a turn is the one AFTER it (HP stays down next turn)") }
+    v.screen = .menu(0); v.press(3); check(on(v) { if case .home = $0 { return true }; return false }, "⌂ goes home")
     v.state.box = [Mon(dex: 16, level: 20, female: false)]; let wBefore = v.state.watts
     v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(2); v.press(1); v.press(2); v.press(1)
     check(v.state.box.isEmpty && v.state.watts == wBefore + 10, "box: ● 놓아주기 예 releases for level / 2 W")
