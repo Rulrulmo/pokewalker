@@ -1,4 +1,5 @@
 import AppKit
+import UserNotifications
 
 // MARK: - geometry (points; flipped view). All in device dots x PX, so the size menu scales everything.
 var PX = CGFloat(max(2, UserDefaults.standard.integer(forKey: "px")))    // 2 / 3 / 4
@@ -211,7 +212,15 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
     }
 }
 
+// MARK: - notifications (macOS banners); each kind can be switched off in the menu
+let notifyKinds = [("pet", "동료가 주워 온 것"), ("hatch", "알 부화"), ("grow", "진화 · 레벨(5의 배수)"), ("weather", "날씨 변화"), ("unlock", "해금 (코스 · 기기)")]
+func notifyOn(_ k: String) -> Bool { UserDefaults.standard.object(forKey: "notify.\(k)") as? Bool ?? true }
+final class NotifyDelegate: NSObject, UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ c: UNUserNotificationCenter, willPresent n: UNNotification) async -> UNNotificationPresentationOptions { [.banner, .list] }
+}
+
 // MARK: - screens
+var statusItem: NSStatusItem? = nil
 let menuItems = ["포켓 레이더", "다우징", "커넥트", "트레이너 카드", "포켓몬 · 도구", "상자", "도감"]
 let moveNames = ["공격", "피하기", "볼", "도망"]
 indirect enum Screen {
@@ -256,24 +265,47 @@ final class WalkerView: NSView {
         let now = Date(), before = state.total
         if state.sync(counter: WalkerView.counter(), boot: WalkerView.boot(), at: now) { levelled = true }
         if state.total != before { lastStep = now }
-        if state.weatherDue, state.rollWeather(&rng), case .home = screen { screen = .say([(state.weather ?? .sunny).news], next: .home, since: now) }
+        if state.weatherDue, state.rollWeather(&rng) {
+            let w = state.weather ?? .sunny
+            notify("weather", w.news, w.types.map { typeKo[$0] ?? $0 }.joined(separator: "·") + " 타입이 자주 나와요 · " + state.here.name)
+            if case .home = screen { screen = .say([w.news], next: .home, since: now) }
+        }
         if case .home = screen, state.eventDue {
             switch state.petEvent(&rng) {
-            case .item(let item): screen = .say([josa(monNames[state.companion.dex], "이", "가") + " 무언가를", "주워왔다!", item], next: .home, since: now)
-            case .egg: screen = .say([josa(monNames[state.companion.dex], "이", "가") + " 무언가를", "주워왔다!", "포켓몬의 알"], next: .home, since: now)
+            case .item(let item):
+                screen = .say([josa(monNames[state.companion.dex], "이", "가") + " 무언가를", "주워왔다!", item], next: .home, since: now)
+                notify("pet", josa(monNames[state.companion.dex], "이", "가") + " 무언가를 주워왔어요", item)
+            case .egg:
+                screen = .say([josa(monNames[state.companion.dex], "이", "가") + " 무언가를", "주워왔다!", "포켓몬의 알"], next: .home, since: now)
+                notify("pet", josa(monNames[state.companion.dex], "이", "가") + " 알을 주워왔어요", "앞으로 \(state.egg?.left ?? 0)걸음 걸으면 태어나요")
             case nil: if state.total > 0 { emote = (Int.random(in: 0..<3, using: &rng), now.addingTimeInterval(3)) }
             }
         }
-        if case .home = screen, state.hatchDue { let m = state.hatch(&rng); screen = .hatch(m, since: now); save(nil) }
+        if case .home = screen, state.hatchDue {
+            let m = state.hatch(&rng); screen = .hatch(m, since: now); save(nil)
+            notify("hatch", "알에서 " + josa(monNames[m.dex], "이", "가") + " 태어났어요!" + (m.shiny == true ? " ✦" : ""), m.shiny == true ? "이로치예요!" : "Lv.1 · 워커에 있어요")
+        }
+        if state.earned > unlockedAt {                                                           // lifetime watts opened a course
+            let new = courses.enumerated().filter { $0.element.watts > unlockedAt && $0.element.watts <= state.earned && state.unlocked($0.offset) }.map(\.element.name)
+            unlockedAt = state.earned
+            if let n = new.first {
+                notify("unlock", "새 코스가 열렸어요", n + " · 우클릭 → 코스")
+                if case .home = screen { screen = .say(["새 코스 해금!", n], next: .home, since: now) }
+            }
+        }
         if case .home = screen, dexCount > rewarded {                                            // Pokédex milestones: event courses and two shells
             let got = courses.filter { (rewarded + 1...dexCount).contains($0.dex) }.map { $0.name + " 코스" } + shells.filter { (rewarded + 1...dexCount).contains($0.dex) }.map { $0.name + " 기기" }
             rewarded = dexCount
-            if let g = got.first { screen = .say(["도감 \(dexCount)종 달성!", g + " 해금"] + got.dropFirst().prefix(1), next: .home, since: now) }
+            if let g = got.first { screen = .say(["도감 \(dexCount)종 달성!", g + " 해금"] + got.dropFirst().prefix(1), next: .home, since: now); notify("unlock", "도감 \(dexCount)종 달성!", got.joined(separator: " · ") + " 해금") }
         }
         if levelled, case .home = screen {                                                    // shown when it's back home, not mid-menu
             levelled = false
-            if let e = state.levelEvolution(now) { startEvolving(e, now) }
-            else { screen = .say(["레벨 업!", monNames[state.companion.dex] + " Lv.\(state.companion.level)"], next: .home, since: now) }
+            let name = monNames[state.companion.dex]
+            if let e = state.levelEvolution(now) { startEvolving(e, now); notify("grow", "어라...? " + josa(name, "의", "의") + " 모습이...!", josa(name, "이", "가") + " " + josa(monNames[e.to], "으로", "로") + " 진화했어요!") }
+            else {
+                screen = .say(["레벨 업!", name + " Lv.\(state.companion.level)"], next: .home, since: now)
+                if state.companion.level % 5 == 0 { notify("grow", "레벨 업!", name + " Lv.\(state.companion.level)") }
+            }
         }
         switch screen {
         case .radar(_, _, let since, let chain) where now.timeIntervalSince(since) > 1.5 + radarWindow(chain):
@@ -287,6 +319,8 @@ final class WalkerView: NSView {
         default: break
         }
         if now.timeIntervalSince(lastSave) > 60 { save(nil) }
+        updateStatus()
+        guard window?.isVisible ?? true else { return }                                         // hidden in the menu bar: rules keep running, nothing to draw
         let fb = compose(now)
         if fb.px != shown?.px || fb.col != shown?.col || now.timeIntervalSince(pressedAt) < 0.3 { shown = fb; needsDisplay = true }   // idle home = ~2 redraws a second
     }
@@ -300,7 +334,13 @@ final class WalkerView: NSView {
         }
     }
     func radarWindow(_ chain: Int) -> Double { max(0.8, 2.0 - 0.25 * Double(chain)) }
-    var persist = true                                                     // false in --selftest: flows must never touch the real save
+    var persist = true                                                     // false in --selftest: flows must never touch the real save (nor notify)
+    lazy var unlockedAt = state.earned                                     // lifetime watts already announced
+    func notify(_ kind: String, _ title: String, _ body: String) {
+        guard persist, notifyOn(kind) else { return }
+        let c = UNMutableNotificationContent(); c.title = title; c.body = body
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
+    }
     @objc func save(_ sender: Any?) { guard persist else { return }; Store.save(state); lastSave = Date() }
     func startEvolving(_ e: Evo, _ now: Date) { let from = state.companion; state.evolve(e); screen = .evolve(from: from, to: state.companion, since: now); save(nil) }
     var seenList: [Int] { Array(Set((state.seen ?? []) + (state.owned ?? []))).sorted() }
@@ -642,8 +682,10 @@ final class WalkerView: NSView {
     override var acceptsFirstResponder: Bool { true }
     override func resetCursorRects() { addCursorRect(lcdRect, cursor: .pointingHand); for b in buttons { addCursorRect(NSRect(x: b.c.x - b.r, y: b.c.y - b.r, width: 2 * b.r, height: 2 * b.r), cursor: .pointingHand) } }
 
-    override func menu(for event: NSEvent) -> NSMenu? {
+    override func menu(for event: NSEvent) -> NSMenu? { buildMenu() }
+    func buildMenu() -> NSMenu {
         let m = NSMenu()
+        m.addItem(withTitle: window?.isVisible == false ? "워커 보이기" : "메뉴 막대로 숨기기", action: #selector(toggleShown(_:)), keyEquivalent: "").target = self
         m.addItem(withTitle: "\(state.here.name) · 오늘 \(state.today)걸음 · \(state.watts)W", action: nil, keyEquivalent: "")
         m.addItem(.separator())
         let ch = m.addItem(withTitle: "코스 · \(state.here.name)", action: nil, keyEquivalent: ""), cm = NSMenu()
@@ -690,8 +732,29 @@ final class WalkerView: NSView {
         sub("기기", shells.enumerated().map { ($1.dex > dexCount ? "\($1.name) — 도감 \($1.dex)" : $1.name, $0) }, theme, #selector(setTheme(_:)))
         sub("화면", lcds.enumerated().map { ($1.name, $0) }, lcdStyle, #selector(setLCD(_:)))
         m.addItem(.separator())
+        let nh = m.addItem(withTitle: "알림", action: nil, keyEquivalent: ""), nm = NSMenu()
+        for (i, (k, name)) in notifyKinds.enumerated() { let it = nm.addItem(withTitle: name, action: #selector(toggleNotify(_:)), keyEquivalent: ""); it.target = self; it.tag = i; it.state = notifyOn(k) ? .on : .off }
+        nh.submenu = nm
+        m.addItem(.separator())
         m.addItem(withTitle: "종료", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q").target = NSApp
         return m
+    }
+    @objc func toggleNotify(_ i: NSMenuItem) { let k = notifyKinds[i.tag].0; UserDefaults.standard.set(!notifyOn(k), forKey: "notify.\(k)") }
+    /// Walker <-> menu bar. Hiding parks it on the home screen so the events (which wait for home) keep coming.
+    @objc func toggleShown(_ sender: Any?) {
+        guard let w = window else { return }
+        if w.isVisible { screen = .home; w.orderOut(nil) } else { shown = nil; w.orderFrontRegardless() }
+        UserDefaults.standard.set(!w.isVisible, forKey: "hidden")
+    }
+    var lastStatus = ""
+    func updateStatus() {
+        let s = "\(state.today)" + (state.egg.map { $0.left < 500 ? " ·알" : "" } ?? "")
+        if s != lastStatus { lastStatus = s; statusItem?.button?.title = " " + s }
+    }
+    @objc func statusClick(_ sender: Any?) {
+        if NSApp.currentEvent?.type == .rightMouseUp || NSApp.currentEvent?.modifierFlags.contains(.control) == true {
+            statusItem?.menu = buildMenu(); statusItem?.button?.performClick(nil); statusItem?.menu = nil   // pop the menu once, keep left-click as the toggle
+        } else { toggleShown(nil) }
     }
     @objc func setCourse(_ i: NSMenuItem) { state.setCourse(i.tag, &rng); screen = .say(["커넥트 완료", state.here.name], next: .home, since: Date()); save(nil) }
     let price = 1000
@@ -781,6 +844,25 @@ if CommandLine.arguments.contains("--selftest") { exit(selftest() ? 0 : 1) }    
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let view = WalkerView(state: Store.load())
+let notifyDelegate = NotifyDelegate()
+UNUserNotificationCenter.current().delegate = notifyDelegate
+UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { @Sendable _, _ in }   // called off the main thread
+statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+if let b = statusItem?.button {
+    b.image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { r in                   // a Poké Ball, as a template so it follows the bar's colour
+        let o = NSBezierPath(ovalIn: r.insetBy(dx: 1.5, dy: 1.5)); o.lineWidth = 1.6; NSColor.black.setStroke(); o.stroke()
+        let top = NSBezierPath(); top.appendArc(withCenter: NSPoint(x: 8, y: 8), radius: 6.5, startAngle: 0, endAngle: 180); top.close(); NSColor.black.setFill(); top.fill()
+        NSColor.black.setFill(); NSRect(x: 1.5, y: 7.2, width: 13, height: 1.6).fill()
+        NSColor.white.setFill(); NSBezierPath(ovalIn: NSRect(x: 5.6, y: 5.6, width: 4.8, height: 4.8)).fill()
+        let btn = NSBezierPath(ovalIn: NSRect(x: 5.6, y: 5.6, width: 4.8, height: 4.8)); btn.lineWidth = 1.4; NSColor.black.setStroke(); btn.stroke()
+        return true
+    }
+    b.image?.isTemplate = true
+    b.imagePosition = .imageLeft
+    b.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+    b.target = view; b.action = #selector(WalkerView.statusClick(_:)); b.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    b.toolTip = "PokeWalker — 클릭: 보이기/숨기기 · 우클릭: 메뉴"
+}
 view.state.dex()
 view.levelled = view.state.sync(counter: WalkerView.counter(), boot: WalkerView.boot(), at: Date())      // steps typed while the app was quit (same login) count
 view.save(nil)
@@ -797,7 +879,7 @@ if !panel.setFrameUsingName("pokewalker"), let s = NSScreen.screens.first {
 }
 panel.setFrameAutosaveName("pokewalker")
 panel.setContentSize(devSize)
-panel.orderFrontRegardless()
+if !UserDefaults.standard.bool(forKey: "hidden") { panel.orderFrontRegardless() }
 panel.makeFirstResponder(view)
 
 let timer = Timer(timeInterval: 0.1, target: view, selector: #selector(WalkerView.tick(_:)), userInfo: nil, repeats: true)
