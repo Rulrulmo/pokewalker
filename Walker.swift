@@ -10,7 +10,9 @@ struct Course {
     let extra: [Slot]                    // not in the original: 2 more per group, same steps / chance as the group (A A B B C C)
     let guests: [Int]                    // not in the original: habitat visitors, 10 % of radar finds
     let items: [Find]
-    var all: [Slot] { slots + extra }    // picks index this: group g = slots 2g, 2g+1, 6+2g, 6+2g+1
+    var all: [Slot] { slots + extra }
+    func group(_ g: Int) -> [Slot] { [slots[2 * g], slots[2 * g + 1], extra[2 * g], extra[2 * g + 1]] }   // A = 0, B = 1, C = 2
+    func group(of s: Slot) -> Int? { (0..<3).first { group($0).contains { $0.dex == s.dex && $0.steps == s.steps && $0.level == s.level } } }
 }
 let guestOdds = 0.10   // slots: A A B B C C, items rarest first; dex = Pokédex count (event courses)
 
@@ -90,7 +92,6 @@ struct Walk: Codable, Equatable {
     var version = 1
     var companion = Mon(dex: 25, level: 5, female: false)
     var course = 0
-    var picks = [0, 2, 4]                  // the one slot per group A/B/C this pairing carries; rerolled on every course change
     var courseSteps = 0                    // since the course was set; gates the rarer slots and items
     var today = 0, total = 0, watts = 0, earned = 0     // earned = lifetime watts (unlocks courses); watts = spendable, max 9999
     var remainder = 0                      // steps towards the next watt (20 per watt)
@@ -303,21 +304,27 @@ struct Walk: Codable, Equatable {
 
     mutating func spend(_ w: Int) -> Bool { guard watts >= w else { return false }; watts -= w; return true }
 
-    /// The walker's draw: rarest carried slot first, "far enough and rand(100) < chance" wins, the commonest is the fallback.
-    /// chain = radar chain length: each link makes the A/B slots 20 % likelier (up to 8 links). Boosts (chain, weather) stop at 90 % so it never
-    /// collapses onto one species (a 75 % B slot used to hit 100 % at 2 links and shut the rest out).
+    /// The draw: 10 % a habitat guest; else the walker's own order, rarest group first — "some of its candidates are far enough and
+    /// rand(100) < their mean chance" picks the group — and then any candidate of it that's far enough, the weather's types 1.5x as likely.
+    /// chain = radar chain length: +20 % per link on the A/B groups (up to 8 links), stopping at 90 % so no group shuts the rest out.
     func encounter<R: RandomNumberGenerator>(_ r: inout R, chain: Int = 0, guests: Bool = true) -> Slot {
-        if guests, !here.guests.isEmpty, Double.random(in: 0..<1, using: &r) < guestOdds {       // a visitor from the habitat, at the C group's level + 2
+        if guests, !here.guests.isEmpty, Double.random(in: 0..<1, using: &r) < guestOdds {       // a visitor, at the C group's level + 2
             return Slot(dex: here.guests.randomElement(using: &r)!, level: here.slots[4].level + 2, steps: 0, chance: 100, female: Bool.random(using: &r))
         }
         let boost = (weather ?? .sunny).types
-        for (g, i) in picks.enumerated() {
-            let s = here.all[i], rare = g < 2 ? 1 + 0.2 * Double(min(chain, 8)) : 1
-            let boosted = s.chance * rare * (monTypes[s.dex].contains { boost.contains($0) } ? 1.5 : 1)
-            let chance = boosted > s.chance ? min(boosted, max(s.chance, 90)) : s.chance
-            if effSteps >= s.steps, Double.random(in: 0..<100, using: &r) < chance { return s }
+        func pick(_ c: [Slot]) -> Slot {
+            let w = c.map { monTypes[$0.dex].contains { boost.contains($0) } ? 1.5 : 1.0 }
+            var k = Double.random(in: 0..<w.reduce(0, +), using: &r)
+            for (s, x) in zip(c, w) { if k < x { return s }; k -= x }
+            return c.last!
         }
-        return here.all[picks[2]]
+        for g in 0..<2 {
+            let c = here.group(g).filter { effSteps >= $0.steps }
+            guard !c.isEmpty else { continue }
+            let mean = c.map(\.chance).reduce(0, +) / Double(c.count)
+            if Double.random(in: 0..<100, using: &r) < min(mean * (1 + 0.2 * Double(min(chain, 8))), max(mean, 90)) { return pick(c) }
+        }
+        return pick(here.group(2).filter { effSteps >= $0.steps })
     }
     func dowse<R: RandomNumberGenerator>(_ r: inout R) -> String {
         for f in here.items { if effSteps >= f.steps, Int.random(in: 0..<100, using: &r) < f.chance { return f.item } }
@@ -330,10 +337,8 @@ struct Walk: Codable, Equatable {
     mutating func connect() { box += caught; bag += items; caught = []; items = [] }
 
     mutating func setCourse<R: RandomNumberGenerator>(_ i: Int, _ r: inout R) {
-        connect(); course = i; courseSteps = 0; newGrass(&r)
+        connect(); course = i; courseSteps = 0
     }
-    /// Which of each group's two the grass holds: rolled on every pairing and every new game day (with the weather).
-    mutating func newGrass<R: RandomNumberGenerator>(_ r: inout R) { picks = (0..<3).map { g in [2 * g, 2 * g + 1, 6 + 2 * g, 7 + 2 * g].randomElement(using: &r)! } }
     /// Walk with box[i] (or, onWalker, caught[i]) instead; the old companion takes its place. Course progress stays
     /// (the real device re-pairs and restarts the course, which just punishes trying a new partner).
     mutating func pair(_ i: Int, onWalker: Bool = false) {
