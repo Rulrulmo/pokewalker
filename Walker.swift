@@ -83,10 +83,12 @@ struct Walk: Codable, Equatable {
         connect(); course = i; courseSteps = 0
         picks = [Int.random(in: 0...1, using: &r), Int.random(in: 2...3, using: &r), Int.random(in: 4...5, using: &r)]
     }
-    /// Walk with box[i] instead; the old companion goes into the box. A new pairing, so the course restarts too.
-    mutating func pair<R: RandomNumberGenerator>(_ i: Int, _ r: inout R) {
-        let m = box.remove(at: i); box.insert(companion, at: i); companion = m
-        setCourse(course, &r)
+    /// Walk with box[i] (or, onWalker, caught[i]) instead; the old companion takes its place. Course progress stays
+    /// (the real device re-pairs and restarts the course, which just punishes trying a new partner).
+    mutating func pair(_ i: Int, onWalker: Bool = false) {
+        let m = onWalker ? caught[i] : box[i]
+        if onWalker { caught[i] = companion } else { box[i] = companion }
+        companion = m
     }
 }
 

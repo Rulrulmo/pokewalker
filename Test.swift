@@ -69,7 +69,9 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     w.connect(); check(w.caught.isEmpty && w.items.isEmpty && w.box.count == 4 && w.bag.count == 4, "connect empties the walker")
     w.courseSteps = 900; w.setCourse(3, &r)
     check(w.course == 3 && w.courseSteps == 0 && [0, 1].contains(w.picks[0]) && [2, 3].contains(w.picks[1]) && [4, 5].contains(w.picks[2]), "new course: steps restart, one pick per group")
-    w.pair(0, &r); check(w.companion.dex == 4 && w.box[0].dex == 25, "pair swaps the companion with the box")
+    w.courseSteps = 700; w.pair(0); check(w.companion.dex == 4 && w.box[0].dex == 25 && w.courseSteps == 700, "pair swaps with the box, course progress kept")
+    _ = w.keep(Mon(dex: 16, level: 5, female: false)); w.pair(0, onWalker: true)
+    check(w.companion.dex == 16 && w.caught[0].dex == 4, "pair with a Pokémon still on the walker")
     check(Walk().unlocked(1) && !Walk().unlocked(2), "courses unlock by lifetime watts")
 
     // 7 battle

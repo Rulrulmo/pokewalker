@@ -271,7 +271,13 @@ final class WalkerView: NSView {
             } else if tries == 1 { screen = .say(["아무것도", "없었다..."], next: .home, since: now) }
             else { screen = .dowse(cursor: c, prize: prize, tries: 1, hint: abs(c - prize) == 1 ? "가깝다!" : "멀다...") }
         case .card(let p): screen = k == 1 ? .menu(3) : .card((p + 1) % 2)
-        case .bag(let p): let n = bagPages; screen = k == 1 ? .menu(4) : .bag((p + (k == 0 ? n - 1 : 1)) % n)
+        case .bag(let p):
+            let n = bagPages
+            if k != 1 { screen = .bag((p + (k == 0 ? n - 1 : 1)) % n) }
+            else if state.caught.indices.contains(p), p < n - 1 {                           // ● on a Pokémon: walk with it
+                state.pair(p, onWalker: true)
+                screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: now)
+            } else { screen = .menu(4) }
         case .say(_, let next, _): screen = next
         case .beats: break
         }
@@ -349,7 +355,11 @@ final class WalkerView: NSView {
             let m = p < bagPages - 1 ? state.caught[safe: p] : nil
             header(m.map { ($0.shiny == true ? "★" : "") + monNames[$0.dex] + " Lv.\($0.level)" } ?? (p < bagPages - 1 ? "포켓몬" : "도구"))
             if p < bagPages - 1 {
-                if let m { fb.mon(m, half, 16, 14); fb.text("\(p + 1)/\(state.caught.count)", 94, 54, 2, right: true, small: true) }
+                if let m {
+                    fb.mon(m, half, 0, 14)
+                    fb.text("\(p + 1)/\(state.caught.count)", 94, 15, 2, right: true, small: true)
+                    fb.text("●", 80, 32, 3, center: false); fb.text("함께", 94, 42, 2, right: true, small: true); fb.text("걷기", 94, 51, 2, right: true, small: true)
+                }
                 else { fb.text("없음", 0, 30, 2, center: true) }
             } else {
                 if state.items.isEmpty { fb.text("없음", 0, 30, 2, center: true) }
@@ -482,8 +492,10 @@ final class WalkerView: NSView {
         }
         ch.submenu = cm
         let ph = m.addItem(withTitle: "함께 걷기 · \(state.companion.shiny == true ? "★ " : "")\(monNames[state.companion.dex])", action: nil, keyEquivalent: ""), pm = NSMenu()
-        if state.box.isEmpty { pm.addItem(withTitle: "상자가 비어 있다", action: nil, keyEquivalent: "") }
-        for (i, b) in state.box.enumerated() { let it = pm.addItem(withTitle: "\(b.shiny == true ? "★ " : "")\(monNames[b.dex]) Lv.\(b.level)", action: #selector(pair(_:)), keyEquivalent: ""); it.target = self; it.tag = i }
+        if state.box.isEmpty && state.caught.isEmpty { pm.addItem(withTitle: "잡은 포켓몬이 없다", action: nil, keyEquivalent: "") }
+        for (tag, b, whereIs) in state.caught.enumerated().map({ (-1 - $0, $1, " · 워커") }) + state.box.enumerated().map({ ($0, $1, "") }) {   // tag < 0 = on the walker
+            let it = pm.addItem(withTitle: "\(b.shiny == true ? "★ " : "")\(monNames[b.dex]) Lv.\(b.level)\(whereIs)", action: #selector(pair(_:)), keyEquivalent: ""); it.target = self; it.tag = tag
+        }
         ph.submenu = pm
         if !state.bag.isEmpty {
             let bh = m.addItem(withTitle: "가방 · \(state.bag.count)개", action: nil, keyEquivalent: ""), bm = NSMenu()
@@ -504,7 +516,11 @@ final class WalkerView: NSView {
         return m
     }
     @objc func setCourse(_ i: NSMenuItem) { state.setCourse(i.tag, &rng); screen = .say(["커넥트 완료", state.here.name], next: .home, since: Date()); save(nil) }
-    @objc func pair(_ i: NSMenuItem) { guard state.box.indices.contains(i.tag) else { return }; state.pair(i.tag, &rng); screen = .say(["커넥트 완료", josa(monNames[state.companion.dex], "과", "와") + " 함께"], next: .home, since: Date()); save(nil) }
+    @objc func pair(_ i: NSMenuItem) {
+        if i.tag < 0 { guard state.caught.indices.contains(-1 - i.tag) else { return }; state.pair(-1 - i.tag, onWalker: true) }
+        else { guard state.box.indices.contains(i.tag) else { return }; state.pair(i.tag) }
+        screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: Date()); save(nil)
+    }
     @objc func setSize(_ item: NSMenuItem) {                     // keeps the top-right corner
         guard let w = window else { return }
         var f = w.frame; f.origin.x += f.width - CGFloat(item.tag) * dev.w; f.origin.y += f.height - CGFloat(item.tag) * dev.h
