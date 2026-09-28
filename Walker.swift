@@ -97,15 +97,32 @@ extension DateFormatter {
 // MARK: - battle: 4 HP each; attack / evade / throw a ball / run
 enum Move: Int, CaseIterable { case attack, evade, capture, run }
 enum Beat: Equatable {
+    case appear                                      // the encounter itself (plays before the first menu)
     case hit(crit: Bool), missed                     // our attack
     case struck, dodged                              // its attack: landed / we evaded it
     case thrown, broke, caught, fled, ran            // ball, ball broke free, got it, it ran, we ran
     case won, lost                                   // it fainted (no catch), we fainted
     var ends: Bool { [.caught, .fled, .ran, .won, .lost].contains(self) }
+    var length: Double {                             // seconds on screen
+        switch self {
+        case .appear: 1.6
+        case .broke: 2.0
+        case .caught: 2.6
+        case .thrown: 1.25
+        case .won, .lost: 1.4
+        default: 1.2
+        }
+    }
 }
 struct Battle: Equatable {
     var wild: Mon
     var wildHP = 4, myHP = 4
+
+    /// Replays one beat's HP effect (the UI shows HP dropping mid-exchange, not all at once).
+    mutating func apply(_ b: Beat) {
+        if case .hit(let crit) = b { wildHP = max(0, wildHP - (crit ? 2 : 1)) }
+        if b == .struck { myHP = max(0, myHP - 1) }
+    }
 
     /// One exchange. The last beat `ends` the battle when it's over.
     mutating func act<R: RandomNumberGenerator>(_ m: Move, _ r: inout R) -> [Beat] {

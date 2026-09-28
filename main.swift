@@ -61,25 +61,35 @@ let bang = art(["##", "##", "##", "##", "__", "##"])
 let ball = art(["__###__", "_#:::#_", "#:::::#", "###.###", "#.....#", "_#...#_", "__###__"])
 let foot = art(["_##_##", "_##_##", "______", "#####_", "######", "_####_"])
 let gem = art(["_#_", "#:#", "_#_"])
+let ballTilt = [art(["_###___", "#:::#__", "#::::#_", "##.####", "_#....#", "_#...#_", "__###__"]), art(["___###_", "__#:::#", "_#::::#", "####.##", "#....#_", "_#...#_", "__###__"])]
+let burstArt = art(["#___#___#", "_#__#__#_", "__#___#__", "___###___", "###_#_###", "___###___", "__#___#__", "_#__#__#_", "#___#___#"])
 let spark = art(["__#__", "__#__", "##:##", "__#__", "__#__"])
 let sparkPal = [rgb(255, 236, 120), rgb(255, 236, 120), rgb(255, 250, 200), rgb(250, 190, 40)]
 let pip = (full: art(["###", "###", "###"]), empty: art(["###", "# #", "###"]))
 
-/// Korean text through CoreText, thresholded to dots (the device font would need a glyph table for every syllable).
+/// Galmuri (OFL, a pixel font drawn after the Nintendo DS system font) at its native sizes, so every glyph lands on whole dots.
+let fontsReady: Bool = {
+    for f in ["Galmuri9", "Galmuri7"] { if let u = Bundle.main.url(forResource: f, withExtension: "ttf") { CTFontManagerRegisterFontsForURL(u as CFURL, .process, nil) } }
+    return true
+}()
 var textCache: [String: [[Bool]]] = [:]
-@MainActor func textDots(_ s: String) -> [[Bool]] {
-    if let t = textCache[s] { return t }
-    let font = NSFont(name: "AppleSDGothicNeo-Medium", size: 11) ?? .systemFont(ofSize: 11)
+/// 11 rows (Galmuri9 10 px) or, small, 9 rows (Galmuri7 8 px); baseline one row up from the bottom.
+@MainActor func textDots(_ s: String, small: Bool = false) -> [[Bool]] {
+    let key = (small ? "s|" : "m|") + s
+    if let t = textCache[key] { return t }
+    _ = fontsReady
+    let size: CGFloat = small ? 8 : 10, h = small ? 9 : 11
+    let font = NSFont(name: small ? "Galmuri7" : "Galmuri9", size: size) ?? .systemFont(ofSize: size)
     let line = CTLineCreateWithAttributedString(NSAttributedString(string: s, attributes: [.font: font, NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true]))
-    let w = max(1, Int(ceil(CTLineGetTypographicBounds(line, nil, nil, nil)))), h = 11
+    let w = max(1, Int(ceil(CTLineGetTypographicBounds(line, nil, nil, nil))))
     var px = [UInt8](repeating: 0, count: w * h)
     px.withUnsafeMutableBytes { buf in
         let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0)!
         ctx.setShouldAntialias(false); ctx.setShouldSmoothFonts(false); ctx.setFillColor(gray: 1, alpha: 1)
-        ctx.textPosition = CGPoint(x: 0, y: 2); CTLineDraw(line, ctx)
+        ctx.textPosition = CGPoint(x: 0, y: 1); CTLineDraw(line, ctx)
     }
     let t = (0..<h).map { y in (0..<w).map { px[y * w + $0] > 127 } }
-    textCache[s] = t; return t
+    textCache[key] = t; return t
 }
 /// 을/를, 이/가, 은/는 by the last syllable's final consonant.
 func josa(_ w: String, _ with: String, _ without: String) -> String {
@@ -92,9 +102,11 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
     var col = [UInt32](repeating: 0, count: 96 * 64)                      // colour LCD only: 0 = use the shade
     mutating func set(_ x: Int, _ y: Int, _ s: UInt8, _ c: UInt32 = 0) { if (0..<96).contains(x), (0..<64).contains(y) { px[y * 96 + x] = s; col[y * 96 + x] = c } }
     mutating func fill(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ s: UInt8) { for yy in y..<y + h { for xx in x..<x + w { set(xx, yy, s) } } }
-    mutating func draw(_ a: [[UInt8?]], _ x: Int, _ y: Int, _ pal: [UInt32]? = nil) { for (dy, r) in a.enumerated() { for (dx, s) in r.enumerated() { if let s { set(x + dx, y + dy, s, pal?[Int(s)] ?? 0) } } } }
+    mutating func draw(_ a: [[UInt8?]], _ x: Int, _ y: Int, _ pal: [UInt32]? = nil, scale k: Int = 1) {
+        for (dy, r) in a.enumerated() { for (dx, s) in r.enumerated() { if let s { for i in 0..<k * k { set(x + dx * k + i % k, y + dy * k + i / k, s, pal?[Int(s)] ?? 0) } } } }
+    }
     /// Large = 64x48; small = 32x24, each dot the darkest of its 2x2 (and that dot's colour). Grey shade 0 is see-through; in colour the white body isn't.
-    mutating func mon(_ m: Mon, _ f: Int, _ x: Int, _ y: Int, small: Bool = false, flip: Bool = false) {
+    mutating func mon(_ m: Mon, _ f: Int, _ x: Int, _ y: Int, small: Bool = false, flip: Bool = false, flash: Bool = false) {   // flash = red silhouette (into / out of the ball)
         let k = small ? 2 : 1, shiny = m.shiny == true
         for sy in 0..<48 / k { for sx in 0..<64 / k {
             var s: UInt8 = 0, c: UInt32 = 0
@@ -104,11 +116,16 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
                 if c == 0 { c = vc }
             } }
             let X = x + (flip ? 64 / k - 1 - sx : sx), Y = y + sy
-            if s > 0 || c != 0, (0..<96).contains(X), (0..<64).contains(Y) { if s > 0 { px[Y * 96 + X] = s }; col[Y * 96 + X] = c }
+            if s > 0 || c != 0, (0..<96).contains(X), (0..<64).contains(Y) {
+                if flash { px[Y * 96 + X] = 2; col[Y * 96 + X] = rgb(238, 84, 72) } else { if s > 0 { px[Y * 96 + X] = s }; col[Y * 96 + X] = c }
+            }
         } }
     }
-    @discardableResult mutating func text(_ s: String, _ x: Int, _ y: Int, _ shade: UInt8 = 3, center: Bool = false, right: Bool = false) -> Int {
-        let t = textDots(s), w = t.first?.count ?? 0, x0 = center ? (96 - w) / 2 : right ? x - w : x
+    /// Too wide for the screen => the small font, one row lower so baselines match.
+    @discardableResult mutating func text(_ s: String, _ x: Int, _ y: Int, _ shade: UInt8 = 3, center: Bool = false, right: Bool = false, small: Bool = false) -> Int {
+        var t = textDots(s, small: small), y = y + (small ? 1 : 0)
+        if !small, (t.first?.count ?? 0) > 94 { t = textDots(s, small: true); y += 1 }
+        let w = t.first?.count ?? 0, x0 = center ? (96 - w) / 2 : right ? x - w : x
         for (dy, r) in t.enumerated() { for (dx, on) in r.enumerated() where on { set(x0 + dx, y + dy, shade) } }
         return w
     }
@@ -170,7 +187,7 @@ indirect enum Screen {
     case menu(Int)
     case radar(bush: Int, cursor: Int, since: Date)                    // "!" shows on `bush` 1.5 ... 3.5 s after `since`
     case battle(Battle, sel: Int)
-    case beats(Battle, [Beat], since: Date)                            // one exchange playing out, 1.2 s per beat
+    case beats(Battle, [Beat], since: Date, from: Battle)              // one exchange playing out; `from` = HP before it
     case dowse(cursor: Int, prize: Int, tries: Int, hint: String?)
     case card(Int), bag(Int)
     case say([String], next: Screen, since: Date)                      // any button or 3 s
@@ -201,7 +218,7 @@ final class WalkerView: NSView {
         switch screen {
         case .radar(_, _, let since) where now.timeIntervalSince(since) > 3.5:
             screen = .say(["...!", "사라져버렸다"], next: .home, since: now)
-        case .beats(let bt, let beats, let since) where now.timeIntervalSince(since) >= 1.2 * Double(beats.count):
+        case .beats(let bt, let beats, let since, _) where now.timeIntervalSince(since) >= beats.map(\.length).reduce(0, +):
             screen = beats.last!.ends ? after(bt, beats.last!, now) : .battle(bt, sel: 0)
         case .say(_, let next, let since) where now.timeIntervalSince(since) > 3: screen = next
         case .menu, .card, .bag: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
@@ -213,7 +230,7 @@ final class WalkerView: NSView {
     func after(_ b: Battle, _ end: Beat, _ now: Date) -> Screen {
         let name = monNames[b.wild.dex]
         switch end {
-        case .caught: return .say(state.keep(b.wild) ? [josa(name, "을", "를"), "잡았다!"] : [josa(name, "을", "를") + " 잡았다!", "상자로 보냈다"], next: .home, since: now)
+        case .caught: return state.keep(b.wild) ? .home : .say([josa(name, "은", "는"), "상자로 보냈다"], next: .home, since: now)
         default: return .home
         }
     }
@@ -241,11 +258,11 @@ final class WalkerView: NSView {
             let u = now.timeIntervalSince(since)
             if c == b, u >= 1.5 {
                 let s = state.encounter(&rng), m = Mon(dex: s.dex, level: s.level, female: s.female, shiny: Int.random(in: 0..<shinyOdds, using: &rng) == 0 ? true : nil)
-                screen = .say((m.shiny == true ? ["✦ 반짝! ✦"] : []) + ["야생 " + josa(monNames[s.dex], "이", "가"), "튀어나왔다!"], next: .battle(Battle(wild: m), sel: 0), since: now)
+                let b = Battle(wild: m); screen = .beats(b, [.appear], since: now, from: b)
             } else { screen = .say(["아무것도", "없었다..."], next: .home, since: now) }
         case .battle(var b, let sel):
             if k == 0 { screen = .battle(b, sel: (sel + 3) % 4) } else if k == 2 { screen = .battle(b, sel: (sel + 1) % 4) }
-            else { let beats = b.act(Move(rawValue: sel)!, &rng); screen = .beats(b, beats, since: now) }
+            else { let from = b, beats = b.act(Move(rawValue: sel)!, &rng); screen = .beats(b, beats, since: now, from: from) }
         case .dowse(let c, let prize, let tries, _):
             if k != 1 { screen = .dowse(cursor: (c + (k == 0 ? 5 : 1)) % 6, prize: prize, tries: tries, hint: nil); return }
             if c == prize {
@@ -254,7 +271,7 @@ final class WalkerView: NSView {
             } else if tries == 1 { screen = .say(["아무것도", "없었다..."], next: .home, since: now) }
             else { screen = .dowse(cursor: c, prize: prize, tries: 1, hint: abs(c - prize) == 1 ? "가깝다!" : "멀다...") }
         case .card(let p): screen = k == 1 ? .menu(3) : .card((p + 1) % 2)
-        case .bag(let p): screen = k == 1 ? .menu(4) : .bag((p + 1) % 2)
+        case .bag(let p): let n = bagPages; screen = k == 1 ? .menu(4) : .bag((p + (k == 0 ? n - 1 : 1)) % n)
         case .say(_, let next, _): screen = next
         case .beats: break
         }
@@ -274,13 +291,13 @@ final class WalkerView: NSView {
     func compose(_ now: Date) -> FB {
         var fb = FB()
         let t = now.timeIntervalSinceReferenceDate, half = Int(t * 2) % 2, me = state.companion
-        func header(_ title: String) { fb.text(title, 2, 0); fb.text("\(state.watts)W", 94, 0, 2, right: true); fb.fill(0, 12, 96, 1, 2) }
+        func header(_ title: String) { fb.text(title, 2, 0); fb.text("\(state.watts)W", 94, 1, 2, right: true, small: true); fb.fill(0, 12, 96, 1, 2) }
         switch screen {
         case .home:
             let f = now.timeIntervalSince(lastStep) < 3 ? half : Int(t) % 2        // steps coming in => walks twice as fast
             fb.mon(me, f, 32, 0)
             fb.course(state.here.art, 1, 22)
-            fb.text("\(state.watts)W", 1, 0, 2)
+            fb.text("\(state.watts)W", 1, 1, 2, small: true)
             for i in 0..<state.caught.count { fb.draw(ball, 1 + 8 * i, 13, ballPal) }
             for i in 0..<state.items.count { fb.draw(gem, 26 + 4 * i, 15, gemPal) }
             fb.fill(0, 49, 96, 1, 2)
@@ -291,7 +308,7 @@ final class WalkerView: NSView {
             fb.text(menuItems[i], 0, 20, center: true)
             let sub = [" 10W", " 3W", "상자로 보내기", "", ""][i]
             if !sub.isEmpty { fb.text(sub.trimmingCharacters(in: .whitespaces), 0, 34, 2, center: true) }
-            fb.text("\(state.watts)W", 94, 0, 2, right: true)
+            fb.text("\(state.watts)W", 94, 1, 2, right: true, small: true)
             for k in 0..<menuItems.count { fb.fill(36 + 5 * k, 58, 3, 3, k == i ? 3 : 1) }
         case .radar(let b, let c, let since):
             let u = now.timeIntervalSince(since), live = (1.5...3.5).contains(u)
@@ -302,14 +319,16 @@ final class WalkerView: NSView {
                 if k == c { fb.text("▶", x - 2, y, 3, right: true) }
             }
         case .battle(let b, let sel):
-            battleScene(&fb, b, now, blinkWild: false, blinkMe: false, ballOut: false)
-            var x = 1
-            for (k, n) in moveNames.enumerated() { let w = fb.text(n, x + 1, 52); if k == sel { fb.invert(x, 52, w + 2, 12) }; x += w + 4 }
-        case .beats(let b, let beats, let since):
-            let i = min(beats.count - 1, Int(now.timeIntervalSince(since) / 1.2)), beat = beats[i], blink = Int(t * 8) % 2 == 0
-            battleScene(&fb, b, now, blinkWild: blink && (beat == .hit(crit: false) || beat == .hit(crit: true)), blinkMe: blink && beat == .struck,
-                        ballOut: [.thrown, .caught].contains(beat), gone: [.won, .fled, .ran].contains(beat) ? .wild : beat == .lost ? .me : nil)
-            fb.text(line(beat, b), 2, 52)
+            stage(&fb, b, now, .idle(b.wild))
+            for (k, r) in moveRanges().enumerated() { fb.text(moveNames[k], r.lowerBound + 1, 52); if k == sel { fb.invert(r.lowerBound, 52, r.count, 12) } }
+        case .beats(_, let beats, let since, let from):
+            var u = now.timeIntervalSince(since), i = 0
+            while i < beats.count - 1, u >= beats[i].length { u -= beats[i].length; i += 1 }
+            var hp = from                                                                        // HP as of this moment in the exchange
+            for (k, bt) in beats.enumerated() where k < i || (k == i && u >= 0.45) { hp.apply(bt) }
+            stage(&fb, hp, now, pose(beats[i], u, from.wild))
+            fb.text(message(beats[i], u, from.wild), 2, 52)
+            if beats[i] == .hit(crit: true), (0.45..<0.6).contains(u) { fb.invert(0, 0, 96, 64) }   // critical: the whole screen flashes
         case .dowse(let c, _, let tries, let hint):
             fb.text(hint ?? "어디에 있을까?", 0, 2, center: true)
             for k in 0..<6 { let x = 2 + 16 * k; fb.draw(bush, x, 28, greens); if k == c { fb.text("▼", x + 6, 16, 3, center: false) } }
@@ -327,10 +346,11 @@ final class WalkerView: NSView {
                 fb.text("\(top)", 94, 14, 1, right: true)
             }
         case .bag(let p):
-            header(p == 0 ? "포켓몬" : "도구")
-            if p == 0 {
-                if state.caught.isEmpty { fb.text("없음", 0, 30, 2, center: true) }
-                for (k, m) in state.caught.enumerated() { fb.mon(m, half, 32 * k, 14, small: true); fb.text((m.shiny == true ? "★" : "") + monNames[m.dex], 32 * k + 1, 40 + (k % 2) * 11, 2) }
+            let m = p < bagPages - 1 ? state.caught[safe: p] : nil
+            header(m.map { ($0.shiny == true ? "★" : "") + monNames[$0.dex] + " Lv.\($0.level)" } ?? (p < bagPages - 1 ? "포켓몬" : "도구"))
+            if p < bagPages - 1 {
+                if let m { fb.mon(m, half, 16, 14); fb.text("\(p + 1)/\(state.caught.count)", 94, 54, 2, right: true, small: true) }
+                else { fb.text("없음", 0, 30, 2, center: true) }
             } else {
                 if state.items.isEmpty { fb.text("없음", 0, 30, 2, center: true) }
                 for (k, it) in state.items.enumerated() { fb.draw(gem, 4, 18 + 12 * k, gemPal); fb.text(it, 12, 14 + 12 * k) }
@@ -340,26 +360,81 @@ final class WalkerView: NSView {
         }
         return fb
     }
-    enum Side { case wild, me }
-    func battleScene(_ fb: inout FB, _ b: Battle, _ now: Date, blinkWild: Bool, blinkMe: Bool, ballOut: Bool, gone: Side? = nil) {
-        let f = Int(now.timeIntervalSinceReferenceDate * 2) % 2
-        if ballOut { fb.draw(ball, 28, 20, ballPal) } else if !blinkWild && gone != .wild { fb.mon(b.wild, f, 0, 0)
-        if b.wild.shiny == true, !ballOut, gone != .wild { for (k, (sx, sy)) in [(6, 4), (50, 8), (28, 1), (56, 30)].enumerated() where (Int(now.timeIntervalSinceReferenceDate * 4) + k) % 3 == 0 { fb.draw(spark, sx, sy, sparkPal) } } }
-        if !blinkMe && gone != .me { fb.mon(state.companion, f, 64, 24, small: true, flip: true) }
-        for i in 0..<4 { fb.draw(i < b.wildHP ? pip.full : pip.empty, 66 + 5 * i, 2); fb.draw(i < b.myHP ? pip.full : pip.empty, 2 + 5 * i, 44) }
+    var bagPages: Int { max(1, state.caught.count) + 1 }
+    /// Battle menu labels' x ranges (drawn and tapped from the same layout).
+    func moveRanges() -> [Range<Int>] {
+        var x = 1, out: [Range<Int>] = []
+        for n in moveNames { let w = (textDots(n).first?.count ?? 0) + 2; out.append(x..<x + w); x += w + 3 }
+        return out
+    }
+    /// What the 64x48 stage shows: one fighter at full size (the other one is never squeezed to half resolution).
+    enum Pose {
+        case idle(Mon)                                   // the wild one, breathing
+        case wild(dx: Int, dy: Int, flash: Bool, visible: Bool)
+        case me(dx: Int, dy: Int, visible: Bool)
+        case ball(x: Int, y: Int, tilt: Int?, burst: Bool, stars: Bool)
+    }
+    func pose(_ b: Beat, _ u: Double, _ wild: Mon) -> Pose {
+        func arc(_ a: Double, _ len: Double) -> Double { u < a || u > a + len ? 0 : sin(.pi * (u - a) / len) }   // 0 -> 1 -> 0
+        let shake = Int(u * 30) % 2 == 0 ? 2 : -2, blink = Int(u * 12) % 2 == 0
+        switch b {
+        case .appear: return u < 0.6 ? .wild(dx: Int(-80 * pow(1 - u / 0.6, 2)), dy: 0, flash: false, visible: true) : .idle(wild)   // slides in
+        case .hit, .missed:
+            if u < 0.45 { return .me(dx: Int(18 * arc(0, 0.45)), dy: 0, visible: true) }                      // our dash
+            if b == .missed { return .wild(dx: Int(-14 * arc(0.45, 0.45)), dy: 0, flash: false, visible: true) }   // it sidesteps
+            return .wild(dx: u < 0.85 ? shake : 0, dy: 0, flash: false, visible: u > 0.85 || blink)
+        case .struck, .dodged:
+            if u < 0.45 { return .wild(dx: Int(-18 * arc(0, 0.45)), dy: 0, flash: false, visible: true) }     // its lunge
+            if b == .dodged { return .me(dx: 0, dy: Int(-12 * arc(0.45, 0.5)), visible: true) }               // we hop out of the way
+            return .me(dx: u < 0.85 ? shake : 0, dy: 0, visible: u > 0.85 || blink)
+        case .thrown:                                                                                       // arcs in, swallows it, drops
+            if u < 0.55 { let k = u / 0.55; return .ball(x: Int(80 - 39 * k), y: Int(34 - 28 * k) - Int(16 * sin(.pi * k)), tilt: nil, burst: false, stars: false) }
+            if u < 0.8 { return Int(u * 20) % 2 == 0 ? .wild(dx: 0, dy: 0, flash: true, visible: true) : .ball(x: 41, y: 6, tilt: nil, burst: false, stars: false) }
+            let k = min(1, (u - 0.8) / 0.25)
+            return .ball(x: 41, y: Int(6 + 24 * k * k) - Int(4 * arc(1.05, 0.15)), tilt: nil, burst: false, stars: false)
+        case .broke, .caught:
+            let wobbles = b == .caught ? 3 : 2, end = 0.6 * Double(wobbles)
+            if u < end { return .ball(x: 41, y: 30, tilt: u.truncatingRemainder(dividingBy: 0.6) < 0.3 ? Int(u / 0.6) % 2 : nil, burst: false, stars: false) }
+            if b == .caught { return .ball(x: 41, y: 30, tilt: nil, burst: false, stars: Int(u * 8) % 2 == 0) }
+            if u < end + 0.25 { return .ball(x: 41, y: 30, tilt: nil, burst: true, stars: false) }
+            return .wild(dx: 0, dy: 0, flash: u < end + 0.4, visible: true)
+        case .fled: return .wild(dx: Int(-90 * min(1, u / 0.6)), dy: 0, flash: false, visible: true)
+        case .ran: return .me(dx: Int(90 * min(1, u / 0.6)), dy: 0, visible: true)
+        case .won: return u < 0.35 ? .wild(dx: 0, dy: 0, flash: false, visible: blink) : .wild(dx: 0, dy: Int(60 * min(1, (u - 0.35) / 0.6)), flash: false, visible: true)
+        case .lost: return u < 0.35 ? .me(dx: 0, dy: 0, visible: blink) : .me(dx: 0, dy: Int(60 * min(1, (u - 0.35) / 0.6)), visible: true)
+        }
+    }
+    func stage(_ fb: inout FB, _ b: Battle, _ now: Date, _ p: Pose) {
+        let t = now.timeIntervalSinceReferenceDate, f = Int(t * 2) % 2
+        for y in 41..<48 { for x in 14..<82 { let ex = Double(x - 48) / 34, ey = Double(y - 44) / 3.6; if ex * ex + ey * ey < 1 { fb.set(x, y, 1, ex * ex + ey * ey > 0.7 ? rgb(150, 200, 110) : rgb(186, 222, 146)) } } }   // the grass pad they stand on
+        switch p {
+        case .idle(let m):
+            fb.mon(m, f, 16, 0)
+            if m.shiny == true { for (k, (sx, sy)) in [(6, 4), (50, 8), (28, 1), (56, 30)].enumerated() where (Int(t * 4) + k) % 3 == 0 { fb.draw(spark, 16 + sx - 6, sy, sparkPal) } }
+        case .wild(let dx, let dy, let flash, let visible): if visible { fb.mon(b.wild, f, 16 + dx, dy, flash: flash) }
+        case .me(let dx, let dy, let visible): if visible { fb.mon(state.companion, f, 16 + dx, dy, flip: true) }
+        case .ball(let x, let y, let tilt, let burst, let stars):
+            if burst { fb.draw(burstArt, x - 2, y - 2, sparkPal, scale: 2) }
+            fb.draw(tilt.map { ballTilt[$0] } ?? ball, x, y, ballPal, scale: 2)
+            if stars { for (sx, sy) in [(-8, -4), (16, -5), (-9, 9), (17, 8)] { fb.draw(spark, x + sx, y + sy, sparkPal) } }
+        }
+        for i in 0..<4 { fb.draw(i < b.wildHP ? pip.full : pip.empty, 2 + 4 * i, 2) }                    // HUD: theirs top-left, ours (with a ball) top-right
+        fb.draw(ball, 72, 0, ballPal)
+        for i in 0..<4 { fb.draw(i < b.myHP ? pip.full : pip.empty, 80 + 4 * i, 2) }
         fb.fill(0, 50, 96, 1, 2)
     }
-    func line(_ beat: Beat, _ b: Battle) -> String {
-        let it = monNames[b.wild.dex], me = monNames[state.companion.dex]
+    func message(_ beat: Beat, _ u: Double, _ wild: Mon) -> String {
+        let it = monNames[wild.dex], me = monNames[state.companion.dex], dots = String(repeating: ".", count: 1 + Int(u / 0.6))
         switch beat {
-        case .hit(let crit): return crit ? "급소에 맞았다!" : josa(me, "의", "의") + " 공격!"
-        case .missed: return "빗나갔다!"
-        case .struck: return josa(it, "의", "의") + " 공격!"
-        case .dodged: return josa(me, "은", "는") + " 피했다!"
-        case .thrown: return "몬스터볼 던지기!"
-        case .broke: return "앗! 나와버렸다!"
-        case .caught: return josa(it, "을", "를") + " 잡았다!"
-        case .fled: return josa(it, "은", "는") + " 도망쳤다"
+        case .appear: return wild.shiny == true && u < 0.9 ? "✦ 반짝! ✦" : "야생 " + josa(it, "이", "가") + " 나타났다!"
+        case .hit(let crit): return crit && u >= 0.45 ? "급소에 맞았다!" : me + "의 공격!"
+        case .missed: return u < 0.45 ? me + "의 공격!" : "빗나갔다!"
+        case .struck: return it + "의 공격!"
+        case .dodged: return u < 0.45 ? it + "의 공격!" : "휙! 피했다!"
+        case .thrown: return "가랏, 몬스터볼!"
+        case .broke: return u < 1.2 ? dots : "앗! 나와버렸다!"
+        case .caught: return u < 1.8 ? dots : "딸깍! " + josa(it, "을", "를") + " 잡았다!"
+        case .fled: return josa(it, "은", "는") + " 도망쳤다..."
         case .ran: return "무사히 도망쳤다!"
         case .won: return josa(it, "은", "는") + " 쓰러졌다!"
         case .lost: return josa(me, "은", "는") + " 쓰러졌다..."
@@ -372,11 +447,29 @@ final class WalkerView: NSView {
         if let i = buttons.firstIndex(where: { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r + PX }) {
             pressed = i; pressedAt = Date(); press(i)
             perform(#selector(tick(_:)), with: nil, afterDelay: 0.15, inModes: [.common])
-        } else { window?.performDrag(with: e) }
+        } else if lcdRect.contains(p), touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needsDisplay = true }
+        else { window?.performDrag(with: e) }
+    }
+    /// Tap on the screen (dot coords 96x64). Returns false where the click should drag the device instead.
+    func touch(_ x: Int, _ y: Int) -> Bool {
+        func pick(_ select: () -> Void) { select(); press(1) }
+        switch screen {
+        case .home, .say: press(1)
+        case .menu, .card, .bag: press(x < 32 ? 0 : x >= 64 ? 2 : 1)                             // left third ◀, middle ●, right third ▶
+        case .radar(let b, _, let since): pick { screen = .radar(bush: b, cursor: (x < 48 ? 0 : 1) + (y < 32 ? 0 : 2), since: since) }
+        case .battle(let b, _):
+            guard y >= 50, let k = moveRanges().firstIndex(where: { $0.contains(x) }) else { return false }
+            pick { screen = .battle(b, sel: k) }
+        case .dowse(_, let prize, let tries, _):
+            guard (20..<48).contains(y) else { return false }
+            pick { screen = .dowse(cursor: min(5, max(0, (x - 2) / 16)), prize: prize, tries: tries, hint: nil) }
+        case .beats: return false
+        }
+        return true
     }
     override func keyDown(with e: NSEvent) { if let i = [123: 0, 36: 1, 49: 1, 124: 2, 53: 3][Int(e.keyCode)] { press(i) } else { super.keyDown(with: e) } }   // ← return/space → esc
     override var acceptsFirstResponder: Bool { true }
-    override func resetCursorRects() { for b in buttons { addCursorRect(NSRect(x: b.c.x - b.r, y: b.c.y - b.r, width: 2 * b.r, height: 2 * b.r), cursor: .pointingHand) } }
+    override func resetCursorRects() { addCursorRect(lcdRect, cursor: .pointingHand); for b in buttons { addCursorRect(NSRect(x: b.c.x - b.r, y: b.c.y - b.r, width: 2 * b.r, height: 2 * b.r), cursor: .pointingHand) } }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let m = NSMenu()
@@ -509,3 +602,5 @@ let ws = NSWorkspace.shared.notificationCenter
 ws.addObserver(view, selector: #selector(WalkerView.save(_:)), name: NSWorkspace.willSleepNotification, object: nil)
 NotificationCenter.default.addObserver(view, selector: #selector(WalkerView.save(_:)), name: NSApplication.willTerminateNotification, object: nil)
 app.run()
+
+extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil } }
