@@ -5,7 +5,9 @@ var PX = CGFloat(max(2, UserDefaults.standard.integer(forKey: "px")))    // 2 / 
 let dev = (w: CGFloat(144), h: CGFloat(144))                                                  // a Poké Ball: 144-dot circle, screen where the button would be
 var devSize: NSSize { NSSize(width: dev.w * PX, height: dev.h * PX) }
 var lcdRect: NSRect { NSRect(x: 24 * PX, y: 40 * PX, width: 96 * PX, height: 64 * PX) }      // 96x64 dots, 4 greys, like the real one; centred on the ball
-var buttons: [(c: NSPoint, r: CGFloat)] { [(NSPoint(x: 49 * PX, y: 121 * PX), 4.4 * PX), (NSPoint(x: 72 * PX, y: 125 * PX), 6 * PX), (NSPoint(x: 95 * PX, y: 121 * PX), 4.4 * PX)] }   // left, enter, right: on the white half, following its curve
+var buttons: [(c: NSPoint, r: CGFloat)] {   // left, enter, right on the white half following its curve; home tucked under enter
+    [(NSPoint(x: 49 * PX, y: 120 * PX), 4.6 * PX), (NSPoint(x: 72 * PX, y: 123 * PX), 6 * PX), (NSPoint(x: 95 * PX, y: 120 * PX), 4.6 * PX), (NSPoint(x: 72 * PX, y: 136.5 * PX), 3.4 * PX)]
+}
 
 struct Shell { let name: String; let top: NSColor }                  // the top half; the bottom is always white, the band black
 let shells: [Shell] = [
@@ -173,8 +175,16 @@ final class WalkerView: NSView {
     }
     @objc func save(_ sender: Any?) { Store.save(state); lastSave = Date() }
 
-    func press(_ k: Int) {                                    // 0 left, 1 enter, 2 right
+    func press(_ k: Int) {                                    // 0 left, 1 enter, 2 right, 3 home
         let now = Date(); lastInput = now; defer { save(nil); needsDisplay = true }
+        if k == 3 {                                           // home from anywhere; mid-battle it counts as running away
+            switch screen {
+            case .beats: return
+            case .battle: screen = .say(["무사히", "도망쳤다!"], next: .home, since: now)
+            default: screen = .home
+            }
+            return
+        }
         let n = menuItems.count
         switch screen {
         case .home: screen = .menu(k == 0 ? n - 1 : 0)
@@ -319,7 +329,7 @@ final class WalkerView: NSView {
             perform(#selector(tick(_:)), with: nil, afterDelay: 0.15, inModes: [.common])
         } else { window?.performDrag(with: e) }
     }
-    override func keyDown(with e: NSEvent) { if let i = [123: 0, 36: 1, 49: 1, 124: 2][Int(e.keyCode)] { press(i) } else { super.keyDown(with: e) } }   // ← return/space →
+    override func keyDown(with e: NSEvent) { if let i = [123: 0, 36: 1, 49: 1, 124: 2, 53: 3][Int(e.keyCode)] { press(i) } else { super.keyDown(with: e) } }   // ← return/space → esc
     override var acceptsFirstResponder: Bool { true }
     override func resetCursorRects() { for b in buttons { addCursorRect(NSRect(x: b.c.x - b.r, y: b.c.y - b.r, width: 2 * b.r, height: 2 * b.r), cursor: .pointingHand) } }
 
@@ -394,11 +404,24 @@ final class WalkerView: NSView {
         NSGraphicsContext.current!.shouldAntialias = true
         NSGradient(starting: NSColor(white: 0, alpha: 0.22), ending: .clear)!.draw(in: NSRect(x: lcdRect.minX, y: lcdRect.minY, width: lcdRect.width, height: 2 * PX), angle: 90)
         let now = Date()
-        for (i, b) in buttons.enumerated() {                                                          // little Poké Ball buttons: white cap, black ring
-            let down = pressed == i && now.timeIntervalSince(pressedAt) < 0.15
-            let cap = NSBezierPath(ovalIn: NSRect(x: b.c.x - b.r, y: b.c.y - b.r, width: 2 * b.r, height: 2 * b.r))
-            (down ? NSColor(white: 0.78, alpha: 1) : white).setFill(); cap.fill()
-            ink.setStroke(); cap.lineWidth = 1.1 * PX; cap.stroke()
+        for (i, b) in buttons.enumerated() {                                                          // white caps with a black ring and a printed icon; a lip underneath until pressed
+            let down = pressed == i && now.timeIntervalSince(pressedAt) < 0.15, dy = down ? 0.7 * PX : 0
+            let r = NSRect(x: b.c.x - b.r, y: b.c.y - b.r, width: 2 * b.r, height: 2 * b.r)
+            if !down { NSColor(white: 0.62, alpha: 1).setFill(); NSBezierPath(ovalIn: r.offsetBy(dx: 0, dy: 0.9 * PX)).fill() }
+            let cap = NSBezierPath(ovalIn: r.offsetBy(dx: 0, dy: dy))
+            (down ? NSColor(white: 0.84, alpha: 1) : white).setFill(); cap.fill()
+            ink.setStroke(); cap.lineWidth = 1.0 * PX; cap.stroke()
+            let c = NSPoint(x: b.c.x, y: b.c.y + dy), s = b.r * 0.42, icon = NSBezierPath()
+            switch i {
+            case 0: icon.move(to: NSPoint(x: c.x - s, y: c.y)); icon.line(to: NSPoint(x: c.x + s * 0.7, y: c.y - s)); icon.line(to: NSPoint(x: c.x + s * 0.7, y: c.y + s)); icon.close()
+            case 2: icon.move(to: NSPoint(x: c.x + s, y: c.y)); icon.line(to: NSPoint(x: c.x - s * 0.7, y: c.y - s)); icon.line(to: NSPoint(x: c.x - s * 0.7, y: c.y + s)); icon.close()
+            case 1: icon.appendOval(in: NSRect(x: c.x - s * 0.8, y: c.y - s * 0.8, width: s * 1.6, height: s * 1.6))
+            default:                                                                                   // a little house
+                icon.move(to: NSPoint(x: c.x, y: c.y - s * 1.1)); icon.line(to: NSPoint(x: c.x + s * 1.1, y: c.y)); icon.line(to: NSPoint(x: c.x + s * 0.7, y: c.y))
+                icon.line(to: NSPoint(x: c.x + s * 0.7, y: c.y + s)); icon.line(to: NSPoint(x: c.x - s * 0.7, y: c.y + s)); icon.line(to: NSPoint(x: c.x - s * 0.7, y: c.y))
+                icon.line(to: NSPoint(x: c.x - s * 1.1, y: c.y)); icon.close()
+            }
+            ink.setFill(); icon.fill()
         }
         let centred = NSMutableParagraphStyle(); centred.alignment = .center
         ("Pokéwalker" as NSString).draw(in: NSRect(x: 42 * PX, y: 20 * PX, width: 60 * PX, height: 6 * PX),
