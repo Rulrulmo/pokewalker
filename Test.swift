@@ -188,7 +188,8 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     check(Walk.chainGoesOn(0) == 0.85 && abs(Walk.chainGoesOn(3) - 0.61) < 1e-9 && Walk.chainGoesOn(10) == 0.35, "chain goes on 85 %, -8 points a link, floor 35 %")
     w = Walk(); check(w.chainReward(1) == nil && w.watts == 2 && w.chainReward(4) == nil && w.watts == 10, "each link pays 2n W")
     check(w.chainReward(5) == courses[0].items[0].item && w.items == [courses[0].items[0].item] && w.bestChain == 5, "link 5: the course's rarest item, best chain kept")
-    check(Walk.chainShinyOdds(0) == 128 && Walk.chainShinyOdds(5) == 11 && Walk.chainShinyOdds(10) == 6, "이로치 1/128 -> ~1/11 at 5 -> ~1/6 at 10")
+    check(Walk.chainShinyOdds(0) == 128 && Walk.chainShinyOdds(3) == 51 && Walk.chainShinyOdds(5) == 36 && Walk.chainShinyOdds(10) == 21 && Walk.chainShinyOdds(30) == 21,
+          "이로치 1/128 -> 1/51 at 3 -> 1/36 at 5 -> 1/21 from 10 on")
 
     // 7b radar chain, companion events, box
     w = Walk(); w.picks = [0, 2, 4]; w.courseSteps = 2000

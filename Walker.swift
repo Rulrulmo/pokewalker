@@ -166,7 +166,8 @@ struct Walk: Codable, Equatable {
         guard n % 5 == 0 else { return nil }
         let i = here.items[0].item; _ = keep(i); return i
     }
-    static func chainShinyOdds(_ chain: Int) -> Int { max(1, shinyOdds / (1 + 2 * chain)) }
+    /// 1/128 at the start, x(1 + n/2) better per link, capped at 10 links (1/21). 1/(128/(2n+1)) handed out 이로치 far too easily.
+    static func chainShinyOdds(_ chain: Int) -> Int { Int(Double(shinyOdds) / (1 + 0.5 * Double(min(chain, 10)))) }
 
     // MARK: using items (walker's 3 first, then the bag)
     func count(_ i: String) -> Int { (items + bag).filter { $0 == i }.count }
