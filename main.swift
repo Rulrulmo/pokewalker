@@ -225,6 +225,7 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
 
 // MARK: - notifications (macOS banners); each kind can be switched off in the menu
 let notifyKinds = [("pet", "동료가 주워 온 것"), ("hatch", "알 부화"), ("grow", "진화 · 레벨(5의 배수)"), ("weather", "날씨 변화"), ("unlock", "해금 (코스 · 기기)")]
+nonisolated(unsafe) var useOsascript = false                                                  // set once at launch, read on the main thread
 func notifyOn(_ k: String) -> Bool { UserDefaults.standard.object(forKey: "notify.\(k)") as? Bool ?? true }
 final class NotifyDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ c: UNUserNotificationCenter, willPresent n: UNNotification) async -> UNNotificationPresentationOptions { [.banner, .list] }
@@ -367,6 +368,12 @@ final class WalkerView: NSView {
     lazy var unlockedAt = state.earned                                     // lifetime watts already announced
     func notify(_ kind: String, _ title: String, _ body: String) {
         guard persist, notifyOn(kind) else { return }
+        if useOsascript {                                                                        // shows as "스크립트 편집기" in Notification Center
+            func q(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\"" }
+            let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            p.arguments = ["-e", "display notification \(q(body)) with title \(q("PokeWalker")) subtitle \(q(title))"]
+            try? p.run(); return
+        }
         let c = UNMutableNotificationContent(); c.title = title; c.body = body
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
     }
@@ -807,11 +814,14 @@ final class WalkerView: NSView {
         m.addItem(.separator())
         let nh = m.addItem(withTitle: "알림", action: nil, keyEquivalent: ""), nm = NSMenu()
         for (i, (k, name)) in notifyKinds.enumerated() { let it = nm.addItem(withTitle: name, action: #selector(toggleNotify(_:)), keyEquivalent: ""); it.target = self; it.tag = i; it.state = notifyOn(k) ? .on : .off }
+        nm.addItem(.separator())
+        nm.addItem(withTitle: "테스트 알림 보내기", action: #selector(testNotify(_:)), keyEquivalent: "").target = self
         nh.submenu = nm
         m.addItem(.separator())
         m.addItem(withTitle: "종료", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q").target = NSApp
         return m
     }
+    @objc func testNotify(_ i: NSMenuItem) { notify("pet", josa(monNames[state.companion.dex], "이", "가") + " 인사해요", "알림이 이렇게 와요 · 지금 \(state.watts)W") }
     @objc func toggleNotify(_ i: NSMenuItem) { let k = notifyKinds[i.tag].0; UserDefaults.standard.set(!notifyOn(k), forKey: "notify.\(k)") }
     /// Walker <-> menu bar. Hiding parks it on the home screen so the events (which wait for home) keep coming.
     @objc func toggleShown(_ sender: Any?) {
@@ -932,7 +942,10 @@ app.setActivationPolicy(.accessory)
 let view = WalkerView(state: Store.load())
 let notifyDelegate = NotifyDelegate()
 UNUserNotificationCenter.current().delegate = notifyDelegate
-UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { @Sendable _, _ in }   // called off the main thread
+UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { @Sendable ok, _ in   // called off the main thread
+    // An ad-hoc signed app (no Apple certificate) is refused outright (UNErrorDomain 1) — fall back to osascript's banners
+    DispatchQueue.main.async { useOsascript = !ok }
+}
 statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 if let b = statusItem?.button {
     b.image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { r in                   // a Poké Ball, as a template so it follows the bar's colour
