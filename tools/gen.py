@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Regenerates Data.swift + sprites.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
+"""Regenerates Data.swift + sprites.bin + color.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
 
 Sources (cached in tools/.cache, not committed):
   - pwalk_gray.png: the real Pokéwalker greyscale sprites, ripped from the HGSS ROM (vgmoose.dev). 25 per row, national-dex
     order, each cell 64x48 frame A over frame B, 4 greys on a transparent ground; 0/85/170/255 = LCD shade 3/2/1/0 (black outline, white body), transparent = 0.
+  - pwalk_color.png: the same sprites colourised by vgmoose with the exact HGSS palette colours, same layout, <= 15 colours a cell.
+  - PokeAPI HGSS front sprites, normal + shiny: same pixels, other palette, so pixel pairs give each species' normal -> shiny map.
   - Serebii's Pokéwalker course page: per course 6 Pokémon (groups A/B/C x 2) + 10 items, with min steps and chances.
   - PokeAPI CSVs: Korean names, Gen IV types (pokemon_types_past overrides the Fairy retcon).
 
@@ -18,6 +20,9 @@ CACHE = os.path.join(os.path.dirname(__file__), '.cache')
 API = 'https://raw.githubusercontent.com/PokeAPI/pokeapi/master/data/v2/csv/'
 SRC = {
     'pwalk_gray.png': 'https://vgmoose.dev/posts/29263141%20-%20Extracting%20and%20colorizing%20Pokewalker%20Sprites!.post/pwalk_gray.png',
+    'pwalk_color.png': 'https://vgmoose.dev/posts/29263141%20-%20Extracting%20and%20colorizing%20Pokewalker%20Sprites!.post/pwalk_color.png',
+    **{f'hgss/{s}{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/heartgold-soulsilver/{"shiny/" if s else ""}{i}.png'
+       for i in range(1, 494) for s in ('', 's')},
     'serebii.html': 'https://www.serebii.net/heartgoldsoulsilver/pokewalker-area.shtml',
     **{f + '.csv': API + f + '.csv' for f in ['pokemon_species_names', 'item_names', 'pokemon_types', 'pokemon_types_past', 'types']},
 }
@@ -26,7 +31,7 @@ N = 493  # HGSS national dex
 def get(name):
     p = os.path.join(CACHE, name)
     if not os.path.exists(p):
-        os.makedirs(CACHE, exist_ok=True)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
         req = urllib.request.Request(SRC[name], headers={'User-Agent': 'Mozilla/5.0'})
         open(p, 'wb').write(urllib.request.urlopen(req).read())
     return p
@@ -45,6 +50,36 @@ for dex in range(1, N + 1):
                     b = b << 2 | (3 - round(r / 85) if a else 0)   # the sheet is black-on-white: black outline = 3, white body = 0 (blank)
                 out.append(b)
 open('sprites.bin', 'wb').write(out)
+
+# --- color.bin: per species 15 normal + 15 shiny RGB (index 1...15; 0 = transparent), then 2 frames x 64x48 at 4 bpp (high nibble = left).
+# 3162 B per species. A walker colour the HGSS sprite doesn't use (vgmoose's blends) takes the shift of its nearest HGSS colour.
+col = Image.open(get('pwalk_color.png')).convert('RGBA')
+cout = bytearray()
+for dex in range(1, N + 1):
+    cx, cy = (dex - 1) % 25 * 64, (dex - 1) // 25 * 96
+    px = [[col.getpixel((cx + x, cy + y)) for x in range(64)] for y in range(96)]
+    pal = sorted({p[:3] for r in px for p in r if p[3]})
+    assert len(pal) <= 15, (dex, len(pal))
+    a, s = Image.open(get(f'hgss/{dex}.png')).convert('RGBA'), Image.open(get(f'hgss/s{dex}.png')).convert('RGBA')
+    votes = {}
+    for y in range(a.height):
+        for x in range(a.width):
+            p, q = a.getpixel((x, y)), s.getpixel((x, y))
+            if p[3] and q[3]: votes.setdefault(p[:3], {}).setdefault(q[:3], 0); votes[p[:3]][q[:3]] += 1
+    shift = {k: max(v, key=v.get) for k, v in votes.items()}
+    def shiny(c):
+        if c in shift or not shift: return shift.get(c, c)
+        n = min(shift, key=lambda k: sum((i - j) ** 2 for i, j in zip(k, c)))
+        return tuple(max(0, min(255, c[i] + shift[n][i] - n[i])) for i in range(3))
+    pal += [(0, 0, 0)] * (15 - len(pal))
+    for c in pal: cout += bytes(c)
+    for c in pal: cout += bytes(shiny(c))
+    idx = {c: i + 1 for i, c in enumerate(pal)}
+    for y in range(96):
+        for x in range(0, 64, 2):
+            l, r = px[y][x], px[y][x + 1]
+            cout.append((idx[l[:3]] if l[3] else 0) << 4 | (idx[r[:3]] if r[3] else 0))
+open('color.bin', 'wb').write(cout)
 
 # --- names / types
 ko, en_item, ko_item, types = {}, {}, {}, {}

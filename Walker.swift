@@ -6,7 +6,9 @@ struct Find { let item: String; let steps, chance: Int }
 enum Art { case field, forest, mountain, beach, lake, town, cave }
 struct Course { let name: String; let watts: Int; let types: [String]; let art: Art; let slots: [Slot]; let items: [Find] }   // slots: A A B B C C, items rarest first
 
-struct Mon: Codable, Equatable { var dex: Int; var level: Int; var female: Bool }
+struct Mon: Codable, Equatable { var dex: Int; var level: Int; var female: Bool; var shiny: Bool? = nil }   // Optional: saves from before shinies still decode
+/// 이로치 odds. Gen IV is 1/8192, which at a few radar fights a day would never show up.
+let shinyOdds = 512
 
 /// Everything the device remembers, plus the "game" side (box/bag) that Connect sends things to.
 struct Walk: Codable, Equatable {

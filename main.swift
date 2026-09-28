@@ -17,8 +17,9 @@ let shells: [Shell] = [
     Shell(name: "마스터볼", top: NSColor(red: 0.47, green: 0.27, blue: 0.66, alpha: 1)),
 ]
 var theme = min(max(UserDefaults.standard.integer(forKey: "shell"), 0), shells.count - 1)
-struct LCD { let name: String; let shades: [NSColor] }             // shade 0 (blank) ... 3 (black)
+struct LCD { let name: String; let shades: [NSColor]; var color = false }   // shade 0 (blank) ... 3 (black); `color` = sprites in their HGSS colours
 let lcds: [LCD] = [
+    LCD(name: "컬러", shades: [(0.97, 0.96, 0.92), (0.80, 0.80, 0.76), (0.47, 0.49, 0.53), (0.12, 0.13, 0.16)].map { NSColor(red: $0.0, green: $0.1, blue: $0.2, alpha: 1) }, color: true),
     LCD(name: "원작", shades: [(0.78, 0.82, 0.72), (0.58, 0.63, 0.54), (0.35, 0.39, 0.33), (0.11, 0.13, 0.11)].map { NSColor(red: $0.0, green: $0.1, blue: $0.2, alpha: 1) }),
     LCD(name: "백라이트", shades: [(0.62, 0.80, 0.96), (0.42, 0.60, 0.82), (0.22, 0.34, 0.55), (0.05, 0.09, 0.20)].map { NSColor(red: $0.0, green: $0.1, blue: $0.2, alpha: 1) }),
 ]
@@ -34,6 +35,25 @@ func spriteShade(_ dex: Int, _ f: Int, _ x: Int, _ y: Int) -> UInt8 {
     let b = spriteData[((dex - 1) * 2 + f) * 768 + y * 16 + x / 4]
     return (b >> UInt8(6 - 2 * (x % 4))) & 3
 }
+/// The same sprites in colour (tools/gen.py): per species 15 normal + 15 shiny RGB, then 2 frames x 64x48 at 4 bpp; index 0 = transparent.
+let colorData: Data = {
+    guard let u = Bundle.main.url(forResource: "color", withExtension: "bin"), let d = try? Data(contentsOf: u), d.count == 493 * 3162 else { return Data(count: 493 * 3162) }
+    return d
+}()
+/// 0 = transparent, else 0xFFRRGGBB.
+func spriteColor(_ dex: Int, _ f: Int, _ x: Int, _ y: Int, shiny: Bool) -> UInt32 {
+    let o = (dex - 1) * 3162, b = colorData[o + 90 + (f * 48 + y) * 32 + x / 2], i = Int(x % 2 == 0 ? b >> 4 : b & 15)
+    guard i > 0 else { return 0 }
+    let p = o + (shiny ? 45 : 0) + (i - 1) * 3
+    return rgb(colorData[p], colorData[p + 1], colorData[p + 2])
+}
+func rgb(_ r: UInt8, _ g: UInt8, _ b: UInt8) -> UInt32 { 0xFF00_0000 | UInt32(r) << 16 | UInt32(g) << 8 | UInt32(b) }
+/// Colour-LCD palettes for the hand-drawn bits, by shade 0...3.
+let greens = [rgb(196, 232, 150), rgb(120, 200, 90), rgb(60, 150, 70), rgb(30, 80, 45)]
+let ballPal = [rgb(250, 250, 250), rgb(250, 250, 250), rgb(222, 52, 44), rgb(30, 32, 40)]
+let redPal = [UInt32](repeating: rgb(226, 48, 40), count: 4)
+let gemPal = [rgb(250, 250, 250), rgb(250, 250, 250), rgb(80, 140, 235), rgb(30, 32, 40)]
+
 /// Hand-drawn bits: " .:#" = shade 0...3, "_" = transparent.
 func art(_ rows: [String]) -> [[UInt8?]] { rows.map { $0.map { c in c == "_" ? nil : UInt8(" .:#".firstIndex(of: c).map { " .:#".distance(from: " .:#".startIndex, to: $0) } ?? 0) } } }
 let bush = art(["____:##:_____", "__:#:..:#____", "_#:..::..#:__", "#:.::..::.:#_", "#..:..::..:.#", "#.::..:..::.#", ":#..::..::.#:", "_:#:..::.:#:_", "__:##::##:___", "____#__#_____"])
@@ -41,6 +61,8 @@ let bang = art(["##", "##", "##", "##", "__", "##"])
 let ball = art(["__###__", "_#:::#_", "#:::::#", "###.###", "#.....#", "_#...#_", "__###__"])
 let foot = art(["_##_##", "_##_##", "______", "#####_", "######", "_####_"])
 let gem = art(["_#_", "#:#", "_#_"])
+let spark = art(["__#__", "__#__", "##:##", "__#__", "__#__"])
+let sparkPal = [rgb(255, 236, 120), rgb(255, 236, 120), rgb(255, 250, 200), rgb(250, 190, 40)]
 let pip = (full: art(["###", "###", "###"]), empty: art(["###", "# #", "###"]))
 
 /// Korean text through CoreText, thresholded to dots (the device font would need a glyph table for every syllable).
@@ -67,16 +89,22 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
 
 @MainActor struct FB {
     var px = [UInt8](repeating: 0, count: 96 * 64)
-    mutating func set(_ x: Int, _ y: Int, _ s: UInt8) { if (0..<96).contains(x), (0..<64).contains(y) { px[y * 96 + x] = s } }
+    var col = [UInt32](repeating: 0, count: 96 * 64)                      // colour LCD only: 0 = use the shade
+    mutating func set(_ x: Int, _ y: Int, _ s: UInt8, _ c: UInt32 = 0) { if (0..<96).contains(x), (0..<64).contains(y) { px[y * 96 + x] = s; col[y * 96 + x] = c } }
     mutating func fill(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ s: UInt8) { for yy in y..<y + h { for xx in x..<x + w { set(xx, yy, s) } } }
-    mutating func draw(_ a: [[UInt8?]], _ x: Int, _ y: Int) { for (dy, r) in a.enumerated() { for (dx, s) in r.enumerated() { if let s { set(x + dx, y + dy, s) } } } }
-    /// Large = 64x48; small = 32x24, each dot the darkest of its 2x2. Shade 0 is see-through.
-    mutating func mon(_ dex: Int, _ f: Int, _ x: Int, _ y: Int, small: Bool = false, flip: Bool = false) {
-        let k = small ? 2 : 1
+    mutating func draw(_ a: [[UInt8?]], _ x: Int, _ y: Int, _ pal: [UInt32]? = nil) { for (dy, r) in a.enumerated() { for (dx, s) in r.enumerated() { if let s { set(x + dx, y + dy, s, pal?[Int(s)] ?? 0) } } } }
+    /// Large = 64x48; small = 32x24, each dot the darkest of its 2x2 (and that dot's colour). Grey shade 0 is see-through; in colour the white body isn't.
+    mutating func mon(_ m: Mon, _ f: Int, _ x: Int, _ y: Int, small: Bool = false, flip: Bool = false) {
+        let k = small ? 2 : 1, shiny = m.shiny == true
         for sy in 0..<48 / k { for sx in 0..<64 / k {
-            var s: UInt8 = 0
-            for yy in 0..<k { for xx in 0..<k { s = max(s, spriteShade(dex, f, sx * k + xx, sy * k + yy)) } }
-            if s > 0 { set(x + (flip ? 64 / k - 1 - sx : sx), y + sy, s) }
+            var s: UInt8 = 0, c: UInt32 = 0
+            for yy in 0..<k { for xx in 0..<k {
+                let v = spriteShade(m.dex, f, sx * k + xx, sy * k + yy), vc = spriteColor(m.dex, f, sx * k + xx, sy * k + yy, shiny: shiny)
+                if v > s || c == 0 && v == s { s = v; if vc != 0 { c = vc } }
+                if c == 0 { c = vc }
+            } }
+            let X = x + (flip ? 64 / k - 1 - sx : sx), Y = y + sy
+            if s > 0 || c != 0, (0..<96).contains(X), (0..<64).contains(Y) { if s > 0 { px[Y * 96 + X] = s }; col[Y * 96 + X] = c }
         } }
     }
     @discardableResult mutating func text(_ s: String, _ x: Int, _ y: Int, _ shade: UInt8 = 3, center: Bool = false, right: Bool = false) -> Int {
@@ -84,10 +112,26 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
         for (dy, r) in t.enumerated() { for (dx, on) in r.enumerated() where on { set(x0 + dx, y + dy, shade) } }
         return w
     }
-    mutating func invert(_ x: Int, _ y: Int, _ w: Int, _ h: Int) { for yy in y..<y + h { for xx in x..<x + w where (0..<96).contains(xx) && (0..<64).contains(yy) { px[yy * 96 + xx] = 3 - px[yy * 96 + xx] } } }
+    mutating func invert(_ x: Int, _ y: Int, _ w: Int, _ h: Int) { for yy in y..<y + h { for xx in x..<x + w where (0..<96).contains(xx) && (0..<64).contains(yy) { px[yy * 96 + xx] = 3 - px[yy * 96 + xx]; col[yy * 96 + xx] = 0 } } }
     /// 32x24 picture of the course, framed.
     mutating func course(_ a: Art, _ x: Int, _ y: Int) {
-        func p(_ dx: Int, _ dy: Int, _ s: UInt8) { if (0..<32).contains(dx), (0..<24).contains(dy) { set(x + dx, y + dy, s) } }
+        // colour: sky above the course's horizon, its ground/water below
+        let horizon = [Art.field: 14, .forest: 17, .mountain: 19, .beach: 10, .lake: 12, .town: 19, .cave: 0][a]!
+        let sky = [rgb(160, 208, 250), rgb(255, 222, 96), rgb(70, 150, 80), rgb(36, 44, 56)]
+        let ground: [UInt32] = switch a {
+        case .field, .forest, .town: [rgb(130, 204, 96), rgb(100, 180, 80), rgb(70, 150, 64), rgb(36, 80, 44)]
+        case .mountain: [rgb(186, 156, 112), rgb(160, 130, 96), rgb(128, 100, 72), rgb(60, 44, 36)]
+        case .beach, .lake: [rgb(96, 170, 240), rgb(80, 150, 230), rgb(96, 170, 96), rgb(40, 90, 180)]
+        case .cave: [rgb(90, 76, 70), rgb(110, 96, 88), rgb(128, 108, 96), rgb(40, 32, 30)]
+        }
+        func p(_ dx: Int, _ dy: Int, _ s: UInt8) {
+            guard (0..<32).contains(dx), (0..<24).contains(dy) else { return }
+            var c = (dy < horizon ? sky : ground)[Int(s)]
+            if a == .mountain, dy < horizon, s == 1 { c = rgb(150, 132, 118) }                                     // rock faces, not sun
+            if a == .beach, dy >= 18 { c = [rgb(242, 222, 160), c, rgb(206, 176, 116), c][Int(s)] }                  // sand
+            if a == .town, dy < horizon, s == 2 { c = rgb(210, 84, 70) }                                          // roofs
+            set(x + dx, y + dy, s, c)
+        }
         for dy in 0..<24 { for dx in 0..<32 { p(dx, dy, 0) } }
         func tree(_ cx: Int, _ top: Int) { for i in 0..<9 { for dx in -i / 2...i / 2 { p(cx + dx, top + i, i == 8 || abs(dx) == i / 2 ? 3 : 2) } }; p(cx, top + 9, 3); p(cx, top + 10, 3) }
         func peak(_ cx: Int, _ top: Int, _ h: Int) { for i in 0..<h { for dx in -i...i { p(cx + dx, top + i, abs(dx) == i ? 3 : (i < 3 ? 0 : 1)) } } }
@@ -196,8 +240,8 @@ final class WalkerView: NSView {
             if k != 1 { screen = .radar(bush: b, cursor: (c + (k == 0 ? 3 : 1)) % 4, since: since); return }
             let u = now.timeIntervalSince(since)
             if c == b, u >= 1.5 {
-                let s = state.encounter(&rng), m = Mon(dex: s.dex, level: s.level, female: s.female)
-                screen = .say(["야생 " + josa(monNames[s.dex], "이", "가"), "튀어나왔다!"], next: .battle(Battle(wild: m), sel: 0), since: now)
+                let s = state.encounter(&rng), m = Mon(dex: s.dex, level: s.level, female: s.female, shiny: Int.random(in: 0..<shinyOdds, using: &rng) == 0 ? true : nil)
+                screen = .say((m.shiny == true ? ["✦ 반짝! ✦"] : []) + ["야생 " + josa(monNames[s.dex], "이", "가"), "튀어나왔다!"], next: .battle(Battle(wild: m), sel: 0), since: now)
             } else { screen = .say(["아무것도", "없었다..."], next: .home, since: now) }
         case .battle(var b, let sel):
             if k == 0 { screen = .battle(b, sel: (sel + 3) % 4) } else if k == 2 { screen = .battle(b, sel: (sel + 1) % 4) }
@@ -234,11 +278,11 @@ final class WalkerView: NSView {
         switch screen {
         case .home:
             let f = now.timeIntervalSince(lastStep) < 3 ? half : Int(t) % 2        // steps coming in => walks twice as fast
-            fb.mon(me.dex, f, 32, 0)
+            fb.mon(me, f, 32, 0)
             fb.course(state.here.art, 1, 22)
             fb.text("\(state.watts)W", 1, 0, 2)
-            for i in 0..<state.caught.count { fb.draw(ball, 1 + 8 * i, 13) }
-            for i in 0..<state.items.count { fb.draw(gem, 26 + 4 * i, 15) }
+            for i in 0..<state.caught.count { fb.draw(ball, 1 + 8 * i, 13, ballPal) }
+            for i in 0..<state.items.count { fb.draw(gem, 26 + 4 * i, 15, gemPal) }
             fb.fill(0, 49, 96, 1, 2)
             fb.draw(foot, 2, 54)
             fb.text("\(state.today)", 94, 52, 3, right: true)
@@ -253,8 +297,8 @@ final class WalkerView: NSView {
             let u = now.timeIntervalSince(since), live = (1.5...3.5).contains(u)
             for k in 0..<4 {
                 let x = 14 + (k % 2) * 56, y = 8 + (k / 2) * 28, shake = live && k == b ? (half == 0 ? -1 : 1) : 0
-                fb.draw(bush, x + shake, y)
-                if live && k == b && Int(t * 6) % 2 == 0 { fb.draw(bang, x + 15, y - 6) }
+                fb.draw(bush, x + shake, y, greens)
+                if live && k == b && Int(t * 6) % 2 == 0 { fb.draw(bang, x + 15, y - 6, redPal) }
                 if k == c { fb.text("▶", x - 2, y, 3, right: true) }
             }
         case .battle(let b, let sel):
@@ -268,7 +312,7 @@ final class WalkerView: NSView {
             fb.text(line(beat, b), 2, 52)
         case .dowse(let c, _, let tries, let hint):
             fb.text(hint ?? "어디에 있을까?", 0, 2, center: true)
-            for k in 0..<6 { let x = 2 + 16 * k; fb.draw(bush, x, 28); if k == c { fb.text("▼", x + 6, 16, 3, center: false) } }
+            for k in 0..<6 { let x = 2 + 16 * k; fb.draw(bush, x, 28, greens); if k == c { fb.text("▼", x + 6, 16, 3, center: false) } }
             for k in 0..<tries { fb.draw(pip.full, 88 - 5 * k, 56) }
         case .card(let p):
             header(p == 0 ? "트레이너 카드" : "최근 7일")
@@ -286,10 +330,10 @@ final class WalkerView: NSView {
             header(p == 0 ? "포켓몬" : "도구")
             if p == 0 {
                 if state.caught.isEmpty { fb.text("없음", 0, 30, 2, center: true) }
-                for (k, m) in state.caught.enumerated() { fb.mon(m.dex, half, 32 * k, 14, small: true); fb.text(monNames[m.dex], 32 * k + 1, 40 + (k % 2) * 11, 2) }
+                for (k, m) in state.caught.enumerated() { fb.mon(m, half, 32 * k, 14, small: true); fb.text((m.shiny == true ? "★" : "") + monNames[m.dex], 32 * k + 1, 40 + (k % 2) * 11, 2) }
             } else {
                 if state.items.isEmpty { fb.text("없음", 0, 30, 2, center: true) }
-                for (k, it) in state.items.enumerated() { fb.draw(gem, 4, 18 + 12 * k); fb.text(it, 12, 14 + 12 * k) }
+                for (k, it) in state.items.enumerated() { fb.draw(gem, 4, 18 + 12 * k, gemPal); fb.text(it, 12, 14 + 12 * k) }
             }
         case .say(let lines, _, _):
             for (k, l) in lines.enumerated() { fb.text(l, 0, 32 - lines.count * 7 + 14 * k, center: true) }
@@ -299,8 +343,9 @@ final class WalkerView: NSView {
     enum Side { case wild, me }
     func battleScene(_ fb: inout FB, _ b: Battle, _ now: Date, blinkWild: Bool, blinkMe: Bool, ballOut: Bool, gone: Side? = nil) {
         let f = Int(now.timeIntervalSinceReferenceDate * 2) % 2
-        if ballOut { fb.draw(ball, 28, 20) } else if !blinkWild && gone != .wild { fb.mon(b.wild.dex, f, 0, 0) }
-        if !blinkMe && gone != .me { fb.mon(state.companion.dex, f, 64, 24, small: true, flip: true) }
+        if ballOut { fb.draw(ball, 28, 20, ballPal) } else if !blinkWild && gone != .wild { fb.mon(b.wild, f, 0, 0)
+        if b.wild.shiny == true, !ballOut, gone != .wild { for (k, (sx, sy)) in [(6, 4), (50, 8), (28, 1), (56, 30)].enumerated() where (Int(now.timeIntervalSinceReferenceDate * 4) + k) % 3 == 0 { fb.draw(spark, sx, sy, sparkPal) } } }
+        if !blinkMe && gone != .me { fb.mon(state.companion, f, 64, 24, small: true, flip: true) }
         for i in 0..<4 { fb.draw(i < b.wildHP ? pip.full : pip.empty, 66 + 5 * i, 2); fb.draw(i < b.myHP ? pip.full : pip.empty, 2 + 5 * i, 44) }
         fb.fill(0, 50, 96, 1, 2)
     }
@@ -343,9 +388,9 @@ final class WalkerView: NSView {
             it.target = self; it.tag = i; it.state = i == state.course ? .on : .off
         }
         ch.submenu = cm
-        let ph = m.addItem(withTitle: "함께 걷기 · \(monNames[state.companion.dex])", action: nil, keyEquivalent: ""), pm = NSMenu()
+        let ph = m.addItem(withTitle: "함께 걷기 · \(state.companion.shiny == true ? "★ " : "")\(monNames[state.companion.dex])", action: nil, keyEquivalent: ""), pm = NSMenu()
         if state.box.isEmpty { pm.addItem(withTitle: "상자가 비어 있다", action: nil, keyEquivalent: "") }
-        for (i, b) in state.box.enumerated() { let it = pm.addItem(withTitle: "\(monNames[b.dex]) Lv.\(b.level)", action: #selector(pair(_:)), keyEquivalent: ""); it.target = self; it.tag = i }
+        for (i, b) in state.box.enumerated() { let it = pm.addItem(withTitle: "\(b.shiny == true ? "★ " : "")\(monNames[b.dex]) Lv.\(b.level)", action: #selector(pair(_:)), keyEquivalent: ""); it.target = self; it.tag = i }
         ph.submenu = pm
         if !state.bag.isEmpty {
             let bh = m.addItem(withTitle: "가방 · \(state.bag.count)개", action: nil, keyEquivalent: ""), bm = NSMenu()
@@ -397,10 +442,15 @@ final class WalkerView: NSView {
         }
         l.shades[0].setFill(); lcdRect.fill()
         let fb = compose(Date()), gap = PX >= 3 ? 1 / (window?.backingScaleFactor ?? 2) : 0
-        let paths = (0..<4).map { _ in NSBezierPath() }
-        for y in 0..<64 { for x in 0..<96 { let s = Int(fb.px[y * 96 + x]); if s > 0 { paths[s].appendRect(NSRect(x: lcdRect.minX + CGFloat(x) * PX, y: lcdRect.minY + CGFloat(y) * PX, width: PX - gap, height: PX - gap)) } } }
+        var paths: [UInt32: NSBezierPath] = [:]                                                        // key: colour, or 1...3 for an LCD shade
+        for y in 0..<64 { for x in 0..<96 {
+            let i = y * 96 + x, key = l.color && fb.col[i] != 0 ? fb.col[i] : UInt32(fb.px[i])
+            if key != 0 { if paths[key] == nil { paths[key] = NSBezierPath() }; paths[key]!.appendRect(NSRect(x: lcdRect.minX + CGFloat(x) * PX, y: lcdRect.minY + CGFloat(y) * PX, width: PX - gap, height: PX - gap)) }
+        } }
         NSGraphicsContext.current!.shouldAntialias = false
-        for s in 1..<4 { l.shades[s].setFill(); paths[s].fill() }
+        for (k, path) in paths {
+            (k < 4 ? l.shades[Int(k)] : NSColor(red: CGFloat(k >> 16 & 255) / 255, green: CGFloat(k >> 8 & 255) / 255, blue: CGFloat(k & 255) / 255, alpha: 1)).setFill(); path.fill()
+        }
         NSGraphicsContext.current!.shouldAntialias = true
         NSGradient(starting: NSColor(white: 0, alpha: 0.22), ending: .clear)!.draw(in: NSRect(x: lcdRect.minX, y: lcdRect.minY, width: lcdRect.width, height: 2 * PX), angle: 90)
         let now = Date()

@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 A=PokeWalker.app/Contents
 mkdir -p $A/MacOS $A/Resources
 cp Info.plist $A/Info.plist
-cp sprites.bin $A/Resources/sprites.bin
+cp sprites.bin color.bin $A/Resources/
 swiftc -O -swift-version 6 Walker.swift Data.swift Test.swift main.swift -o $A/MacOS/PokeWalker
 $A/MacOS/PokeWalker --selftest
 if [ "$1" = run ]; then pkill -x PokeWalker || true; open PokeWalker.app; fi

@@ -94,6 +94,12 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     check(courses.map(\.watts) == courses.map(\.watts).sorted(), "courses unlock in order")
     check(monNames.count == 494 && monTypes.count == 494 && monNames[25] == "피카츄", "493 names + types")
     check(spriteData.count == 493 * 2 * 768, "sprites.bin in the bundle")
+    check(colorData.count == 493 * 3162, "color.bin in the bundle")
+    let body = (0..<48).flatMap { y in (0..<64).map { (x: $0, y: y) } }.first { spriteShade(6, 0, $0.x, $0.y) == 2 }!
+    check(spriteColor(6, 0, body.x, body.y, shiny: false) != spriteColor(6, 0, body.x, body.y, shiny: true), "shiny 리자몽 has another palette")
+    check(courses.flatMap { $0.slots.map(\.dex) }.allSatisfy { d in (0..<48).contains { y in (0..<64).contains { spriteColor(d, 0, $0, y, shiny: false) != 0 } } }, "every course Pokémon has colour art")
+    let old = try? JSONDecoder().decode(Mon.self, from: Data(#"{"dex":25,"level":5,"female":false}"#.utf8))
+    check(old == Mon(dex: 25, level: 5, female: false) && old?.shiny == nil, "pre-shiny saves still decode")
     let blank = Set(courses.flatMap { $0.slots.map(\.dex) } + [25]).filter { d in !(0..<48).contains { y in (0..<64).contains { spriteShade(d, 0, $0, y) > 0 } } }
     check(blank.isEmpty, "every course Pokémon has a sprite", "\(blank)")
     let td = textDots("포켓 레이더"); check(td.joined().contains(true) && td.count == 11, "Korean text renders to 11-row dots", td.map { String($0.map { $0 ? "#" : "." }) }.joined(separator: "\n"))
