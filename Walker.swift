@@ -21,6 +21,10 @@ enum Weather: String, Codable, CaseIterable {
 }
 let weatherSteps = 1000
 
+/// Game time runs on steps, not the wall clock: a day is `dayLength` steps (starting at 6:00), a season `seasonDays` days.
+let dayLength = 1000, seasonDays = 7
+enum Season: Int, CaseIterable { case spring, summer, autumn, winter; var name: String { ["봄", "여름", "가을", "겨울"][rawValue] } }
+
 /// An egg carried on the walker: hatches after `left` more steps (egg cycles x 255, Gen IV).
 struct Egg: Codable, Equatable { var dex: Int; var left: Int }
 enum PetFind: Equatable { case item(String), egg(Int) }
@@ -133,11 +137,18 @@ struct Walk: Codable, Equatable {
     /// Odds by course kind: beaches rain, mountains snow (얼음 산길 nearly always), caves only ever fog.
     mutating func rollWeather<R: RandomNumberGenerator>(_ r: inout R) -> Bool {
         weatherAt = total
-        let odds: [Weather: Int] = switch here.art {
+        var odds: [Weather: Int] = switch here.art {
         case .beach, .lake: [.sunny: 45, .rain: 40, .fog: 15]
         case .mountain: here.name == "얼음 산길" ? [.snow: 70, .sunny: 20, .fog: 10] : [.sunny: 45, .snow: 30, .rain: 15, .fog: 10]
         case .cave: [.sunny: 70, .fog: 30]
         default: [.sunny: 50, .rain: 30, .fog: 10, .snow: 10]
+        }
+        // the season tilts it: snowy winters, sunny summers, wet springs, foggy autumns
+        switch season {
+        case .winter: if here.art != .cave, here.art != .beach { odds[.snow, default: 0] += 30 }
+        case .summer: odds[.sunny, default: 0] += 20; odds[.snow] = odds[.snow].map { $0 / 3 }
+        case .spring: if here.art != .cave { odds[.rain, default: 0] += 15 }
+        case .autumn: odds[.fog, default: 0] += 15
         }
         var k = Int.random(in: 0..<odds.values.reduce(0, +), using: &r), pick = Weather.sunny
         for w in Weather.allCases { if let n = odds[w] { if k < n { pick = w; break }; k -= n } }
@@ -155,10 +166,14 @@ struct Walk: Codable, Equatable {
     mutating func dex() { for m in [companion] + caught + box { own(m.dex, shiny: m.shiny) } }
 
     // MARK: evolution
-    static func isDay(_ now: Date) -> Bool { (4..<20).contains(Calendar.current.component(.hour, from: now)) }   // HGSS morning + day
+    var clock: Int { total + dayLength / 4 }                                               // step 0 = 6:00 on day 1
+    var hour: Double { Double(clock % dayLength) / Double(dayLength) * 24 }
+    var gameDay: Int { clock / dayLength }                                                 // 0-based
+    var season: Season { Season(rawValue: gameDay / seasonDays % 4)! }
+    var isDay: Bool { (4..<20).contains(hour) }                                            // HGSS morning + day; night 20-4
     func allows(_ e: Evo, _ m: Mon, _ now: Date) -> Bool {
         if let f = e.female, f != m.female { return false }
-        if let t = e.time, (t == "day") != Walk.isDay(now) { return false }
+        if let t = e.time, (t == "day") != isDay { return false }
         if let i = e.item, !(bag + items).contains(i) { return false }
         if let p = e.party, !(caught + box).contains(where: { $0.dex == p }) { return false }
         if let p = e.place { switch p { case "cave": if here.art != .cave { return false }; case "forest": if here.art != .forest { return false }; default: if here.name != "얼음 산길" { return false } } }

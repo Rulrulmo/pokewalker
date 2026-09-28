@@ -69,7 +69,6 @@ let ballTilt = [art(["_###___", "#:::#__", "#::::#_", "##.####", "_#....#", "_#.
 let burstArt = art(["#___#___#", "_#__#__#_", "__#___#__", "___###___", "###_#_###", "___###___", "__#___#__", "_#__#__#_", "#___#___#"])
 let bubble = art(["_#########_", "#.........#", "#.........#", "#.........#", "#.........#", "#.........#", "#.........#", "_####.####_", "_____##____", "_____#_____"])
 let emotes = [art(["__##_", "__#_#", "__#__", "###__", "###__"]), art(["_#_#_", "#####", "#####", "_###_", "__#__"]), art(["__#__", "__#__", "__#__", "_____", "__#__"])]   // ♪ ♥ !
-func hourNow(_ d: Date) -> Double { let c = Calendar.current.dateComponents([.hour, .minute], from: d); return Double(c.hour!) + Double(c.minute!) / 60 }
 let eggArt = art(["__###__", "_#...#_", "#.....#", "#..:..#", "#.....#", "#.:..:#", "#.....#", "_#...#_", "__###__"])
 let eggCrack = art(["__###__", "_#...#_", "#..#..#", "#.#.#.#", "##...##", "#.:..:#", "#.....#", "_#...#_", "__###__"])
 let eggPal = [rgb(252, 250, 240), rgb(252, 250, 240), rgb(120, 190, 110), rgb(40, 44, 52)]
@@ -156,12 +155,12 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
     }
     mutating func invert(_ x: Int, _ y: Int, _ w: Int, _ h: Int) { for yy in y..<y + h { for xx in x..<x + w where (0..<96).contains(xx) && (0..<64).contains(yy) { px[yy * 96 + xx] = 3 - px[yy * 96 + xx]; col[yy * 96 + xx] = 0 } } }
     /// 32x24 picture of the course, framed.
-    mutating func course(_ a: Art, _ x: Int, _ y: Int, weather w: Weather = .sunny, t: Double = 0, hour: Double = 12) {
+    mutating func course(_ a: Art, _ x: Int, _ y: Int, weather w: Weather = .sunny, t: Double = 0, hour: Double = 12, season: Season = .summer) {
         // colour: sky above the course's horizon, its ground/water below
         let horizon = [Art.field: 14, .forest: 17, .mountain: 19, .beach: 10, .lake: 12, .town: 19, .cave: 0][a]!
         let grey = w == .rain || w == .fog || w == .snow && a != .cave
-        // real clock: dawn 5-7, day, dusk 17-19, night; overcast greys the sky and hides the sun / moon
-        let night = hour < 5 || hour >= 19, dawn = (5..<7).contains(hour), dusk = (17..<19).contains(hour)
+        // game clock: dawn 4-6, day, dusk 17-20, night 20-4 (as for evolutions); overcast greys the sky and hides the sun / moon
+        let night = hour < 4 || hour >= 20, dawn = (4..<6).contains(hour), dusk = (17..<20).contains(hour)
         let clear = night ? rgb(34, 44, 92) : dawn ? rgb(250, 196, 170) : dusk ? rgb(248, 150, 104) : rgb(160, 208, 250)
         let orb = night ? rgb(236, 232, 196) : dusk || dawn ? rgb(255, 120, 70) : rgb(255, 222, 96)
         let sky = [grey ? (night ? rgb(70, 76, 92) : rgb(172, 182, 196)) : clear, grey ? (night ? rgb(80, 86, 100) : rgb(200, 204, 212)) : orb, rgb(70, 150, 80), rgb(36, 44, 56)]
@@ -174,6 +173,18 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
         func p(_ dx: Int, _ dy: Int, _ s: UInt8) {
             guard (0..<32).contains(dx), (0..<24).contains(dy) else { return }
             var c = (dy < horizon ? sky : ground)[Int(s)]
+            let green = [.field, .forest, .town].contains(a)
+            switch season {                                                                                   // the land by season
+            case .spring: if green, dy >= horizon, s == 2, (dx + dy) % 3 == 0 { c = rgb(244, 150, 190) }         // flowers
+            case .autumn:
+                if green, dy >= horizon { c = [rgb(214, 178, 96), rgb(196, 150, 72), rgb(170, 112, 50), rgb(90, 60, 30)][Int(s)] }
+                if a == .forest, dy < horizon, s == 2 { c = (dx + dy) % 2 == 0 ? rgb(222, 120, 48) : rgb(200, 70, 40) }   // red and orange trees
+            case .winter:
+                if green || a == .mountain, dy >= horizon { c = [rgb(246, 248, 252), rgb(226, 232, 242), rgb(198, 208, 222), rgb(110, 120, 140)][Int(s)] }   // snow cover
+                if a == .forest, dy < horizon, s == 2 { c = dy % 3 == 0 ? rgb(240, 244, 250) : rgb(52, 100, 76) }   // snow on the firs
+                if a == .mountain, dy < horizon, s == 1 { c = rgb(236, 240, 246) }                                // white peaks
+            case .summer: break
+            }
             if night, dy >= horizon || a == .cave { c = dim(c, 0.55) }                                           // the ground darkens too
             if night, !grey, dy < horizon, s == 0, (dx * 7 + dy * 13) % 23 == 0 { c = rgb(250, 250, 220) }        // stars
             if a == .mountain, dy < horizon, s == 1 { c = rgb(150, 132, 118) }                                     // rock faces, not sun
@@ -243,6 +254,7 @@ final class WalkerView: NSView {
     var screen = Screen.home
     var lastInput = Date(), lastStep = Date.distantPast, lastSave = Date(), levelled = false
     var boxByLevel = false
+    lazy var lastSeason = state.season
     var shown: FB? = nil                                                   // last composed frame; draw() only when it changes
     var emote: (kind: Int, until: Date)? = nil                             // ♪ ♥ ! bubble over the companion
     lazy var rewarded = dexCount                                           // dex count already celebrated (no fanfare for old progress)
@@ -265,6 +277,11 @@ final class WalkerView: NSView {
         let now = Date(), before = state.total
         if state.sync(counter: WalkerView.counter(), boot: WalkerView.boot(), at: now) { levelled = true }
         if state.total != before { lastStep = now }
+        if state.season != lastSeason {
+            lastSeason = state.season
+            notify("weather", state.season.name + "이 왔어요", ["꽃이 피었어요", "햇볕이 쨍쨍해요", "단풍이 들었어요", "눈이 쌓여요"][state.season.rawValue] + " · 게임 속 \(seasonDays)일마다 계절이 바뀌어요")
+            if case .home = screen { screen = .say([state.season.name + "이 왔다!"], next: .home, since: now) }
+        }
         if state.weatherDue, state.rollWeather(&rng) {
             let w = state.weather ?? .sunny
             notify("weather", w.news, w.types.map { typeKo[$0] ?? $0 }.joined(separator: "·") + " 타입이 자주 나와요 · " + state.here.name)
@@ -436,7 +453,7 @@ final class WalkerView: NSView {
             let f = now.timeIntervalSince(lastStep) < 3 ? half : Int(t) % 2        // steps coming in => walks twice as fast
             fb.mon(me, f, 32, 0)
             if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { fb.draw(bubble, 32, 0, ballPal); fb.draw(emotes[e.kind], 35, 2, redPal) }
-            fb.course(state.here.art, 1, 22, weather: state.weather ?? .sunny, t: t, hour: hourNow(now))
+            fb.course(state.here.art, 1, 22, weather: state.weather ?? .sunny, t: t, hour: state.hour, season: state.season)
             fb.text("\(state.watts)W", 1, 1, 2, small: true)
             for i in 0..<state.caught.count { fb.draw(ball, 1 + 8 * i, 13, ballPal) }
             for i in 0..<state.items.count { fb.draw(gem, 26 + 4 * i, 15, gemPal) }
@@ -487,13 +504,14 @@ final class WalkerView: NSView {
             } else if p == 0 {
                 fb.text(state.here.name, 2, 14)
                 fb.text("오늘  \(state.today)걸음", 2, 26)
-                fb.text("합계  \(state.total)걸음", 2, 38)
+                fb.text("\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · " + (state.hour < 4 || state.hour >= 20 ? "밤" : state.hour < 6 ? "새벽" : state.hour >= 17 ? "저녁" : "낮"), 2, 38)
                 let w = state.weather ?? .sunny
                 fb.text("날씨 \(w.name) · " + w.types.map { typeKo[$0] ?? $0 }.joined(separator: "·") + "↑", 2, 50, 2)
             } else {
                 let days = Array(([state.today] + state.history).prefix(8)), top = max(1, days.max()!)
                 for (k, v) in days.enumerated() { let h = v * 34 / top, x = 84 - 11 * k; fb.fill(x, 60 - h, 8, h, k == 0 ? 3 : 2); fb.fill(x, 61, 8, 1, 1) }
-                fb.text("\(top)", 94, 14, 1, right: true)
+                fb.text("\(top)", 94, 14, 1, right: true, small: true)
+                fb.text("합계 \(state.total)", 2, 14, 2, small: true)
             }
         case .bag(let p):
             let m = p < bagPages - 1 ? state.caught[safe: p] : nil
@@ -612,7 +630,11 @@ final class WalkerView: NSView {
     }
     func stage(_ fb: inout FB, _ b: Battle, _ now: Date, _ p: Pose) {
         let t = now.timeIntervalSinceReferenceDate, f = Int(t * 2) % 2
-        for y in 41..<48 { for x in 14..<82 { let ex = Double(x - 48) / 34, ey = Double(y - 44) / 3.6; if ex * ex + ey * ey < 1 { fb.set(x, y, 1, ex * ex + ey * ey > 0.7 ? rgb(150, 200, 110) : rgb(186, 222, 146)) } } }   // the grass pad they stand on
+        let pad: (UInt32, UInt32) = switch state.season {                                                         // the pad they stand on, by season
+        case .spring: (rgb(150, 206, 120), rgb(196, 230, 160)); case .summer: (rgb(130, 190, 96), rgb(176, 216, 136))
+        case .autumn: (rgb(200, 150, 80), rgb(226, 190, 120)); case .winter: (rgb(200, 212, 228), rgb(236, 242, 250))
+        }
+        for y in 41..<48 { for x in 14..<82 { let ex = Double(x - 48) / 34, ey = Double(y - 44) / 3.6; if ex * ex + ey * ey < 1 { fb.set(x, y, 1, ex * ex + ey * ey > 0.7 ? pad.0 : pad.1) } } }
         defer { fb.weatherFX(state.weather ?? .sunny, 0, 12, 96, 38, t) }                         // over the fighters, under the HUD
         switch p {
         case .idle(let m):

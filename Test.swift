@@ -83,7 +83,8 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     w = Walk(); w.companion = Mon(dex: 16, level: 17, female: false); check(w.levelEvolution(at(10)) == nil, "구구 Lv.17: not yet")
     w.companion.level = 18; check(w.levelEvolution(at(10))?.to == 17, "구구 Lv.18 -> 피죤")
     w.companion = Mon(dex: 133, level: 20, female: false, walked: friendSteps)
-    check(w.levelEvolution(at(10, 12))?.to == 196 && w.levelEvolution(at(10, 22))?.to == 197, "이브이: friendship by day 에브이, by night 블래키")
+    w.total = 250; let noon = w.levelEvolution(at(10))?.to; w.total = 700; let late = w.levelEvolution(at(10))?.to
+    check(noon == 196 && late == 197, "이브이: friendship at game noon 에브이, at game night 블래키 (steps, not the wall clock)", "\(String(describing: noon)) \(String(describing: late))")
     w.setCourse(1, &r); w.companion.walked = 0; check(w.levelEvolution(at(10))?.to == 470, "이브이 levelling in the forest -> 리피아")
     w = Walk(); check(w.stoneEvolutions(at(10)).isEmpty, "피카츄 without a stone: nothing")
     w.bag = ["천둥의돌"]; let st = w.stoneEvolutions(at(10))
@@ -110,6 +111,15 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     w.weather = .sunny; check(abs(bShare() - 75) < 1.5, "sunny: fire/grass only")
     w.course = 3; w.picks = [0, 2, 4]; w.courseSteps = 1500; w.weather = .rain           // 아름다운 해변 B 고라파덕 (water) 75 % -> 100 %
     check(bShare() > 99, "rain: water B slot 75 % -> 100 %", "\(bShare())")
+
+    // 6e game time on steps
+    w = Walk(); check(w.hour == 6 && w.season == .spring && w.isDay, "step 0 = 6:00, spring")
+    w.total = 584; check((20..<20.1).contains(w.hour) && !w.isDay, "584 steps later it's 20:00: night")
+    w.total = 750; check(w.gameDay == 1 && w.hour == 0, "1000 steps = one day")
+    w.total = seasonDays * dayLength; check(w.season == .summer, "7 days = next season")
+    w.total = 3 * seasonDays * dayLength; check(w.season == .winter, "then autumn, winter")
+    w = Walk(); w.total = 3 * seasonDays * dayLength; var snowy = 0; for _ in 0..<1000 { _ = w.rollWeather(&r); if w.weather == .snow { snowy += 1 } }
+    check(snowy > 250, "winter fields snow a lot", "\(snowy)")
 
     // 6d eggs, legends, 껍질몬
     w = Walk(); _ = w.petEvent(&r)
