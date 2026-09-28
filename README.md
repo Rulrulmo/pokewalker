@@ -8,6 +8,20 @@ macOS 플로팅 포켓워커. 의존성 0, Swift 6 + AppKit, `swiftc`만 사용.
 open PokeWalker.app
 ```
 
+### 다른 Mac에 주기
+
+```sh
+./build.sh dist   # dist/PokeWalker.zip — Apple Silicon + Intel, macOS 13 이상
+```
+
+zip을 보내면 받는 사람은 압축을 풀고 `PokeWalker.app`을 응용 프로그램 폴더로 옮긴 뒤:
+1. 처음 한 번은 **우클릭 → 열기 → 열기** (Apple 개발자 서명이 없어서 더블클릭하면 "확인되지 않은 개발자" 경고로 막힘).
+   macOS 15 이상에서 우클릭 열기도 막히면: 한 번 실행 시도 → **시스템 설정 → 개인정보 보호 및 보안 → "그래도 열기"**.
+   또는 터미널: `xattr -dr com.apple.quarantine /Applications/PokeWalker.app`
+2. 알림 허용 물어보면 허용.
+
+경고 없이 더블클릭으로 열리게 하려면 Apple Developer Program(연 $99)의 Developer ID 서명 + 공증(notarization)이 필요. 세이브는 사람마다 따로(`~/Library/Application Support/PokeWalker`).
+
 ## 메뉴 막대 · 알림
 
 - 상단 메뉴 막대에 몬스터볼 아이콘 + 현재 W(알이 곧 부화하면 `·알`). **클릭 = 워커 숨기기/보이기**, 우클릭 = 기기와 같은 메뉴. 숨겨도 걸음·이벤트·부화는 계속(숨기면 홈 화면에 둠). 숨김 상태는 다음 실행에도 유지.

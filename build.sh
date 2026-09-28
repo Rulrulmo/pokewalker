@@ -1,12 +1,26 @@
 #!/bin/sh
-# ./build.sh        build PokeWalker.app; runs --selftest first, so a broken rule or missing sprite data fails the build
+# ./build.sh        build PokeWalker.app (this Mac only); runs --selftest first, so a broken rule or missing data fails the build
 # ./build.sh run    build, then (re)launch
+# ./build.sh dist   dist/PokeWalker.zip for other Macs: Apple Silicon + Intel, macOS 13+, ad-hoc signed (no Apple Developer ID)
 set -e
 cd "$(dirname "$0")"
-A=PokeWalker.app/Contents
-mkdir -p $A/MacOS $A/Resources
-cp Info.plist $A/Info.plist
-cp sprites.bin color.bin fonts/Galmuri9.ttf fonts/Galmuri7.ttf $A/Resources/
-swiftc -O -swift-version 6 Walker.swift Data.swift Test.swift main.swift -o $A/MacOS/PokeWalker
-$A/MacOS/PokeWalker --selftest
+SRC="Walker.swift Data.swift Test.swift main.swift"
+bundle() {   # $1 = .app path
+    mkdir -p "$1/Contents/MacOS" "$1/Contents/Resources"
+    cp Info.plist "$1/Contents/Info.plist"
+    cp sprites.bin color.bin fonts/Galmuri9.ttf fonts/Galmuri7.ttf "$1/Contents/Resources/"
+}
+if [ "$1" = dist ]; then
+    A=dist/PokeWalker.app; rm -rf dist; bundle $A
+    for arch in arm64 x86_64; do swiftc -O -swift-version 6 -target $arch-apple-macos13 $SRC -o dist/PokeWalker-$arch; done
+    lipo -create dist/PokeWalker-arm64 dist/PokeWalker-x86_64 -output $A/Contents/MacOS/PokeWalker; rm dist/PokeWalker-*
+    $A/Contents/MacOS/PokeWalker --selftest > /dev/null
+    codesign --force --deep -s - $A
+    ditto -c -k --keepParent $A dist/PokeWalker.zip
+    echo "dist/PokeWalker.zip ($(du -h dist/PokeWalker.zip | cut -f1)) — $(lipo -archs $A/Contents/MacOS/PokeWalker), macOS 13+"
+    exit
+fi
+A=PokeWalker.app; bundle $A
+swiftc -O -swift-version 6 $SRC -o $A/Contents/MacOS/PokeWalker
+$A/Contents/MacOS/PokeWalker --selftest
 if [ "$1" = run ]; then pkill -x PokeWalker || true; open PokeWalker.app; fi
