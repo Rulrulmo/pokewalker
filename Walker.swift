@@ -8,7 +8,7 @@ struct Course { let name: String; let watts: Int; let types: [String]; let art: 
 
 struct Mon: Codable, Equatable { var dex: Int; var level: Int; var female: Bool; var shiny: Bool? = nil }   // Optional: saves from before shinies still decode
 /// 이로치 odds. Gen IV is 1/8192, which at a few radar fights a day would never show up.
-let shinyOdds = 512
+let shinyOdds = 128
 
 /// Everything the device remembers, plus the "game" side (box/bag) that Connect sends things to.
 struct Walk: Codable, Equatable {

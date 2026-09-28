@@ -23,6 +23,9 @@ SRC = {
     'pwalk_color.png': 'https://vgmoose.dev/posts/29263141%20-%20Extracting%20and%20colorizing%20Pokewalker%20Sprites!.post/pwalk_color.png',
     **{f'hgss/{s}{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/heartgold-soulsilver/{"shiny/" if s else ""}{i}.png'
        for i in range(1, 494) for s in ('', 's')},
+    # PokeAPI's HGSS shiny 422/423 (West Sea) is a copy of the normal file; Platinum's pair is right and uses the same palette
+    **{f'plat/{s}{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/platinum/{"shiny/" if s else ""}{i}.png'
+       for i in (422, 423) for s in ('', 's')},
     'serebii.html': 'https://www.serebii.net/heartgoldsoulsilver/pokewalker-area.shtml',
     **{f + '.csv': API + f + '.csv' for f in ['pokemon_species_names', 'item_names', 'pokemon_types', 'pokemon_types_past', 'types']},
 }
@@ -60,7 +63,8 @@ for dex in range(1, N + 1):
     px = [[col.getpixel((cx + x, cy + y)) for x in range(64)] for y in range(96)]
     pal = sorted({p[:3] for r in px for p in r if p[3]})
     assert len(pal) <= 15, (dex, len(pal))
-    a, s = Image.open(get(f'hgss/{dex}.png')).convert('RGBA'), Image.open(get(f'hgss/s{dex}.png')).convert('RGBA')
+    src = 'plat' if open(get(f'hgss/{dex}.png'), 'rb').read() == open(get(f'hgss/s{dex}.png'), 'rb').read() else 'hgss'
+    a, s = Image.open(get(f'{src}/{dex}.png')).convert('RGBA'), Image.open(get(f'{src}/s{dex}.png')).convert('RGBA')
     votes = {}
     for y in range(a.height):
         for x in range(a.width):
