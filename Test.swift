@@ -52,7 +52,7 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     w.picks = [0, 2, 4]
     func share(_ steps: Int) -> [Double] {
         w.courseSteps = steps; var n = [0, 0, 0]
-        for _ in 0..<20000 { let s = w.encounter(&r); n[[0, 0, 1, 1, 2, 2][w.here.slots.firstIndex { $0.dex == s.dex && $0.steps == s.steps }!]] += 1 }
+        for _ in 0..<20000 { let s = w.encounter(&r, guests: false); n[[0, 0, 1, 1, 2, 2][w.here.slots.firstIndex { $0.dex == s.dex && $0.steps == s.steps }!]] += 1 }
         return n.map { Double($0) / 200 }
     }
     check(share(0) == [0, 0, 100], "0 steps: only group C", "\(share(0))")
@@ -68,7 +68,7 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     for _ in 0..<4 { _ = w.keep("상처약") }; check(w.items.count == 3 && w.bag.count == 1, "4th item goes to the bag")
     w.connect(); check(w.caught.isEmpty && w.items.isEmpty && w.box.count == 4 && w.bag.count == 4, "connect empties the walker")
     w.courseSteps = 900; w.setCourse(3, &r)
-    check(w.course == 3 && w.courseSteps == 0 && [0, 1].contains(w.picks[0]) && [2, 3].contains(w.picks[1]) && [4, 5].contains(w.picks[2]), "new course: steps restart, one pick per group")
+    check(w.course == 3 && w.courseSteps == 0 && [0, 1, 6, 7].contains(w.picks[0]) && [2, 3, 8, 9].contains(w.picks[1]) && [4, 5, 10, 11].contains(w.picks[2]), "new course: steps restart, one pick per group")
     w.courseSteps = 700; w.pair(0); check(w.companion.dex == 4 && w.box[0].dex == 25 && w.courseSteps == 700, "pair swaps with the box, course progress kept")
     _ = w.keep(Mon(dex: 16, level: 5, female: false)); w.pair(0, onWalker: true)
     check(w.companion.dex == 16 && w.caught[0].dex == 4, "pair with a Pokémon still on the walker")
@@ -104,7 +104,7 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     w = Walk(); w.setCourse(5, &r); var kinds = Set<Weather>(); for _ in 0..<300 { _ = w.rollWeather(&r); kinds.insert(w.weather!) }
     check(kinds == [.sunny, .fog], "caves only get fog", "\(kinds)")
     w = Walk(); w.picks = [0, 2, 4]; w.courseSteps = 500                                   // 상쾌한 들판 at 500+: B 니드런 75 %, C 구구 25 %
-    func bShare() -> Double { var n = 0; for _ in 0..<20000 where w.encounter(&r).steps == w.here.slots[2].steps { n += 1 }; return Double(n) / 200 }
+    func bShare() -> Double { var n = 0; for _ in 0..<20000 where w.encounter(&r, guests: false).steps == w.here.slots[2].steps { n += 1 }; return Double(n) / 200 }
     let plain = bShare(); w.weather = .fog; let fog = bShare()
     check(abs(plain - 75) < 1.5 && abs(fog - 75) < 1.5, "fog boosts nothing here (니드런 is poison)", "\(plain) \(fog)")
     w.companion = Mon(dex: 1, level: 5, female: false)                                       // grass boost: none of these are grass either
@@ -193,12 +193,18 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
 
     // 7b radar chain, companion events, box
     w = Walk(); w.picks = [0, 2, 4]; w.courseSteps = 2000
-    func aShare(_ c: Int) -> Double { var n = 0; for _ in 0..<20000 where w.encounter(&r, chain: c).steps == 2000 { n += 1 }; return Double(n) / 200 }
+    func aShare(_ c: Int) -> Double { var n = 0; for _ in 0..<20000 where w.encounter(&r, chain: c, guests: false).steps == 2000 { n += 1 }; return Double(n) / 200 }
     let a0 = aShare(0), a4 = aShare(4); check(abs(a0 - 70) < 1.5 && abs(a4 - 90) < 1.5, "chain 4: A slot 70 % -> 90 % (x1.8, capped)", "\(a0) \(a4)")
-    w.courseSteps = 732; var seenB = Set<Int>(); for _ in 0..<2000 { seenB.insert(w.encounter(&r, chain: 6).dex) }
+    w.courseSteps = 732; var seenB = Set<Int>(); for _ in 0..<2000 { seenB.insert(w.encounter(&r, chain: 6, guests: false).dex) }
     check(seenB.count == 2, "6-chain before the A threshold still mixes B and C (was B only)", "\(seenB)")
     var grass = Set<[Int]>(); for _ in 0..<200 { w.newGrass(&r); grass.insert(w.picks) }
-    check(grass.count == 8 && grass.allSatisfy { [0, 1].contains($0[0]) && [2, 3].contains($0[1]) && [4, 5].contains($0[2]) }, "new day: one of each group's two, all 8 mixes happen")
+    check(grass.count > 50 && grass.allSatisfy { [0, 1, 6, 7].contains($0[0]) && [2, 3, 8, 9].contains($0[1]) && [4, 5, 10, 11].contains($0[2]) }, "new day: one of each group's four (original 2 + extra 2)", "\(grass.count)")
+    check(courses.allSatisfy { c in c.extra.count == 6 && Set(c.extra.map(\.dex)).count == 6 && Set(c.extra.map(\.dex)).isDisjoint(with: c.slots.map(\.dex))
+                                    && c.guests.count == 5 && Set(c.guests).isDisjoint(with: c.all.map(\.dex)) },
+          "every course: 6 new extras + 5 other guests (노란 숲's 6 originals are all 피카츄)")
+    check(courses.allSatisfy { c in c.extra.enumerated().allSatisfy { $0.element.steps == c.slots[$0.offset / 2 * 2].steps } }, "extras need their group's steps")
+    w = Walk(); var guestsSeen = 0; for _ in 0..<5000 where w.here.guests.contains(w.encounter(&r).dex) { guestsSeen += 1 }
+    check((380...620).contains(guestsSeen), "guests: ~10 % of finds", "\(guestsSeen)")
     w = Walk(); check(w.eventDue && w.petEvent(&r) == nil && !w.eventDue, "first event call only schedules")
     var found = 0; for _ in 0..<400 { w.total = w.nextEvent!; if w.petEvent(&r) != nil { found += 1 } }
     check((60...140).contains(found) && w.items.count == 3, "1 in 4 events brings an item back", "\(found)")
@@ -251,6 +257,10 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     check(v.state.companion.dex == 1 && v.state.box.first?.dex == 25, "box: ● 함께 swaps the companion")
     v.screen = .menu(6); v.press(1); check(on(v) { if case .dex = $0 { return true }; return false }, "menu 도감 opens the dex")
     _ = v.touch(80, 30); _ = v.touch(10, 30); _ = v.touch(48, 30); check(on(v) { if case .menu(6) = $0 { return true }; return false }, "dex taps: ▶ ◀ then ● back to the menu")
+
+    v.state.box = (1...120).map { Mon(dex: $0 * 4 % 493 + 1, level: 5, female: false, shiny: $0 % 17 == 0 ? true : nil) }
+    let walkMenu = v.buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu
+    check((walkMenu?.items.count ?? 99) <= 20 && walkMenu?.items.contains { $0.title.hasPrefix("★ 이로치") } == true, "big box: 함께 걷기 stays short (recent, shinies, dex ranges)", "\(walkMenu?.items.count ?? -1)")
 
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0

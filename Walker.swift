@@ -4,7 +4,15 @@ import Foundation
 struct Slot { let dex, level, steps: Int; let chance: Double; let female: Bool }   // steps = min course steps before it can appear
 struct Find { let item: String; let steps, chance: Int }
 enum Art { case field, forest, mountain, beach, lake, town, cave }
-struct Course { let name: String; let watts: Int; let dex: Int; let legends: [Int]; let types: [String]; let art: Art; let slots: [Slot]; let items: [Find] }   // slots: A A B B C C, items rarest first; dex = Pokédex count (event courses)
+struct Course {
+    let name: String; let watts: Int; let dex: Int; let legends: [Int]; let types: [String]; let art: Art
+    let slots: [Slot]                    // the original walker's 6: A A B B C C
+    let extra: [Slot]                    // not in the original: 2 more per group, same steps / chance as the group (A A B B C C)
+    let guests: [Int]                    // not in the original: habitat visitors, 10 % of radar finds
+    let items: [Find]
+    var all: [Slot] { slots + extra }    // picks index this: group g = slots 2g, 2g+1, 6+2g, 6+2g+1
+}
+let guestOdds = 0.10   // slots: A A B B C C, items rarest first; dex = Pokédex count (event courses)
 
 /// Gen IV evolution, mapped onto a walker (see tools/gen.py): level = on level-up at `level`+; friend = on level-up after `friendSteps` together;
 /// item = use a stone from the bag; trade = Connect while it's the companion. `item` on level/trade = must be in the bag (and is used up).
@@ -290,15 +298,18 @@ struct Walk: Codable, Equatable {
     /// The walker's draw: rarest carried slot first, "far enough and rand(100) < chance" wins, the commonest is the fallback.
     /// chain = radar chain length: each link makes the A/B slots 20 % likelier (up to 8 links). Boosts (chain, weather) stop at 90 % so it never
     /// collapses onto one species (a 75 % B slot used to hit 100 % at 2 links and shut the rest out).
-    func encounter<R: RandomNumberGenerator>(_ r: inout R, chain: Int = 0) -> Slot {
+    func encounter<R: RandomNumberGenerator>(_ r: inout R, chain: Int = 0, guests: Bool = true) -> Slot {
+        if guests, !here.guests.isEmpty, Double.random(in: 0..<1, using: &r) < guestOdds {       // a visitor from the habitat, at the C group's level + 2
+            return Slot(dex: here.guests.randomElement(using: &r)!, level: here.slots[4].level + 2, steps: 0, chance: 100, female: Bool.random(using: &r))
+        }
         let boost = (weather ?? .sunny).types
-        for i in picks {
-            let s = here.slots[i], rare = i < 4 ? 1 + 0.2 * Double(min(chain, 8)) : 1
+        for (g, i) in picks.enumerated() {
+            let s = here.all[i], rare = g < 2 ? 1 + 0.2 * Double(min(chain, 8)) : 1
             let boosted = s.chance * rare * (monTypes[s.dex].contains { boost.contains($0) } ? 1.5 : 1)
             let chance = boosted > s.chance ? min(boosted, max(s.chance, 90)) : s.chance
             if effSteps >= s.steps, Double.random(in: 0..<100, using: &r) < chance { return s }
         }
-        return here.slots[picks[2]]
+        return here.all[picks[2]]
     }
     func dowse<R: RandomNumberGenerator>(_ r: inout R) -> String {
         for f in here.items { if effSteps >= f.steps, Int.random(in: 0..<100, using: &r) < f.chance { return f.item } }
@@ -314,7 +325,7 @@ struct Walk: Codable, Equatable {
         connect(); course = i; courseSteps = 0; newGrass(&r)
     }
     /// Which of each group's two the grass holds: rolled on every pairing and every new game day (with the weather).
-    mutating func newGrass<R: RandomNumberGenerator>(_ r: inout R) { picks = [Int.random(in: 0...1, using: &r), Int.random(in: 2...3, using: &r), Int.random(in: 4...5, using: &r)] }
+    mutating func newGrass<R: RandomNumberGenerator>(_ r: inout R) { picks = (0..<3).map { g in [2 * g, 2 * g + 1, 6 + 2 * g, 7 + 2 * g].randomElement(using: &r)! } }
     /// Walk with box[i] (or, onWalker, caught[i]) instead; the old companion takes its place. Course progress stays
     /// (the real device re-pairs and restarts the course, which just punishes trying a new partner).
     mutating func pair(_ i: Int, onWalker: Bool = false) {

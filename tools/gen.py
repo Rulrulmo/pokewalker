@@ -28,7 +28,7 @@ SRC = {
        for i in (422, 423) for s in ('', 's')},
     'serebii.html': 'https://www.serebii.net/heartgoldsoulsilver/pokewalker-area.shtml',
     **{f + '.csv': API + f + '.csv' for f in ['pokemon_species_names', 'item_names', 'pokemon_types', 'pokemon_types_past', 'types',
-                                              'pokemon_evolution', 'pokemon_species', 'experience', 'items', 'type_names']},
+                                              'pokemon_evolution', 'pokemon_species', 'experience', 'items', 'type_names', 'pokemon_habitats']},
 }
 N = 493  # HGSS national dex
 
@@ -208,6 +208,44 @@ with open('Data.swift', 'w') as f:
         f.write(f'    Evo(from: {frm}, to: {to}, way: .{way}, level: {level}, item: {s(item) if item else "nil"}, female: {fem}, time: {s(time) if time else "nil"}, place: {s(place) if place else "nil"}, party: {party or "nil"}),\n')
     f.write(']\n\n')
     courses = courses[:20] + sorted(courses[20:], key=lambda c: c['dex'])
+    # --- more Pokémon per course (not in the original): each group gets 2 more candidates, plus 5 rare "guests" (10 % of radar finds).
+    # By habitat (PokeAPI has it up to Gen III; Gen IV goes by primary type); group by catch rate: A < 75, B 75-149, C >= 150 (and a base form).
+    hab = {r['id']: r['identifier'] for r in csv.DictReader(open(get('pokemon_habitats.csv')))}
+    BY_TYPE = {'water': 'sea', 'grass': 'forest', 'bug': 'forest', 'rock': 'mountain', 'ground': 'rough-terrain', 'steel': 'mountain', 'ghost': 'cave',
+               'dark': 'urban', 'poison': 'urban', 'normal': 'grassland', 'flying': 'grassland', 'fire': 'rough-terrain', 'ice': 'mountain',
+               'electric': 'urban', 'psychic': 'urban', 'fighting': 'urban', 'dragon': 'mountain'}
+    HABITATS = {'field': {'grassland'}, 'forest': {'forest'}, 'mountain': {'mountain', 'rough-terrain'}, 'beach': {'sea', 'waters-edge'},
+                'lake': {'waters-edge', 'sea'}, 'town': {'urban', 'grassland'}, 'cave': {'cave'}}
+    def habitat(d): return hab.get(sp[d]['habitat_id']) or BY_TYPE[types[d][0]]
+    legendary = {d for d in range(1, N + 1) if sp[d]['is_legendary'] == '1' or sp[d]['is_mythical'] == '1'}
+    usable = [d for d in range(1, N + 1) if d not in legendary and sp[d]['is_baby'] == '0' and d != 292]
+    tier = lambda d: 0 if int(sp[d]['capture_rate']) < 75 else 1 if int(sp[d]['capture_rate']) < 150 else 2
+    def stage(d): f = sp[d]['evolves_from_species_id']; return 0 if not f else 1 + stage(int(f))
+    fits_level = lambda d, lv: stage(d) == 0 or stage(d) == 1 and lv >= 20 or stage(d) >= 2 and lv >= 35   # no Lv.8 핫삼
+    original = {sl[0] for c in courses for sl in c['slots']}
+    used = {}
+    import random
+    for ci, c in enumerate(courses):
+        rnd = random.Random(ci)                                                            # stable data: same picks on every run
+        mine = {sl[0] for sl in c['slots']}
+        top = max(sl[1] for sl in c['slots'])
+        pool = [d for d in usable if habitat(d) in HABITATS[c['art']] and d not in mine and fits_level(d, top)]
+        score = lambda d: (used.get(d, 0), 0 if set(types[d]) & set(c['types']) else 1, d in original, rnd.random())   # spread out, the course's types first
+        extra = []
+        for g in range(3):
+            lv = c['slots'][2 * g][1]
+            cand = sorted([d for d in pool if tier(d) == g and fits_level(d, lv) and d not in extra], key=score)[:2]
+            if len(cand) < 2: cand += sorted([d for d in pool if d not in extra and d not in cand and fits_level(d, lv)], key=score)[:2 - len(cand)]
+            base = c['slots'][2 * g]
+            for d in cand:
+                used[d] = used.get(d, 0) + 1
+                fem = sp[d]['gender_rate'] == '8' or (sp[d]['gender_rate'] not in ('-1', '0') and rnd.random() < 0.5)
+                extra.append((d, base[1], base[2], base[3], fem))
+        taken = {e[0] for e in extra}
+        assert len(extra) == 6, (c['name'], extra)
+        gpool = sorted([d for d in pool if d not in taken], key=lambda d: (d in original, used.get(d, 0), rnd.random()))[:5]
+        for d in gpool: used[d] = used.get(d, 0) + 1
+        c['extra'], c['guests'] = extra, gpool
     # legendary courses (not in the original): a regular course's Pokémon + items, plus a rare legend on the radar; unlock by Pokédex count
     by = {c['name']: c for c in courses}
     LEGEND = [('전설의 새 둥지', 150, '화산 길', [144, 145, 146]), ('방황하는 들판', 170, '호연 들판', [243, 244, 245]),
@@ -218,7 +256,7 @@ with open('Data.swift', 'w') as f:
     assert sorted(legends) == sorted(d for d in range(1, N + 1) if sp[d]['is_legendary'] == '1' or sp[d]['is_mythical'] == '1'), 'every legend exactly once'
     for name, need, base, ls in LEGEND: courses.append({**by[base], 'name': name, 'watts': 0, 'dex': need, 'legends': ls})
     # eggs: the bases of every line you can't otherwise reach (no legends; Shedinja comes from Nincada)
-    reach = {25} | {sl[0] for c in courses for sl in c['slots']}
+    reach = {25} | {sl[0] for c in courses for sl in c['slots']}                                     # eggs = bases the ORIGINAL tables miss (the extras overlap them on purpose)
     while True:
         more = {to for frm, to, *_ in evos if frm in reach} - reach
         if not more: break
@@ -233,6 +271,8 @@ with open('Data.swift', 'w') as f:
     for c in courses:
         f.write(f'    Course(name: {s(c["name"])}, watts: {c["watts"]}, dex: {c["dex"]}, legends: [{", ".join(map(str, c.get("legends", [])))}], types: [{", ".join(s(x) for x in c["types"])}], art: .{c["art"]},\n')
         f.write('           slots: [' + ', '.join(f'Slot(dex: {d}, level: {l}, steps: {st}, chance: {ch:g}, female: {str(fe).lower()})' for d, l, st, ch, fe in c['slots']) + '],\n')
+        f.write('           extra: [' + ', '.join(f'Slot(dex: {d}, level: {l}, steps: {st}, chance: {ch:g}, female: {str(fe).lower()})' for d, l, st, ch, fe in c['extra']) + '],\n')
+        f.write('           guests: [' + ', '.join(map(str, c['guests'])) + '],\n')
         f.write('           items: [' + ', '.join(f'Find(item: {s(n)}, steps: {st}, chance: {ch})' for n, st, ch in c['items']) + ']),\n')
     f.write(']\n')
 print('ok', len(courses), 'courses,', len(out), 'sprite bytes')

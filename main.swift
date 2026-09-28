@@ -753,12 +753,35 @@ final class WalkerView: NSView {
         let ph = m.addItem(withTitle: "함께 걷기 · \(state.companion.shiny == true ? "★ " : "")\(monNames[state.companion.dex])", action: nil, keyEquivalent: ""), pm = NSMenu()
         if state.box.isEmpty && state.caught.isEmpty { pm.addItem(withTitle: "잡은 포켓몬이 없다", action: nil, keyEquivalent: "") }
         let all = state.caught.enumerated().map { (-1 - $0, $1, " · 워커") } + state.box.enumerated().map { ($0, $1, "") }   // tag < 0 = on the walker
-        for (dex, group) in Dictionary(grouping: all, by: { $0.1.dex }).sorted(by: { $0.key < $1.key }) {     // one row per species, the individuals inside
-            let head = pm.addItem(withTitle: "\(monNames[dex])\(group.contains { $0.1.shiny == true } ? " ★" : "") · \(group.count)", action: nil, keyEquivalent: ""), sm = NSMenu()
-            for (tag, b, whereIs) in group.sorted(by: { $0.1.points > $1.1.points }) {
-                let it = sm.addItem(withTitle: "\(b.shiny == true ? "★ " : "")Lv.\(b.level) \(b.female ? "♀" : "♂")\(whereIs)", action: #selector(pair(_:)), keyEquivalent: ""); it.target = self; it.tag = tag
+        func individual(_ into: NSMenu, _ e: (Int, Mon, String), named: Bool) {
+            let (tag, b, whereIs) = e
+            let it = into.addItem(withTitle: "\(b.shiny == true ? "★ " : "")\(named ? monNames[b.dex] + " " : "")Lv.\(b.level) \(b.female ? "♀" : "♂")\(whereIs)", action: #selector(pair(_:)), keyEquivalent: "")
+            it.target = self; it.tag = tag
+        }
+        func species(_ into: NSMenu, _ groups: [(key: Int, value: [(Int, Mon, String)])]) {        // one row per species, the individuals inside
+            for (dex, group) in groups {
+                let head = into.addItem(withTitle: "\(monNames[dex])\(group.contains { $0.1.shiny == true } ? " ★" : "") · \(group.count)", action: nil, keyEquivalent: ""), sm = NSMenu()
+                for e in group.sorted(by: { $0.1.points > $1.1.points }) { individual(sm, e, named: false) }
+                head.submenu = sm
             }
-            head.submenu = sm
+        }
+        let groups = Dictionary(grouping: all, by: { $0.1.dex }).sorted(by: { $0.key < $1.key })
+        if groups.count <= 12 { species(pm, groups) }
+        else {                                                                                   // many species: recent + shinies up top, the rest by dex number in 50s
+            pm.addItem(withTitle: "최근 잡은 포켓몬", action: nil, keyEquivalent: "")
+            let recent: [(Int, Mon, String)] = Array(state.caught.enumerated().map { (-1 - $0.offset, $0.element, " · 워커") }.reversed()) + Array(state.box.enumerated().map { ($0.offset, $0.element, "") }.reversed())
+            for e in recent.prefix(5) { individual(pm, e, named: true) }
+            let shinies = all.filter { $0.1.shiny == true }
+            if !shinies.isEmpty {
+                let sh = pm.addItem(withTitle: "★ 이로치 · \(shinies.count)", action: nil, keyEquivalent: ""), sm = NSMenu()
+                for e in shinies.sorted(by: { $0.1.dex < $1.1.dex }) { individual(sm, e, named: true) }
+                sh.submenu = sm
+            }
+            pm.addItem(.separator())
+            for (bucket, g) in Dictionary(grouping: groups, by: { ($0.key - 1) / 50 }).sorted(by: { $0.key < $1.key }) {
+                let head = pm.addItem(withTitle: String(format: "No.%03d–%03d · %d종", bucket * 50 + 1, bucket * 50 + 50, g.count), action: nil, keyEquivalent: ""), sm = NSMenu()
+                species(sm, g); head.submenu = sm
+            }
         }
         ph.submenu = pm
         let now = Date(), stones = state.stoneEvolutions(now)
