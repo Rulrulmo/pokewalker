@@ -4,7 +4,7 @@ import Foundation
 struct Slot { let dex, level, steps: Int; let chance: Double; let female: Bool }   // steps = min course steps before it can appear
 struct Find { let item: String; let steps, chance: Int }
 enum Art { case field, forest, mountain, beach, lake, town, cave }
-struct Course { let name: String; let watts: Int; let dex: Int; let types: [String]; let art: Art; let slots: [Slot]; let items: [Find] }   // slots: A A B B C C, items rarest first; dex = Pokédex count (event courses)
+struct Course { let name: String; let watts: Int; let dex: Int; let legends: [Int]; let types: [String]; let art: Art; let slots: [Slot]; let items: [Find] }   // slots: A A B B C C, items rarest first; dex = Pokédex count (event courses)
 
 /// Gen IV evolution, mapped onto a walker (see tools/gen.py): level = on level-up at `level`+; friend = on level-up after `friendSteps` together;
 /// item = use a stone from the bag; trade = Connect while it's the companion. `item` on level/trade = must be in the bag (and is used up).
@@ -20,6 +20,11 @@ enum Weather: String, Codable, CaseIterable {
     var news: String { ["날씨가 맑아졌다!", "비가 내리기 시작했다!", "눈이 내리기 시작했다!", "안개가 끼었다!"][Weather.allCases.firstIndex(of: self)!] }
 }
 let weatherSteps = 1000
+
+/// An egg carried on the walker: hatches after `left` more steps (egg cycles x 255, Gen IV).
+struct Egg: Codable, Equatable { var dex: Int; var left: Int }
+enum PetFind: Equatable { case item(String), egg(Int) }
+let legendOdds = (base: 0.02, perChain: 0.01)          // a legend course's radar: 2 % + 1 % per chain link (up to 4)
 
 struct Mon: Codable, Equatable {
     var dex: Int; var level: Int; var female: Bool
@@ -58,6 +63,7 @@ struct Walk: Codable, Equatable {
     var shinyOwned: [Int]? = nil                        // species ever owned as 이로치 (the dex shows those colours too)
     var weather: Weather? = nil, weatherAt: Int? = nil  // nil = sunny; total steps at the last roll
     var nextEvent: Int? = nil                           // total steps of the companion's next little event
+    var egg: Egg? = nil
 
     var here: Course { courses[course] }
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.
@@ -87,17 +93,34 @@ struct Walk: Codable, Equatable {
         today += n; total += n; courseSteps += n; remainder += n
         let w = remainder / 20; remainder %= 20
         watts = min(9999, watts + w); earned += w
+        egg?.left -= n
         return companion.gain(n)
     }
 
     // MARK: companion events: every 150-400 steps it emotes, and 1 in 4 times brings back an item from the course
     var eventDue: Bool { nextEvent.map { total >= $0 } ?? true }
-    /// Returns the found item (already kept), or nil for just an emote.
-    mutating func petEvent<R: RandomNumberGenerator>(_ r: inout R) -> String? {
+    /// What it brought back (already kept), or nil for just an emote. 1 in 8: an egg (if it isn't carrying one), else 1 in 4: an item.
+    mutating func petEvent<R: RandomNumberGenerator>(_ r: inout R) -> PetFind? {
         let first = nextEvent == nil
         nextEvent = total + Int.random(in: 150...400, using: &r)
-        guard !first, Int.random(in: 0..<4, using: &r) == 0 else { return nil }
-        let i = dowse(&r); _ = keep(i); return i
+        guard !first else { return nil }
+        if egg == nil, Int.random(in: 0..<8, using: &r) == 0 {
+            let fresh = eggPool.filter { !(owned ?? []).contains($0) }, d = (fresh.isEmpty ? eggPool : fresh).randomElement(using: &r)!   // new species first
+            egg = Egg(dex: d, left: eggCycles[d] * 255); return .egg(d)
+        }
+        guard Int.random(in: 0..<4, using: &r) == 0 else { return nil }
+        let i = dowse(&r); _ = keep(i); return .item(i)
+    }
+    var hatchDue: Bool { (egg?.left ?? 1) <= 0 }
+    mutating func hatch<R: RandomNumberGenerator>(_ r: inout R) -> Mon {
+        let m = Mon(dex: egg!.dex, level: 1, female: Bool.random(using: &r), shiny: Int.random(in: 0..<shinyOdds, using: &r) == 0 ? true : nil)
+        egg = nil; _ = keep(m); return m
+    }
+    /// On a legend course the radar sometimes turns up one you don't have yet.
+    func legend<R: RandomNumberGenerator>(_ r: inout R, chain: Int) -> Int? {
+        let left = here.legends.filter { !(owned ?? []).contains($0) }
+        guard !left.isEmpty, Double.random(in: 0..<1, using: &r) < legendOdds.base + legendOdds.perChain * Double(min(chain, 4)) else { return nil }
+        return left.randomElement(using: &r)
     }
 
     // MARK: box
@@ -154,6 +177,7 @@ struct Walk: Codable, Equatable {
     mutating func evolve(_ e: Evo) {
         if let i = e.item { if let k = bag.firstIndex(of: i) { bag.remove(at: k) } else if let k = items.firstIndex(of: i) { items.remove(at: k) } }
         companion.dex = e.to; own(e.to, shiny: companion.shiny)
+        if e.to == 291 { _ = keep(Mon(dex: 292, level: companion.level, female: false, shiny: companion.shiny)) }   // 토중몬 -> 아이스크 leaves a 껍질몬 behind
     }
 
     /// Steps = keys + clicks since the last poll. Same boot and a counter that only grew => the gap (also while the app was quit) counts;
@@ -229,6 +253,7 @@ struct Battle: Equatable {
     var wildHP = 4, myHP = 4
     var edge = 0                                     // -1 ... 2: (our level - its level) / 10; see `edge(_:_:)`
     var chain = 0                                    // radar chain this fight belongs to
+    var hard = false                                 // a legend: balls work half as well
 
     static func edge(_ me: Int, _ it: Int) -> Int { min(2, max(-1, (me - it) / 10)) }
 
@@ -259,7 +284,7 @@ struct Battle: Equatable {
             if Int.random(in: 0..<5, using: &r) == 0 { out.append(.fled) }
         case .capture:
             out.append(.thrown)
-            if Double.random(in: 0..<1, using: &r) < Double(5 - wildHP) / 5 { out.append(.caught); return out }   // 4 HP 20 % ... 1 HP 80 %
+            if Double.random(in: 0..<1, using: &r) < Double(5 - wildHP) / (hard ? 10 : 5) { out.append(.caught); return out }   // 4 HP 20 % ... 1 HP 80 % (legends half)
             out.append(.broke)
             if Int.random(in: 0..<4, using: &r) == 0 { out.append(.fled); return out }
             itsTurn(evading: false)

@@ -208,9 +208,30 @@ with open('Data.swift', 'w') as f:
         f.write(f'    Evo(from: {frm}, to: {to}, way: .{way}, level: {level}, item: {s(item) if item else "nil"}, female: {fem}, time: {s(time) if time else "nil"}, place: {s(place) if place else "nil"}, party: {party or "nil"}),\n')
     f.write(']\n\n')
     courses = courses[:20] + sorted(courses[20:], key=lambda c: c['dex'])
+    # legendary courses (not in the original): a regular course's Pokémon + items, plus a rare legend on the radar; unlock by Pokédex count
+    by = {c['name']: c for c in courses}
+    LEGEND = [('전설의 새 둥지', 150, '화산 길', [144, 145, 146]), ('방황하는 들판', 170, '호연 들판', [243, 244, 245]),
+              ('고대 유적', 190, '무서운 동굴', [377, 378, 379, 486]), ('호연의 하늘과 바다', 210, '따뜻한 해변', [380, 381, 382, 383, 384]),
+              ('신오 호수', 230, '하얀 호수', [480, 481, 482, 485, 488]), ('시공의 틈', 260, '고요한 동굴', [483, 484, 487, 491]),
+              ('환상의 숲', 300, '커다란 숲', [150, 151, 251, 385, 386, 489, 490, 492]), ('시작의 방', 350, '리조트', [249, 250, 493])]
+    legends = [d for *_, ls in LEGEND for d in ls]
+    assert sorted(legends) == sorted(d for d in range(1, N + 1) if sp[d]['is_legendary'] == '1' or sp[d]['is_mythical'] == '1'), 'every legend exactly once'
+    for name, need, base, ls in LEGEND: courses.append({**by[base], 'name': name, 'watts': 0, 'dex': need, 'legends': ls})
+    # eggs: the bases of every line you can't otherwise reach (no legends; Shedinja comes from Nincada)
+    reach = {25} | {sl[0] for c in courses for sl in c['slots']}
+    while True:
+        more = {to for frm, to, *_ in evos if frm in reach} - reach
+        if not more: break
+        reach |= more
+    pool = [d for d in range(1, N + 1) if not sp[d]['evolves_from_species_id'] and d not in reach and d not in legends and d != 292]
+    base_of = lambda d: d if not sp[d]['evolves_from_species_id'] else base_of(int(sp[d]['evolves_from_species_id']))
+    reach2 = reach | {d for d in range(1, N + 1) if base_of(d) in pool} | set(legends) | {292}
+    assert reach2 == set(range(1, N + 1)), sorted(set(range(1, N + 1)) - reach2)
+    f.write('let eggPool: [Int] = [' + ', '.join(map(str, pool)) + ']   // every line not on a course\n')
+    f.write('let eggCycles: [Int] = [0, ' + ', '.join(sp[i]['hatch_counter'] for i in range(1, N + 1)) + ']   // x 255 steps (Gen IV)\n')
     f.write('let courses: [Course] = [\n')
     for c in courses:
-        f.write(f'    Course(name: {s(c["name"])}, watts: {c["watts"]}, dex: {c["dex"]}, types: [{", ".join(s(x) for x in c["types"])}], art: .{c["art"]},\n')
+        f.write(f'    Course(name: {s(c["name"])}, watts: {c["watts"]}, dex: {c["dex"]}, legends: [{", ".join(map(str, c.get("legends", [])))}], types: [{", ".join(s(x) for x in c["types"])}], art: .{c["art"]},\n')
         f.write('           slots: [' + ', '.join(f'Slot(dex: {d}, level: {l}, steps: {st}, chance: {ch:g}, female: {str(fe).lower()})' for d, l, st, ch, fe in c['slots']) + '],\n')
         f.write('           items: [' + ', '.join(f'Find(item: {s(n)}, steps: {st}, chance: {ch})' for n, st, ch in c['items']) + ']),\n')
     f.write(']\n')

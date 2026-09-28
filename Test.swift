@@ -111,6 +111,24 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     w.course = 3; w.picks = [0, 2, 4]; w.courseSteps = 1500; w.weather = .rain           // 아름다운 해변 B 고라파덕 (water) 75 % -> 100 %
     check(bShare() > 99, "rain: water B slot 75 % -> 100 %", "\(bShare())")
 
+    // 6d eggs, legends, 껍질몬
+    w = Walk(); _ = w.petEvent(&r)
+    var eggs = 0; for _ in 0..<800 { w.total = w.nextEvent!; if case .egg = w.petEvent(&r) { eggs += 1; w.egg = nil } }
+    check((60...150).contains(eggs), "about 1 event in 8 brings an egg", "\(eggs)")
+    w = Walk(); w.egg = Egg(dex: 172, left: eggCycles[172] * 255)
+    check(w.egg!.left == 2550 && eggPool.contains(172) && eggPool.contains(1) && !eggPool.contains(25) && !eggPool.contains(150), "피츄 egg 2550 steps; pool = unreachable bases, no legends")
+    w.walk(2549, at: at(10)); check(!w.hatchDue, "not yet"); w.walk(1, at: at(10)); check(w.hatchDue, "hatches on the 2550th step")
+    let baby = w.hatch(&r); check(baby.dex == 172 && baby.level == 1 && w.egg == nil && w.caught.first?.dex == 172 && w.owned!.contains(172), "hatched Lv.1 피츄, kept and in the dex")
+    w = Walk(); w.course = 34; var legends = 0
+    for _ in 0..<5000 where w.legend(&r, chain: 0) != nil { legends += 1 }
+    check((60...140).contains(legends), "legend course: ~2 % of radar finds", "\(legends)")
+    w.owned = [249, 250, 493]; check((0..<500).allSatisfy { _ in w.legend(&r, chain: 4) == nil }, "no legend once you have them all")
+    w = Walk(); check((0..<500).allSatisfy { _ in w.legend(&r, chain: 4) == nil }, "never on normal courses")
+    w = Walk(); w.companion = Mon(dex: 290, level: 20, female: false); let nin = w.levelEvolution(at(10))!
+    w.evolve(nin); check(w.companion.dex == 291 && w.caught.map(\.dex) == [292], "토중몬 -> 아이스크 leaves 껍질몬")
+    var hardHits = 0; for _ in 0..<2000 { var b = Battle(wild: Mon(dex: 150, level: 50, female: false), hard: true); b.wildHP = 1; if b.act(.capture, &r).contains(.caught) { hardHits += 1 } }
+    check((700...900).contains(hardHits), "legends: 1 HP ball 40 %", "\(hardHits)")
+
     // 7 battle
     var hits = 0, won = 0
     for _ in 0..<2000 { var bt = Battle(wild: Mon(dex: 16, level: 5, female: false)); bt.wildHP = 1; if bt.act(.capture, &r).contains(.caught) { hits += 1 } }
@@ -149,8 +167,10 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     check(w.release(0) == 15 && w.watts == 15 && w.box.count == 2, "releasing gives level / 2 watts")
 
     // 8 data + art
-    check(courses.count == 27 && courses.allSatisfy { $0.slots.count == 6 && $0.items.count == 10 }, "27 courses x 6 slots x 10 items")
-    check(courses.prefix(20).map(\.watts) == courses.prefix(20).map(\.watts).sorted() && courses.suffix(7).map(\.dex) == [10, 20, 30, 45, 60, 80, 100], "watts courses in order, then the 7 event courses by Pokédex count")
+    check(courses.count == 35 && courses.allSatisfy { $0.slots.count == 6 && $0.items.count == 10 }, "35 courses x 6 slots x 10 items")
+    check(courses.prefix(20).map(\.watts) == courses.prefix(20).map(\.watts).sorted() && courses[20..<27].map(\.dex) == [10, 20, 30, 45, 60, 80, 100]
+          && courses.suffix(8).map(\.dex) == [150, 170, 190, 210, 230, 260, 300, 350], "watts courses, then 7 event + 8 legend courses by Pokédex count")
+    check(courses.flatMap(\.legends).count == 35 && Set(courses.flatMap(\.legends)).count == 35, "35 legends, each on exactly one course")
     w = Walk(); w.earned = 999_999; check(w.unlocked(19) && !w.unlocked(20), "event course needs the dex, not watts")
     w.owned = Array(1...10); check(w.unlocked(20) && courses[20].name == "노란 숲", "10 caught -> 노란 숲")
     check(monNames.count == 494 && monTypes.count == 494 && monNames[25] == "피카츄", "493 names + types")
