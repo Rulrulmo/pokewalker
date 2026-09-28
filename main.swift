@@ -748,7 +748,7 @@ final class WalkerView: NSView {
     }
     var lastStatus = ""
     func updateStatus() {
-        let s = "\(state.today)" + (state.egg.map { $0.left < 500 ? " ·알" : "" } ?? "")
+        let s = "\(state.watts)W" + (state.egg.map { $0.left < 500 ? " ·알" : "" } ?? "")                 // watts: what the radar / dowsing spend
         if s != lastStatus { lastStatus = s; statusItem?.button?.title = " " + s }
     }
     @objc func statusClick(_ sender: Any?) {
