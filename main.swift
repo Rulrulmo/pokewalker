@@ -102,6 +102,15 @@ var textCache: [String: [[Bool]]] = [:]
     let t = (0..<h).map { y in (0..<w).map { px[y * w + $0] > 127 } }
     textCache[key] = t; return t
 }
+/// LCD text: smooth system-font text laid over the dot screen (default), or the old dot font. Sprites, pictures, icons stay dots either way.
+var smoothText = UserDefaults.standard.object(forKey: "smoothText") as? Bool ?? true
+@MainActor func lcdFont(_ small: Bool) -> NSFont { .systemFont(ofSize: (small ? 6.5 : 8) * PX, weight: small ? .regular : .medium) }
+/// A string's width in LCD dots, in whichever text style is on (layout, centring and tap targets all use this).
+@MainActor func textWidth(_ s: String, small: Bool = false) -> Int {
+    smoothText ? Int(ceil((s as NSString).size(withAttributes: [.font: lcdFont(small)]).width / PX)) : (textDots(s, small: small).first?.count ?? 0)
+}
+struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bool; var shade: UInt8 }
+
 /// 을/를, 이/가, 은/는 by the last syllable's final consonant.
 func josa(_ w: String, _ with: String, _ without: String) -> String {
     guard let u = w.unicodeScalars.last?.value, (0xAC00...0xD7A3).contains(u) else { return w + without }
@@ -112,6 +121,7 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
 @MainActor struct FB {
     var px = [UInt8](repeating: 0, count: 96 * 64)
     var col = [UInt32](repeating: 0, count: 96 * 64)                      // colour LCD only: 0 = use the shade
+    var runs: [TextRun] = [], flips: [[Int]] = []                        // smooth text to draw over the dots, and the inverted boxes it may sit in
     mutating func set(_ x: Int, _ y: Int, _ s: UInt8, _ c: UInt32 = 0) { if (0..<96).contains(x), (0..<64).contains(y) { px[y * 96 + x] = s; col[y * 96 + x] = c } }
     mutating func fill(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ s: UInt8) { for yy in y..<y + h { for xx in x..<x + w { set(xx, yy, s) } } }
     mutating func draw(_ a: [[UInt8?]], _ x: Int, _ y: Int, _ pal: [UInt32]? = nil, scale k: Int = 1) {
@@ -135,6 +145,12 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
     }
     /// Too wide for the screen => the small font, one row lower so baselines match.
     @discardableResult mutating func text(_ s: String, _ x: Int, _ y: Int, _ shade: UInt8 = 3, center: Bool = false, right: Bool = false, small: Bool = false) -> Int {
+        if smoothText {
+            var sm = small, w = textWidth(s, small: small)
+            if !small, w > 94 { sm = true; w = textWidth(s, small: true) }
+            let x0 = center ? (96 - w) / 2 : right ? x - w : x
+            runs.append(TextRun(s: s, x: x0, y: y, w: w, rows: small ? 9 : 11, small: sm, shade: shade)); return w
+        }
         var t = textDots(s, small: small), y = y + (small ? 1 : 0)
         if !small, (t.first?.count ?? 0) > 94 { t = textDots(s, small: true); y += 1 }
         let w = t.first?.count ?? 0, x0 = center ? (96 - w) / 2 : right ? x - w : x
@@ -154,7 +170,7 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
             }
         } }
     }
-    mutating func invert(_ x: Int, _ y: Int, _ w: Int, _ h: Int) { for yy in y..<y + h { for xx in x..<x + w where (0..<96).contains(xx) && (0..<64).contains(yy) { px[yy * 96 + xx] = 3 - px[yy * 96 + xx]; col[yy * 96 + xx] = 0 } } }
+    mutating func invert(_ x: Int, _ y: Int, _ w: Int, _ h: Int) { flips.append([x, y, w, h]); for yy in y..<y + h { for xx in x..<x + w where (0..<96).contains(xx) && (0..<64).contains(yy) { px[yy * 96 + xx] = 3 - px[yy * 96 + xx]; col[yy * 96 + xx] = 0 } } }
     /// 32x24 picture of the course, framed.
     mutating func course(_ a: Art, _ x: Int, _ y: Int, weather w: Weather = .sunny, t: Double = 0, hour: Double = 12, season: Season = .summer) {
         // colour: sky above the course's horizon, its ground/water below
@@ -349,7 +365,7 @@ final class WalkerView: NSView {
         side?.show(window?.isVisible == true ? sideModel(now) : nil, dex: window?.isVisible == true ? dexModel() : nil, beside: window)
         guard window?.isVisible ?? true else { return }                                         // hidden in the menu bar: rules keep running, nothing to draw
         let fb = compose(now)
-        if fb.px != shown?.px || fb.col != shown?.col || now.timeIntervalSince(pressedAt) < 0.3 { shown = fb; needsDisplay = true }   // idle home = ~2 redraws a second
+        if fb.px != shown?.px || fb.col != shown?.col || fb.runs != shown?.runs || fb.flips != shown?.flips || now.timeIntervalSince(pressedAt) < 0.3 { shown = fb; needsDisplay = true }   // idle home = ~2 redraws a second
     }
     /// End of a fight. Wild: EXP goes to the companion; caught or beaten => maybe the grass rustles again (a chain). Tower: BP and the next trainer.
     func after(_ b: Battle, _ end: Beat, _ now: Date) -> Screen {
@@ -776,7 +792,7 @@ final class WalkerView: NSView {
     /// Menu labels' x ranges (drawn and tapped from the same layout).
     func menuRanges(_ labels: [String]) -> [Range<Int>] {
         var x = 1, out: [Range<Int>] = []
-        for n in labels { let w = (textDots(n, small: true).first?.count ?? 0) + 4; out.append(x..<x + w); x += w + 3 }
+        for n in labels { let w = textWidth(n, small: true) + 4; out.append(x..<x + w); x += w + 3 }
         return out
     }
     /// A framed 4-row bar: dark outline, green / yellow / red fill, dark grey where HP is gone. Any HP left shows at least one dot.
@@ -847,8 +863,8 @@ final class WalkerView: NSView {
         }
         guard hud else { return }
         // HUD: theirs top-left (name, Lv, bar; a trainer's remaining balls), ours top-right; each on its own plate so the sprite's head can't muddle it
-        let lw = max(38, (textDots(monNames[foe.dex] + " \(foe.level)", small: true).first?.count ?? 0) + 2) + (b.trainer != nil ? 13 : 0)
-        let rw = max(38, (textDots("\(monNames[mine.dex]) \(mine.level)", small: true).first?.count ?? 0) + 2)
+        let lw = max(38, textWidth(monNames[foe.dex] + " \(foe.level)", small: true) + 2) + (b.trainer != nil ? 13 : 0)
+        let rw = max(38, textWidth("\(monNames[mine.dex]) \(mine.level)", small: true) + 2)
         for (x0, w) in [(0, lw), (96 - rw, rw)] { for y in 0..<14 { for x in x0..<min(96, x0 + w) { fb.set(x, y, 0) } } }
         fb.text(monNames[foe.dex] + " \(foe.level)", 1, 0, 3, small: true)
         hpBar(&fb, 1, 9, 36, b.theirs[b.it].hp, b.theirs[b.it].maxHP)
@@ -1056,6 +1072,7 @@ final class WalkerView: NSView {
         sub("크기", [("보통", 2), ("크게", 3), ("아주 크게", 4)], Int(PX), #selector(setSize(_:)))
         sub("기기", shells.enumerated().map { ($1.dex > dexCount ? "\($1.name) — 도감 \($1.dex)" : !shellOpen($1) ? "\($1.name) — \($1.bp)BP" : $1.name, $0) }, theme, #selector(setTheme(_:)))
         sub("화면", lcds.enumerated().map { ($1.name, $0) }, lcdStyle, #selector(setLCD(_:)))
+        sub("화면 글씨", [("매끈하게", 1), ("도트", 0)], smoothText ? 1 : 0, #selector(setTextStyle(_:)))
         m.addItem(.separator())
         let nh = m.addItem(withTitle: "알림", action: nil, keyEquivalent: ""), nm = NSMenu()
         for (i, (k, name)) in notifyKinds.enumerated() { let it = nm.addItem(withTitle: name, action: #selector(toggleNotify(_:)), keyEquivalent: ""); it.target = self; it.tag = i; it.state = notifyOn(k) ? .on : .off }
@@ -1137,6 +1154,7 @@ final class WalkerView: NSView {
     }
     func shellOpen(_ s: Shell) -> Bool { s.dex <= dexCount && (s.bp == 0 || (state.bought ?? []).contains(s.name)) }
     @objc func setTheme(_ item: NSMenuItem) { guard shellOpen(shells[item.tag]) else { return }; theme = item.tag; UserDefaults.standard.set(theme, forKey: "shell"); needsDisplay = true }
+    @objc func setTextStyle(_ item: NSMenuItem) { smoothText = item.tag == 1; UserDefaults.standard.set(smoothText, forKey: "smoothText"); shown = nil; needsDisplay = true }
     @objc func setLCD(_ item: NSMenuItem) { shown = nil; lcdStyle = item.tag; UserDefaults.standard.set(lcdStyle, forKey: "lcd"); needsDisplay = true }
 
     // MARK: drawing
@@ -1172,6 +1190,14 @@ final class WalkerView: NSView {
             (k < 4 ? l.shades[Int(k)] : NSColor(red: CGFloat(k >> 16 & 255) / 255, green: CGFloat(k >> 8 & 255) / 255, blue: CGFloat(k & 255) / 255, alpha: 1)).setFill(); path.fill()
         }
         NSGraphicsContext.current!.shouldAntialias = true
+        for r in fb.runs {                                                                             // smooth text over the dots; flipped where it sits in an inverted box
+            let f = lcdFont(r.small), cx = r.x + r.w / 2, cy = r.y + r.rows / 2
+            let flipped = fb.flips.contains { cx >= $0[0] && cx < $0[0] + $0[2] && cy >= $0[1] && cy < $0[1] + $0[3] }
+            let shade = Int(flipped ? 3 - r.shade : r.shade), c = l.shades[max(0, min(3, shade))]
+            let box = NSRect(x: lcdRect.minX + CGFloat(r.x) * PX, y: lcdRect.minY + CGFloat(r.y) * PX, width: CGFloat(r.w) * PX, height: CGFloat(r.rows) * PX)
+            let y = box.midY + f.capHeight / 2 - f.ascender                                            // caps centred on the row, one baseline for Hangul and digits
+            (r.s as NSString).draw(at: NSPoint(x: box.minX, y: y), withAttributes: [.font: f, .foregroundColor: c])
+        }
         NSGradient(starting: NSColor(white: 0, alpha: 0.22), ending: .clear)!.draw(in: NSRect(x: lcdRect.minX, y: lcdRect.minY, width: lcdRect.width, height: 2 * PX), angle: 90)
         let now = Date()
         for (i, b) in buttons.enumerated() {                                                          // white caps with a black ring and a printed icon; a lip underneath until pressed
