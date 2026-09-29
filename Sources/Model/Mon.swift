@@ -10,6 +10,7 @@ struct Mon: Codable, Equatable {
     var ability: Int? = nil              // ability slot (0 / 1); nature 0-24; IVs / EVs HP Atk Def SpA SpD Spe — nil = never rolled (IV 15, no EV)
     var nature: Int? = nil, ivs: [Int]? = nil, evs: [Int]? = nil
     var uid: Int? = nil                  // given the first time something has to find this one again (Walk.id(_:))
+    var hyper: [Int]? = nil              // stats (0-5) raised by 대단한 특훈 (병뚜껑): they count as 31 in battle; the IVs themselves stay
 
     var points: Int { exp ?? expTable[growthRate[dex]][level] }
     static func level(dex: Int, exp: Int) -> Int { let t = expTable[growthRate[dex]]; return (1...100).last { t[$0] <= exp } ?? 1 }
@@ -28,19 +29,25 @@ let shinyOdds = 128
 // MARK: - the individual: ability slot, nature, IVs, EVs, known moves
 extension Mon {
     /// A newly met Pokémon: gender by its species ratio, a random ability slot, nature and IVs.
-    static func wild<R: RandomNumberGenerator>(_ dex: Int, level: Int, shiny: Bool? = nil, _ r: inout R) -> Mon {
+    /// perfect = how many IVs (picked at random) are sure to be 31: 3 for legends (Gen VI on), more for long radar chains.
+    static func wild<R: RandomNumberGenerator>(_ dex: Int, level: Int, shiny: Bool? = nil, perfect: Int = 0, _ r: inout R) -> Mon {
         let g = genderRate[dex]
         var m = Mon(dex: dex, level: level, female: g < 0 ? false : Int.random(in: 0..<8, using: &r) < g, shiny: shiny)
         m.ability = Int.random(in: 0..<abilitySlots[dex].count, using: &r); m.nature = Int.random(in: 0..<25, using: &r)
         m.ivs = (0..<6).map { _ in Int.random(in: 0...31, using: &r) }
+        if perfect > 0 { for k in Array(0..<6).shuffled(using: &r).prefix(perfect) { m.ivs![k] = 31 } }
         return m
     }
     var abilityID: Int { let s = abilitySlots[dex]; return s[min(ability ?? 0, s.count - 1)] }   // the slot survives evolution, like the games
     var abilityName: String { abilityNames[abilityID] ?? "" }
     var natureName: String { natures[nature ?? 0].name }
-    /// HP Atk Def SpA SpD Spe: the Gen IV formula with this one's IVs (15 if never rolled), EVs and nature.
+    /// The IVs battles use: its own (15 if never rolled), with the 특훈 ones at 31.
+    var effectiveIVs: [Int] { let iv = ivs ?? Array(repeating: 15, count: 6); return iv.indices.map { hyper?.contains($0) == true ? 31 : iv[$0] } }
+    /// "3V": how many of them are 31 (특훈 included).
+    var perfectIVs: Int { effectiveIVs.filter { $0 == 31 }.count }
+    /// HP Atk Def SpA SpD Spe: the Gen IV formula with those IVs, its EVs and nature.
     var stats: [Int] {
-        let b = baseStats[dex], l = level, iv = ivs ?? Array(repeating: 15, count: 6), ev = evs ?? Array(repeating: 0, count: 6), n = natures[nature ?? 0]
+        let b = baseStats[dex], l = level, iv = effectiveIVs, ev = evs ?? Array(repeating: 0, count: 6), n = natures[nature ?? 0]
         return (0..<6).map { k in
             let core = (2 * b[k] + iv[k] + ev[k] / 4) * l / 100
             if k == 0 { return dex == 292 ? 1 : core + l + 10 }                                    // 껍질몬: always 1

@@ -9,6 +9,8 @@ enum ItemKind: Equatable {
     case ball(Double)              // thrown instead of the basic ball: catch chance x this
     case candy                     // 이상한사탕: +1 level
     case vitamin(Int, Int)         // fed: that stat's EVs ± 10 (영양제 up to 100, 노력치 내리는 열매 down)
+    case evReset                   // 순백떡 (SV's Fresh Start Mochi): every EV back to 0
+    case bottleCap(Bool)           // 대단한 특훈 from Lv.50: 은색병뚜껑 one IV to 31, 금색병뚜껑 (true) all six
     case berry                     // fed: +500 friendship steps
     case evolution                 // stones and held items
     case sell(Int)                 // watts at the exchange
@@ -24,6 +26,8 @@ enum ItemKind: Equatable {
         if let u = use[i] { return .battle(u) }
         if let k = ["맥스업", "타우린", "사포닌", "리보플라빈", "키토산", "알칼로이드"].firstIndex(of: i) { return .vitamin(k, 10) }
         if let k = ["유석열매", "시마열매", "파비열매", "로매열매", "또뽀열매", "토망열매"].firstIndex(of: i) { return .vitamin(k, -10) }
+        if i == "순백떡" { return .evReset }
+        if i == "은색병뚜껑" || i == "금색병뚜껑" { return .bottleCap(i == "금색병뚜껑") }
         let heal = ["상처약": 20, "좋은상처약": 50, "고급상처약": 200, "풀회복약": 999, "오랭열매": 10, "자뭉열매": 30, "맛있는물": 50, "미네랄사이다": 60,
                     "후르츠밀크": 80, "튼튼밀크": 100, "힘의가루": 50, "힘의뿌리": 200]   // Gen IV amounts
         if let n = heal[i] { return .heal(n) }

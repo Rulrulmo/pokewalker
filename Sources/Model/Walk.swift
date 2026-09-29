@@ -100,19 +100,27 @@ struct Walk: Codable, Equatable {
         guard n % 5 == 0 else { return nil }
         let i = here.items[0].item; _ = keep(i); return i
     }
+    /// IVs sure to be 31 at chain length `chain` (like Gen VII's SOS chains, scaled to how rarely a chain here gets long): 3 → 1, 5 → 2, 7 → 3, 9 → 4.
+    static func chainPerfectIVs(_ chain: Int) -> Int { chain >= 9 ? 4 : chain >= 7 ? 3 : chain >= 5 ? 2 : chain >= 3 ? 1 : 0 }
     /// 1/128 at the start, x(1 + n/2) better per link, capped at 10 links (1/21). 1/(128/(2n+1)) handed out 이로치 far too easily.
     static func chainShinyOdds(_ chain: Int) -> Int { let better: Double = 1 + 0.5 * Double(min(chain, 10)); return Int(Double(shinyOdds) / better) }
 
     // MARK: box
-    /// Lets box[i] go; a few watts back as thanks (level / 2, at least 1).
-    /// Box duplicates of one species: keeps every 이로치 and the best of the rest, lets the others go. Returns (how many, watts).
-    mutating func releaseDuplicates(of dex: Int) -> (count: Int, watts: Int) {
+    /// Which box entries of that species 중복 놓아주기 lets go: all but the 이로치, the 3V-and-up ones, and the single best —
+    /// most V, then most EXP (not the IV total: that would trade a Lv.60 for any fresh catch, and old ones' 15s aren't a real roll).
+    func duplicates(of dex: Int) -> [Int] {
+        func rank(_ m: Mon) -> (Int, Int) { (m.perfectIVs, m.points) }
         let plain = box.indices.filter { box[$0].dex == dex && box[$0].shiny != true }
-        guard let best = plain.max(by: { box[$0].points < box[$1].points }) else { return (0, 0) }
+        guard let best = plain.max(by: { rank(box[$0]) < rank(box[$1]) }) else { return [] }
+        return plain.filter { $0 != best && box[$0].perfectIVs < 3 }
+    }
+    /// Lets duplicates(of:) go. Returns (how many, watts).
+    mutating func releaseDuplicates(of dex: Int) -> (count: Int, watts: Int) {
         var n = 0, w = 0
-        for i in plain.filter({ $0 != best }).sorted(by: >) { w += release(i); n += 1 }                   // from the back, so indices stay valid
+        for i in duplicates(of: dex).sorted(by: >) { w += release(i); n += 1 }                              // from the back, so indices stay valid
         return (n, w)
     }
+    /// Lets box[i] go; a few watts back as thanks (level / 2, at least 1).
     mutating func release(_ i: Int) -> Int { let w = max(1, box.remove(at: i).level / 2); watts = min(9999, watts + w); return w }
     mutating func sortBox(byLevel: Bool) { box.sort { byLevel ? ($0.points, $1.dex) > ($1.points, $0.dex) : ($0.dex, $1.points) < ($1.dex, $0.points) } }
 

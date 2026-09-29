@@ -99,7 +99,8 @@ extension WalkerView {
             let u = now.timeIntervalSince(since)
             if c == b, u >= 1.5 {
                 let s = state.encounter(&rng, chain: chain), l = state.legend(&rng, chain: chain)
-                var m = Mon.wild(l ?? s.dex, level: l == nil ? s.level : l == 493 ? 80 : 50, shiny: Int.random(in: 0..<Walk.chainShinyOdds(chain), using: &rng) == 0 ? true : nil, &rng)   // chains raise 이로치 odds too
+                var m = Mon.wild(l ?? s.dex, level: l == nil ? s.level : l == 493 ? 80 : 50, shiny: Int.random(in: 0..<Walk.chainShinyOdds(chain), using: &rng) == 0 ? true : nil,
+                                 perfect: max(l == nil ? 0 : 3, Walk.chainPerfectIVs(chain)), &rng)   // chains raise 이로치 odds and sure 31s; legends have 3
                 if l == nil { m.female = s.female }                                                // the walker's slots fix the sex
                 var b = Battle(wild: m, companion: state.companion, chain: chain); state.see(m.dex)
                 let from = b, beats = b.begin(weather: state.weather, &rng); screen = .beats(b, beats, since: now, from: from)

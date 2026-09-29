@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 /// Headless rule check: `PokeWalker --selftest`. One line per check, then PASS/FAIL. `check` instead of assert: -O strips asserts.
 @MainActor func selftest() -> Bool {
@@ -149,6 +149,19 @@ import Foundation
     w.bag = ["타우린", "타우린", "유석열매"]; w.companion.evs = [0, 95, 0, 0, 0, 0]
     check(w.feedVitamin("타우린") == 100 && w.feedVitamin("타우린") == nil && w.count("타우린") == 1 && w.feedVitamin("유석열매") == nil, "타우린: +10 up to 100, then no effect (kept); 유석열매 is HP")
     w.companion.evs = [150, 0, 0, 0, 0, 0]; w.bag = ["유석열매", "유석열매"]; check(w.feedVitamin("유석열매") == 100 && w.feedVitamin("유석열매") == 90, "EV berry: down to 100, then -10")
+    check(ItemKind.of("순백떡") == .evReset && ItemKind.of("은색병뚜껑") == .bottleCap(false) && ItemKind.of("금색병뚜껑") == .bottleCap(true), "순백떡 / 병뚜껑 kinds")
+    w.bag = ["순백떡"]; w.companion.evs = [0, 12, 0, 0, 0, 0]
+    check(w.resetEVs() && w.companion.evs == [0, 0, 0, 0, 0, 0] && w.bag.isEmpty, "순백떡: every EV back to 0, used up")
+    w.bag = ["순백떡"]; check(!w.resetEVs() && w.bag == ["순백떡"], "순백떡 with no EVs: kept")
+    var hw = Walk(); var hr = Seeded(s: 21); hw.companion = Mon.wild(25, level: 49, &hr); hw.companion.ivs = [3, 12, 31, 7, 20, 31]; hw.bag = ["은색병뚜껑", "금색병뚜껑"]
+    let hpBefore = Battle(wild: hw.companion, companion: hw.companion).hiddenPower(hw.companion), atkBefore = hw.companion.stats[1]
+    check(!hw.hyperTrain(1) && hw.bag.count == 2, "대단한 특훈 waits for Lv.50"); hw.companion.level = 50
+    check(hw.hyperTrain(1) && hw.companion.ivs?[1] == 12 && hw.companion.effectiveIVs[1] == 31 && hw.companion.stats[1] > atkBefore && hw.companion.perfectIVs == 3 && hw.bag == ["금색병뚜껑"],
+          "은색병뚜껑: 공격 counts as 31 (its IV stays 12): 3V", "\(hw.companion.effectiveIVs)")
+    hw.bag = ["은색병뚜껑", "금색병뚜껑"]; check(!hw.hyperTrain(2) && hw.bag == ["은색병뚜껑", "금색병뚜껑"], "은색병뚜껑 on a 31 (방어): nothing used"); hw.bag = ["금색병뚜껑"]
+    check(hw.hyperTrain(nil) && hw.companion.perfectIVs == 6 && hw.bag.isEmpty && Battle(wild: hw.companion, companion: hw.companion).hiddenPower(hw.companion) == hpBefore,
+          "금색병뚜껑: 6V, and 잠재파워 keeps its type (the IVs themselves stay)")
+    hw.bag = ["금색병뚜껑"]; check(!hw.hyperTrain(nil) && hw.bag == ["금색병뚜껑"], "all 31 already: the cap is kept")
     w.bag = ["라즈열매"]; check(w.feedBerry("라즈열매") && w.companion.walked == 500 && !w.feedBerry("상처약"), "berries feed friendship, potions don't")
     w.items = ["금구슬"]; w.bag = ["금구슬", "마비치료제", "천둥의돌"]
     check(w.sell("금구슬") == 200 && w.sell("천둥의돌") == 0 && w.watts == 200 && w.bag == ["마비치료제", "천둥의돌"], "selling: all of a kind; evolution items aren't for sale")
@@ -396,6 +409,9 @@ import Foundation
     w.watts = 9999; check(w.buyLegend(0)?.dex == 250 && w.watts == 0 && w.caught.last?.level == 50 && w.buyLegend(0) == nil, "칠색조: 9,999 W, once")
     w.bp = 299; check(w.buyLegend(1) == nil, "뮤츠 needs 300 BP"); w.bp = 300
     check(w.buyLegend(1)?.dex == 150 && w.bp == 0 && w.legendBought(150) && (w.owned ?? []).contains(150), "뮤츠: 300 BP, once, in the dex")
+    check((w.caught + w.box).filter { [150, 250].contains($0.dex) }.allSatisfy { $0.perfectIVs >= 3 }, "shop legends come with 3 IVs at 31")
+    var pr = Seeded(s: 9); check((0..<60).allSatisfy { _ in Mon.wild(144, level: 50, perfect: 3, &pr).perfectIVs >= 3 } && (0..<60).map { _ in Mon.wild(16, level: 5, &pr).perfectIVs }.max()! < 4, "perfect: n sure 31s")
+    check((0...10).map(Walk.chainPerfectIVs) == [0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4], "radar chains: 3 → 1V, 5 → 2V, 7 → 3V, 9 → 4V")
 
     // 7a chain odds and rewards
     check(Walk.chainGoesOn(0) == 0.85 && abs(Walk.chainGoesOn(3) - 0.61) < 1e-9 && Walk.chainGoesOn(10) == 0.35, "chain goes on 85 %, -8 points a link, floor 35 %")
@@ -499,6 +515,38 @@ import Foundation
           "40 니드런♀: ≤ 12 rows, the rest under 그 밖, and 중복 놓아주기", "\(nido?.items.count ?? -1)")
         check((walkMenu?.items.count ?? 99) <= 26 && walkMenu?.items.contains { $0.title.hasPrefix("★ 이로치") } == true, "big box: 함께 걷기 stays short (recent, shinies, dex ranges)", "\(walkMenu?.items.count ?? -1)")
 
+    // 7e 3V: radar chains, the menu's marks, 중복 놓아주기 by V
+    let cv = WalkerView(state: Walk()); cv.persist = false; cv.rng = Seeded(s: 31); cv.state.watts = 100
+    let lc = courses.firstIndex { !$0.legends.isEmpty }!, lv2 = WalkerView(state: { var s = Walk(); s.course = lc; return s }()); lv2.persist = false
+    var legendV: [Int] = []
+    for k in 0..<400 where legendV.count < 3 {                                                     // a legend at chain 0: 3V from being a legend, not from the chain
+        lv2.rng = Seeded(s: UInt64(k)); lv2.screen = .radar(bush: 0, cursor: 0, since: Date().addingTimeInterval(-2), chain: 0); lv2.press(1)
+        if case .beats(let b, _, _, _) = lv2.screen, courses[lc].legends.contains(b.wild.dex) { legendV.append(b.wild.perfectIVs) }
+    }
+    check(legendV.count == 3 && legendV.allSatisfy { $0 >= 3 }, "a legend course's radar legend has 3 IVs at 31 (chain 0)", "\(legendV)")
+    cv.screen = .radar(bush: 2, cursor: 2, since: Date().addingTimeInterval(-2), chain: 7); cv.press(1)
+    check(on(cv) { if case .beats(let b, _, _, _) = $0 { return b.wild.perfectIVs >= 3 }; return false }, "a chain-7 radar find has 3 IVs at 31")
+    func withIVs(_ dex: Int, _ iv: [Int], level: Int = 20, shiny: Bool = false) -> Mon { var m = Mon(dex: dex, level: level, female: false, shiny: shiny ? true : nil); m.ivs = iv; return m }
+    let v3 = withIVs(16, [31, 31, 31, 5, 5, 5]), v1 = withIVs(16, [31, 5, 5, 5, 5, 5], level: 40), v2 = withIVs(16, [31, 31, 0, 0, 0, 0], level: 10)
+    var dw = Walk(); dw.box = [v1, v2, v3, withIVs(16, [0, 0, 0, 0, 0, 0], level: 60, shiny: true), withIVs(16, [3, 3, 3, 3, 3, 3], level: 90), withIVs(19, [0, 0, 0, 0, 0, 0])]
+    check(dw.duplicates(of: 16) == [0, 1, 4], "중복 놓아주기: the 이로치, every 3V+ and the best stay; the rest go", "\(dw.duplicates(of: 16))")
+    dw.box.remove(at: 2); check(dw.duplicates(of: 16) == [0, 3], "no 3V: the 2V is the one kept over higher levels", "\(dw.duplicates(of: 16))")
+    var ow = Walk(); ow.box = [Mon(dex: 16, level: 60, female: false), withIVs(16, [30, 30, 30, 30, 30, 30], level: 5)]
+    check(ow.duplicates(of: 16) == [1], "same V: the higher level stays (an old Lv.60 isn't traded for a fresh catch's IV total)")
+    let mv = WalkerView(state: { var s = Walk(); s.box = [v3, v1]; s.companion = withIVs(25, [31, 31, 31, 31, 0, 0]); return s }()); mv.persist = false
+    let walkItems = mv.buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items ?? []
+    let pidgey = walkItems.first { $0.title.hasPrefix("구구") }, rowsIn = pidgey?.submenu?.items ?? []
+    let r3 = rowsIn.first { $0.title.contains("3V") }, r1 = rowsIn.first { $0.title.contains("1V") }
+    let gold = r3?.attributedTitle.map { $0.attribute(.foregroundColor, at: ($0.string as NSString).range(of: "3V").location, effectiveRange: nil) as? NSColor } ?? nil
+    check(r3 != nil && gold == WalkerView.vColor && r1 != nil && r1?.attributedTitle == nil && pidgey?.title.contains("최고 3V") == true && walkItems.first?.title.hasSuffix("4V") == true,
+          "menu: 1V / 2V plain, 3V+ in gold, the species row flags its best, the companion shows its V", "\(walkItems.first?.title ?? "") \(rowsIn.map(\.title))")
+    check(mv.statLines({ var m = v1; m.hyper = [2]; return m }())[1].contains("방어 5→31") && mv.statLines(v3)[1].hasPrefix("개체값 · 3V"), "the numbers stay; a 특훈 IV reads 5→31")
+    let bigV = WalkerView(state: { var s = Walk(); s.box = (1...14).map { Mon(dex: $0, level: 5, female: false) } + [withIVs(20, [31, 31, 31, 31, 0, 0])]; s.bag = []; return s }()); bigV.persist = false
+    let bigItems = bigV.buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items ?? []
+    check(bigItems.contains { $0.title == "3V 이상 · 1" && $0.attributedTitle != nil } && bigItems.contains { $0.title.hasPrefix("No.001–050") && $0.title.hasSuffix("최고 4V") },
+          "big box: a 3V 이상 list, and the dex range flags its best", "\(bigItems.map(\.title))")
+    let shopTitles = bigV.buildMenu().items.compactMap(\.submenu).flatMap(\.items).map(\.title)
+    check(shopTitles.contains("순백떡 (노력치 초기화) — 200W") && shopTitles.contains("금색병뚜껑 (특훈: 개체값 전부 → 31) — 120BP"), "shop rows say what 순백떡 / 병뚜껑 do", "\(shopTitles.filter { $0.contains("떡") || $0.contains("뚜껑") })")
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0
 }

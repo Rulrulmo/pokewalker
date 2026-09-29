@@ -6,9 +6,26 @@ extension WalkerView {
     func movesLine(_ m: Mon) -> String { "기술: " + m.moves.map { moveTable[$0]!.name }.joined(separator: " · ") }
     /// 능력치 / 개체값 / 노력치, one line each (HP 공격 방어 특공 특방 스피드).
     func statLines(_ m: Mon) -> [String] {
-        func row(_ v: [Int]) -> String { zip(["HP", "공격", "방어", "특공", "특방", "스피드"], v).map { "\($0) \($1)" }.joined(separator: " · ") }
-        let ev = m.evs ?? Array(repeating: 0, count: 6)
-        return ["능력치  " + row(m.stats), "개체값  " + row(m.ivs ?? Array(repeating: 15, count: 6)) + (m.ivs == nil ? " (예전 포켓몬)" : ""), "노력치  " + row(ev) + " · 합 \(ev.reduce(0, +))/510"]
+        let names = ["HP", "공격", "방어", "특공", "특방", "스피드"]
+        func row(_ v: [Int]) -> String { zip(names, v).map { "\($0) \($1)" }.joined(separator: " · ") }
+        let ev = m.evs ?? Array(repeating: 0, count: 6), iv = m.ivs ?? Array(repeating: 15, count: 6)
+        let ivRow = names.indices.map { k in names[k] + " " + (m.hyper?.contains(k) == true ? "\(iv[k])→31" : "\(iv[k])") }.joined(separator: " · ")   // 특훈: its own IV → 31
+        return ["능력치  " + row(m.stats), "개체값\(vMark(m))  " + ivRow + (m.ivs == nil ? " (예전 포켓몬)" : ""), "노력치  " + row(ev) + " · 합 \(ev.reduce(0, +))/510"]
+    }
+    /// What a shop row can't say by its name alone.
+    func shopNote(_ item: String) -> String {
+        switch ItemKind.of(item) { case .evReset: " (노력치 초기화)"; case .bottleCap(let gold): gold ? " (특훈: 개체값 전부 → 31)" : " (특훈: 개체값 하나 → 31)"; default: "" }
+    }
+    /// " · 3V" (31s, 특훈 included), or nothing at 0V.
+    func vMark(_ m: Mon) -> String { m.perfectIVs > 0 ? " · \(m.perfectIVs)V" : "" }
+    /// The 3V+ colour: amber, darker on light menus (systemOrange there is ~2:1 on white), orange on dark ones.
+    static let vColor = NSColor(name: "vMark") { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .systemOrange : NSColor(red: 0.69, green: 0.40, blue: 0, alpha: 1) }
+    /// 3V and up in amber, bold, so the rare ones stand out in long lists; 1V / 2V stay plain.
+    func emphasize(_ it: NSMenuItem, _ v: Int) {
+        guard v >= 3, let r = it.title.range(of: "\(v)V", options: .backwards) else { return }
+        let base = NSFont.menuFont(ofSize: 0), s = NSMutableAttributedString(string: it.title, attributes: [.font: base])
+        s.addAttributes([.foregroundColor: WalkerView.vColor, .font: NSFont.boldSystemFont(ofSize: base.pointSize)], range: NSRange(r, in: it.title))
+        it.attributedTitle = s
     }
     func buildMenu() -> NSMenu {
         let m = NSMenu()
@@ -23,22 +40,24 @@ extension WalkerView {
         ch.submenu = cm
         let ph = m.addItem(withTitle: "함께 걷기 · \(state.companion.shiny == true ? "★ " : "")\(monNames[state.companion.dex])", action: nil, keyEquivalent: ""), pm = NSMenu()
         let c = state.companion                                                                  // who's walking now: nature, ability, moves
-        pm.addItem(withTitle: "\(monNames[c.dex]) Lv.\(c.level)\(sexMark(c)) · \(c.natureName) · \(c.abilityName)", action: nil, keyEquivalent: "")
+        emphasize(pm.addItem(withTitle: "\(monNames[c.dex]) Lv.\(c.level)\(sexMark(c)) · \(c.natureName) · \(c.abilityName)\(vMark(c))", action: nil, keyEquivalent: ""), c.perfectIVs)
         for l in [movesLine(c)] + statLines(c) { pm.addItem(withTitle: l, action: nil, keyEquivalent: "") }
         pm.addItem(.separator())
         if state.box.isEmpty && state.caught.isEmpty { pm.addItem(withTitle: "잡은 포켓몬이 없다", action: nil, keyEquivalent: "") }
         let all = state.caught.enumerated().map { (-1 - $0, $1, " · 워커") } + state.box.enumerated().map { ($0, $1, "") }   // tag < 0 = on the walker
         func individual(_ into: NSMenu, _ e: (Int, Mon, String), named: Bool, count: Int = 1) {
             let (tag, b, whereIs) = e
-            let it = into.addItem(withTitle: "\(b.shiny == true ? "★ " : "")\(named ? monNames[b.dex] + " " : "")Lv.\(b.level)\(sexMark(b)) · \(b.natureName) · \(b.abilityName)\(whereIs)\(count > 1 ? " ×\(count)" : "")", action: #selector(pair(_:)), keyEquivalent: "")
-            it.target = self; it.tag = tag; it.toolTip = ([movesLine(b)] + statLines(b)).joined(separator: "\n")
+            let it = into.addItem(withTitle: "\(b.shiny == true ? "★ " : "")\(named ? monNames[b.dex] + " " : "")Lv.\(b.level)\(sexMark(b)) · \(b.natureName) · \(b.abilityName)\(vMark(b))\(whereIs)\(count > 1 ? " ×\(count)" : "")", action: #selector(pair(_:)), keyEquivalent: "")
+            it.target = self; it.tag = tag; it.toolTip = ([movesLine(b)] + statLines(b)).joined(separator: "\n"); emphasize(it, b.perfectIVs)
         }
         func species(_ into: NSMenu, _ groups: [(key: Int, value: [(Int, Mon, String)])]) {        // one row per species, the individuals inside
             for (dex, group) in groups {
-                let head = into.addItem(withTitle: "\(monNames[dex])\(group.contains { $0.1.shiny == true } ? " ★" : "") · \(group.count)", action: nil, keyEquivalent: ""), sm = NSMenu()
-                // look-alikes (same level, sex, 이로치, place) are one row "×n"; picking it takes the one with the most EXP
-                func key(_ e: (Int, Mon, String)) -> String { let m = e.1; return "\(m.shiny == true)|\(m.level)|\(m.female)|\(m.nature ?? 0)|\(m.abilityID)|\(e.2)" }
-                func rank(_ m: Mon) -> (Int, Int) { (m.shiny == true ? 1 : 0, m.points) }
+                let bestV = group.map(\.1.perfectIVs).max() ?? 0                                        // the species row flags a 3V+ inside
+                let head = into.addItem(withTitle: "\(monNames[dex])\(group.contains { $0.1.shiny == true } ? " ★" : "") · \(group.count)\(bestV >= 3 ? " · 최고 \(bestV)V" : "")", action: nil, keyEquivalent: ""), sm = NSMenu()
+                emphasize(head, bestV)
+                // look-alikes (same level, sex, 이로치, nature, ability, V count, place) are one row "×n"; picking it takes the one with the most EXP
+                func key(_ e: (Int, Mon, String)) -> String { let m = e.1; return "\(m.shiny == true)|\(m.level)|\(m.female)|\(m.nature ?? 0)|\(m.abilityID)|\(m.perfectIVs)|\(e.2)" }
+                func rank(_ m: Mon) -> (Int, Int, Int) { (m.shiny == true ? 1 : 0, m.perfectIVs >= 3 ? m.perfectIVs : 0, m.points) }   // 3V+ first (as emphasised); 1V / 2V don't push higher levels into 그 밖
                 let rows: [(best: (Int, Mon, String), n: Int)] = Dictionary(grouping: group, by: key).values
                     .map { g in (best: g.max { $0.1.points < $1.1.points }!, n: g.count) }
                     .sorted { rank($0.best.1) > rank($1.best.1) }
@@ -52,7 +71,7 @@ extension WalkerView {
                     }
                     mh.submenu = mm
                 }
-                let dupes = state.box.filter { $0.dex == dex && $0.shiny != true }.count - 1
+                let dupes = state.duplicates(of: dex).count
                 if dupes > 0 {
                     sm.addItem(.separator())
                     let it = sm.addItem(withTitle: "중복 놓아주기 · 상자의 \(dupes)마리", action: #selector(releaseDupes(_:)), keyEquivalent: ""); it.target = self; it.tag = dex
@@ -72,10 +91,17 @@ extension WalkerView {
                 for e in shinies.sorted(by: { $0.1.dex < $1.1.dex }) { individual(sm, e, named: true) }
                 sh.submenu = sm
             }
+            let strong = all.filter { $0.1.perfectIVs >= 3 }                                        // 3V+ get a list of their own, like 이로치
+            if !strong.isEmpty {
+                let sh = pm.addItem(withTitle: "3V 이상 · \(strong.count)", action: nil, keyEquivalent: ""), sm = NSMenu(); emphasize(sh, 3)
+                for e in strong.sorted(by: { ($0.1.perfectIVs, $0.1.points) > ($1.1.perfectIVs, $1.1.points) }) { individual(sm, e, named: true) }
+                sh.submenu = sm
+            }
             pm.addItem(.separator())
             for (bucket, g) in Dictionary(grouping: groups, by: { ($0.key - 1) / 50 }).sorted(by: { $0.key < $1.key }) {
-                let head = pm.addItem(withTitle: String(format: "No.%03d–%03d · %d종", bucket * 50 + 1, bucket * 50 + 50, g.count), action: nil, keyEquivalent: ""), sm = NSMenu()
-                species(sm, g); head.submenu = sm
+                let bv = g.flatMap(\.value).map(\.1.perfectIVs).max() ?? 0
+                let head = pm.addItem(withTitle: String(format: "No.%03d–%03d · %d종", bucket * 50 + 1, bucket * 50 + 50, g.count) + (bv >= 3 ? " · 최고 \(bv)V" : ""), action: nil, keyEquivalent: ""), sm = NSMenu()
+                emphasize(head, bv); species(sm, g); head.submenu = sm
             }
         }
         ph.submenu = pm
@@ -87,13 +113,13 @@ extension WalkerView {
         }
         let sh = m.addItem(withTitle: "상점 · \(state.watts)W", action: nil, keyEquivalent: ""), shm = NSMenu()
         for (i, w) in Walk.shop.enumerated() {
-            let it = shm.addItem(withTitle: "\(w.item) — \(w.watts)W", action: state.watts >= w.watts ? #selector(buyShop(_:)) : nil, keyEquivalent: ""); it.target = self; it.tag = i
+            let it = shm.addItem(withTitle: "\(w.item)\(shopNote(w.item)) — \(w.watts)W", action: state.watts >= w.watts ? #selector(buyShop(_:)) : nil, keyEquivalent: ""); it.target = self; it.tag = i
         }
         for (i, l) in Walk.legendShop.enumerated() where l.watts > 0 { shm.addItem(.separator()); legendItem(shm, i, l.dex, "\(l.watts.formatted())W", state.watts >= l.watts) }
         sh.submenu = shm
         let bh2 = m.addItem(withTitle: "BP 교환소 · \(state.bp ?? 0)BP", action: nil, keyEquivalent: ""), bpm = NSMenu()
         for (i, w) in Walk.bpShop.enumerated() {
-            let it = bpm.addItem(withTitle: "\(w.item) — \(w.bp)BP", action: (state.bp ?? 0) >= w.bp ? #selector(buyBP(_:)) : nil, keyEquivalent: ""); it.target = self; it.tag = i
+            let it = bpm.addItem(withTitle: "\(w.item)\(shopNote(w.item)) — \(w.bp)BP", action: (state.bp ?? 0) >= w.bp ? #selector(buyBP(_:)) : nil, keyEquivalent: ""); it.target = self; it.tag = i
         }
         for (i, s) in shells.enumerated() where s.bp > 0 {
             let owned = (state.bought ?? []).contains(s.name)
@@ -112,14 +138,33 @@ extension WalkerView {
             let bh = m.addItem(withTitle: "가방 · \(state.items.count + state.bag.count)개", action: nil, keyEquivalent: ""), bm = NSMenu()
             if state.count("이상한사탕") > 0 { bm.addItem(withTitle: "이상한사탕 먹이기 (×\(state.count("이상한사탕")))", action: #selector(useCandy(_:)), keyEquivalent: "").target = self }
             let vits = inv.compactMap { i -> (String, Int, Int)? in if case .vitamin(let k, let d) = ItemKind.of(i) { return (i, k, d) }; return nil }
-            if !vits.isEmpty {
+            if !vits.isEmpty || state.count("순백떡") > 0 {
                 let ev = state.companion.evs ?? Array(repeating: 0, count: 6), names = ["HP", "공격", "방어", "특공", "특방", "스피드"]
                 let vh = bm.addItem(withTitle: "영양제 · 노력치 (\(monNames[state.companion.dex]) 합 \(ev.reduce(0, +))/510)", action: nil, keyEquivalent: ""), vm = NSMenu()
                 for (i, k, d) in vits {
                     let it = vm.addItem(withTitle: "\(i) ×\(state.count(i)) · \(names[k]) \(d > 0 ? "+" : "−")10 (지금 \(ev[k]))", action: #selector(useVitamin(_:)), keyEquivalent: "")
                     it.target = self; it.representedObject = i
                 }
+                if state.count("순백떡") > 0 {
+                    if !vits.isEmpty { vm.addItem(.separator()) }
+                    let it = vm.addItem(withTitle: "순백떡 ×\(state.count("순백떡")) · 노력치 전부 0으로", action: #selector(useReset(_:)), keyEquivalent: ""); it.target = self
+                }
                 vh.submenu = vm
+            }
+            let caps = (silver: state.count("은색병뚜껑"), gold: state.count("금색병뚜껑"))
+            if caps.silver + caps.gold > 0 {                                                      // 대단한 특훈: the companion, from Lv.50
+                let c = state.companion, iv = c.effectiveIVs, names = ["HP", "공격", "방어", "특공", "특방", "스피드"], ready = c.level >= Walk.hyperLevel
+                let hh = bm.addItem(withTitle: "병뚜껑 · 대단한 특훈 (\(monNames[c.dex])\(vMark(c)))", action: nil, keyEquivalent: ""), hm = NSMenu()
+                if !ready { hm.addItem(withTitle: "Lv.\(Walk.hyperLevel)부터 특훈할 수 있어요 (지금 Lv.\(c.level))", action: nil, keyEquivalent: "") }
+                for k in 0..<6 where caps.silver > 0 {
+                    let it = hm.addItem(withTitle: "은색병뚜껑 ×\(caps.silver) · \(names[k]) \(iv[k])\(iv[k] < 31 ? " → 31" : " (최고)")", action: ready && iv[k] < 31 ? #selector(useCap(_:)) : nil, keyEquivalent: "")
+                    it.target = self; it.tag = k
+                }
+                if caps.gold > 0 {
+                    if caps.silver > 0 { hm.addItem(.separator()) }
+                    let it = hm.addItem(withTitle: "금색병뚜껑 ×\(caps.gold) · 모든 능력 → 31", action: ready && iv.contains { $0 < 31 } ? #selector(useCap(_:)) : nil, keyEquivalent: ""); it.target = self; it.tag = -1
+                }
+                hh.submenu = hm
             }
             let berries = inv.filter { ItemKind.of($0) == .berry }
             if !berries.isEmpty {
@@ -140,7 +185,7 @@ extension WalkerView {
             for i in inv {
                 let use: String = switch ItemKind.of(i) {
                 case .heal(let n): "배틀 HP +\(n)"; case .revive(let n): "쓰러지면 HP \(n)로 부활"; case .ball(let x): "포획 ×\(x == 2 ? "2" : "1.5")"
-                case .candy: "레벨 +1"; case .vitamin(let k, let d): "\(["HP", "공격", "방어", "특공", "특방", "스피드"][k]) 노력치 \(d > 0 ? "+" : "−")10"; case .berry: "친밀도 +500걸음"; case .evolution: "진화"; case .sell(let p): "\(p)W"
+                case .candy: "레벨 +1"; case .evReset: "노력치 전부 0"; case .bottleCap(let gold): gold ? "특훈: 모든 개체값 → 31 (Lv.50부터)" : "특훈: 개체값 하나 → 31 (Lv.50부터)"; case .vitamin(let k, let d): "\(["HP", "공격", "방어", "특공", "특방", "스피드"][k]) 노력치 \(d > 0 ? "+" : "−")10"; case .berry: "친밀도 +500걸음"; case .evolution: "진화"; case .sell(let p): "\(p)W"
                 case .battle(let u): switch u { case .cure: "배틀 상태이상 회복"; case .restore: "배틀 HP·상태 전부 회복"; case .pp: "배틀 PP 회복"; case .x: "배틀 능력 +1"
                     case .guardSpec: "배틀 능력 저하 막기"; case .direHit: "배틀 급소율 +"; case .heal: "" }
                 }
@@ -169,11 +214,13 @@ extension WalkerView {
         return m
     }
     @objc func releaseDupes(_ i: NSMenuItem) {
-        let dex = i.tag, n = state.box.filter { $0.dex == dex && $0.shiny != true }.count - 1
+        let dex = i.tag, gone = state.duplicates(of: dex), n = gone.count
+        let stay = state.box.indices.filter { state.box[$0].dex == dex && !gone.contains($0) }.map { state.box[$0] }
+        let who = stay.prefix(4).map { "\($0.shiny == true ? "★" : "")Lv.\($0.level)\(sexMark($0))\(vMark($0))" }.joined(separator: ", ") + (stay.count > 4 ? " 외 \(stay.count - 4)마리" : "")
         guard n > 0 else { return }
         NSApp.activate(ignoringOtherApps: true)                                                   // the only time it takes focus: a real confirmation
         let a = NSAlert(); a.messageText = "\(monNames[dex]) \(n)마리를 놓아줄까요?"
-        a.informativeText = "상자에서 이로치와 가장 레벨이 높은 1마리만 남아요. 되돌릴 수 없어요."
+        a.informativeText = "상자에서 이로치와 3V 이상은 모두 남고, 그 밖엔 가장 좋은 1마리(V 수 → 경험치 순)만 남아요 — 3V 이상이 있으면 그 1마리 몫도 그쪽이에요.\n남는 포켓몬: \(who)\n되돌릴 수 없어요."
         a.addButton(withTitle: "놓아주기"); a.addButton(withTitle: "취소")
         guard a.runModal() == .alertFirstButtonReturn else { return }
         let r = state.releaseDuplicates(of: dex)
@@ -228,6 +275,17 @@ extension WalkerView {
         let name = monNames[state.companion.dex]
         if let e = state.feedVitamin(v) { screen = .say([josa(name, "은", "는") + " " + josa(v, "을", "를"), "먹었다!", "노력치 \(e)"], next: .home, since: Date()); save(nil) }
         else { screen = .say([josa(v, "을", "를") + " 먹어도", "효과가 없을 것 같다"], next: .home, since: Date()) }
+    }
+    @objc func useReset(_ i: NSMenuItem) {
+        let name = monNames[state.companion.dex]
+        if state.resetEVs() { screen = .say([josa(name, "은", "는") + " 순백떡을", "먹었다!", "노력치가 0이 되었다"], next: .home, since: Date()); save(nil) }
+        else { screen = .say(["노력치가 이미", "0이다"], next: .home, since: Date()) }
+    }
+    @objc func useCap(_ i: NSMenuItem) {                                                        // tag: the stat, -1 = 금색병뚜껑 (all)
+        let name = monNames[state.companion.dex], stat: Int? = i.tag < 0 ? nil : i.tag
+        guard state.hyperTrain(stat) else { screen = .say(["특훈할 수 없다"], next: .home, since: Date()); return }
+        let what = stat.map { ["HP", "공격", "방어", "특공", "특방", "스피드"][$0] } ?? "모든 능력"
+        screen = .say(["대단한 특훈!", josa(name, "의", "의") + " " + what, "최고가 되었다! (\(state.companion.perfectIVs)V)"], next: .home, since: Date()); save(nil)
     }
     @objc func useBerry(_ i: NSMenuItem) {
         guard let b = i.representedObject as? String, state.feedBerry(b) else { return }

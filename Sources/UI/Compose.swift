@@ -5,6 +5,12 @@ extension WalkerView {
     func compose(_ now: Date) -> FB {
         var fb = FB()
         let t = now.timeIntervalSinceReferenceDate, half = Int(t * 2) % 2, me = state.companion
+        /// "3V" in the right column; from 3V an amber diamond beside it (the sparkle stays 이로치's).
+        func vLabel(_ m: Mon, _ y: Int) {
+            guard m.perfectIVs > 0 else { return }
+            let w = fb.text("\(m.perfectIVs)V", 94, y, m.perfectIVs >= 3 ? 3 : 2, right: true, small: true)
+            if m.perfectIVs >= 3 { fb.draw(vDiamond, 94 - w - 7, y + 2, vPal) }
+        }
         func header(_ title: String) { if fb.text(title, 2, 0) < 62 { fb.text("\(state.watts)W", 94, 1, 2, right: true, small: true) }; fb.fill(0, 12, 96, 1, 2) }   // long names win over the W
         switch screen {
         case .home:
@@ -128,7 +134,7 @@ extension WalkerView {
             if p < bagPages - 1 {
                 if let m {
                     fb.mon(m, half, 0, 14)
-                    fb.text("\(p + 1)/\(state.caught.count)", 94, 15, 2, right: true, small: true)
+                    fb.text("\(p + 1)/\(state.caught.count)", 94, 15, 2, right: true, small: true); vLabel(m, 24)
                     fb.text("●", 80, 32, 3, center: false); fb.text("함께", 94, 42, 2, right: true, small: true); fb.text("걷기", 94, 51, 2, right: true, small: true)
                 }
                 else { fb.text("없음", 0, 30, 2, center: true) }
@@ -153,7 +159,7 @@ extension WalkerView {
             header((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)")
             fb.mon(m, half, 0, 14)
             fb.text("\(i + 1)/\(state.box.count)", 94, 15, 2, right: true, small: true)
-            fb.text(m.female ? "암컷" : "수컷", 94, 26, 2, right: true, small: true)
+            if genderRate[m.dex] >= 0 { fb.text(m.female ? "암컷" : "수컷", 94, 26, 2, right: true, small: true) }; vLabel(m, 36)   // genderless: nothing (the games show no symbol)
             if let a = act {
                 fb.fill(0, 50, 96, 14, 0); fb.fill(0, 50, 96, 1, 2)
                 let opts = confirm ? ["놓아줄까?", "아니오", "예"] : ["함께", "놓아주기", "정렬", "닫기"]
