@@ -125,6 +125,40 @@ extension WalkerView {
     }
     func startEvolving(_ e: Evo, _ now: Date) { let from = state.companion; state.evolve(e); screen = .evolve(from: from, to: state.companion, since: now); save(nil) }
     var seenList: [Int] { Array(Set((state.seen ?? []) + (state.owned ?? []))).sorted() }
+    /// The 도감 grid's list for a tab: 전체 (1-493) / 잡음 / 못 잡음 (seen, not caught) / 이 코스 (what walks here, legends too).
+    func dexList(_ f: Int) -> [Int] {
+        let owned = Set(state.owned ?? []), c = state.here
+        switch f {
+        case 1: return owned.sorted()
+        case 2: return seenList.filter { !owned.contains($0) }
+        case 3: return Set(c.slots.map(\.dex) + c.extra.map(\.dex) + c.guests + c.legends).sorted()
+        default: return Array(1...493)
+        }
+    }
+    /// The box as the 상자 grid shows it (indices into state.box): 번호순 / 레벨순 / V순 / 최근 (the last to arrive first). Keys once per call
+    /// (V counts aren't free), ties by level, then EXP (growth rates differ: EXP alone puts a slow Lv.8 over a fast Lv.10).
+    var boxOrder: [Int] {
+        let b = state.box
+        if boxSort == 3 { return Array(b.indices.reversed()) }
+        let k = b.map { m -> (Int, Int, Int, Int) in
+            switch boxSort { case 1: (-m.level, -m.points, m.dex, 0); case 2: (-m.perfectIVs, -m.level, -m.points, m.dex); default: (m.dex, -m.level, -m.points, 0) }
+        }
+        return b.indices.sorted { k[$0] != k[$1] ? k[$0] < k[$1] : $0 < $1 }
+    }
+    /// The grids' pick moves d along its list: ◀ ▶ wrap around, rows / pages (↑ ↓, the page buttons, the wheel) stop at the ends. The box's ● menu closes.
+    func gridStep(_ d: Int, wrap: Bool = false) {
+        func to(_ i: Int, _ n: Int) -> Int { wrap ? ((i + d) % n + n) % n : max(0, min(n - 1, i + d)) }
+        switch screen {
+        case .dex(let n, let f, let detail):
+            let l = dexList(f); guard !l.isEmpty else { return }
+            screen = .dex(l[to(l.firstIndex(of: n) ?? 0, l.count)], filter: f, detail: detail)
+        case .box(let i, _, _):
+            let o = boxOrder; guard !o.isEmpty else { return }
+            screen = .box(o[to(o.firstIndex(of: i) ?? 0, o.count)], act: nil, confirm: false)
+        default: return
+        }
+        lastInput = Date(); shown = nil; needsDisplay = true
+    }
 
     func press(_ k: Int) {                                    // 0 left, 1 enter, 2 right, 3 back (↩)
         let now = Date(); lastInput = now; defer { save(nil); shown = nil; needsDisplay = true }
@@ -137,7 +171,7 @@ extension WalkerView {
             case .card: screen = .menu(3)
             case .bag: screen = .menu(4)
             case .box(let i, let act, _): screen = act == nil ? .menu(5) : .box(i, act: nil, confirm: false)   // 메뉴 / 놓아줄까? → the list (= 아니오)
-            case .dex: screen = .menu(6)
+            case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : .menu(6)   // the entry page → the grid → the menu
             case .shop(let bp, let sel, .some), .shopConfirm(let bp, let sel, _): screen = .shop(bp: bp, sel: sel, qty: nil)
             case .shop(let bp, _, nil): screen = .menu(bp ? 8 : 7)
             case .tower: screen = .menu(9)                                                          // a run stays on: ● in the lobby goes on
@@ -263,24 +297,26 @@ extension WalkerView {
                 screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: now)
             } else { screen = .menu(4) }
         case .say(_, let next, _): screen = next
-        case .dex(let i): let n = max(1, seenList.count); screen = k == 1 ? .menu(6) : .dex((i + (k == 0 ? n - 1 : 1)) % n)
+        case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
+            if k == 1 { if dexList(f).contains(n) { screen = .dex(n, filter: f, detail: !detail) } } else { gridStep(k == 0 ? -1 : 1, wrap: true) }
         case .box(let i, let act, let confirm):
-            let n = max(1, state.box.count)
             if state.box.isEmpty { screen = .menu(5) }
             else if confirm {                                                                     // "놓아줄까?" 아니오 / 예
                 if k != 1 { screen = .box(i, act: (act ?? 0) == 0 ? 1 : 0, confirm: true) }
-                else if act == 1 { let name = monNames[state.box[i].dex], w = state.release(i); screen = .say([josa(name, "은", "는") + " 풀숲으로", "돌아갔다 (+\(w)W)"], next: .box(min(i, max(0, state.box.count - 1)), act: nil, confirm: false), since: now) }
+                else if act == 1 {
+                    let p = boxOrder.firstIndex(of: i) ?? 0, name = monNames[state.box[i].dex], w = state.release(i), o = boxOrder   // then the one after it in the grid
+                    screen = .say([josa(name, "은", "는") + " 풀숲으로", "돌아갔다 (+\(w)W)"], next: .box(o.isEmpty ? 0 : o[min(p, o.count - 1)], act: nil, confirm: false), since: now)
+                }
                 else { screen = .box(i, act: nil, confirm: false) }
-            } else if let a = act {                                                              // 함께 걷기 / 놓아주기 / 정렬 / 취소
-                if k != 1 { screen = .box(i, act: (a + (k == 0 ? 3 : 1)) % 4, confirm: false); return }
+            } else if let a = act {                                                              // 함께 걷기 / 놓아주기 / 닫기 (the order: the grid's tabs)
+                if k != 1 { screen = .box(i, act: (a + (k == 0 ? 2 : 1)) % 3, confirm: false); return }
                 switch a {
                 case 0: state.pair(i); screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: now)
                 case 1: screen = .box(i, act: 0, confirm: true)
-                case 2: boxByLevel.toggle(); state.sortBox(byLevel: boxByLevel); screen = .say([boxByLevel ? "레벨순으로" : "번호순으로", "정렬했다"], next: .box(0, act: nil, confirm: false), since: now)
                 default: screen = .box(i, act: nil, confirm: false)
                 }
             } else if k == 1 { screen = .box(i, act: 0, confirm: false) }
-            else { screen = .box((i + (k == 0 ? n - 1 : 1)) % n, act: nil, confirm: false) }
+            else { gridStep(k == 0 ? -1 : 1, wrap: true) }
         case .beats, .evolve, .hatch: break
         }
     }
@@ -295,10 +331,10 @@ extension WalkerView {
             screen = .say(n == 0 ? ["보낼 것이", "없다"] : ["상자로", "\(n)개 보냈다"], next: .menu(2), since: now)
         case 3: screen = .card(0)
         case 4: screen = .bag(0)
-        case 5: screen = .box(0, act: nil, confirm: false)
+        case 5: screen = .box(boxOrder.first ?? 0, act: nil, confirm: false)
         case 7, 8: screen = .shop(bp: i == 8, sel: 0, qty: nil)
         case 9: screen = .tower
-        default: screen = .dex(max(0, seenList.firstIndex(of: state.companion.dex) ?? 0))
+        default: screen = .dex(state.companion.dex, filter: 0, detail: false)
         }
     }
 

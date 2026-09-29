@@ -39,11 +39,30 @@ struct SpriteRun: Equatable { var dex: Int; var shiny, back: Bool; var x, y, bob
         let shade = Int(r.tint != nil ? r.tintShade : lum > 0.78 ? 0 : lum > 0.5 ? 1 : lum > 0.25 ? 2 : 3)
         px[y * 80 + x] = r.inverted ? shades[3 - shade] : l.color ? r.tint ?? c : shades[shade]
     } }
-    let img = CGImage(width: 80, height: 80, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: 320, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+    let i = image(px, 80); spriteCache[key] = i; return i
+}
+/// A square of 0xFFRRGGBB pixels (0 = clear) as an image, for drawing without smoothing.
+func image(_ px: [UInt32], _ side: Int) -> NSImage {
+    let img = CGImage(width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: side * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
                       provider: CGDataProvider(data: px.withUnsafeBufferPointer { Data(buffer: $0) } as CFData)!, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
-    let i = NSImage(cgImage: img, size: NSSize(width: 80, height: 80))
-    spriteCache[key] = i; return i
+    return NSImage(cgImage: img, size: NSSize(width: side, height: side))
+}
+/// The Gen IV box icons (tools/gen.py): per species 15 RGB, then 32x32 at 4 bpp; index 0 = transparent.
+let iconData: Data = {
+    guard let u = Bundle.main.url(forResource: "icons", withExtension: "bin"), let d = try? Data(contentsOf: u), d.count == 493 * 557 else { return Data(count: 493 * 557) }
+    return d
+}()
+func iconPixel(_ dex: Int, _ x: Int, _ y: Int) -> UInt32 {
+    let o = (dex - 1) * 557, b = iconData[o + 45 + y * 16 + x / 2], i = Int(x % 2 == 0 ? b >> 4 : b & 15)
+    return i > 0 ? rgb(iconData[o + (i - 1) * 3], iconData[o + (i - 1) * 3 + 1], iconData[o + (i - 1) * 3 + 2]) : 0
+}
+@MainActor var iconCache: [Int: NSImage] = [:]                                            // at most 493 x 2 small images
+/// A species' box icon in colour, or (shadow) as a dark silhouette: seen, not caught.
+@MainActor func iconImage(_ dex: Int, shadow: Bool = false) -> NSImage {
+    if let i = iconCache[dex * 2 + (shadow ? 1 : 0)] { return i }
+    let px = (0..<1024).map { k -> UInt32 in let c = iconPixel(dex, k % 32, k / 32); return c == 0 ? 0 : shadow ? rgb(54, 58, 70) : c }
+    let i = image(px, 32); iconCache[dex * 2 + (shadow ? 1 : 0)] = i; return i
 }
 func dim(_ c: UInt32, _ k: Double) -> UInt32 { rgb(UInt8(Double(c >> 16 & 255) * k), UInt8(Double(c >> 8 & 255) * k), UInt8(Double(c & 255) * k)) }
 func rgb(_ r: UInt8, _ g: UInt8, _ b: UInt8) -> UInt32 { 0xFF00_0000 | UInt32(r) << 16 | UInt32(g) << 8 | UInt32(b) }

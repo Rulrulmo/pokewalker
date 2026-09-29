@@ -64,7 +64,7 @@ import AppKit
     w.connect(); check(w.caught.isEmpty && w.items.isEmpty && w.box.count == 4 && w.bag.count == 4, "connect empties the walker")
     w.courseSteps = 900; w.setCourse(3, &r)
     check(w.course == 3 && w.courseSteps == 0, "new course: steps restart")
-    w.courseSteps = 700; w.pair(0); check(w.companion.dex == 4 && w.box[0].dex == 25 && w.courseSteps == 700, "pair swaps with the box, course progress kept")
+    w.courseSteps = 700; w.pair(0); check(w.companion.dex == 4 && w.box.last?.dex == 25 && w.box.count == 4 && w.courseSteps == 700, "pair swaps with the box (the old one to its end), course progress kept")
     _ = w.keep(Mon(dex: 16, level: 5, female: false)); w.pair(0, onWalker: true)
     check(w.companion.dex == 16 && w.caught[0].dex == 4, "pair with a Pokémon still on the walker")
     check(Walk().unlocked(1) && !Walk().unlocked(2), "courses unlock by lifetime watts")
@@ -436,8 +436,6 @@ import AppKit
     var found = 0; for _ in 0..<400 { w.total = w.nextEvent!; if w.petEvent(&r) != nil { found += 1 } }
     check((60...140).contains(found) && w.items.count == 3, "1 in 4 events brings an item back", "\(found)")
     w = Walk(); w.box = [Mon(dex: 16, level: 30, female: false), Mon(dex: 1, level: 5, female: false), Mon(dex: 16, level: 8, female: false)]
-    w.sortBox(byLevel: false); check(w.box.map(\.dex) == [1, 16, 16] && w.box[1].level == 30, "sort by number (then level)")
-    w.sortBox(byLevel: true); check(w.box.map(\.level) == [30, 8, 5], "sort by level")
     check(w.release(0) == 15 && w.watts == 15 && w.box.count == 2, "releasing gives level / 2 watts")
     w = Walk(); w.box = [Mon(dex: 29, level: 5, female: true), Mon(dex: 29, level: 12, female: true), Mon(dex: 16, level: 5, female: false), Mon(dex: 29, level: 5, female: true, shiny: true), Mon(dex: 29, level: 8, female: false)]
     let dup = w.releaseDuplicates(of: 29)
@@ -454,6 +452,7 @@ import AppKit
     w.owned = Array(1...10); check(w.unlocked(20) && courses[20].name == "노란 숲", "10 caught -> 노란 숲")
     check(monNames.count == 494 && monTypes.count == 494 && monNames[25] == "피카츄", "493 names + types")
     check(hgssData.count == 493 * 6490, "hgss.bin in the bundle")
+    check(iconData.count == 493 * 557 && (1...493).allSatisfy { d in (0..<1024).filter { iconPixel(d, $0 % 32, $0 / 32) != 0 }.count >= 20 }, "icons.bin: a box icon for every species")
     func opaque(_ d: Int, back: Bool) -> [(x: Int, y: Int)] { (0..<80).flatMap { y in (0..<80).map { (x: $0, y: y) } }.filter { spritePixel(d, back: back, $0.x, $0.y, shiny: false) != 0 } }
     var off: [Int] = []                                                                    // every frame stands on row 79; every shiny differs on 5%+ of it (422/423: PokeAPI's copies)
     for d in 1...493 { for back in [false, true] {
@@ -522,7 +521,7 @@ import AppKit
     check({ if case .radar(_, _, _, 4) = back(radar) { return true }; return false }(), "radar: ↩ does nothing (the 10W and the chain stay)")
     check({ if case .learn(4) = back(.learn(sel: 1)) { return true }; return false }(), "learn: ↩ onto 배우지 않는다")
     check({ if case .menu(3) = back(.card(1)) { return true }; return false }() && { if case .menu(4) = back(.bag(0)) { return true }; return false }()
-          && { if case .menu(6) = back(.dex(0)) { return true }; return false }() && { if case .dowse = back(.dowse(cursor: 0, prize: 2, tries: 2, hint: nil)) { return true }; return false }()
+          && { if case .menu(6) = back(.dex(1, filter: 0, detail: false)) { return true }; return false }() && { if case .dex(1, 0, false) = back(.dex(1, filter: 0, detail: true)) { return true }; return false }() && { if case .dowse = back(.dowse(cursor: 0, prize: 2, tries: 2, hint: nil)) { return true }; return false }()
           && { if case .menu(8) = back(.shop(bp: true, sel: 0, qty: nil)) { return true }; return false }(), "card / bag / dex / shop list: ↩ to their menu page; dowsing: ↩ does nothing (the 3W round stays)")
     bk.state.box = [Mon(dex: 16, level: 5, female: false)]
     check({ if case .menu(5) = back(.box(0, act: nil, confirm: false)) { return true }; return false }() && { if case .box(0, nil, false) = back(.box(0, act: 1, confirm: true)) { return true }; return false }() && bk.state.box.count == 1,
@@ -545,7 +544,52 @@ import AppKit
     v.state.box = [Mon(dex: 1, level: 7, female: false)]; v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(1)
     check(v.state.companion.dex == 1 && v.state.box.first?.dex == 25, "box: ● 함께 swaps the companion")
     v.screen = .menu(6); v.press(1); check(on(v) { if case .dex = $0 { return true }; return false }, "menu 도감 opens the dex")
-    _ = v.touch(80, 30); _ = v.touch(10, 30); _ = v.touch(48, 30); check(on(v) { if case .menu(6) = $0 { return true }; return false }, "dex taps: ▶ ◀ then ● back to the menu")
+    _ = v.touch(80, 30); _ = v.touch(10, 30); _ = v.touch(48, 30); check(on(v) { if case .dex(_, _, true) = $0 { return true }; return false }, "dex taps: ▶ ◀, then ● opens the entry page")
+
+    // the 도감 / 상자 grids on the pane
+    let gv = WalkerView(state: { var s = Walk(); s.owned = [1, 4, 25]; s.seen = [1, 4, 7, 25, 94]
+        s.box = [Mon(dex: 16, level: 30, female: false), Mon(dex: 1, level: 5, female: false), Mon(dex: 16, level: 8, female: false, shiny: true)]; return s }())
+    gv.persist = false; gv.rng = Seeded(s: 71)
+    func gs(_ p: (Screen) -> Bool) -> Bool { p(gv.screen) }
+    let here = gv.state.here
+    let onCourse: [Int] = here.slots.map(\.dex) + here.extra.map(\.dex) + here.guests + here.legends
+    check(gv.dexList(0) == Array(1...493) && gv.dexList(1) == [1, 4, 25] && gv.dexList(2) == [7, 94] && Set(gv.dexList(3)) == Set(onCourse),
+          "dex tabs: 전체 (all 493) / 잡음 / 못 잡음 (seen, not caught) / 이 코스")
+    gv.screen = .menu(6); gv.press(1)
+    check(gs { if case .dex(let d, 0, false) = $0 { return d == gv.state.companion.dex }; return false } && gv.paneContent(Date()).grid?.sel != nil, "도감 opens on the grid, at the companion")
+    gv.screen = .dex(25, filter: 0, detail: false); gv.press(2); gv.press(0); gv.press(0)
+    check(gs { if case .dex(24, 0, false) = $0 { return true }; return false }, "◀ ▶ step one along the tab")
+    gv.gridStep(30); let paged = gs { if case .dex(54, _, _) = $0 { return true }; return false }
+    gv.screen = .dex(490, filter: 0, detail: false); gv.gridStep(30)
+    check(paged && gs { if case .dex(493, _, _) = $0 { return true }; return false }, "a page = 30 on, stopping at the end")
+    let pg = gv.paneContent(Date()).grid
+    check(pg?.page == 17 && pg?.pages == 17 && pg?.cells.count == 13 && pg?.sel == 12 && pg?.cells.first?.dex == 481, "the last page: 481-493, the pick in its cell")
+    gv.gridTap(4101); check(gs { if case .dex(1, 1, false) = $0 { return true }; return false }, "a tab: the pick moves onto it when it isn't on it")
+    gv.gridTap(10002); check(gs { if case .dex(25, 1, false) = $0 { return true }; return false }, "a cell: picks it")
+    gv.gridTap(10002); check(gv.paneContent(Date()).dex?.num == 25, "the picked one again: its entry page")
+    gv.press(2); check(gs { if case .dex(1, 1, true) = $0 { return true }; return false }, "▶ on the entry page: the next on the tab, wrapping")
+    gv.press(3); let toGrid = gs { if case .dex(1, 1, false) = $0 { return true }; return false }; gv.press(3)
+    check(toGrid && gs { if case .menu(6) = $0 { return true }; return false }, "↩: the entry page → the grid → the menu")
+    gv.state.owned = [1, 4, 7, 25, 94]; gv.screen = .dex(7, filter: 0, detail: false); gv.gridTap(4102)
+    check(gv.paneContent(Date()).grid.map { $0.cells.isEmpty && $0.sel == nil && $0.empty == "모두 잡았다!" } == true && gv.compose(Date()).runs.contains { $0.s == "모두 잡았다!" }, "an empty tab says so, on the pane and the LCD")
+    gv.press(1); check(gs { if case .dex(_, 2, false) = $0 { return true }; return false } && gv.paneContent(Date()).dex == nil, "● on an empty tab: no entry page for a pick that isn't on it")
+    gv.screen = .menu(5); gv.press(1)
+    check(gv.boxOrder == [1, 0, 2] && gs { if case .box(1, nil, false) = $0 { return true }; return false }, "상자 opens on the grid's first, 번호순 (then the higher level)")
+    gv.gridTap(4101); check(gv.boxOrder == [0, 2, 1] && gs { if case .box(1, nil, false) = $0 { return true }; return false }, "레벨순 tab: the order changes, the pick stays")
+    gv.press(2); check(gs { if case .box(0, nil, false) = $0 { return true }; return false }, "▶ follows the grid's order, wrapping")
+    gv.boxSort = 3; check(gv.boxOrder == [2, 1, 0], "최근: the last to arrive first"); gv.boxSort = 1
+    gv.boxSort = 2; gv.state.box[1].ivs = [31, 31, 31, 0, 0, 0]; check(gv.boxOrder.first == 1 && gv.paneContent(Date()).grid?.cells.first?.v3 == true, "V순: 3V first, marked"); gv.state.box[1].ivs = nil; gv.boxSort = 1
+    gv.gridTap(10001); let boxPicked = gs { if case .box(2, nil, false) = $0 { return true }; return false }; gv.gridTap(10001); gv.gridTap(10001)
+    check(boxPicked && gs { if case .box(2, 0, false) = $0 { return true }; return false } && gv.paneContent(Date()).grid?.cells[1].shiny == true,
+          "a cell picks, the picked one again opens 함께 / 놓아주기 / 닫기 and keeps it open (a double-click can't shut it; ★ = 이로치)")
+    gv.screen = .box(0, act: 2, confirm: false); gv.press(2); let wrapped = gs { if case .box(0, 0, false) = $0 { return true }; return false }
+    gv.press(2); gv.press(1); gv.press(2); gv.press(1)                                                  // 레벨순 [Lv.30, Lv.8, Lv.5]: the Lv.30 goes; next in the grid = the Lv.8 (box[1] now), not box[0]
+    check(wrapped && gv.state.box.map(\.level) == [5, 8] && gs { if case .say(_, .box(1, nil, false), _) = $0 { return true }; return false } && gv.paneContent(Date()).grid != nil,
+          "놓아주기 예: the next in the grid is picked, the grid stays up through the message")
+    gv.state.box = [Mon(dex: 131, level: 8, female: false), Mon(dex: 332, level: 10, female: false)]
+    check(gv.state.box[0].points > gv.state.box[1].points && gv.boxOrder == [1, 0], "레벨순 is by level (a slow-growing Lv.8 has more EXP than a Lv.10)")
+    gv.state.box = [Mon(dex: 16, level: 5, female: false), Mon(dex: 19, level: 5, female: false)]; gv.state.pair(0); gv.boxSort = 3
+    check(gv.state.box.map(\.dex) == [19, 25] && gv.boxOrder.first == 1, "함께: the old companion goes to the box's end, first on 최근")
 
     v.state.box = (1...120).map { Mon(dex: $0 * 4 % 493 + 1, level: 5, female: false, shiny: $0 % 17 == 0 ? true : nil) }
     let walkMenu = v.buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu
@@ -644,10 +688,11 @@ import AppKit
     let pv = WalkerView(state: { var s = Walk(); s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); pv.persist = false; pv.rng = Seeded(s: 61)
     func kind(_ sc: Screen) -> String {
         pv.screen = sc; let c = pv.paneContent(Date())
-        return c.battle != nil ? "battle" : c.dex != nil ? "dex" : c.shop != nil ? "shop" : c.menu.map { "menu\($0.sel)" } ?? (c.status != nil ? "status" : "none")
+        return c.battle != nil ? "battle" : c.dex != nil ? "dex" : c.grid != nil ? "grid" : c.shop != nil ? "shop" : c.menu.map { "menu\($0.sel)" } ?? (c.status != nil ? "status" : "none")
     }
-    check(kind(.home) == "status" && kind(.menu(3)) == "menu3" && kind(.battle(wild, sel: 0)) == "battle" && kind(.shop(bp: false, sel: 0, qty: nil)) == "shop" && kind(.dex(0)) == "dex" && kind(.box(0, act: nil, confirm: false)) == "status",
-          "the pane: 상태 on 홈 (and screens without their own page), 메뉴 list on the menu, the battle / 상점 / 도감 pages")
+    check(kind(.home) == "status" && kind(.menu(3)) == "menu3" && kind(.battle(wild, sel: 0)) == "battle" && kind(.shop(bp: false, sel: 0, qty: nil)) == "shop" && kind(.dex(1, filter: 0, detail: true)) == "dex"
+          && kind(.dex(1, filter: 0, detail: false)) == "grid" && kind(.box(0, act: nil, confirm: false)) == "grid",
+          "the pane: 상태 on 홈 (and screens without their own page), 메뉴 list on the menu, the battle / 상점 pages, 도감 / 상자 grids, the dex entry")
     check(kind(.say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date())) == "battle" && kind(.say(["W가 부족하다"], next: .menu(0), since: Date())) == "menu0"
           && pv.paneContent(Date()).menu != nil, "a fight's / a menu page's message keeps its page up")
     pv.screen = .say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date()); check(pv.sideModel(Date())?.message == "기술의 남은 PP가 없다!", "… with the message in the battle page's box")

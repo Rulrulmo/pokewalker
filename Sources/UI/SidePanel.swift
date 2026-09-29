@@ -31,7 +31,14 @@ struct DexModel: Equatable {
     var shiny: Bool; var types: [String]; var stats: [Int]
     var found: [String]; var evos: [String]                            // where to meet it; what it becomes and how
     var owned, seen: Int
-    var strip: [Int], stripStatus: [Int]                               // the numbers around it, with their status
+}
+/// The 도감 / 상자 grid page: tabs, a page of box icons (the pick bobbing), the page number.
+struct GridModel: Equatable {
+    static let perPage = 30                                            // 5 x 6
+    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false }   // look: 0 not met (???), 1 seen (a shadow), 2 caught / in the box
+    var box: Bool; var title, count: String; var tabs: [String]; var tab: Int
+    var cells: [Cell]; var first: Int; var sel: Int?                   // this page's cells; first = cells[0]'s place in the whole list; sel = the pick's cell
+    var page, pages: Int; var hint, empty: String; var bob: Bool
 }
 let typeColor: [String: NSColor] = (["normal": (168, 168, 120), "fire": (240, 128, 48), "water": (104, 144, 240), "grass": (120, 200, 80), "electric": (238, 196, 40),
     "ice": (120, 200, 200), "fighting": (192, 48, 40), "poison": (160, 64, 160), "ground": (210, 176, 90), "flying": (150, 130, 230), "psychic": (248, 88, 136),
@@ -44,9 +51,12 @@ final class SideView: NSView {
     var shop: ShopModel?
     var status: StatusModel?                                               // the 홈 page (and everywhere without a page of its own)
     var menuPage: MenuModel?
+    var grid: GridModel?                                                   // 도감 / 상자
     var scrolled: CGFloat = 0                                              // trackpad scroll not yet turned into a row step
+    var downOn = 0                                                         // the page a click began on: a double-click's 2nd click on another page is dropped
+    var pageKind: Int { model != nil ? 1 : dex != nil ? 2 : grid != nil ? 3 : shop != nil ? 4 : menuPage != nil ? 5 : 0 }
     var shopTop = 0, shopTitle = ""                                        // the list's first visible row: moves only when the pick leaves the window
-    var hits: [(NSRect, Int)] = []                                         // clickable rows: battle index, 1000+ dex strip, 2000+ shop, 3000+ menu
+    var hits: [(NSRect, Int)] = []                                         // clickable: battle index, 2000+ shop, 3000+ menu, 4000+ grid / entry controls, 10000+ grid cells
     weak var walker: WalkerView?
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -56,15 +66,17 @@ final class SideView: NSView {
     override func mouseDown(with e: NSEvent) {
         let p = convert(e.locationInWindow, from: nil)
         guard let k = hits.first(where: { $0.0.contains(p) })?.1 else { window?.performDrag(with: e); return }   // not on a button: drag the whole body
-        if e.clickCount > 1, model != nil || shop?.ask != nil { return }                         // a double-click's 2nd click lands on the next page's button (a move, 예): ignore it
-        if k >= 3000 { walker?.menuTap(k - 3000) } else if k >= 2000 { walker?.shopTap(k) } else if k >= 1000 { walker?.dexJump(k - 1000) } else { walker?.sidePick(k) }
+        if e.clickCount == 1 { downOn = pageKind } else if model != nil || shop?.ask != nil || pageKind != downOn { return }   // a double-click's 2nd click on the page the 1st one opened (a move, 예, a grid cell under 메뉴's row): ignore it
+        if k >= 4000 { walker?.gridTap(k) } else if k >= 3000 { walker?.menuTap(k - 3000) } else if k >= 2000 { walker?.shopTap(k) } else { walker?.sidePick(k) }
     }
-    override func scrollWheel(with e: NSEvent) {                                                 // the shop list scrolls a row per notch (or per 6 pt of trackpad)
-        guard shop != nil else { return super.scrollWheel(with: e) }
-        if !e.hasPreciseScrollingDeltas { if e.scrollingDeltaY != 0 { walker?.shopRow(e.scrollingDeltaY > 0 ? -1 : 1) }; return }   // rows only, never the amount
+    override func scrollWheel(with e: NSEvent) {                                                 // the shop list: a row per notch (or 6 pt of trackpad); a grid: a page (24 pt)
+        guard shop != nil || grid != nil else { return super.scrollWheel(with: e) }
+        let notch: CGFloat = grid != nil ? 24 : 6
+        func step(_ d: Int) { if grid != nil { walker?.gridStep(d * GridModel.perPage) } else { walker?.shopRow(d) } }   // rows only, never the amount
+        if !e.hasPreciseScrollingDeltas { if e.scrollingDeltaY != 0 { step(e.scrollingDeltaY > 0 ? -1 : 1) }; return }
         if e.phase == .began { scrolled = 0 }
         scrolled += e.scrollingDeltaY
-        while abs(scrolled) >= 6 { walker?.shopRow(scrolled > 0 ? -1 : 1); scrolled -= scrolled > 0 ? 6 : -6 }
+        while abs(scrolled) >= notch { step(scrolled > 0 ? -1 : 1); scrolled -= scrolled > 0 ? notch : -notch }
     }
     override func resetCursorRects() { for (r, _) in hits { addCursorRect(r, cursor: .pointingHand) } }
     /// The pages' layout unit (paneUnit, in step with the ball). Plain UI in the system font — sharp at any scale; the pixel look stays on the LCD.
@@ -97,6 +109,7 @@ final class SideView: NSView {
     override func draw(_ dirty: NSRect) {
         hits = []; defer { window?.invalidateCursorRects(for: self) }                            // every page, the 상태 page too (it has none)
         if let d = dex { drawDex(d); return }
+        if let g = grid { drawGrid(g); return }
         if let s = shop { drawShop(s); return }
         if let m = menuPage { drawMenu(m); return }
         if let s = status { drawStatus(s); return }
@@ -229,9 +242,9 @@ final class SideView: NSView {
 }
 extension SideView {
     /// What the pane shows now (redrawn only when it changes).
-    func show(_ m: SideModel?, dex d: DexModel?, shop sh: ShopModel?, menu mn: MenuModel?, status st: StatusModel?) {
-        guard model != m || dex != d || shop != sh || menuPage != mn || status != st else { return }
-        model = m; dex = d; shop = sh; menuPage = mn; status = st; needsDisplay = true
+    func show(_ m: SideModel?, dex d: DexModel?, shop sh: ShopModel?, menu mn: MenuModel?, status st: StatusModel?, grid g: GridModel? = nil) {
+        guard model != m || dex != d || shop != sh || menuPage != mn || status != st || grid != g else { return }
+        model = m; dex = d; shop = sh; menuPage = mn; status = st; grid = g; needsDisplay = true
     }
     func paperBox(_ r: NSRect) {
         let u = u0; round(r.offsetBy(dx: 0, dy: u), 4 * u).fill(with: NSColor(white: 0, alpha: 0.35))
@@ -348,19 +361,76 @@ extension SideView {
         button(buy, "구매", NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1), 2005)
         window?.invalidateCursorRects(for: self)
     }
-    /// The Pokédex page: a red handheld-dex body, a white entry card (types, base stats), where to find it, how it evolves, and a number strip.
+    /// A handheld's body inside the pane's navy, off the deck: the dex's red (with its blue lens) or the box's blue; its title and count on top.
+    func handheld(box: Bool, _ title: String, _ count: String) {
+        let u = paneUnit, W = bounds.width
+        let r = NSRect(x: 2 * u, y: 2 * u, width: W - 4 * u, height: bounds.height - 5 * u), path = round(r, 8 * u)
+        NSGraphicsContext.saveGraphicsState(); path.addClip()
+        (box ? NSGradient(starting: NSColor(red: 0.32, green: 0.60, blue: 0.76, alpha: 1), ending: NSColor(red: 0.16, green: 0.36, blue: 0.54, alpha: 1))!
+             : NSGradient(starting: NSColor(red: 0.90, green: 0.24, blue: 0.22, alpha: 1), ending: NSColor(red: 0.66, green: 0.12, blue: 0.13, alpha: 1))!).draw(in: r, angle: -90)
+        NSGraphicsContext.restoreGraphicsState()
+        SideView.ink.setStroke(); path.lineWidth = 1.2; path.stroke()
+        if !box {
+            round(NSRect(x: 6 * u, y: 5 * u, width: 10 * u, height: 10 * u), 5 * u).fill(with: .white)                  // the blue lens
+            round(NSRect(x: 7.5 * u, y: 6.5 * u, width: 7 * u, height: 7 * u), 3.5 * u).fill(with: NSColor(red: 0.30, green: 0.62, blue: 0.95, alpha: 1))
+        }
+        let head = NSRect(x: 0, y: 4 * u, width: W, height: 12 * u)
+        label(title, in: head, body, .white, alignLeft: box ? 8 * u : 19 * u)
+        label(count, in: head, small, NSColor(white: 1, alpha: 0.9), alignRight: 7 * u)
+    }
+    /// The 도감 / 상자 grid: tabs, 5 x 6 box icons a page at 1 pt a pixel (x 1.5 / x 2 on the bigger sizes; the pick bobs), the page below.
+    func drawGrid(_ g: GridModel) {
+        let u = paneUnit, W = bounds.width, ink = SideView.ink, dim = SideView.dim, scale = window?.backingScaleFactor ?? 2
+        let accent = g.box ? NSColor(red: 0.18, green: 0.40, blue: 0.60, alpha: 1) : NSColor(red: 0.80, green: 0.20, blue: 0.18, alpha: 1)
+        handheld(box: g.box, g.title, g.count)
+        var x = 6 * u
+        for (t, name) in g.tabs.enumerated() {
+            let r = NSRect(x: x, y: 18 * u, width: width(name, small) + 9 * u, height: 9 * u), on = t == g.tab
+            round(r, 4.5 * u).fill(with: on ? .white : NSColor(white: 0, alpha: 0.22)); label(name, in: r, small, on ? accent : NSColor(white: 1, alpha: 0.88))
+            hits.append((r, 4100 + t)); x = r.maxX + 3 * u
+        }
+        let panel = NSRect(x: 5 * u, y: 29 * u, width: W - 10 * u, height: 6 * 23 * u + 2 * u), cw = (panel.width - 2 * u) / 5, ch = 23 * u
+        let pp = round(panel, 4 * u); pp.fill(with: NSColor(white: 0.98, alpha: 1)); ink.setStroke(); pp.lineWidth = u; pp.stroke()
+        if g.cells.isEmpty { label(g.empty, in: panel, body, dim) }
+        let s = PX / 2.5, side = 32 * s, snap = { (v: CGFloat) in (v * scale).rounded() / scale }, num = NSFont.monospacedDigitSystemFont(ofSize: 4.6 * u, weight: .medium)
+        NSGraphicsContext.current?.imageInterpolation = .none
+        for (k, c) in g.cells.enumerated() {
+            let cell = NSRect(x: panel.minX + u + CGFloat(k % 5) * cw, y: panel.minY + u + CGFloat(k / 5) * ch, width: cw, height: ch).insetBy(dx: 0.5 * u, dy: 0.5 * u)
+            if k == g.sel {
+                let p = round(cell, 3 * u); p.fill(with: NSColor(red: 1, green: 0.95, blue: 0.76, alpha: 1))
+                NSColor(red: 0.94, green: 0.70, blue: 0.12, alpha: 1).setStroke(); p.lineWidth = 1.2 * u; p.stroke()
+            }
+            if c.look == 0 { round(cell.insetBy(dx: u, dy: u), 3 * u).fill(with: NSColor(white: 0, alpha: 0.06)); label("???", in: cell, small, NSColor(white: 0.62, alpha: 1)) }
+            else {
+                let lift = k == g.sel && g.bob ? s : 0                                                    // the pick hops a pixel, twice a second
+                iconImage(c.dex, shadow: c.look == 1).draw(in: NSRect(x: snap(cell.midX - side / 2), y: snap(cell.maxY - side - lift), width: side, height: side),
+                                                             from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none.rawValue])
+            }
+            if !g.box { text(String(format: "%03d", c.dex), cell.minX + 1.5 * u, cell.minY + 0.3 * u, num, dim) }
+            if c.shiny { text("★", 0, cell.minY + 0.3 * u, num, NSColor(red: 0.93, green: 0.64, blue: 0.08, alpha: 1), right: cell.maxX - 1.5 * u) }
+            if c.v3 {                                                                                   // 3V and up: the amber diamond, as on the LCD
+                let d = NSBezierPath(), cx = cell.minX + 4 * u, cy = cell.maxY - 4 * u, r = 2.2 * u
+                d.move(to: NSPoint(x: cx, y: cy - r)); d.line(to: NSPoint(x: cx + r, y: cy)); d.line(to: NSPoint(x: cx, y: cy + r)); d.line(to: NSPoint(x: cx - r, y: cy)); d.close()
+                d.fill(with: NSColor(red: 0.96, green: 0.70, blue: 0.16, alpha: 1)); NSColor(red: 0.63, green: 0.39, blue: 0.04, alpha: 1).setStroke(); d.lineWidth = 0.4 * u; d.stroke()
+            }
+            hits.append((cell, 10000 + g.first + k))
+        }
+        let foot = NSRect(x: 5 * u, y: panel.maxY + 2 * u, width: W - 10 * u, height: 10 * u)
+        label(g.hint, in: foot, small, NSColor(white: 1, alpha: 0.8), alignLeft: 2 * u)
+        let pw = 12 * u, lw = max(26 * u, width("\(g.page) / \(g.pages)", small) + 4 * u)                // a 3-digit page count (a big box) widens it
+        let next = NSRect(x: foot.maxX - pw, y: foot.minY, width: pw, height: foot.height), pageR = NSRect(x: next.minX - lw, y: foot.minY, width: lw, height: foot.height)
+        let prev = NSRect(x: pageR.minX - pw, y: foot.minY, width: pw, height: foot.height)
+        label("\(g.page) / \(g.pages)", in: pageR, small, .white)
+        for (r, t, code, on) in [(prev, "◀", 4200, g.page > 1), (next, "▶", 4201, g.page < g.pages)] {
+            round(r.insetBy(dx: u, dy: 0.5 * u), 3 * u).fill(with: NSColor(white: on ? 1 : 0.6, alpha: on ? 0.95 : 0.35)); label(t, in: r, small, on ? accent : NSColor(white: 1, alpha: 0.6))
+            if on { hits.append((r, code)) }
+        }
+        window?.invalidateCursorRects(for: self)
+    }
+    /// The Pokédex entry page: a red handheld-dex body, a white entry card (types, base stats), where to find it, how it evolves; ◀ 목록 ▶ below.
     func drawDex(_ d: DexModel) {
         let u = paneUnit, W = bounds.width, ink = SideView.ink, dim = SideView.dim, red = NSColor(red: 0.80, green: 0.20, blue: 0.18, alpha: 1)
-        let red0 = NSRect(x: 2 * u, y: 2 * u, width: W - 4 * u, height: bounds.height - 5 * u), bodyPath = round(red0, 8 * u)   // inside the pane's navy, off the deck
-        NSGraphicsContext.saveGraphicsState(); bodyPath.addClip()
-        NSGradient(starting: NSColor(red: 0.90, green: 0.24, blue: 0.22, alpha: 1), ending: NSColor(red: 0.66, green: 0.12, blue: 0.13, alpha: 1))!.draw(in: red0, angle: -90)
-        NSGraphicsContext.restoreGraphicsState()
-        ink.setStroke(); bodyPath.lineWidth = 1.2; bodyPath.stroke()
-        round(NSRect(x: 6 * u, y: 5 * u, width: 10 * u, height: 10 * u), 5 * u).fill(with: .white)                  // the blue lens
-        round(NSRect(x: 7.5 * u, y: 6.5 * u, width: 7 * u, height: 7 * u), 3.5 * u).fill(with: NSColor(red: 0.30, green: 0.62, blue: 0.95, alpha: 1))
-        let head = NSRect(x: 0, y: 4 * u, width: W, height: 12 * u)
-        label("도감", in: head, body, .white, alignLeft: 19 * u)
-        label("잡음 \(d.owned) · 봤음 \(d.seen)", in: head, small, NSColor(white: 1, alpha: 0.9), alignRight: 7 * u)
+        handheld(box: false, "도감", "잡음 \(d.owned) · 봤음 \(d.seen)")
         func panel(_ r: NSRect) { let p = round(r, 4 * u); p.fill(with: NSColor(white: 0.98, alpha: 1)); ink.setStroke(); p.lineWidth = u; p.stroke() }
         // entry card
         let card = NSRect(x: 5 * u, y: 19 * u, width: W - 10 * u, height: 76 * u)
@@ -396,14 +466,11 @@ extension SideView {
             line("진화", 4, red, small)
             for (j, str) in (d.evos.isEmpty ? ["더 이상 진화하지 않는다"] : d.evos).enumerated() { line(fit(str, info.width - 10 * u), CGFloat(5 + j), d.evos.isEmpty ? dim : ink, small) }
         }
-        // number strip: white = caught, pale = seen, dark = not met; click a met one to go there
-        let cw = (W - 10 * u) / 10
-        for (j, (n, st)) in zip(d.strip, d.stripStatus).enumerated() {
-            let r = NSRect(x: 5 * u + CGFloat(j) * cw, y: 169 * u, width: cw - 1.5 * u, height: 12 * u)
-            round(r, 2.5 * u).fill(with: st == 2 ? NSColor.white : st == 1 ? NSColor(white: 1, alpha: 0.55) : NSColor(white: 0, alpha: 0.2))
-            if n == d.num { let p = round(r, 2.5 * u); NSColor(red: 1, green: 0.85, blue: 0.2, alpha: 1).setStroke(); p.lineWidth = 1.5 * u; p.stroke() }
-            label("\(n)", in: r, small, st == 0 ? NSColor(white: 1, alpha: 0.7) : n == d.num ? red : ink)
-            if st > 0 { hits.append((r, 1000 + n)) }
+        // ◀ the one before · back to the grid · the next ▶ (on the grid's tab)
+        let bw = (W - 10 * u - 6 * u) / 4
+        for (k, (t, code)) in [("◀", 4300), ("목록", 4301), ("▶", 4302)].enumerated() {
+            let r = NSRect(x: 5 * u + (k == 0 ? 0 : k == 1 ? bw + 3 * u : 3 * bw + 6 * u), y: 169 * u, width: k == 1 ? 2 * bw : bw, height: 12 * u)
+            round(r, 3 * u).fill(with: NSColor(white: 1, alpha: 0.95)); label(t, in: r, small, red); hits.append((r, code))
         }
         window?.invalidateCursorRects(for: self)
     }

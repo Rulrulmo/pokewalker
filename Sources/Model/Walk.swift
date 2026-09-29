@@ -122,7 +122,6 @@ struct Walk: Codable, Equatable {
     }
     /// Lets box[i] go; a few watts back as thanks (level / 2, at least 1).
     mutating func release(_ i: Int) -> Int { let w = max(1, box.remove(at: i).level / 2); watts = min(9999, watts + w); return w }
-    mutating func sortBox(byLevel: Bool) { box.sort { byLevel ? ($0.points, $1.dex) > ($1.points, $0.dex) : ($0.dex, $1.points) < ($1.dex, $0.points) } }
 
     // MARK: weather
     var weatherDue: Bool { total / weatherSteps != (weatherAt ?? 0) / weatherSteps }
@@ -234,11 +233,12 @@ struct Walk: Codable, Equatable {
     mutating func setCourse<R: RandomNumberGenerator>(_ i: Int, _ r: inout R) {
         connect(); course = i; courseSteps = 0
     }
-    /// Walk with box[i] (or, onWalker, caught[i]) instead; the old companion takes its place. Course progress stays
-    /// (the real device re-pairs and restarts the course, which just punishes trying a new partner).
+    /// Walk with box[i] (or, onWalker, caught[i]) instead; the old companion takes its place on the walker, or goes to the box's end
+    /// (the box stays in arrival order: the 상자 grid's 최근). Course progress stays (the real device re-pairs and restarts the course,
+    /// which just punishes trying a new partner).
     mutating func pair(_ i: Int, onWalker: Bool = false) {
         let m = onWalker ? caught[i] : box[i]
-        if onWalker { caught[i] = companion } else { box[i] = companion }
+        if onWalker { caught[i] = companion } else { box.remove(at: i); box.append(companion) }
         companion = m
     }
 }

@@ -21,7 +21,7 @@ indirect enum Screen {
     case card(Int), bag(Int)
     case say([String], next: Screen, since: Date)                      // any button or 3 s
     case evolve(from: Mon, to: Mon, since: Date)                       // already applied to the state; this is the show
-    case dex(Int)                                                      // index into the seen list
-    case box(Int, act: Int?, confirm: Bool)                            // act = the ● menu's selection; confirm = "release?"
+    case dex(Int, filter: Int, detail: Bool)                           // the pick's dex number; filter = the grid's tab (전체 / 잡음 / 못 잡음 / 이 코스); detail = the entry page
+    case box(Int, act: Int?, confirm: Bool)                            // box[i] (the grid shows boxOrder); act = the ● menu's selection; confirm = "release?"
     case hatch(Mon, since: Date)                                       // already kept; this is the show
 }

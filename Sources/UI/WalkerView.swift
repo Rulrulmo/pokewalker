@@ -5,7 +5,7 @@ final class WalkerView: NSView {
     var state: Walk
     var screen = Screen.home
     var lastInput = Date(), lastStep = Date.distantPast, lastSave = Date(), levelled = false
-    var boxByLevel = false
+    var boxSort = 0                                                        // the 상자 grid's order: 번호순 / 레벨순 / V순 / 최근
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
     var usedItem = "몬스터볼"                                                // the potion / ball / revive the current beat names
     var towerRefs: [Int] = [], towerRun = false
@@ -104,7 +104,7 @@ final class WalkerView: NSView {
         updateStatus()
         if window?.isVisible == true {
             let c = paneContent(now)
-            if c.status == nil || page.status == nil || now.timeIntervalSince(paneAt) >= 1 { page.show(c.battle, dex: c.dex, shop: c.shop, menu: c.menu, status: c.status); paneAt = now }   // steps tick the 상태 page: once a second is plenty
+            if c.status == nil || page.status == nil || now.timeIntervalSince(paneAt) >= 1 { page.show(c.battle, dex: c.dex, shop: c.shop, menu: c.menu, status: c.status, grid: c.grid); paneAt = now }   // steps tick the 상태 page: once a second is plenty
         }
         guard window?.isVisible ?? true else { return }                                         // hidden in the menu bar: rules keep running, nothing to draw
         let fb = compose(now)
@@ -128,6 +128,7 @@ final class WalkerView: NSView {
     }
     override func keyDown(with e: NSEvent) {                                                  // ← return/space → esc (= ↩ 뒤로); in a shop ↑ ↓ = a row, or ±10
         if case .shop(_, _, let q) = screen, let d = [126: -1, 125: 1][Int(e.keyCode)] { shopStep(q == nil ? d : -10 * d); return }
+        switch screen { case .dex(_, _, false), .box(_, .none, _): if let d = [126: -5, 125: 5, 116: -30, 121: 30][Int(e.keyCode)] { gridStep(d); return }; default: break }   // the grids: ↑ ↓ a row, page up / down a page
         switch screen { case .shop, .shopConfirm: if e.isARepeat, [36, 49].contains(Int(e.keyCode)) { return }; default: break }   // a held return / space doesn't keep buying
         if let i = [123: 0, 36: 1, 49: 1, 124: 2, 53: 3][Int(e.keyCode)] { press(i) } else { super.keyDown(with: e) }
     }

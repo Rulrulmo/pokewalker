@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Regenerates Sources/Data/{Data,BattleData}.swift + Resources/hgss.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
+"""Regenerates Sources/Data/{Data,BattleData}.swift + Resources/{hgss,icons}.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
 
 Sources (cached in tools/.cache, not committed):
   - PokeAPI HGSS battle sprites, front + back, normal + shiny: same pixels, other palette, so pixel pairs give each species' normal -> shiny map.
+  - PokeAPI Gen IV icons (the HGSS box / party icons, 32x32) for the 도감 and 상자 grids.
   - Serebii's Pokéwalker course page: per course 6 Pokémon (groups A/B/C x 2) + 10 items, with min steps and chances.
   - PokeAPI CSVs: Korean names, Gen IV types (pokemon_types_past overrides the Fairy retcon).
 
@@ -21,6 +22,7 @@ SRC = {
        for i in range(1, 494) for s in ('', 's')},
     **{f'hgss/b{s}{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/heartgold-soulsilver/back/{"shiny/" if s else ""}{i}.png'
        for i in range(1, 494) for s in ('', 's')},
+    **{f'icons/{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/icons/{i}.png' for i in range(1, 494)},
     # PokeAPI's HGSS shiny 422/423 (West Sea) are copies of the normal files; Platinum's front pair is right (its back pair is a copy too)
     **{f'plat/{s}{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/platinum/{"shiny/" if s else ""}{i}.png'
        for i in (422, 423) for s in ('', 's')},
@@ -83,6 +85,19 @@ for dex in range(1, N + 1):
 assert len(hout) == N * 6490
 if over15: print('palette snapped (> 15 colour pairs):', over15)
 open('Resources/hgss.bin', 'wb').write(hout)
+
+# --- icons.bin: the Gen IV box / party icons (the 도감 and 상자 grids), one pixel a point. Per species: 15 RGB (index 1...15; 0 =
+# transparent), then 32x32 at 4 bpp (high nibble = left). 557 B per species. A DS icon palette is 16 colours, so 15 opaque always fit.
+iout = bytearray()
+for dex in range(1, N + 1):
+    a = rgba(f'icons/{dex}.png'); assert a.size == (32, 32), (dex, a.size)
+    px = list(a.getdata()); pal = sorted({p[:3] for p in px if p[3] >= 128})
+    assert 0 < len(pal) <= 15, (dex, len(pal))
+    for c in pal + [(0, 0, 0)] * (15 - len(pal)): iout += bytes(c)
+    cell = lambda p: pal.index(p[:3]) + 1 if p[3] >= 128 else 0
+    for k in range(0, 1024, 2): iout.append(cell(px[k]) << 4 | cell(px[k + 1]))
+assert len(iout) == N * 557
+open('Resources/icons.bin', 'wb').write(iout)
 
 # --- names / types
 ko, en_item, ko_item, types = {}, {}, {}, {}
@@ -392,4 +407,4 @@ for path in ['Sources/Data/Data.swift', 'Sources/Data/BattleData.swift']:
         flush(); cur = None; out_lines.append(line)
     flush()
     open(path, 'w').write('\n'.join(out_lines))
-print('ok', len(courses), 'courses,', len(hout), 'hgss sprite bytes')
+print('ok', len(courses), 'courses,', len(hout), 'hgss sprite bytes,', len(iout), 'icon bytes')

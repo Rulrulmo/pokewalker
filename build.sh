@@ -9,7 +9,7 @@ OPT="-O -wmo -num-threads $(sysctl -n hw.ncpu) -swift-version 6"   # whole-modul
 bundle() {   # $1 = .app path
     mkdir -p "$1/Contents/MacOS" "$1/Contents/Resources"
     cp Info.plist "$1/Contents/Info.plist"
-    cp Resources/hgss.bin Resources/fonts/Galmuri9.ttf Resources/fonts/Galmuri7.ttf "$1/Contents/Resources/"
+    cp Resources/hgss.bin Resources/icons.bin Resources/fonts/Galmuri9.ttf Resources/fonts/Galmuri7.ttf "$1/Contents/Resources/"
 }
 if [ "$1" = dist ]; then
     A=dist/PokeWalker.app; rm -rf dist; bundle $A

@@ -177,8 +177,13 @@ extension WalkerView {
                 if state.items.isEmpty { fb.text("없음", 0, 30, 2, center: true) }
                 for (k, it) in state.items.enumerated() { fb.draw(gem, 4, 18 + 12 * k, gemPal); fb.text(it, 12, 14 + 12 * k) }
             }
-        case .dex(let i):
-            let list = seenList, d = list[safe: i] ?? state.companion.dex, owned = (state.owned ?? []).contains(d)
+        case .dex(let d, let f, _):
+            let list = dexList(f), owned = (state.owned ?? []).contains(d)
+            guard list.contains(d) else { fb.text("도감", 2, 0); fb.fill(0, 12, 96, 1, 2); fb.text(f == 2 ? "모두 잡았다!" : "없음", 0, 30, 2, center: true); break }   // an empty tab
+            guard seenList.contains(d) else {                                                                // 전체 / 이 코스 show the ones not met yet: no picture, no name
+                fb.text(String(format: "No.%03d ???", d), 2, 0); fb.fill(0, 12, 96, 1, 2)
+                fb.text("아직 만나지 못했다", 0, 30, 2, center: true); fb.text("\((list.firstIndex(of: d) ?? 0) + 1)/\(list.count)", 94, 52, 1, right: true, small: true); break
+            }
             fb.text(String(format: "No.%03d ", d) + monNames[d], 2, 0)
             if owned { fb.draw(ball, 88, 2, ballPal) }
             fb.fill(0, 12, 96, 1, 2)
@@ -188,16 +193,16 @@ extension WalkerView {
             if shinyNow { fb.text("★이로치", 94, 32, 3, right: true, small: true) }
             fb.text(monTypes[d].map { typeKo[$0] ?? $0 }.joined(separator: "·"), 94, 16, 2, right: true, small: true)
             fb.text(owned ? "잡음" : "봤음", 94, 42, 2, right: true, small: true)
-            fb.text("\(i + 1)/\(max(1, list.count))", 94, 52, 1, right: true, small: true)
+            fb.text("\((list.firstIndex(of: d) ?? 0) + 1)/\(list.count)", 94, 52, 1, right: true, small: true)
         case .box(let i, let act, let confirm):
             guard let m = state.box[safe: i] else { header("상자"); fb.text("상자가 비어 있다", 0, 30, 2, center: true); break }
             header((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)")
             fb.mon(m, half, 0, 2)
-            fb.text("\(i + 1)/\(state.box.count)", 94, 15, 2, right: true, small: true)
+            fb.text("\((boxOrder.firstIndex(of: i) ?? 0) + 1)/\(state.box.count)", 94, 15, 2, right: true, small: true)
             if genderRate[m.dex] >= 0 { fb.text(m.female ? "암컷" : "수컷", 94, 26, 2, right: true, small: true) }; vLabel(m, 36)   // genderless: nothing (the games show no symbol)
             if let a = act {
                 fb.fill(0, 50, 96, 14, 0); fb.fill(0, 50, 96, 1, 2)
-                let opts = confirm ? ["놓아줄까?", "아니오", "예"] : ["함께", "놓아주기", "정렬", "닫기"]
+                let opts = confirm ? ["놓아줄까?", "아니오", "예"] : ["함께", "놓아주기", "닫기"]
                 var x = 1
                 for (k, o) in opts.enumerated() {
                     let w = fb.text(o, x + 1, 52, 3, small: true) + 2
@@ -245,11 +250,10 @@ extension WalkerView {
         case .trade: return "커넥트(통신)" + (e.item.map { " · " + $0 + " 소지" } ?? "")
         }
     }
-    /// What the side panel shows on the Pokédex screen; nil elsewhere.
+    /// The pane's 도감 entry page (● on the grid); nil elsewhere.
     func dexModel() -> DexModel? {
-        guard case .dex(let i) = screen else { return nil }
-        let list = seenList, d = list[safe: i] ?? state.companion.dex
-        let owned = Set(state.owned ?? []), seen = Set(list), st = owned.contains(d) ? 2 : seen.contains(d) ? 1 : 0
+        guard case .dex(let d, _, true) = screen else { return nil }
+        let owned = Set(state.owned ?? []), seen = Set(seenList), st = owned.contains(d) ? 2 : seen.contains(d) ? 1 : 0
         var found: [String] = [], evos: [String] = []
         if st > 0 {
             for (ci, c) in courses.enumerated() {
@@ -265,23 +269,62 @@ extension WalkerView {
             evos = mine.map(\.to).reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } }.map { to in "→ " + monNames[to] + " · " + mine.filter { $0.to == to }.map(evoText).joined(separator: " / ") }
             if evos.count > 2 { let n = evos.count - 1; evos = [evos[0], "외 \(n)갈래"] }
         }
-        let lo = max(1, min(484, d - 4)), strip = Array(lo..<(lo + 10))
         return DexModel(num: d, name: st > 0 ? monNames[d] : "???", status: st, shiny: (state.shinyOwned ?? []).contains(d), types: st > 0 ? monTypes[d] : [],
-                        stats: st > 0 ? baseStats[d] : [], found: found, evos: evos, owned: owned.count, seen: seen.count,
-                        strip: strip, stripStatus: strip.map { owned.contains($0) ? 2 : seen.contains($0) ? 1 : 0 })
+                        stats: st > 0 ? baseStats[d] : [], found: found, evos: evos, owned: owned.count, seen: seen.count)
     }
-    /// What the pane's page shows: the battle, 도감, 상점 or 메뉴 page; everywhere else the 상태 page.
-    func paneContent(_ now: Date) -> (battle: SideModel?, dex: DexModel?, shop: ShopModel?, menu: MenuModel?, status: StatusModel?) {
-        if let b = sideModel(now) { return (b, nil, nil, nil, nil) }
-        if let d = dexModel() { return (nil, d, nil, nil, nil) }
-        if let s = shopModel() { return (nil, nil, s, nil, nil) }
+    /// The 도감 / 상자 grid page (and through their messages: 놓아주기's); nil elsewhere.
+    func gridModel(_ now: Date) -> GridModel? {
+        var sc = screen; if case .say(_, let next, _) = sc { sc = next }
+        let bob = Int(now.timeIntervalSinceReferenceDate * 2) % 2 == 0, per = GridModel.perPage
+        func page(_ n: Int, _ at: Int) -> (first: Int, page: Int, pages: Int) { (at / per * per, at / per + 1, max(1, (n + per - 1) / per)) }
+        switch sc {
+        case .dex(let d, let f, false):
+            let l = dexList(f), owned = Set(state.owned ?? []), seen = Set(seenList), shiny = Set(state.shinyOwned ?? []), i = l.firstIndex(of: d), p = page(l.count, i ?? 0)
+            return GridModel(box: false, title: "도감", count: "잡음 \(owned.count) · 봤음 \(seen.count)", tabs: ["전체", "잡음", "못 잡음", "이 코스"], tab: f,
+                             cells: l[p.first..<min(l.count, p.first + per)].map { .init(dex: $0, look: owned.contains($0) ? 2 : seen.contains($0) ? 1 : 0, shiny: shiny.contains($0)) },
+                             first: p.first, sel: i.map { $0 - p.first }, page: p.page, pages: p.pages, hint: "다시 클릭 · 자세히", empty: f == 2 ? "모두 잡았다!" : "아직 없다", bob: bob)
+        case .box(let i, _, _):
+            let o = boxOrder, b = state.box, at = o.firstIndex(of: i), p = page(o.count, at ?? 0)
+            return GridModel(box: true, title: "상자", count: "\(b.count.formatted())마리", tabs: ["번호순", "레벨순", "V순", "최근"], tab: boxSort,
+                             cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3) },
+                             first: p.first, sel: at.map { $0 - p.first }, page: p.page, pages: p.pages, hint: "다시 클릭 · 메뉴", empty: "상자가 비어 있다", bob: bob)
+        default: return nil
+        }
+    }
+    /// A click on a grid page: 10000 + k = the list's k-th (picks it; the picked one again = the entry page / the ● menu), 4100 + t = a tab,
+    /// 4200 / 4201 = a page back / on; the entry page's 4300 ◀ / 4301 목록 / 4302 ▶.
+    func gridTap(_ code: Int) {
+        if case .say(_, let next, _) = screen { switch next { case .dex, .box: screen = next; default: return } }   // a click during 놓아주기's line = on to the grid
+        lastInput = Date(); shown = nil; needsDisplay = true
+        switch (screen, code) {
+        case (.dex(let d, let f, _), 10000...):
+            guard let n = dexList(f)[safe: code - 10000] else { return }
+            screen = .dex(n, filter: f, detail: n == d)
+        case (.dex(let d, _, _), 4100...4103):
+            let f = code - 4100, l = dexList(f); screen = .dex(l.contains(d) ? d : l.first ?? d, filter: f, detail: false)   // the pick stays if it's on the new tab
+        case (.dex(let d, let f, _), 4301): screen = .dex(d, filter: f, detail: false)
+        case (.box(let i, let act, _), 10000...):
+            guard let j = boxOrder[safe: code - 10000] else { return }
+            screen = .box(j, act: j == i ? act ?? 0 : nil, confirm: false)                          // the picked one again: 함께 / 놓아주기 / 닫기 (stays open: ↩ / 닫기 close it)
+        case (.box(let i, _, _), 4100...4103): boxSort = code - 4100; screen = .box(i, act: nil, confirm: false)
+        case (_, 4200), (_, 4201): gridStep(code == 4200 ? -GridModel.perPage : GridModel.perPage)
+        case (_, 4300), (_, 4302): gridStep(code == 4300 ? -1 : 1, wrap: true)
+        default: return
+        }
+    }
+    /// What the pane's page shows: the battle, 도감 (grid or entry), 상자, 상점 or 메뉴 page; everywhere else the 상태 page.
+    func paneContent(_ now: Date) -> (battle: SideModel?, dex: DexModel?, shop: ShopModel?, menu: MenuModel?, status: StatusModel?, grid: GridModel?) {
+        if let b = sideModel(now) { return (b, nil, nil, nil, nil, nil) }
+        if let d = dexModel() { return (nil, d, nil, nil, nil, nil) }
+        if let g = gridModel(now) { return (nil, nil, nil, nil, nil, g) }
+        if let s = shopModel() { return (nil, nil, s, nil, nil, nil) }
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }                       // a menu page's message (W가 부족하다, 커넥트): the list stays
         if case .menu(let i) = sc {
             let bp = (state.bp ?? 0).formatted(), notes = ["10W", "3W", "상자로 보내기", "오늘 \(state.today.formatted())걸음", "워커 \(state.caught.count)마리 · 도구 \(state.items.count)",
                                          "\(state.box.count.formatted())마리", "\(dexCount) / 493", "W로 사기", "\(bp)BP로 교환", "최고 \(state.towerBest ?? 0)연승"]
-            return (nil, nil, nil, MenuModel(money: "\(state.watts.formatted())W", rows: menuItems.indices.map { .init(name: menuItems[$0], note: notes[safe: $0] ?? "") }, sel: i), nil)
+            return (nil, nil, nil, MenuModel(money: "\(state.watts.formatted())W", rows: menuItems.indices.map { .init(name: menuItems[$0], note: notes[safe: $0] ?? "") }, sel: i), nil, nil)
         }
-        return (nil, nil, nil, nil, statusModel())
+        return (nil, nil, nil, nil, statusModel(), nil)
     }
     /// 홈 (and the other screens): where, the companion, today, then egg / tower / totals / dex.
     func statusModel() -> StatusModel {
@@ -324,5 +367,4 @@ extension WalkerView {
         return ShopModel(title: bp ? "BP 교환소" : "상점", money: "\(money.formatted())\(unit)", rows: rows, sel: sel, qty: qty, most: w.map { max(1, state.canBuy($0, bp: bp)) } ?? 1,
                          total: "\(spend.formatted())\(unit)", after: "\((money - spend).formatted())\(unit)", hint: hint, ask: ask)
     }
-    func dexJump(_ n: Int) { if let i = seenList.firstIndex(of: n) { lastInput = Date(); screen = .dex(i); shown = nil } }
 }
