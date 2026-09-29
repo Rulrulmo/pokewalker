@@ -359,7 +359,7 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     let nido = v.buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title.hasPrefix("니드런♀") }?.submenu
     check((nido?.items.count ?? 99) <= 12 && nido?.items.contains { $0.title.hasPrefix("그 밖") } == true && nido?.items.last?.title.hasPrefix("중복 놓아주기") == true,
           "40 니드런♀: ≤ 12 rows, the rest under 그 밖, and 중복 놓아주기", "\(nido?.items.count ?? -1)")
-        check((walkMenu?.items.count ?? 99) <= 23 && walkMenu?.items.contains { $0.title.hasPrefix("★ 이로치") } == true, "big box: 함께 걷기 stays short (recent, shinies, dex ranges)", "\(walkMenu?.items.count ?? -1)")
+        check((walkMenu?.items.count ?? 99) <= 26 && walkMenu?.items.contains { $0.title.hasPrefix("★ 이로치") } == true, "big box: 함께 걷기 stays short (recent, shinies, dex ranges)", "\(walkMenu?.items.count ?? -1)")
 
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0

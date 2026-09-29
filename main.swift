@@ -1012,6 +1012,12 @@ final class WalkerView: NSView {
     override func menu(for event: NSEvent) -> NSMenu? { buildMenu() }
     func sexMark(_ m: Mon) -> String { genderRate[m.dex] < 0 ? "" : m.female ? " ♀" : " ♂" }
     func movesLine(_ m: Mon) -> String { "기술: " + m.moves.map { moveTable[$0]!.name }.joined(separator: " · ") }
+    /// 능력치 / 개체값 / 노력치, one line each (HP 공격 방어 특공 특방 스피드).
+    func statLines(_ m: Mon) -> [String] {
+        func row(_ v: [Int]) -> String { zip(["HP", "공격", "방어", "특공", "특방", "스피드"], v).map { "\($0) \($1)" }.joined(separator: " · ") }
+        let ev = m.evs ?? Array(repeating: 0, count: 6)
+        return ["능력치  " + row(m.stats), "개체값  " + row(m.ivs ?? Array(repeating: 15, count: 6)) + (m.ivs == nil ? " (예전 포켓몬)" : ""), "노력치  " + row(ev) + " · 합 \(ev.reduce(0, +))/510"]
+    }
     func buildMenu() -> NSMenu {
         let m = NSMenu()
         m.addItem(withTitle: window?.isVisible == false ? "워커 보이기" : "메뉴 막대로 숨기기", action: #selector(toggleShown(_:)), keyEquivalent: "").target = self
@@ -1026,14 +1032,14 @@ final class WalkerView: NSView {
         let ph = m.addItem(withTitle: "함께 걷기 · \(state.companion.shiny == true ? "★ " : "")\(monNames[state.companion.dex])", action: nil, keyEquivalent: ""), pm = NSMenu()
         let c = state.companion                                                                  // who's walking now: nature, ability, moves
         pm.addItem(withTitle: "\(monNames[c.dex]) Lv.\(c.level)\(sexMark(c)) · \(c.natureName) · \(c.abilityName)", action: nil, keyEquivalent: "")
-        pm.addItem(withTitle: movesLine(c), action: nil, keyEquivalent: "")
+        for l in [movesLine(c)] + statLines(c) { pm.addItem(withTitle: l, action: nil, keyEquivalent: "") }
         pm.addItem(.separator())
         if state.box.isEmpty && state.caught.isEmpty { pm.addItem(withTitle: "잡은 포켓몬이 없다", action: nil, keyEquivalent: "") }
         let all = state.caught.enumerated().map { (-1 - $0, $1, " · 워커") } + state.box.enumerated().map { ($0, $1, "") }   // tag < 0 = on the walker
         func individual(_ into: NSMenu, _ e: (Int, Mon, String), named: Bool, count: Int = 1) {
             let (tag, b, whereIs) = e
             let it = into.addItem(withTitle: "\(b.shiny == true ? "★ " : "")\(named ? monNames[b.dex] + " " : "")Lv.\(b.level)\(sexMark(b)) · \(b.natureName) · \(b.abilityName)\(whereIs)\(count > 1 ? " ×\(count)" : "")", action: #selector(pair(_:)), keyEquivalent: "")
-            it.target = self; it.tag = tag; it.toolTip = movesLine(b)
+            it.target = self; it.tag = tag; it.toolTip = ([movesLine(b)] + statLines(b)).joined(separator: "\n")
         }
         func species(_ into: NSMenu, _ groups: [(key: Int, value: [(Int, Mon, String)])]) {        // one row per species, the individuals inside
             for (dex, group) in groups {
