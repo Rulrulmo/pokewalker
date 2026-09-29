@@ -150,6 +150,9 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     w.bag = ["부활초", "기력의조각"]; check(w.useRevive()! == ("기력의조각", 50) && w.bag == ["부활초"], "revive: the cheaper one first (half HP)")
     w.bag = ["슈퍼볼", "하이퍼볼"]; check(w.useBall()! == ("하이퍼볼", 2) && w.useBall()! == ("슈퍼볼", 1.5) && w.useBall() == nil, "best ball first")
     w = Walk(); w.bag = ["이상한사탕"]; check(w.feedCandy() && w.companion.level == 6 && w.companion.points == 216 && !w.feedCandy(), "이상한사탕: exactly one level")
+    w.bag = ["타우린", "타우린", "유석열매"]; w.companion.evs = [0, 95, 0, 0, 0, 0]
+    check(w.feedVitamin("타우린") == 100 && w.feedVitamin("타우린") == nil && w.count("타우린") == 1 && w.feedVitamin("유석열매") == nil, "타우린: +10 up to 100, then no effect (kept); 유석열매 is HP")
+    w.companion.evs = [150, 0, 0, 0, 0, 0]; w.bag = ["유석열매", "유석열매"]; check(w.feedVitamin("유석열매") == 100 && w.feedVitamin("유석열매") == 90, "EV berry: down to 100, then -10")
     w.bag = ["라즈열매"]; check(w.feedBerry("라즈열매") && w.companion.walked == 500 && !w.feedBerry("상처약"), "berries feed friendship, potions don't")
     w.items = ["금구슬"]; w.bag = ["금구슬", "마비치료제", "천둥의돌"]
     check(w.sell("금구슬") == 200 && w.sell("천둥의돌") == 0 && w.watts == 200 && w.bag == ["마비치료제", "천둥의돌"], "selling: all of a kind; evolution items aren't for sale")

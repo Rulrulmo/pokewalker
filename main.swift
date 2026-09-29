@@ -1117,6 +1117,16 @@ final class WalkerView: NSView {
         if !inv.isEmpty {                                                                         // everything carried: walker + bag
             let bh = m.addItem(withTitle: "가방 · \(state.items.count + state.bag.count)개", action: nil, keyEquivalent: ""), bm = NSMenu()
             if state.count("이상한사탕") > 0 { bm.addItem(withTitle: "이상한사탕 먹이기 (×\(state.count("이상한사탕")))", action: #selector(useCandy(_:)), keyEquivalent: "").target = self }
+            let vits = inv.compactMap { i -> (String, Int, Int)? in if case .vitamin(let k, let d) = ItemKind.of(i) { return (i, k, d) }; return nil }
+            if !vits.isEmpty {
+                let ev = state.companion.evs ?? Array(repeating: 0, count: 6), names = ["HP", "공격", "방어", "특공", "특방", "스피드"]
+                let vh = bm.addItem(withTitle: "영양제 · 노력치 (\(monNames[state.companion.dex]) 합 \(ev.reduce(0, +))/510)", action: nil, keyEquivalent: ""), vm = NSMenu()
+                for (i, k, d) in vits {
+                    let it = vm.addItem(withTitle: "\(i) ×\(state.count(i)) · \(names[k]) \(d > 0 ? "+" : "−")10 (지금 \(ev[k]))", action: #selector(useVitamin(_:)), keyEquivalent: "")
+                    it.target = self; it.representedObject = i
+                }
+                vh.submenu = vm
+            }
             let berries = inv.filter { ItemKind.of($0) == .berry }
             if !berries.isEmpty {
                 let fh = bm.addItem(withTitle: "열매 먹이기 · 친밀도 +500걸음", action: nil, keyEquivalent: ""), fm = NSMenu()
@@ -1136,7 +1146,7 @@ final class WalkerView: NSView {
             for i in inv {
                 let use: String = switch ItemKind.of(i) {
                 case .heal(let n): "배틀 HP +\(n)"; case .revive(let n): "쓰러지면 HP \(n)로 부활"; case .ball(let x): "포획 ×\(x == 2 ? "2" : "1.5")"
-                case .candy: "레벨 +1"; case .berry: "친밀도 +500걸음"; case .evolution: "진화"; case .sell(let p): "\(p)W"
+                case .candy: "레벨 +1"; case .vitamin(let k, let d): "\(["HP", "공격", "방어", "특공", "특방", "스피드"][k]) 노력치 \(d > 0 ? "+" : "−")10"; case .berry: "친밀도 +500걸음"; case .evolution: "진화"; case .sell(let p): "\(p)W"
                 case .battle(let u): switch u { case .cure: "배틀 상태이상 회복"; case .restore: "배틀 HP·상태 전부 회복"; case .pp: "배틀 PP 회복"; case .x: "배틀 능력 +1"
                     case .guardSpec: "배틀 능력 저하 막기"; case .direHit: "배틀 급소율 +"; case .heal: "" }
                 }
@@ -1220,6 +1230,12 @@ final class WalkerView: NSView {
     @objc func useCandy(_ i: NSMenuItem) {
         guard state.feedCandy() else { return }
         levelled = true; screen = .home; save(nil)                                              // the home screen shows the level-up (or an evolution)
+    }
+    @objc func useVitamin(_ i: NSMenuItem) {
+        guard let v = i.representedObject as? String else { return }
+        let name = monNames[state.companion.dex]
+        if let e = state.feedVitamin(v) { screen = .say([josa(name, "은", "는") + " " + josa(v, "을", "를"), "먹었다!", "노력치 \(e)"], next: .home, since: Date()); save(nil) }
+        else { screen = .say([josa(v, "을", "를") + " 먹어도", "효과가 없을 것 같다"], next: .home, since: Date()) }
     }
     @objc func useBerry(_ i: NSMenuItem) {
         guard let b = i.representedObject as? String, state.feedBerry(b) else { return }

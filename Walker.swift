@@ -47,6 +47,7 @@ enum ItemKind: Equatable {
     case revive(Int)               // used by itself when the last one faints: back up with this % of max HP
     case ball(Double)              // thrown instead of the basic ball: catch chance x this
     case candy                     // 이상한사탕: +1 level
+    case vitamin(Int, Int)         // fed: that stat's EVs ± 10 (영양제 up to 100, 노력치 내리는 열매 down)
     case berry                     // fed: +500 friendship steps
     case evolution                 // stones and held items
     case sell(Int)                 // watts at the exchange
@@ -60,6 +61,8 @@ enum ItemKind: Equatable {
             "회복약": .restore, "PP에이드": .pp(10, all: false), "PP회복": .pp(99, all: false), "PP에이더": .pp(10, all: true), "PP맥스": .pp(99, all: true),
             "플러스파워": .x(1, 1), "디펜드업": .x(2, 1), "스페셜업": .x(3, 1), "스페셜가드": .x(4, 1), "스피드업": .x(5, 1), "잘-맞히기": .x(6, 1), "크리티컬커터": .direHit, "이펙트가드": .guardSpec]
         if let u = use[i] { return .battle(u) }
+        if let k = ["맥스업", "타우린", "사포닌", "리보플라빈", "키토산", "알칼로이드"].firstIndex(of: i) { return .vitamin(k, 10) }
+        if let k = ["유석열매", "시마열매", "파비열매", "로매열매", "또뽀열매", "토망열매"].firstIndex(of: i) { return .vitamin(k, -10) }
         let heal = ["상처약": 20, "좋은상처약": 50, "고급상처약": 200, "풀회복약": 999, "오랭열매": 10, "자뭉열매": 30, "맛있는물": 50, "미네랄사이다": 60,
                     "후르츠밀크": 80, "튼튼밀크": 100, "힘의가루": 50, "힘의뿌리": 200]   // Gen IV amounts
         if let n = heal[i] { return .heal(n) }
@@ -73,7 +76,7 @@ enum ItemKind: Equatable {
         let price = ["금구슬": 100, "큰진주": 80, "별의조각": 60, "하트비늘": 30, "진주": 30, "큰버섯": 30, "별의모래": 20, "작은버섯": 10]
         if let p = price[i] { return .sell(p) }
         if i.hasPrefix("기술머신") { return .sell(50) }
-        if ["포인트업", "사포닌", "리보플라빈"].contains(i) { return .sell(20) }
+        if i == "포인트업" { return .sell(20) }
         return .sell(10)
     }
 }
@@ -226,6 +229,15 @@ struct Walk: Codable, Equatable {
         if companion.known == nil { companion.known = companion.moves }
         companion.exp = e; companion.level = Mon.level(dex: companion.dex, exp: e); queueMoves(-1, from: lv); return true          // levels, not steps: friendship untouched
     }
+    /// Gen IV: a vitamin adds 10 while that stat is under 100 (and the total under 510); an EV berry drops it to 100, then 10 at a time.
+    /// Used up only when it does something. Returns the new EV.
+    mutating func feedVitamin(_ i: String) -> Int? {
+        guard case .vitamin(let k, let d) = ItemKind.of(i) else { return nil }
+        var ev = companion.evs ?? Array(repeating: 0, count: 6); let e = ev[k]
+        let new = d > 0 ? min(100, e + min(10, 510 - ev.reduce(0, +))) : e > 100 ? 100 : max(0, e - 10)
+        guard d > 0 ? e < 100 && new > e : e > 0, take(i) else { return nil }
+        ev[k] = new; companion.evs = ev; return new
+    }
     mutating func feedBerry(_ i: String) -> Bool {
         guard ItemKind.of(i) == .berry, take(i) else { return false }
         companion.walked = (companion.walked ?? 0) + 500; return true
@@ -240,8 +252,11 @@ struct Walk: Codable, Equatable {
     // MARK: shops
     static let shop: [(item: String, watts: Int)] = [("상처약", 20), ("좋은상처약", 60), ("고급상처약", 150), ("풀회복약", 300), ("회복약", 400), ("기력의조각", 200), ("슈퍼볼", 40), ("하이퍼볼", 100),
         ("해독제", 10), ("마비치료제", 20), ("잠깨는약", 25), ("화상치료제", 25), ("얼음상태치료제", 25), ("만병통치제", 60), ("PP에이드", 120),
-        ("플러스파워", 50), ("디펜드업", 55), ("스페셜업", 35), ("스페셜가드", 35), ("스피드업", 35), ("잘-맞히기", 95), ("크리티컬커터", 65), ("이펙트가드", 70)]
-    static let bpShop: [(item: String, bp: Int)] = [("하이퍼볼", 2), ("고급상처약", 3), ("풀회복약", 5), ("회복약", 6), ("부활초", 6), ("PP에이더", 4), ("PP맥스", 8), ("이상한사탕", 8)]
+        ("플러스파워", 50), ("디펜드업", 55), ("스페셜업", 35), ("스페셜가드", 35), ("스피드업", 35), ("잘-맞히기", 95), ("크리티컬커터", 65), ("이펙트가드", 70),
+        ("맥스업", 100), ("타우린", 100), ("사포닌", 100), ("리보플라빈", 100), ("키토산", 100), ("알칼로이드", 100),
+        ("유석열매", 20), ("시마열매", 20), ("파비열매", 20), ("로매열매", 20), ("또뽀열매", 20), ("토망열매", 20)]
+    static let bpShop: [(item: String, bp: Int)] = [("하이퍼볼", 2), ("고급상처약", 3), ("풀회복약", 5), ("회복약", 6), ("부활초", 6), ("PP에이더", 4), ("PP맥스", 8), ("이상한사탕", 8),
+        ("맥스업", 1), ("타우린", 1), ("사포닌", 1), ("리보플라빈", 1), ("키토산", 1), ("알칼로이드", 1)]
     /// Two legends for the patient: 칠색조 for a full tank of watts (9,999 is the cap), 뮤츠 for 300 BP (~30 tower sets). Once each.
     static let legendShop: [(dex: Int, level: Int, watts: Int, bp: Int)] = [(250, 50, 9999, 0), (150, 70, 0, 300)]
     func legendBought(_ dex: Int) -> Bool { (bought ?? []).contains("legend:\(dex)") }
