@@ -5,8 +5,9 @@ import AppKit
 struct SideModel: Equatable {
     struct Card: Equatable { var name: String; var level, hp, max: Int; var out: Bool; var status: String? = nil; var types: [String] = []; var owned = false }   // types / owned: shown for theirs
     struct MoveBtn: Equatable { var name, type: String; var power: Int; var effect: Double; var pp = 0, maxPP = 0 }
-    enum Mode: Equatable { case none, menu([String], Int), moves([MoveBtn], Int), party([Card], Int), items([String], Int) }
+    enum Mode: Equatable { case none, menu([String], Int), moves([MoveBtn], Int), party([Card], Int), items([String], Int), ask(Bool) }   // ask: 아니오 / 예 (true = 예 highlighted)
     var foe: Card; var foeBalls: [Bool]; var mine: Card; var myBalls: [Bool]; var trainer: String?; var message: String; var mode: Mode
+    var canBack = true                                                 // false while a pick is owed (ours fainted): no ↩ 뒤로
 }
 /// The 상점 / BP 교환소 page on the side panel: the list with what each does, and the how-many controls.
 struct ShopModel: Equatable {
@@ -42,6 +43,7 @@ final class SideView: NSView {
     override func mouseDown(with e: NSEvent) {
         let p = convert(e.locationInWindow, from: nil)
         guard let k = hits.first(where: { $0.0.contains(p) })?.1 else { return }
+        if e.clickCount > 1 { if case .ask? = model?.mode { return }; if shop?.ask != nil { return } }   // a double-click's 2nd click lands on 예 after the redraw: ignore it
         if k >= 2000 { walker?.shopTap(k) } else if k >= 1000 { walker?.dexJump(k - 1000) } else if k < 0 { walker?.press(3) } else { walker?.sidePick(k) }
     }
     override func scrollWheel(with e: NSEvent) {                                                 // the shop list scrolls a row per notch (or per 6 pt of trackpad)
@@ -50,6 +52,11 @@ final class SideView: NSView {
         if e.phase == .began { scrolled = 0 }
         scrolled += e.scrollingDeltaY
         while abs(scrolled) >= 6 { walker?.shopRow(scrolled > 0 ? -1 : 1); scrolled -= scrolled > 0 ? 6 : -6 }
+    }
+    /// The one "↩ 뒤로" look on every panel page that has a step back (hit -1 = the walker's ↩).
+    func backPill(_ r: NSRect) {
+        let u = SideView.unit(backing)
+        round(r, 4.5 * u).fill(with: SideView.ink); label("↩ 뒤로", in: r, small, .white); hits.append((r, -1))
     }
     override func resetCursorRects() { for (r, _) in hits { addCursorRect(r, cursor: .pointingHand) } }
     // text: Galmuri at 3x its pixel size on a Retina screen (15 / 12 pt at the normal size), so every glyph pixel is whole
@@ -211,11 +218,16 @@ final class SideView: NSView {
                 let r = NSRect(x: 6 * u, y: top + CGFloat(i - first) * (rh + 3 * u), width: W - 12 * u, height: rh)
                 button(r, NSColor(red: 0.28, green: 0.70, blue: 0.36, alpha: 1), i == sel, i); label(name, in: r, small, .white, shadow: shadow, alignLeft: 4 * u)
             }
+        case .ask(let yes):                                                                       // 아니오 / 예, side by side
+            let half = (W - 12 * u - 4 * u) / 2
+            for (i, (t, c)) in [("아니오", NSColor(red: 0.42, green: 0.47, blue: 0.58, alpha: 1)), ("예", NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1))].enumerated() {
+                let r = NSRect(x: 6 * u + CGFloat(i) * (half + 4 * u), y: top, width: half, height: bottom - top)
+                button(r, c, (i == 1) == yes, i); label(t, in: r, big, .white, shadow: shadow)
+            }
         }
-        switch m.mode {                                                                           // "◀ 뒤로" on the dialogue box
-        case .moves, .party, .items:
-            let r = NSRect(x: msg.maxX - 30 * u, y: msg.maxY - 12 * u, width: 26 * u, height: 9 * u)
-            round(r, 4.5 * u).fill(with: ink); label("◀ 뒤로", in: r, small, .white); hits.append((r, -1))
+        switch m.mode {                                                                           // "↩ 뒤로" on the dialogue box
+        case .moves, .items: backPill(NSRect(x: msg.maxX - 30 * u, y: msg.maxY - 12 * u, width: 26 * u, height: 9 * u))
+        case .party where m.canBack: backPill(NSRect(x: msg.maxX - 30 * u, y: msg.maxY - 12 * u, width: 26 * u, height: 9 * u))
         default: break
         }
         window?.invalidateCursorRects(for: self)
@@ -231,6 +243,7 @@ extension SideView {
         NSGraphicsContext.restoreGraphicsState(); ink.setStroke(); bg.lineWidth = 1.2; bg.stroke()
         let head = NSRect(x: 0, y: 4 * u, width: W, height: 12 * u)
         label(s.title, in: head, body, .white, alignLeft: 8 * u); label(s.money, in: head, body, NSColor(red: 1, green: 0.85, blue: 0.35, alpha: 1), alignRight: 8 * u)
+        backPill(NSRect(x: 8 * u + width(s.title, body) + 5 * u, y: head.minY + 1.5 * u, width: 26 * u, height: 9 * u))   // list → menu, how-many → list
         // the list: 6 rows, the pick kept in view
         let listR = NSRect(x: 6 * u, y: 19 * u, width: W - 12 * u, height: 6 * 17 * u + 4 * u), rows = 6
         round(listR, 4 * u).fill(with: paper); ink.setStroke(); let lp = round(listR, 4 * u); lp.lineWidth = u; lp.stroke()
@@ -294,6 +307,7 @@ extension SideView {
         round(NSRect(x: 7.5 * u, y: 6.5 * u, width: 7 * u, height: 7 * u), 3.5 * u).fill(with: NSColor(red: 0.30, green: 0.62, blue: 0.95, alpha: 1))
         let head = NSRect(x: 0, y: 4 * u, width: W, height: 12 * u)
         label("도감", in: head, body, .white, alignLeft: 19 * u)
+        backPill(NSRect(x: 19 * u + width("도감", body) + 5 * u, y: head.minY + 1.5 * u, width: 26 * u, height: 9 * u))
         label("잡음 \(d.owned) · 봤음 \(d.seen)", in: head, small, NSColor(white: 1, alpha: 0.9), alignRight: 7 * u)
         func panel(_ r: NSRect) { let p = round(r, 4 * u); p.fill(with: NSColor(white: 0.98, alpha: 1)); ink.setStroke(); p.lineWidth = u; p.stroke() }
         // entry card

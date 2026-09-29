@@ -43,13 +43,17 @@ extension WalkerView {
                 if live && k == b && Int(t * 6) % 2 == 0 { fb.draw(bang, x + 15, y - 6, redPal) }
                 if k == c { fb.text("▶", x - 2, y, 3, right: true) }
             }
-        case .battle(let b, _) where sideOn, .moves(let b, _) where sideOn, .party(let b, _) where sideOn, .bagBattle(let b, _) where sideOn:
+        case .battle(let b, _) where sideOn, .moves(let b, _) where sideOn, .party(let b, _) where sideOn, .bagBattle(let b, _) where sideOn, .forfeit(let b, _) where sideOn:
             stage(&fb, b, now, .idle, hud: false)                                                   // the side panel carries names, HP, menus
         case .beats where sideOn:
             let s = beatState(now)!
             stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), hud: false)
             if case .hit(_, _, _, _, true) = s.beat, s.u < 0.15 { fb.invert(0, 0, 96, 64) }
             if s.beat == .appear, legendDex.contains(s.from.wild.dex), s.u < 0.5, Int(s.u * 10) % 2 == 0 { fb.invert(0, 0, 96, 64) }
+        case .forfeit(let b, let yes):
+            stage(&fb, b, now, .idle)
+            fb.text("기권할까?", 2, 52, 3, small: true)
+            for (k, o) in ["아니오", "예"].enumerated() { let x = 48 + 24 * k, w = fb.text(o, x + 1, 52, 3, small: true); if (k == 1) == yes { fb.invert(x, 52, w + 2, 12) } }
         case .battle(let b, let sel):
             stage(&fb, b, now, .idle)
             let opts = battleMenu(b)
@@ -90,7 +94,7 @@ extension WalkerView {
             }
             let ws = wares(bp), unit = bp ? "BP" : "W", money = bp ? state.bp ?? 0 : state.watts
             fb.text(bp ? "BP 교환소" : "상점", 2, 0); fb.text("\(money)\(unit)", 94, 1, 2, right: true, small: true); fb.fill(0, 12, 96, 1, 2)   // plain numbers, like the rest of the LCD
-            if let q = qty, let w = ws[safe: sel] {                                                  // how many: ◀ ▶, ● buys, ⌂ back
+            if let q = qty, let w = ws[safe: sel] {                                                  // how many: ◀ ▶, ● buys, ↩ back
                 let have = "보유 \(state.owned(w))"
                 fb.text(fit(state.wareName(w), 88 - textWidth(have, small: true)), 2, 14, 3, small: true); fb.text(have, 94, 14, 2, right: true, small: true)
                 fb.text(fit(state.wareNote(w), 92), 2, 23, 2, small: true)
@@ -135,7 +139,7 @@ extension WalkerView {
             fb.text(towerRun ? "\(state.towerStreak ?? 0)연승 중 · 최고 \(state.towerBest ?? 0)" : "최고 \(state.towerBest ?? 0)연승", 2, 14, 2, small: true)
             for (k, p) in state.party().enumerated() { fb.text(monNames[p.mon.dex] + " Lv.\(p.mon.level)", 2, 24 + 9 * k, 3, small: true) }
             fb.fill(0, 51, 96, 1, 2)
-            fb.text(towerRun ? "● 다음 상대  ⌂ 나가기" : "● 도전 \(Walk.towerFee)W", 0, 53, 3, center: true, small: true)
+            fb.text(towerRun ? "● 다음 상대  ↩ 나가기" : "● 도전 \(Walk.towerFee)W", 0, 53, 3, center: true, small: true)
         case .dowse(let c, _, let tries, let hint):
             fb.text(hint ?? "어디에 있을까?", 0, 2, center: true)
             for k in 0..<6 { let x = 2 + 16 * k; fb.draw(bush, x, 28, greens); if k == c { fb.text("▼", x + 6, 16, 3, center: false) } }

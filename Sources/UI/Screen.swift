@@ -11,6 +11,7 @@ indirect enum Screen {
     case moves(Battle, sel: Int)                                       // picking one of the 4 moves
     case party(Battle, sel: Int)                                       // picking who to switch in
     case bagBattle(Battle, sel: Int)                                   // picking an item to use
+    case forfeit(Battle, yes: Bool)                                    // 기권할까? in a tower fight — yes = the highlighted answer, 아니오 first
     case shop(bp: Bool, sel: Int, qty: Int?)                         // 상점 (W) or BP 교환소: the list, or (qty) how many of row sel
     case shopConfirm(bp: Bool, sel: Int, yes: Bool)                    // a once-only row (전설, 기기 색): 정말? — yes = the highlighted answer, 아니오 first
     case learn(sel: Int)                                               // a new move for state.learn's first: forget one of 4 (sel 0-3), or not learn it (4)

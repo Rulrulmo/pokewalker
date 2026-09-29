@@ -26,6 +26,9 @@ extension WalkerView {
                 return .init(name: m.name, type: real.type.isEmpty ? m.type : real.type, power: real.power, effect: m.isStatus ? 1 : x.typeEff(real.type, .it, by: .me), pp: f.pp[k], maxPP: m.pp)
             }, sel)
         case .party(let x, let sel): b = x; msg = x.mustReplace ? "다음은 누구를 내보낼까?" : "누구로 교체할까?"; mode = .party(x.mine.enumerated().map { card($1, out: $0 == x.me) }, sel)
+        case .forfeit(let x, let yes):
+            let s = state.towerStreak ?? 0
+            b = x; msg = s > 0 ? "기권할까? \(s)연승이 끝난다" : "기권할까? 참가비 \(Walk.towerFee)W는 돌아오지 않는다"; mode = .ask(yes)
         case .bagBattle(let x, let sel): b = x; msg = "무엇을 사용할까?"; mode = .items(battleItems(x).map { "\($0.name) ×\(state.count($0.name))" }, sel)
         case .beats:
             guard let s = beatState(now) else { return nil }
@@ -34,9 +37,10 @@ extension WalkerView {
         }
         let foe = b.theirs[b.it], mine = b.mine[b.me]
         var theirs = card(foe, out: true); theirs.types = foe.typeList; theirs.owned = (state.owned ?? []).contains(foe.mon.dex)
+        var canBack = true; if case .party(let x, _) = screen, x.mustReplace { canBack = false }
         return SideModel(foe: theirs, foeBalls: b.trainer == nil ? [] : b.theirs.map(\.alive),
                          mine: card(mine, out: true), myBalls: b.mine.count > 1 ? b.mine.map(\.alive) : [],
-                         trainer: b.trainer, message: msg, mode: mode)
+                         trainer: b.trainer, message: msg, mode: mode, canBack: canBack)
     }
     func card(_ f: Fighter, out: Bool) -> SideModel.Card { .init(name: monNames[f.mon.dex], level: f.mon.level, hp: f.hp, max: f.maxHP, out: out, status: f.status?.badge) }
     func sidePick(_ k: Int) {                                                                   // a click on the side panel = selecting that row, then ●
@@ -46,6 +50,7 @@ extension WalkerView {
         case .moves(let b, _): screen = .moves(b, sel: k)
         case .party(let b, _): screen = .party(b, sel: k)
         case .bagBattle(let b, _): screen = .bagBattle(b, sel: k)
+        case .forfeit(let b, _): screen = .forfeit(b, yes: k == 1)
         default: return
         }
         press(1)

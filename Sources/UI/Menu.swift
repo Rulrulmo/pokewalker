@@ -23,14 +23,22 @@ extension WalkerView {
         s.addAttributes([.foregroundColor: WalkerView.vColor, .font: NSFont.boldSystemFont(ofSize: base.pointSize)], range: NSRange(r, in: it.title))
         it.attributedTitle = s
     }
+    /// A fight is on (its screens, a turn playing, or a message on the way back to one).
+    var inBattle: Bool {
+        func fight(_ s: Screen) -> Bool { switch s { case .battle, .moves, .party, .bagBattle, .forfeit, .beats: true; case .say(_, let n, _): fight(n); default: false } }
+        return fight(screen)
+    }
+    /// Menu actions that jump the walker to another screen wait until the fight is over (they used to end it in one click).
+    func game(_ s: Selector) -> Selector? { inBattle ? nil : s }
     func buildMenu() -> NSMenu {
         let m = NSMenu()
         m.addItem(withTitle: window?.isVisible == false ? "워커 보이기" : "메뉴 막대로 숨기기", action: #selector(toggleShown(_:)), keyEquivalent: "").target = self
         m.addItem(withTitle: "\(state.here.name) · 오늘 \(state.today)걸음 · \(state.watts)W", action: nil, keyEquivalent: "")
+        if inBattle { m.addItem(withTitle: "⚔ 배틀 중 — 코스·동료·가방은 끝나고 쓸 수 있어요", action: nil, keyEquivalent: "") }
         m.addItem(.separator())
         let ch = m.addItem(withTitle: "코스 · \(state.here.name)", action: nil, keyEquivalent: ""), cm = NSMenu()
         for (i, c) in courses.enumerated() {
-            let it = cm.addItem(withTitle: state.unlocked(i) ? c.name : c.dex > 0 ? "\(c.name) — 도감 \(c.dex)" : "\(c.name) — \(c.watts)W", action: state.unlocked(i) ? #selector(setCourse(_:)) : nil, keyEquivalent: "")
+            let it = cm.addItem(withTitle: state.unlocked(i) ? c.name : c.dex > 0 ? "\(c.name) — 도감 \(c.dex)" : "\(c.name) — \(c.watts)W", action: state.unlocked(i) ? game(#selector(setCourse(_:))) : nil, keyEquivalent: "")
             it.target = self; it.tag = i; it.state = i == state.course ? .on : .off
         }
         ch.submenu = cm
@@ -43,7 +51,7 @@ extension WalkerView {
         let all = state.caught.enumerated().map { (-1 - $0, $1, " · 워커") } + state.box.enumerated().map { ($0, $1, "") }   // tag < 0 = on the walker
         func individual(_ into: NSMenu, _ e: (Int, Mon, String), named: Bool, count: Int = 1) {
             let (tag, b, whereIs) = e
-            let it = into.addItem(withTitle: "\(b.shiny == true ? "★ " : "")\(named ? monNames[b.dex] + " " : "")Lv.\(b.level)\(sexMark(b)) · \(b.natureName) · \(b.abilityName)\(vMark(b))\(whereIs)\(count > 1 ? " ×\(count)" : "")", action: #selector(pair(_:)), keyEquivalent: "")
+            let it = into.addItem(withTitle: "\(b.shiny == true ? "★ " : "")\(named ? monNames[b.dex] + " " : "")Lv.\(b.level)\(sexMark(b)) · \(b.natureName) · \(b.abilityName)\(vMark(b))\(whereIs)\(count > 1 ? " ×\(count)" : "")", action: game(#selector(pair(_:))), keyEquivalent: "")
             it.target = self; it.tag = tag; it.toolTip = ([movesLine(b)] + statLines(b)).joined(separator: "\n"); emphasize(it, b.perfectIVs)
         }
         func species(_ into: NSMenu, _ groups: [(key: Int, value: [(Int, Mon, String)])]) {        // one row per species, the individuals inside
@@ -70,7 +78,7 @@ extension WalkerView {
                 let dupes = state.duplicates(of: dex).count
                 if dupes > 0 {
                     sm.addItem(.separator())
-                    let it = sm.addItem(withTitle: "중복 놓아주기 · 상자의 \(dupes)마리", action: #selector(releaseDupes(_:)), keyEquivalent: ""); it.target = self; it.tag = dex
+                    let it = sm.addItem(withTitle: "중복 놓아주기 · 상자의 \(dupes)마리", action: game(#selector(releaseDupes(_:))), keyEquivalent: ""); it.target = self; it.tag = dex
                 }
                 head.submenu = sm
             }
@@ -104,24 +112,24 @@ extension WalkerView {
         let now = Date(), stones = state.stoneEvolutions(now)
         if !stones.isEmpty {
             let sh = m.addItem(withTitle: "진화의 돌 쓰기", action: nil, keyEquivalent: ""), sm = NSMenu()
-            for (i, e) in stones.enumerated() { let it = sm.addItem(withTitle: "\(e.item!) → \(monNames[e.to])", action: #selector(useStone(_:)), keyEquivalent: ""); it.target = self; it.tag = i }
+            for (i, e) in stones.enumerated() { let it = sm.addItem(withTitle: "\(e.item!) → \(monNames[e.to])", action: game(#selector(useStone(_:))), keyEquivalent: ""); it.target = self; it.tag = i }
             sh.submenu = sm
         }
         let inv = state.inventory
         if !inv.isEmpty {                                                                         // everything carried: walker + bag
             let bh = m.addItem(withTitle: "가방 · \(state.items.count + state.bag.count)개", action: nil, keyEquivalent: ""), bm = NSMenu()
-            if state.count("이상한사탕") > 0 { bm.addItem(withTitle: "이상한사탕 먹이기 (×\(state.count("이상한사탕")))", action: #selector(useCandy(_:)), keyEquivalent: "").target = self }
+            if state.count("이상한사탕") > 0 { bm.addItem(withTitle: "이상한사탕 먹이기 (×\(state.count("이상한사탕")))", action: game(#selector(useCandy(_:))), keyEquivalent: "").target = self }
             let vits = inv.compactMap { i -> (String, Int, Int)? in if case .vitamin(let k, let d) = ItemKind.of(i) { return (i, k, d) }; return nil }
             if !vits.isEmpty || state.count("순백떡") > 0 {
                 let ev = state.companion.evs ?? Array(repeating: 0, count: 6), names = ["HP", "공격", "방어", "특공", "특방", "스피드"]
                 let vh = bm.addItem(withTitle: "영양제 · 노력치 (\(monNames[state.companion.dex]) 합 \(ev.reduce(0, +))/510)", action: nil, keyEquivalent: ""), vm = NSMenu()
                 for (i, k, d) in vits {
-                    let it = vm.addItem(withTitle: "\(i) ×\(state.count(i)) · \(names[k]) \(d > 0 ? "+" : "−")10 (지금 \(ev[k]))", action: #selector(useVitamin(_:)), keyEquivalent: "")
+                    let it = vm.addItem(withTitle: "\(i) ×\(state.count(i)) · \(names[k]) \(d > 0 ? "+" : "−")10 (지금 \(ev[k]))", action: game(#selector(useVitamin(_:))), keyEquivalent: "")
                     it.target = self; it.representedObject = i
                 }
                 if state.count("순백떡") > 0 {
                     if !vits.isEmpty { vm.addItem(.separator()) }
-                    let it = vm.addItem(withTitle: "순백떡 ×\(state.count("순백떡")) · 노력치 전부 0으로", action: #selector(useReset(_:)), keyEquivalent: ""); it.target = self
+                    let it = vm.addItem(withTitle: "순백떡 ×\(state.count("순백떡")) · 노력치 전부 0으로", action: game(#selector(useReset(_:))), keyEquivalent: ""); it.target = self
                 }
                 vh.submenu = vm
             }
@@ -131,28 +139,28 @@ extension WalkerView {
                 let hh = bm.addItem(withTitle: "병뚜껑 · 대단한 특훈 (\(monNames[c.dex])\(vMark(c)))", action: nil, keyEquivalent: ""), hm = NSMenu()
                 if !ready { hm.addItem(withTitle: "Lv.\(Walk.hyperLevel)부터 특훈할 수 있어요 (지금 Lv.\(c.level))", action: nil, keyEquivalent: "") }
                 for k in 0..<6 where caps.silver > 0 {
-                    let it = hm.addItem(withTitle: "은색병뚜껑 ×\(caps.silver) · \(names[k]) \(iv[k])\(iv[k] < 31 ? " → 31" : " (최고)")", action: ready && iv[k] < 31 ? #selector(useCap(_:)) : nil, keyEquivalent: "")
+                    let it = hm.addItem(withTitle: "은색병뚜껑 ×\(caps.silver) · \(names[k]) \(iv[k])\(iv[k] < 31 ? " → 31" : " (최고)")", action: ready && iv[k] < 31 ? game(#selector(useCap(_:))) : nil, keyEquivalent: "")
                     it.target = self; it.tag = k
                 }
                 if caps.gold > 0 {
                     if caps.silver > 0 { hm.addItem(.separator()) }
-                    let it = hm.addItem(withTitle: "금색병뚜껑 ×\(caps.gold) · 모든 능력 → 31", action: ready && iv.contains { $0 < 31 } ? #selector(useCap(_:)) : nil, keyEquivalent: ""); it.target = self; it.tag = -1
+                    let it = hm.addItem(withTitle: "금색병뚜껑 ×\(caps.gold) · 모든 능력 → 31", action: ready && iv.contains { $0 < 31 } ? game(#selector(useCap(_:))) : nil, keyEquivalent: ""); it.target = self; it.tag = -1
                 }
                 hh.submenu = hm
             }
             let berries = inv.filter { ItemKind.of($0) == .berry }
             if !berries.isEmpty {
                 let fh = bm.addItem(withTitle: "열매 먹이기 · 친밀도 +500걸음", action: nil, keyEquivalent: ""), fm = NSMenu()
-                for b in berries { let it = fm.addItem(withTitle: "\(b) ×\(state.count(b))", action: #selector(useBerry(_:)), keyEquivalent: ""); it.target = self; it.representedObject = b }
+                for b in berries { let it = fm.addItem(withTitle: "\(b) ×\(state.count(b))", action: game(#selector(useBerry(_:))), keyEquivalent: ""); it.target = self; it.representedObject = b }
                 fh.submenu = fm
             }
             let wares = inv.compactMap { i -> (String, Int)? in if case .sell(let p) = ItemKind.of(i) { return (i, p) }; return nil }
             if !wares.isEmpty {
                 let total = wares.reduce(0) { $0 + $1.1 * state.count($1.0) }
                 let sh = bm.addItem(withTitle: "팔기 · 전부 \(total)W", action: nil, keyEquivalent: ""), sm = NSMenu()
-                sm.addItem(withTitle: "전부 팔기 (\(total)W)", action: #selector(sellAll(_:)), keyEquivalent: "").target = self
+                sm.addItem(withTitle: "전부 팔기 (\(total)W)", action: game(#selector(sellAll(_:))), keyEquivalent: "").target = self
                 sm.addItem(.separator())
-                for (i, p) in wares { let it = sm.addItem(withTitle: "\(i) ×\(state.count(i)) — \(p * state.count(i))W", action: #selector(sellOne(_:)), keyEquivalent: ""); it.target = self; it.representedObject = i }
+                for (i, p) in wares { let it = sm.addItem(withTitle: "\(i) ×\(state.count(i)) — \(p * state.count(i))W", action: game(#selector(sellOne(_:))), keyEquivalent: ""); it.target = self; it.representedObject = i }
                 sh.submenu = sm
             }
             bm.addItem(.separator())
@@ -199,7 +207,7 @@ extension WalkerView {
     /// Walker <-> menu bar. Hiding parks it on the home screen so the events (which wait for home) keep coming.
     @objc func toggleShown(_ sender: Any?) {
         guard let w = window else { return }
-        if w.isVisible { screen = .home; w.orderOut(nil) } else { shown = nil; w.orderFrontRegardless() }
+        if w.isVisible { if !inBattle { screen = .home }; w.orderOut(nil) } else { shown = nil; w.orderFrontRegardless() }   // a fight just waits while hidden
         UserDefaults.standard.set(!w.isVisible, forKey: "hidden")
     }
     func updateStatus() {

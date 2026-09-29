@@ -118,7 +118,7 @@ final class WalkerView: NSView {
         } else if lcdRect.contains(p), touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needsDisplay = true }
         else { window?.performDrag(with: e) }
     }
-    override func keyDown(with e: NSEvent) {                                                  // ← return/space → esc; in a shop ↑ ↓ = a row, or ±10
+    override func keyDown(with e: NSEvent) {                                                  // ← return/space → esc (= ↩ 뒤로); in a shop ↑ ↓ = a row, or ±10
         if case .shop(_, _, let q) = screen, let d = [126: -1, 125: 1][Int(e.keyCode)] { shopStep(q == nil ? d : -10 * d); return }
         switch screen { case .shop, .shopConfirm: if e.isARepeat, [36, 49].contains(Int(e.keyCode)) { return }; default: break }   // a held return / space doesn't keep buying
         if let i = [123: 0, 36: 1, 49: 1, 124: 2, 53: 3][Int(e.keyCode)] { press(i) } else { super.keyDown(with: e) }
@@ -183,10 +183,9 @@ final class WalkerView: NSView {
             case 0: icon.move(to: NSPoint(x: c.x - s, y: c.y)); icon.line(to: NSPoint(x: c.x + s * 0.7, y: c.y - s)); icon.line(to: NSPoint(x: c.x + s * 0.7, y: c.y + s)); icon.close()
             case 2: icon.move(to: NSPoint(x: c.x + s, y: c.y)); icon.line(to: NSPoint(x: c.x - s * 0.7, y: c.y - s)); icon.line(to: NSPoint(x: c.x - s * 0.7, y: c.y + s)); icon.close()
             case 1: icon.appendOval(in: NSRect(x: c.x - s * 0.8, y: c.y - s * 0.8, width: s * 1.6, height: s * 1.6))
-            default:                                                                                   // a little house
-                icon.move(to: NSPoint(x: c.x, y: c.y - s * 1.1)); icon.line(to: NSPoint(x: c.x + s * 1.1, y: c.y)); icon.line(to: NSPoint(x: c.x + s * 0.7, y: c.y))
-                icon.line(to: NSPoint(x: c.x + s * 0.7, y: c.y + s)); icon.line(to: NSPoint(x: c.x - s * 0.7, y: c.y + s)); icon.line(to: NSPoint(x: c.x - s * 0.7, y: c.y))
-                icon.line(to: NSPoint(x: c.x - s * 1.1, y: c.y)); icon.close()
+            default:                                                                                   // ↩ 뒤로: the same glyph as the panel's "↩ 뒤로"
+                let f = NSFont.systemFont(ofSize: b.r * 1.35, weight: .bold), g = "↩" as NSString, sz = g.size(withAttributes: [.font: f])
+                g.draw(at: NSPoint(x: c.x - sz.width / 2, y: c.y - sz.height / 2), withAttributes: [.font: f, .foregroundColor: ink])
             }
             ink.setFill(); icon.fill()
         }

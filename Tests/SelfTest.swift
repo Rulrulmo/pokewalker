@@ -497,8 +497,46 @@ import AppKit
     v.screen = .beats(mr, [.fainted(.me)], since: Date().addingTimeInterval(-30), from: mr); v.tick(nil)
     let picking = on(v) { if case .party(_, 1) = $0 { return true }; return false }; v.press(3)
     let stuck = on(v) { if case .party = $0 { return true }; return false }; v.press(1)
-    check(picking && stuck && on(v) { if case .beats(let nb, let bs, _, _) = $0 { return bs.first == .sendOut(.me, 1) && nb.me == 1 }; return false }, "ours fainted: pick who's next (⌂ can't skip it)")
-    v.screen = .menu(0); v.press(3); check(on(v) { if case .home = $0 { return true }; return false }, "⌂ goes home")
+    check(picking && stuck && on(v) { if case .beats(let nb, let bs, _, _) = $0 { return bs.first == .sendOut(.me, 1) && nb.me == 1 }; return false }, "ours fainted: pick who's next (↩ can't skip it)")
+    v.screen = .menu(0); v.press(3); check(on(v) { if case .home = $0 { return true }; return false }, "↩ on a menu page: home")
+    // ↩ 뒤로: one step up; where an answer is due only the cursor moves; nothing that can't be undone
+    let bk = WalkerView(state: { var s = Walk(); s.watts = 500; s.bp = 40; return s }()); bk.persist = false; bk.rng = Seeded(s: 51)
+    func back(_ sc: Screen) -> Screen { bk.screen = sc; bk.press(3); return bk.screen }
+    let wild = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: Mon(dex: 25, level: 20, female: false))
+    let tw = Battle(party: [Mon(dex: 25, level: 20, female: false)], trainer: "x", foes: [Mon(dex: 16, level: 5, female: false)])
+    func isBattle(_ s: Screen, _ opt: String) -> Bool { if case .battle(let b, let sel) = s { return bk.battleMenu(b)[sel] == opt }; return false }
+    check(isBattle(back(.battle(wild, sel: 0)), "도망") && isBattle(back(.battle(tw, sel: 0)), "기권") && isBattle(back(.moves(wild, sel: 1)), "공격") && isBattle(back(.bagBattle(wild, sel: 0)), "도구"),
+          "battle: ↩ puts the cursor on 도망 / 기권 (no instant escape or forfeit); from a sub-menu back onto its entry")
+    check(isBattle(back(.say(["PP가 없다"], next: .moves(wild, sel: 0), since: Date())), "공격") == false && { if case .moves = bk.screen { return true }; return false }(),
+          "a battle message: ↩ = ● (the fight doesn't vanish)")
+    bk.state.towerStreak = 5; bk.towerRun = true; bk.screen = .battle(tw, sel: 3); bk.press(1)
+    let askedForfeit = { if case .forfeit(_, false) = bk.screen { return true }; return false }(); bk.press(1)
+    check(askedForfeit && isBattle(bk.screen, "기권") && bk.state.towerStreak == 5 && bk.towerRun, "기권 asks first; ● on 아니오 goes back, the streak stays")
+    bk.screen = .battle(tw, sel: 3); bk.press(1); bk.press(2); bk.press(1)
+    check(bk.state.towerStreak == 0 && !bk.towerRun, "… ▶ 예 ● gives up")
+    bk.towerRun = true; bk.state.towerStreak = 2
+    check({ if case .menu(9) = back(.tower) { return true }; return false }() && bk.towerRun && bk.state.towerStreak == 2, "tower lobby: ↩ to the menu, the run stays on")
+    let radar = Screen.radar(bush: 1, cursor: 0, since: Date(), chain: 4)
+    check({ if case .radar(_, _, _, 4) = back(radar) { return true }; return false }(), "radar: ↩ does nothing (the 10W and the chain stay)")
+    check({ if case .learn(4) = back(.learn(sel: 1)) { return true }; return false }(), "learn: ↩ onto 배우지 않는다")
+    check({ if case .menu(3) = back(.card(1)) { return true }; return false }() && { if case .menu(4) = back(.bag(0)) { return true }; return false }()
+          && { if case .menu(6) = back(.dex(0)) { return true }; return false }() && { if case .dowse = back(.dowse(cursor: 0, prize: 2, tries: 2, hint: nil)) { return true }; return false }()
+          && { if case .menu(8) = back(.shop(bp: true, sel: 0, qty: nil)) { return true }; return false }(), "card / bag / dex / shop list: ↩ to their menu page; dowsing: ↩ does nothing (the 3W round stays)")
+    bk.state.box = [Mon(dex: 16, level: 5, female: false)]
+    check({ if case .menu(5) = back(.box(0, act: nil, confirm: false)) { return true }; return false }() && { if case .box(0, nil, false) = back(.box(0, act: 1, confirm: true)) { return true }; return false }() && bk.state.box.count == 1,
+          "box: ↩ from 놓아줄까? back to the list (= 아니오), from the list to the menu")
+    bk.sideOn = true; bk.state.towerStreak = 5; bk.towerRun = true; bk.screen = .forfeit(tw, yes: false)
+    check(!bk.touch(80, 56) && bk.state.towerStreak == 5, "with the side panel, an LCD tap in a fight answers nothing (it drags)")
+    bk.sideOn = false; bk.screen = .forfeit(tw, yes: false); bk.clickCount = 1; _ = bk.touch(55, 56)
+    check(bk.state.towerStreak == 5 && isBattle(bk.screen, "기권"), "no panel: a tap on the drawn 아니오 is 아니오")
+    bk.screen = .battle(wild, sel: 0)
+    let battleMenuItems = bk.buildMenu().items
+    check(battleMenuItems.contains { $0.title.hasPrefix("⚔ 배틀 중") } && battleMenuItems.first { $0.title.hasPrefix("코스") }?.submenu?.items.allSatisfy { $0.action == nil } == true,
+          "mid-battle the menu's jump-away actions wait (no one-click escape)")
+    let hider = WalkerView(state: Walk()); hider.persist = false; hider.screen = .say(["PP가 없다"], next: .moves(wild, sel: 0), since: Date())
+    let midFight = hider.inBattle; hider.screen = .say(["샀다"], next: .shop(bp: false, sel: 0, qty: nil), since: Date())
+    check(midFight && !hider.inBattle, "inBattle covers a fight's messages (so hiding to the menu bar keeps the fight), not a shop's")
+    check({ if case .evolve = back(.evolve(from: Mon(dex: 1, level: 16, female: false), to: Mon(dex: 2, level: 16, female: false), since: Date())) { return true }; return false }(), "an evolution isn't cut short by ↩")
     v.state.box = [Mon(dex: 16, level: 20, female: false)]; let wBefore = v.state.watts
     v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(2); v.press(1); v.press(2); v.press(1)
     check(v.state.box.isEmpty && v.state.watts == wBefore + 10, "box: ● 놓아주기 예 releases for level / 2 W")
@@ -570,7 +608,7 @@ import AppKit
     shopV.screen = .shop(bp: false, sel: 0, qty: 1); shopV.shopStep(10); let ten = on(shopV) { if case .shop(_, _, 11?) = $0 { return true }; return false }
     shopV.shopStep(nil); let most = on(shopV) { if case .shop(_, _, 41?) = $0 { return true }; return false }     // 820W / 20W
     shopV.press(0); shopV.press(3); let back = on(shopV) { if case .shop(false, 0, nil) = $0 { return true }; return false }
-    check(ten && most && back, "how many: +10 (↑), 최대, and ⌂ back to the list")
+    check(ten && most && back, "how many: +10 (↑), 최대, and ↩ back to the list")
     shopV.screen = .shop(bp: true, sel: 0, qty: nil); shopV.shopTap(2100 + Walk.bpShop.firstIndex { $0.item == "은색병뚜껑" }!)
     let sm = shopV.shopModel()
     check(sm?.title == "BP 교환소" && sm?.qty == 1 && sm?.most == 1 && sm?.total == "25BP" && sm?.after == "5BP" && sm?.rows[sm!.sel].note.contains("특훈") == true,
