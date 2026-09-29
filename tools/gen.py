@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
-"""Regenerates Sources/Data/{Data,BattleData}.swift + Resources/{sprites,color}.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
+"""Regenerates Sources/Data/{Data,BattleData}.swift + Resources/hgss.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
 
 Sources (cached in tools/.cache, not committed):
-  - pwalk_gray.png: the real Pokéwalker greyscale sprites, ripped from the HGSS ROM (vgmoose.dev). 25 per row, national-dex
-    order, each cell 64x48 frame A over frame B, 4 greys on a transparent ground; 0/85/170/255 = LCD shade 3/2/1/0 (black outline, white body), transparent = 0.
-  - pwalk_color.png: the same sprites colourised by vgmoose with the exact HGSS palette colours, same layout, <= 15 colours a cell.
-  - PokeAPI HGSS front sprites, normal + shiny: same pixels, other palette, so pixel pairs give each species' normal -> shiny map.
+  - PokeAPI HGSS battle sprites, front + back, normal + shiny: same pixels, other palette, so pixel pairs give each species' normal -> shiny map.
   - Serebii's Pokéwalker course page: per course 6 Pokémon (groups A/B/C x 2) + 10 items, with min steps and chances.
   - PokeAPI CSVs: Korean names, Gen IV types (pokemon_types_past overrides the Fairy retcon).
 
@@ -13,17 +10,18 @@ The walker's own draw: for each of the 3 carried Pokémon, rarest first, "steps 
 next; the commonest is the fallback. Serebii prints the resulting band percentages; chance = the slot's % in the first band
 where it appears, which reproduces every printed row (e.g. A 70 -> B (1-.7)*75 = 22.5 -> C 7.5).
 """
-import csv, json, os, re, html, urllib.request
+import csv, json, os, re, html, urllib.request, warnings
 from PIL import Image
+warnings.filterwarnings('ignore', category=DeprecationWarning)   # Pillow 12: getdata
 
 CACHE = os.path.join(os.path.dirname(__file__), '.cache')
 API = 'https://raw.githubusercontent.com/PokeAPI/pokeapi/master/data/v2/csv/'
 SRC = {
-    'pwalk_gray.png': 'https://vgmoose.dev/posts/29263141%20-%20Extracting%20and%20colorizing%20Pokewalker%20Sprites!.post/pwalk_gray.png',
-    'pwalk_color.png': 'https://vgmoose.dev/posts/29263141%20-%20Extracting%20and%20colorizing%20Pokewalker%20Sprites!.post/pwalk_color.png',
     **{f'hgss/{s}{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/heartgold-soulsilver/{"shiny/" if s else ""}{i}.png'
        for i in range(1, 494) for s in ('', 's')},
-    # PokeAPI's HGSS shiny 422/423 (West Sea) is a copy of the normal file; Platinum's pair is right and uses the same palette
+    **{f'hgss/b{s}{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/heartgold-soulsilver/back/{"shiny/" if s else ""}{i}.png'
+       for i in range(1, 494) for s in ('', 's')},
+    # PokeAPI's HGSS shiny 422/423 (West Sea) are copies of the normal files; Platinum's front pair is right (its back pair is a copy too)
     **{f'plat/{s}{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/platinum/{"shiny/" if s else ""}{i}.png'
        for i in (422, 423) for s in ('', 's')},
     'serebii.html': 'https://www.serebii.net/heartgoldsoulsilver/pokewalker-area.shtml',
@@ -44,51 +42,47 @@ def get(name):
         open(p, 'wb').write(urllib.request.urlopen(req).read())
     return p
 
-# --- sprites.bin: 493 x 2 frames x 64x48, 2 bpp, 4 px per byte, leftmost pixel in the high bits. 768 B per frame.
-im = Image.open(get('pwalk_gray.png')).convert('RGBA')
-out = bytearray()
+# --- hgss.bin: the HGSS battle sprites, drawn one pixel a point. Per species: 15 normal + 15 shiny RGB (index 1...15; 0 = transparent),
+# then the front and the back, 80x80 at 4 bpp (high nibble = left). 6490 B per species. Each frame is moved down to stand on its bottom
+# row (PokeAPI keeps the DS's per-species offsets; the walker has no offset table). A colour slot is a (normal, shiny) pair: two DS
+# slots can share a normal colour and part in the shiny.
+def rgba(name): return Image.open(get(name)).convert('RGBA')
+def dist(a, b): return sum((i - j) ** 2 for i, j in zip(a, b))
+hout, over15 = bytearray(), []
 for dex in range(1, N + 1):
-    cx, cy = (dex - 1) % 25 * 64, (dex - 1) // 25 * 96
-    for f in range(2):
-        for y in range(48):
-            for x in range(0, 64, 4):
-                b = 0
-                for i in range(4):
-                    r, g, bl, a = im.getpixel((cx + x + i, cy + f * 48 + y))
-                    b = b << 2 | (3 - round(r / 85) if a else 0)   # the sheet is black-on-white: black outline = 3, white body = 0 (blank)
-                out.append(b)
-open('Resources/sprites.bin', 'wb').write(out)
-
-# --- color.bin: per species 15 normal + 15 shiny RGB (index 1...15; 0 = transparent), then 2 frames x 64x48 at 4 bpp (high nibble = left).
-# 3162 B per species. A walker colour the HGSS sprite doesn't use (vgmoose's blends) takes the shift of its nearest HGSS colour.
-col = Image.open(get('pwalk_color.png')).convert('RGBA')
-cout = bytearray()
-for dex in range(1, N + 1):
-    cx, cy = (dex - 1) % 25 * 64, (dex - 1) // 25 * 96
-    px = [[col.getpixel((cx + x, cy + y)) for x in range(64)] for y in range(96)]
-    pal = sorted({p[:3] for r in px for p in r if p[3]})
-    assert len(pal) <= 15, (dex, len(pal))
-    src = 'plat' if open(get(f'hgss/{dex}.png'), 'rb').read() == open(get(f'hgss/s{dex}.png'), 'rb').read() else 'hgss'
-    a, s = Image.open(get(f'{src}/{dex}.png')).convert('RGBA'), Image.open(get(f'{src}/s{dex}.png')).convert('RGBA')
-    votes = {}
-    for y in range(a.height):
-        for x in range(a.width):
-            p, q = a.getpixel((x, y)), s.getpixel((x, y))
-            if p[3] and q[3]: votes.setdefault(p[:3], {}).setdefault(q[:3], 0); votes[p[:3]][q[:3]] += 1
-    shift = {k: max(v, key=v.get) for k, v in votes.items()}
-    def shiny(c):
-        if c in shift or not shift: return shift.get(c, c)
-        n = min(shift, key=lambda k: sum((i - j) ** 2 for i, j in zip(k, c)))
-        return tuple(max(0, min(255, c[i] + shift[n][i] - n[i])) for i in range(3))
-    pal += [(0, 0, 0)] * (15 - len(pal))
-    for c in pal: cout += bytes(c)
-    for c in pal: cout += bytes(shiny(c))
-    idx = {c: i + 1 for i, c in enumerate(pal)}
-    for y in range(96):
-        for x in range(0, 64, 2):
-            l, r = px[y][x], px[y][x + 1]
-            cout.append((idx[l[:3]] if l[3] else 0) << 4 | (idx[r[:3]] if r[3] else 0))
-open('Resources/color.bin', 'wb').write(cout)
+    imgs = [(rgba(f'hgss/{b}{dex}.png'), rgba(f'hgss/{b}s{dex}.png')) for b in ('', 'b')]
+    for a, sh in imgs: assert a.size == (80, 80) == sh.size, (dex, a.size)
+    shiny = lambda p, q: q[:3] if q[3] >= 128 else p[:3]
+    if all(a.tobytes() == sh.tobytes() for a, sh in imgs):
+        # PokeAPI's HGSS shiny 422/423 (West Sea) are copies of the normal files, and so is Platinum's back pair: the normal -> shiny
+        # map comes from Platinum's front pair, its colours snapped to HGSS's; a colour it never shows takes its nearest one's shift
+        normals = {p[:3] for a, _ in imgs for p in a.getdata() if p[3] >= 128}
+        votes = {}
+        for p, q in zip(rgba(f'plat/{dex}.png').getdata(), rgba(f'plat/s{dex}.png').getdata()):
+            if p[3] >= 128 and q[3] >= 128:
+                n = min(normals, key=lambda k: dist(k, p[:3])); votes.setdefault(n, {}).setdefault(q[:3], 0); votes[n][q[:3]] += 1
+        remap = {n: max(v, key=v.get) for n, v in votes.items()}
+        for n in normals - remap.keys():
+            m = min(remap, key=lambda k: dist(k, n)); remap[n] = tuple(max(0, min(255, c + s - o)) for c, s, o in zip(n, remap[m], m))
+        shiny = lambda p, q: remap[p[:3]]
+    count = {}
+    for a, sh in imgs:
+        for p, q in zip(a.getdata(), sh.getdata()):
+            if p[3] >= 128: k = (p[:3], shiny(p, q)); count[k] = count.get(k, 0) + 1
+    slots = sorted(count, key=lambda k: -count[k])[:15]                     # a DS palette is 15 colours; more (rare) snap to the nearest
+    if len(count) > 15: over15.append(dex)
+    index = {k: slots.index(k) + 1 if k in slots else 1 + min(range(len(slots)), key=lambda i: dist(slots[i][0], k[0]) + dist(slots[i][1], k[1])) for k in count}
+    for n, _ in slots + [((0, 0, 0), 0)] * (15 - len(slots)): hout += bytes(n)
+    for _, s in slots + [(0, (0, 0, 0))] * (15 - len(slots)): hout += bytes(s)
+    for a, sh in imgs:
+        px, qx = list(a.getdata()), list(sh.getdata())
+        drop = 79 - max(y for y in range(80) if any(px[y * 80 + x][3] >= 128 for x in range(80)))   # onto the bottom row
+        cell = lambda x, y: 0 if y < drop or px[(y - drop) * 80 + x][3] < 128 else index[(px[(y - drop) * 80 + x][:3], shiny(px[(y - drop) * 80 + x], qx[(y - drop) * 80 + x]))]
+        for y in range(80):
+            for x in range(0, 80, 2): hout.append(cell(x, y) << 4 | cell(x + 1, y))
+assert len(hout) == N * 6490
+if over15: print('palette snapped (> 15 colour pairs):', over15)
+open('Resources/hgss.bin', 'wb').write(hout)
 
 # --- names / types
 ko, en_item, ko_item, types = {}, {}, {}, {}
@@ -398,4 +392,4 @@ for path in ['Sources/Data/Data.swift', 'Sources/Data/BattleData.swift']:
         flush(); cur = None; out_lines.append(line)
     flush()
     open(path, 'w').write('\n'.join(out_lines))
-print('ok', len(courses), 'courses,', len(out), 'sprite bytes')
+print('ok', len(courses), 'courses,', len(hout), 'hgss sprite bytes')

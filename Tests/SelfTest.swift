@@ -390,9 +390,6 @@ import AppKit
     if case .moves(let btns, _)? = ov.sideModel(Date())?.mode {
         check(btns[0].effect == 2 && btns[1].type == "dark" && btns[1].power == 70 && ov.sideModel(Date())?.foe.types == ["water"], "move hints use the types it has now (a watered 꼬렛: 10만볼트 ▲) and 잠재파워's real type", "\(btns)")
     } else { check(false, "move hints use the types it has now") }
-    let placed = SidePanel.place(NSSize(width: 238, height: 309), beside: NSRect(x: 100, y: 40, width: 288, height: 288), in: NSRect(x: 0, y: 40, width: 1000, height: 800))
-    let leftSide = SidePanel.place(NSSize(width: 238, height: 309), beside: NSRect(x: 700, y: 400, width: 288, height: 288), in: NSRect(x: 0, y: 40, width: 1000, height: 800))
-    check(placed.minY == 40 && placed.minX == 394 && leftSide.maxX == 694 && leftSide.maxY == 688, "the panel sits beside the device, top-aligned, never below the screen's bottom", "\(placed) \(leftSide)")
 
     // 7c Battle Tower + shops
     w = Walk(); w.companion = Mon(dex: 25, level: 20, female: false); w.box = [Mon(dex: 16, level: 5, female: false), Mon(dex: 143, level: 30, female: false), Mon(dex: 19, level: 12, female: false)]
@@ -456,15 +453,20 @@ import AppKit
     w = Walk(); w.earned = 999_999; check(w.unlocked(19) && !w.unlocked(20), "event course needs the dex, not watts")
     w.owned = Array(1...10); check(w.unlocked(20) && courses[20].name == "노란 숲", "10 caught -> 노란 숲")
     check(monNames.count == 494 && monTypes.count == 494 && monNames[25] == "피카츄", "493 names + types")
-    check(spriteData.count == 493 * 2 * 768, "sprites.bin in the bundle")
-    check(colorData.count == 493 * 3162, "color.bin in the bundle")
-    let body = (0..<48).flatMap { y in (0..<64).map { (x: $0, y: y) } }.first { spriteShade(6, 0, $0.x, $0.y) == 2 }!
-    check(spriteColor(6, 0, body.x, body.y, shiny: false) != spriteColor(6, 0, body.x, body.y, shiny: true), "shiny 리자몽 has another palette")
-    check(courses.flatMap { $0.slots.map(\.dex) }.allSatisfy { d in (0..<48).contains { y in (0..<64).contains { spriteColor(d, 0, $0, y, shiny: false) != 0 } } }, "every course Pokémon has colour art")
+    check(hgssData.count == 493 * 6490, "hgss.bin in the bundle")
+    func opaque(_ d: Int, back: Bool) -> [(x: Int, y: Int)] { (0..<80).flatMap { y in (0..<80).map { (x: $0, y: y) } }.filter { spritePixel(d, back: back, $0.x, $0.y, shiny: false) != 0 } }
+    var off: [Int] = []                                                                    // every frame stands on row 79; every shiny differs on 5%+ of it (422/423: PokeAPI's copies)
+    for d in 1...493 { for back in [false, true] {
+        var n = 0, diff = 0, bottom = -1
+        for y in 0..<80 { for x in 0..<80 { let c = spritePixel(d, back: back, x, y, shiny: false); if c != 0 { n += 1; bottom = y; if c != spritePixel(d, back: back, x, y, shiny: true) { diff += 1 } } } }
+        if bottom != 79 || diff * 20 < n { off.append(d) }
+    } }
+    check(off.isEmpty, "every sprite stands on its bottom row and has its own shiny colours", "\(off)")
+    check(!opaque(25, back: true).isEmpty, "피카츄 has a back sprite")
+    let blank = Set(courses.flatMap { $0.slots.map(\.dex) } + [25]).filter { opaque($0, back: false).count < 50 || opaque($0, back: true).count < 50 }
+    check(blank.isEmpty, "every course Pokémon has front and back sprites", "\(blank)")
     let old = try? JSONDecoder().decode(Mon.self, from: Data(#"{"dex":25,"level":5,"female":false}"#.utf8))
     check(old == Mon(dex: 25, level: 5, female: false) && old?.shiny == nil, "pre-shiny saves still decode")
-    let blank = Set(courses.flatMap { $0.slots.map(\.dex) } + [25]).filter { d in !(0..<48).contains { y in (0..<64).contains { spriteShade(d, 0, $0, y) > 0 } } }
-    check(blank.isEmpty, "every course Pokémon has a sprite", "\(blank)")
     let td = textDots("포켓 레이더"); check(td.joined().contains(true) && td.count == 11, "Korean text renders to 11-row dots", td.map { String($0.map { $0 ? "#" : "." }) }.joined(separator: "\n"))
     check(josa("피카츄", "을", "를") == "피카츄를" && josa("꼬렛", "을", "를") == "꼬렛을", "josa")
 
@@ -631,6 +633,29 @@ import AppKit
     dc.clickCount = 1; dc.shopStep(10); dc.shopRow(1); check(on(dc) { if case .shop(false, 1, nil) = $0 { return true }; return false }, "scrolling the panel moves a row and leaves how-many (never the amount)")
     dc.screen = .shop(bp: false, sel: 0, qty: nil); check(!dc.touch(48, 63) && dc.shopModel()?.hint.contains("●") == true, "the LCD's bottom dot row isn't a hidden 6th row; the panel says what ● does")
     dc.screen = .shop(bp: false, sel: dc.wares(false).count - 1, qty: nil); check(dc.shopModel()?.hint == "W가 부족해요 · 9,999W 필요", "the panel says why a row can't be bought", "\(dc.shopModel()?.hint ?? "")")
+    // 7g one body: the ball (LCD 3 pt a dot at 보통) on the left, the pane (page + ◀ ● ▶ ↩) on the right
+    let size0 = SIZE; SIZE = 2
+    let ballBox = NSRect(x: ballOrigin.x, y: ballOrigin.y, width: dev.w * PX, height: dev.h * PX)
+    check(PX == 2.5 && devSize == NSSize(width: 584, height: 376) && lcdRect.size == NSSize(width: 240, height: 160) && ballBox.maxX < paneRect.minX && ballBox.contains(lcdRect),
+          "보통: a 584 x 376 body, the LCD 240 x 160 (2.5 pt a dot, 1.25x the old) inside the ball, the pane beside it", "\(devSize) \(lcdRect)")
+    check(buttons.count == 4 && buttons.allSatisfy { deckRect.insetBy(dx: $0.r - 0.01, dy: $0.r - 0.01).contains($0.c) } && deckRect.height >= 50 * paneUnit && pageRect.maxY <= deckRect.minY,
+          "the four buttons sit on the pane's deck, under the page")
+    SIZE = 3; check(PX == 3.75 && devSize.height < 850, "크게: 3.75 pt a dot, still under a 13-inch screen's height", "\(devSize)"); SIZE = size0
+    let pv = WalkerView(state: { var s = Walk(); s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); pv.persist = false; pv.rng = Seeded(s: 61)
+    func kind(_ sc: Screen) -> String {
+        pv.screen = sc; let c = pv.paneContent(Date())
+        return c.battle != nil ? "battle" : c.dex != nil ? "dex" : c.shop != nil ? "shop" : c.menu.map { "menu\($0.sel)" } ?? (c.status != nil ? "status" : "none")
+    }
+    check(kind(.home) == "status" && kind(.menu(3)) == "menu3" && kind(.battle(wild, sel: 0)) == "battle" && kind(.shop(bp: false, sel: 0, qty: nil)) == "shop" && kind(.dex(0)) == "dex" && kind(.box(0, act: nil, confirm: false)) == "status",
+          "the pane: 상태 on 홈 (and screens without their own page), 메뉴 list on the menu, the battle / 상점 / 도감 pages")
+    check(kind(.say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date())) == "battle" && kind(.say(["W가 부족하다"], next: .menu(0), since: Date())) == "menu0"
+          && pv.paneContent(Date()).menu != nil, "a fight's / a menu page's message keeps its page up")
+    pv.screen = .say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date()); check(pv.sideModel(Date())?.message == "기술의 남은 PP가 없다!", "… with the message in the battle page's box")
+    let grown = WalkerView.onScreen(NSRect(x: 2248, y: 24 + 288 - 376, width: 584, height: 376), in: NSRect(x: 0, y: 0, width: 2560, height: 1410))
+    check(grown == NSRect(x: 1976, y: 0, width: 584, height: 376), "an old device at the bottom-right corner grows into the screen, not onto the next one", "\(grown)")
+    pv.screen = .menu(0); pv.menuTap(5); let picked = { if case .menu(5) = pv.screen { return true }; return false }(); pv.menuTap(5)
+    check(picked && { if case .box = pv.screen { return true }; return false }(), "메뉴 page: a click picks the page, a click on the picked one opens it")
+    let stm = pv.statusModel(); check(stm.level == "Lv.5" && stm.rows.count == 4 && stm.exp >= 0 && stm.exp <= 1, "the 상태 page: level, EXP to next, egg / tower / totals / dex")
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0
 }

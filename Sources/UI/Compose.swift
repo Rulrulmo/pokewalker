@@ -16,7 +16,7 @@ extension WalkerView {
         case .home:
             let f = now.timeIntervalSince(lastStep) < 3 ? half : Int(t) % 2        // steps coming in => walks twice as fast
             fb.mon(me, f, 32, 0)
-            if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { fb.draw(bubble, 32, 0, ballPal); fb.draw(emotes[e.kind], 35, 2, redPal) }
+            if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { let y = max(0, 16 + spriteTop(me.dex) * 2 / 5 - 9); fb.draw(bubble, 41, y, ballPal); fb.draw(emotes[e.kind], 44, y + 2, redPal) }   // by its head
             fb.course(state.here.art, 1, 22, weather: state.weather ?? .sunny, t: t, hour: state.hour, season: state.season)
             fb.text("\(state.watts)W", 1, 1, 2, small: true)
             for i in 0..<state.caught.count { fb.draw(ball, 1 + 8 * i, 13, ballPal) }
@@ -47,7 +47,7 @@ extension WalkerView {
             stage(&fb, b, now, .idle, hud: false)                                                   // the side panel carries names, HP, menus
         case .beats where sideOn:
             let s = beatState(now)!
-            stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), hud: false)
+            stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), hud: false, pending: s.pending)
             if case .hit(_, _, _, _, true) = s.beat, s.u < 0.15 { fb.invert(0, 0, 96, 64) }
             if s.beat == .appear, legendDex.contains(s.from.wild.dex), s.u < 0.5, Int(s.u * 10) % 2 == 0 { fb.invert(0, 0, 96, 64) }
         case .forfeit(let b, let yes):
@@ -130,7 +130,7 @@ extension WalkerView {
             }
         case .beats:
             let s = beatState(now)!
-            stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp))
+            stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), pending: s.pending)
             fb.text(message(s.beat, s.u, s.names), 2, 52)
             if case .hit(_, _, _, _, true) = s.beat, s.u < 0.15 { fb.invert(0, 0, 96, 64) }           // critical: the whole screen flashes
             if s.beat == .appear, legendDex.contains(s.from.wild.dex), s.u < 0.5, Int(s.u * 10) % 2 == 0 { fb.invert(0, 0, 96, 64) }   // a legend: two flashes first
@@ -168,7 +168,7 @@ extension WalkerView {
             header(m.map { ($0.shiny == true ? "★" : "") + monNames[$0.dex] + " Lv.\($0.level)" } ?? (p < bagPages - 1 ? "포켓몬" : "도구"))
             if p < bagPages - 1 {
                 if let m {
-                    fb.mon(m, half, 0, 14)
+                    fb.mon(m, half, 0, 2)
                     fb.text("\(p + 1)/\(state.caught.count)", 94, 15, 2, right: true, small: true); vLabel(m, 24)
                     fb.text("●", 80, 32, 3, center: false); fb.text("함께", 94, 42, 2, right: true, small: true); fb.text("걷기", 94, 51, 2, right: true, small: true)
                 }
@@ -184,7 +184,7 @@ extension WalkerView {
             fb.fill(0, 12, 96, 1, 2)
             let m = Mon(dex: d, level: 1, female: false)
             let shinyNow = (state.shinyOwned ?? []).contains(d) && Int(t / 2) % 2 == 1                        // caught as 이로치: both colours, 2 s each
-            if owned { fb.mon(Mon(dex: d, level: 1, female: false, shiny: shinyNow ? true : nil), half, 0, 14) } else { fb.mon(m, 0, 0, 14, tint: (3, rgb(70, 74, 84))) }   // only seen: a shadow
+            if owned { fb.mon(Mon(dex: d, level: 1, female: false, shiny: shinyNow ? true : nil), half, 0, 2) } else { fb.mon(m, 0, 0, 2, tint: (3, rgb(70, 74, 84))) }   // only seen: a shadow
             if shinyNow { fb.text("★이로치", 94, 32, 3, right: true, small: true) }
             fb.text(monTypes[d].map { typeKo[$0] ?? $0 }.joined(separator: "·"), 94, 16, 2, right: true, small: true)
             fb.text(owned ? "잡음" : "봤음", 94, 42, 2, right: true, small: true)
@@ -192,7 +192,7 @@ extension WalkerView {
         case .box(let i, let act, let confirm):
             guard let m = state.box[safe: i] else { header("상자"); fb.text("상자가 비어 있다", 0, 30, 2, center: true); break }
             header((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)")
-            fb.mon(m, half, 0, 14)
+            fb.mon(m, half, 0, 2)
             fb.text("\(i + 1)/\(state.box.count)", 94, 15, 2, right: true, small: true)
             if genderRate[m.dex] >= 0 { fb.text(m.female ? "암컷" : "수컷", 94, 26, 2, right: true, small: true) }; vLabel(m, 36)   // genderless: nothing (the games show no symbol)
             if let a = act {
@@ -269,6 +269,39 @@ extension WalkerView {
         return DexModel(num: d, name: st > 0 ? monNames[d] : "???", status: st, shiny: (state.shinyOwned ?? []).contains(d), types: st > 0 ? monTypes[d] : [],
                         stats: st > 0 ? baseStats[d] : [], found: found, evos: evos, owned: owned.count, seen: seen.count,
                         strip: strip, stripStatus: strip.map { owned.contains($0) ? 2 : seen.contains($0) ? 1 : 0 })
+    }
+    /// What the pane's page shows: the battle, 도감, 상점 or 메뉴 page; everywhere else the 상태 page.
+    func paneContent(_ now: Date) -> (battle: SideModel?, dex: DexModel?, shop: ShopModel?, menu: MenuModel?, status: StatusModel?) {
+        if let b = sideModel(now) { return (b, nil, nil, nil, nil) }
+        if let d = dexModel() { return (nil, d, nil, nil, nil) }
+        if let s = shopModel() { return (nil, nil, s, nil, nil) }
+        var sc = screen; if case .say(_, let next, _) = sc { sc = next }                       // a menu page's message (W가 부족하다, 커넥트): the list stays
+        if case .menu(let i) = sc {
+            let bp = (state.bp ?? 0).formatted(), notes = ["10W", "3W", "상자로 보내기", "오늘 \(state.today.formatted())걸음", "워커 \(state.caught.count)마리 · 도구 \(state.items.count)",
+                                         "\(state.box.count.formatted())마리", "\(dexCount) / 493", "W로 사기", "\(bp)BP로 교환", "최고 \(state.towerBest ?? 0)연승"]
+            return (nil, nil, nil, MenuModel(money: "\(state.watts.formatted())W", rows: menuItems.indices.map { .init(name: menuItems[$0], note: notes[safe: $0] ?? "") }, sel: i), nil)
+        }
+        return (nil, nil, nil, nil, statusModel())
+    }
+    /// 홈 (and the other screens): where, the companion, today, then egg / tower / totals / dex.
+    func statusModel() -> StatusModel {
+        var m = state.companion
+        if case .evolve(let from, _, let since) = screen, Date().timeIntervalSince(since) < 4.4 { m = from }   // no spoiler before the LCD's reveal
+        let t = expTable[growthRate[m.dex]], lo = t[m.level], hi = t[min(100, m.level + 1)]
+        let exp: CGFloat = m.level >= 100 || hi <= lo ? 1 : CGFloat(m.points - lo) / CGFloat(hi - lo)
+        return StatusModel(place: state.here.name, when: "\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · \((state.weather ?? .sunny).name)",
+                           name: (m.shiny == true ? "★ " : "") + monNames[m.dex] + sexMark(m), level: "Lv.\(m.level)", toNext: m.level >= 100 ? "최고 레벨" : "\((hi - m.points).formatted()) EXP",
+                           nature: "\(m.natureName) · \(m.abilityName)", today: state.today.formatted(), watts: "\(state.watts.formatted())W", v: m.perfectIVs, exp: exp,
+                           rows: [.init(key: "알", value: state.egg.map { $0.left > 0 ? "앞으로 \($0.left.formatted())걸음" : "곧 태어난다!" } ?? "없음"),
+                                  .init(key: "배틀 타워", value: "최고 \(state.towerBest ?? 0)연승 · \((state.bp ?? 0).formatted())BP"),
+                                  .init(key: "누적 걸음", value: state.total.formatted()),
+                                  .init(key: "도감", value: "잡음 \(dexCount) · 봤음 \(seenList.count)")])
+    }
+    /// A click on the 메뉴 page: pick that page; on the picked one, open it (like ●).
+    func menuTap(_ i: Int) {
+        guard case .menu(let sel) = screen, menuItems.indices.contains(i) else { return }
+        lastInput = Date(); shown = nil; needsDisplay = true
+        if i == sel { press(1) } else { screen = .menu(i) }
     }
     /// What the side panel shows on a shop screen; nil elsewhere.
     func shopModel() -> ShopModel? {

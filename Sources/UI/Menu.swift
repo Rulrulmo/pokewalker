@@ -175,7 +175,7 @@ extension WalkerView {
             head.submenu = sm
         }
         m.addItem(.separator())
-        sub("크기", [("보통", 2), ("크게", 3), ("아주 크게", 4)], Int(PX), #selector(setSize(_:)))
+        sub("크기", [("보통", 2), ("크게", 3), ("아주 크게", 4)], Int(SIZE), #selector(setSize(_:)))
         sub("기기", shells.enumerated().map { ($1.dex > dexCount ? "\($1.name) — 도감 \($1.dex)" : !shellOpen($1) ? "\($1.name) — \($1.bp)BP" : $1.name, $0) }, theme, #selector(setTheme(_:)))
         sub("화면", lcds.enumerated().map { ($1.name, $0) }, lcdStyle, #selector(setLCD(_:)))
         sub("화면 글씨", [("매끈하게", 1), ("도트", 0)], smoothText ? 1 : 0, #selector(setTextStyle(_:)))
@@ -258,11 +258,15 @@ extension WalkerView {
     }
     @objc func setSize(_ item: NSMenuItem) {                     // keeps the top-right corner
         guard let w = window else { return }
-        var f = w.frame; f.origin.x += f.width - CGFloat(item.tag) * dev.w; f.origin.y += f.height - CGFloat(item.tag) * dev.h
-        PX = CGFloat(item.tag); UserDefaults.standard.set(item.tag, forKey: "px")
-        f.size = devSize
-        if let s = w.screen?.visibleFrame { f.origin.x = min(max(f.origin.x, s.minX), s.maxX - f.width); f.origin.y = min(max(f.origin.y, s.minY), s.maxY - f.height) }
-        w.setFrame(f, display: true); setFrameSize(devSize); window?.invalidateCursorRects(for: self); needsDisplay = true
+        var f = w.frame, top = NSPoint(x: f.maxX, y: f.maxY)
+        SIZE = CGFloat(item.tag); UserDefaults.standard.set(item.tag, forKey: "px")
+        f.size = devSize; f.origin = NSPoint(x: top.x - f.width, y: top.y - f.height)
+        w.setFrame(WalkerView.onScreen(f, in: (w.screen ?? NSScreen.main)?.visibleFrame), display: true); setFrameSize(devSize); layoutPage(); window?.invalidateCursorRects(for: self); shown = nil; needsDisplay = true
+    }
+    /// A frame pulled back inside a screen's visible area (the body is wide: a spot near an edge must not push it off).
+    static func onScreen(_ f: NSRect, in s: NSRect?) -> NSRect {
+        guard let s else { return f }
+        var g = f; g.origin.x = min(max(g.minX, s.minX), s.maxX - g.width); g.origin.y = min(max(g.minY, s.minY), s.maxY - g.height); return g
     }
     func shellOpen(_ s: Shell) -> Bool { s.dex <= dexCount && (s.bp == 0 || (state.bought ?? []).contains(s.name)) }
     @objc func setTheme(_ item: NSMenuItem) { guard shellOpen(shells[item.tag]) else { return }; theme = item.tag; UserDefaults.standard.set(theme, forKey: "shell"); needsDisplay = true }

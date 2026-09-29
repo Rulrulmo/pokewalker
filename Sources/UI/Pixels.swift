@@ -2,26 +2,48 @@ import AppKit
 // Sprites, hand-drawn bits, the fonts and the 96x64 frame buffer.
 
 // MARK: - pixels
-/// The real Pokéwalker sprites (tools/gen.py): 493 x 2 frames x 64x48, 2 bpp.
-let spriteData: Data = {
-    guard let u = Bundle.main.url(forResource: "sprites", withExtension: "bin"), let d = try? Data(contentsOf: u), d.count == 493 * 2 * 768 else { return Data(count: 493 * 2 * 768) }
-    return d
-}()
-func spriteShade(_ dex: Int, _ f: Int, _ x: Int, _ y: Int) -> UInt8 {
-    let b = spriteData[((dex - 1) * 2 + f) * 768 + y * 16 + x / 4]
-    return (b >> UInt8(6 - 2 * (x % 4))) & 3
-}
-/// The same sprites in colour (tools/gen.py): per species 15 normal + 15 shiny RGB, then 2 frames x 64x48 at 4 bpp; index 0 = transparent.
-let colorData: Data = {
-    guard let u = Bundle.main.url(forResource: "color", withExtension: "bin"), let d = try? Data(contentsOf: u), d.count == 493 * 3162 else { return Data(count: 493 * 3162) }
+/// HGSS battle sprites (tools/gen.py): per species 15 normal + 15 shiny RGB, then front and back 80x80 at 4 bpp; index 0 = transparent.
+let hgssData: Data = {
+    guard let u = Bundle.main.url(forResource: "hgss", withExtension: "bin"), let d = try? Data(contentsOf: u), d.count == 493 * 6490 else { return Data(count: 493 * 6490) }
     return d
 }()
 /// 0 = transparent, else 0xFFRRGGBB.
-func spriteColor(_ dex: Int, _ f: Int, _ x: Int, _ y: Int, shiny: Bool) -> UInt32 {
-    let o = (dex - 1) * 3162, b = colorData[o + 90 + (f * 48 + y) * 32 + x / 2], i = Int(x % 2 == 0 ? b >> 4 : b & 15)
+func spritePixel(_ dex: Int, back: Bool, _ x: Int, _ y: Int, shiny: Bool) -> UInt32 {
+    let o = (dex - 1) * 6490, b = hgssData[o + 90 + (back ? 3200 : 0) + y * 40 + x / 2], i = Int(x % 2 == 0 ? b >> 4 : b & 15)
     guard i > 0 else { return 0 }
     let p = o + (shiny ? 45 : 0) + (i - 1) * 3
-    return rgb(colorData[p], colorData[p + 1], colorData[p + 2])
+    return rgb(hgssData[p], hgssData[p + 1], hgssData[p + 2])
+}
+/// The first opaque row of a frame (gen.py stands every frame on row 79), for what sits over its head.
+@MainActor var spriteTops: [Int: Int] = [:]
+@MainActor func spriteTop(_ dex: Int, back: Bool = false) -> Int {
+    if let t = spriteTops[dex * 2 + (back ? 1 : 0)] { return t }
+    let t: Int = (0..<80).first(where: { y in (0..<80).contains { spritePixel(dex, back: back, $0, y, shiny: false) != 0 } }) ?? 79
+    spriteTops[dex * 2 + (back ? 1 : 0)] = t; return t
+}
+/// A sprite laid over the dots at 1 pt per pixel (x 1.5 / x 2 on the bigger sizes): its 80x80 box is 32x32 dots at (x, y); `floor` = the dot row it sinks behind.
+struct SpriteRun: Equatable { var dex: Int; var shiny, back: Bool; var x, y, bob: Int; var tint: UInt32?, tintShade: UInt8; var floor: Int; var inverted = false }
+@MainActor var spriteCache: [String: NSImage] = [:]
+/// The sprite as the LCD shows it: its colours, or on a grey screen 4 shades by brightness (white = the blank screen, like the walker's own art); a tint = a silhouette.
+/// Inverted (a full-screen flash) = the grey shades flipped, on any screen, as the dots are.
+@MainActor func spriteImage(_ r: SpriteRun, _ l: LCD) -> NSImage {
+    let key = "\(r.dex) \(r.shiny) \(r.back) \(l.name) \(r.tint ?? 0) \(r.tintShade) \(r.inverted)"
+    if let i = spriteCache[key] { return i }
+    if spriteCache.count > 64 { spriteCache.removeAll() }                                   // ponytail: drop all at 64, an LRU if browsing ever stutters
+    let shades = l.shades.map { c -> UInt32 in let s = c.usingColorSpace(.sRGB)!; return rgb(UInt8(s.redComponent * 255), UInt8(s.greenComponent * 255), UInt8(s.blueComponent * 255)) }
+    var px = [UInt32](repeating: 0, count: 80 * 80)
+    for y in 0..<80 { for x in 0..<80 {
+        let c = spritePixel(r.dex, back: r.back, x, y, shiny: r.shiny)
+        guard c != 0 else { continue }
+        let lum = (0.299 * Double(c >> 16 & 255) + 0.587 * Double(c >> 8 & 255) + 0.114 * Double(c & 255)) / 255
+        let shade = Int(r.tint != nil ? r.tintShade : lum > 0.78 ? 0 : lum > 0.5 ? 1 : lum > 0.25 ? 2 : 3)
+        px[y * 80 + x] = r.inverted ? shades[3 - shade] : l.color ? r.tint ?? c : shades[shade]
+    } }
+    let img = CGImage(width: 80, height: 80, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: 320, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                      bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+                      provider: CGDataProvider(data: px.withUnsafeBufferPointer { Data(buffer: $0) } as CFData)!, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+    let i = NSImage(cgImage: img, size: NSSize(width: 80, height: 80))
+    spriteCache[key] = i; return i
 }
 func dim(_ c: UInt32, _ k: Double) -> UInt32 { rgb(UInt8(Double(c >> 16 & 255) * k), UInt8(Double(c >> 8 & 255) * k), UInt8(Double(c & 255) * k)) }
 func rgb(_ r: UInt8, _ g: UInt8, _ b: UInt8) -> UInt32 { 0xFF00_0000 | UInt32(r) << 16 | UInt32(g) << 8 | UInt32(b) }
@@ -91,26 +113,20 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
     var px = [UInt8](repeating: 0, count: 96 * 64)
     var col = [UInt32](repeating: 0, count: 96 * 64)                      // colour LCD only: 0 = use the shade
     var runs: [TextRun] = [], flips: [[Int]] = []                        // smooth text to draw over the dots, and the inverted boxes it may sit in
-    mutating func set(_ x: Int, _ y: Int, _ s: UInt8, _ c: UInt32 = 0) { if (0..<96).contains(x), (0..<64).contains(y) { px[y * 96 + x] = s; col[y * 96 + x] = c } }
+    var sprites: [SpriteRun] = []
+    var over = [Bool](repeating: false, count: 96 * 64)                  // dots set after a sprite: drawn on top of it (a HUD plate, a ball, rain)
+    mutating func set(_ x: Int, _ y: Int, _ s: UInt8, _ c: UInt32 = 0) { if (0..<96).contains(x), (0..<64).contains(y) { px[y * 96 + x] = s; col[y * 96 + x] = c; if !sprites.isEmpty { over[y * 96 + x] = true } } }
     mutating func fill(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ s: UInt8) { for yy in y..<y + h { for xx in x..<x + w { set(xx, yy, s) } } }
     mutating func draw(_ a: [[UInt8?]], _ x: Int, _ y: Int, _ pal: [UInt32]? = nil, scale k: Int = 1) {
         for (dy, r) in a.enumerated() { for (dx, s) in r.enumerated() { if let s { for i in 0..<k * k { set(x + dx * k + i % k, y + dy * k + i / k, s, pal?[Int(s)] ?? 0) } } } }
     }
-    /// Large = 64x48; small = 32x24, each dot the darkest of its 2x2 (and that dot's colour). Grey shade 0 is see-through; in colour the white body isn't.
-    mutating func mon(_ m: Mon, _ f: Int, _ x: Int, _ y: Int, small: Bool = false, flip: Bool = false, flash: Bool = false, tint: (UInt8, UInt32)? = nil) {   // flash = red silhouette (the ball's beam); tint = any silhouette
-        let k = small ? 2 : 1, shiny = m.shiny == true
-        for sy in 0..<48 / k { for sx in 0..<64 / k {
-            var s: UInt8 = 0, c: UInt32 = 0
-            for yy in 0..<k { for xx in 0..<k {
-                let v = spriteShade(m.dex, f, sx * k + xx, sy * k + yy), vc = spriteColor(m.dex, f, sx * k + xx, sy * k + yy, shiny: shiny)
-                if v > s || c == 0 && v == s { s = v; if vc != 0 { c = vc } }
-                if c == 0 { c = vc }
-            } }
-            let X = x + (flip ? 64 / k - 1 - sx : sx), Y = y + sy
-            if s > 0 || c != 0, (0..<96).contains(X), (0..<64).contains(Y) {
-                if let (s, c) = tint ?? (flash ? (2, rgb(238, 84, 72)) : nil) { px[Y * 96 + X] = s; col[Y * 96 + X] = c } else { if s > 0 { px[Y * 96 + X] = s }; col[Y * 96 + X] = c }
-            }
-        } }
+    /// A Pokémon in the old 64x48 box: its 32x32 sprite centred across, standing on the box's bottom. f = 1 bobs it a pixel.
+    mutating func mon(_ m: Mon, _ f: Int, _ x: Int, _ y: Int, flash: Bool = false, tint: (UInt8, UInt32)? = nil) {   // flash = red silhouette (the ball's beam); tint = any silhouette
+        sprite(m, x + 16, y + 16, bob: f, flash: flash, tint: tint)
+    }
+    mutating func sprite(_ m: Mon, _ x: Int, _ y: Int, back: Bool = false, bob: Int = 0, flash: Bool = false, tint: (UInt8, UInt32)? = nil, floor: Int = 64) {
+        let t = tint ?? (flash ? (2, rgb(238, 84, 72)) : nil)
+        sprites.append(SpriteRun(dex: m.dex, shiny: m.shiny == true, back: back, x: x, y: y, bob: bob, tint: t?.1, tintShade: t?.0 ?? 0, floor: floor))
     }
     /// Too wide for the screen => the small font, one row lower so baselines match.
     @discardableResult mutating func text(_ s: String, _ x: Int, _ y: Int, _ shade: UInt8 = 3, center: Bool = false, right: Bool = false, small: Bool = false) -> Int {
@@ -133,13 +149,19 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
             let (X, Y) = (x0 + x, y0 + y)
             switch wx {
             case .rain: if (x * 7 + (y - f * 2 + 1000) + x / 3 * 5) % 11 == 0, (x + y) % 3 != 0 { set(X, Y, 2, rgb(80, 130, 220)) }
-            case .snow: if (UInt32(truncatingIfNeeded: (x + (y + f / 3) / 4 % 2) &* 73_856_093) ^ UInt32(truncatingIfNeeded: (y - f / 2 + 10_000) &* 19_349_663)) % 41 == 0 { set(X, Y, 1, px[Y * 96 + X] == 0 && col[Y * 96 + X] == 0 ? rgb(150, 176, 214) : rgb(252, 252, 255)) }   // blue-grey on the bare screen, white on pictures   // hashed flakes, falling and swaying
+            case .snow: if (UInt32(truncatingIfNeeded: (x + (y + f / 3) / 4 % 2) &* 73_856_093) ^ UInt32(truncatingIfNeeded: (y - f / 2 + 10_000) &* 19_349_663)) % 41 == 0 { set(X, Y, 1, px[Y * 96 + X] == 0 && col[Y * 96 + X] == 0 && !sprites.contains { (0..<32).contains(X - $0.x) && (0..<32).contains(Y - $0.y) } ? rgb(150, 176, 214) : rgb(252, 252, 255)) }   // blue-grey on the bare screen, white on pictures   // hashed flakes, falling and swaying
             case .fog: if (y + f / 6) % 6 == 0, (x + y * 3 + f / 3) % 3 != 0 { set(X, Y, 1, cave ? rgb(150, 144, 150) : rgb(206, 210, 218)) }
             case .sunny: break
             }
         } }
     }
-    mutating func invert(_ x: Int, _ y: Int, _ w: Int, _ h: Int) { flips.append([x, y, w, h]); for yy in y..<y + h { for xx in x..<x + w where (0..<96).contains(xx) && (0..<64).contains(yy) { px[yy * 96 + xx] = 3 - px[yy * 96 + xx]; col[yy * 96 + xx] = 0 } } }
+    /// A box turned negative. The whole screen (a critical hit, a legend) flips the sprites with it; a smaller box (a highlight) covers them.
+    mutating func invert(_ x: Int, _ y: Int, _ w: Int, _ h: Int) {
+        flips.append([x, y, w, h])
+        let whole = x <= 0 && y <= 0 && x + w >= 96 && y + h >= 64
+        if whole { for i in sprites.indices { sprites[i].inverted.toggle() } }
+        for yy in y..<y + h { for xx in x..<x + w where (0..<96).contains(xx) && (0..<64).contains(yy) { px[yy * 96 + xx] = 3 - px[yy * 96 + xx]; col[yy * 96 + xx] = 0; if !sprites.isEmpty, !whole { over[yy * 96 + xx] = true } } }
+    }
     /// 32x24 picture of the course, framed.
     mutating func course(_ a: Art, _ x: Int, _ y: Int, weather w: Weather = .sunny, t: Double = 0, hour: Double = 12, season: Season = .summer) {
         // colour: sky above the course's horizon, its ground/water below
