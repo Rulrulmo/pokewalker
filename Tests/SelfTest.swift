@@ -227,11 +227,12 @@ import Foundation
             var from = b; k += 1
             bs = b.mustReplace ? b.replace(b.mine.indices.first { b.mine[$0].alive }!) : b.turn(.fight(b.forced ?? (ok.isEmpty ? 165 : x.moves[ok.randomElement(using: &r)!])), &r)
             for bt in bs { from.apply(bt) }
-            if from.me != b.me || from.it != b.it || from.mine.map(\.hp) != b.mine.map(\.hp) || from.theirs.map(\.hp) != b.theirs.map(\.hp) { fuzzBad += 1 }
+            if from.me != b.me || from.it != b.it || from.mine.map(\.hp) != b.mine.map(\.hp) || from.theirs.map(\.hp) != b.theirs.map(\.hp)
+                || from.mine.map(\.typeList) != b.mine.map(\.typeList) || from.theirs.map(\.typeList) != b.theirs.map(\.typeList) { fuzzBad += 1 }
         }
         if k >= 400 { fuzzStall += 1 }
     }
-    check(fuzzBad == 0 && fuzzStall == 0, "300 random fights: all end, and the beats replay to the engine's HP", "\(fuzzBad) \(fuzzStall)")
+    check(fuzzBad == 0 && fuzzStall == 0, "300 random fights: all end, and the beats replay to the engine's HP and types", "\(fuzzBad) \(fuzzStall)")
     // 7a' rules the menus follow: trapping, 도발 / 트집, choosing who's next, EXP split, trainers switching
     check(abilitySlots[202] == [23], "마자용 has 그림자밟기")
     var trap = Battle(party: [pika50, lax50], trainer: "x", foes: [Mon(dex: 202, level: 30, female: false)])
@@ -320,6 +321,8 @@ import Foundation
     var d15 = duel(pika50, Mon(dex: 292, level: 30, female: false), [55, 52])
     let wg1 = d15.turn(.fight(55), &r), wg2 = d15.turn(.fight(52), &r)
     check(abilitySlots[292] == [25] && !wg1.contains { if case .hit(.it, _, _, _, _) = $0 { return true }; return false } && wg2.contains(.fainted(.it)), "불가사의부적: only super-effective hits land")
+    var kec = duel(pika50, Mon(dex: 352, level: 50, female: false), [85]); let kecFrom = kec, kecB = kec.turn(.fight(85), &r); var kecRe = kecFrom; for bt in kecB { kecRe.apply(bt) }
+    check(abilitySlots[352] == [16] && kecB.contains(.retype(.it, ["electric"])) && kec.theirs[0].typeList == ["electric"] && kecRe.theirs[0].typeList == ["electric"], "변색: it turns electric, and the replay knows")
     var d16 = duel(pika50, Mon(dex: 58, level: 30, female: false), [52]); d16.theirs[0].abilityOver = 18; let ff = d16.turn(.fight(52), &r)
     check(!ff.contains { if case .hit(.it, _, _, _, _) = $0 { return true }; return false } && d16.theirs[0].flashFire, "타오르는불꽃: fire is absorbed")
     var d17 = duel(pika50, Mon(dex: 135, level: 50, female: false), [85]); d17.theirs[0].hp = d17.theirs[0].maxHP / 2; let va = d17.turn(.fight(85), &r)
@@ -364,6 +367,19 @@ import Foundation
     check(bv.battleItems(bb).map(\.name) == ["마비치료제"], "full HP: only the cure is offered")
     bv.screen = .bagBattle(bb, sel: 0); bv.press(1)
     if case .beats(let after, let bs, _, _) = bv.screen { check(after.mine[0].status == nil && bv.state.bag == ["상처약"] && bs.first == .note(.me, text: "마비치료제를 사용했다!"), "using a cure in battle takes it from the bag") } else { check(false, "using a cure in battle") }
+    let ov = WalkerView(state: { var s = Walk(); s.owned = [94]; return s }()); ov.persist = false; ov.rng = Seeded(s: 15)
+    ov.screen = .battle(Battle(wild: Mon(dex: 94, level: 30, female: false), companion: pika50), sel: 0); let om = ov.sideModel(Date())
+    ov.screen = .battle(Battle(party: [pika50], trainer: "x", foes: [Mon(dex: 6, level: 30, female: false)]), sel: 0); let tm = ov.sideModel(Date())
+    check(om?.foe.types == ["ghost", "poison"] && om?.foe.owned == true && tm?.foe.types == ["fire", "flying"] && tm?.foe.owned == false && om?.mine.types == [],
+          "the panel shows theirs' types and whether that species is caught (wild and tower)")
+    var live = Battle(wild: Mon(dex: 19, level: 30, female: false), companion: pika50); live.mine[0].moves = [85, 237]; live.mine[0].pp = [15, 15]; live.theirs[0].types = ["water"]
+    ov.screen = .moves(live, sel: 0)
+    if case .moves(let btns, _)? = ov.sideModel(Date())?.mode {
+        check(btns[0].effect == 2 && btns[1].type == "dark" && btns[1].power == 70 && ov.sideModel(Date())?.foe.types == ["water"], "move hints use the types it has now (a watered 꼬렛: 10만볼트 ▲) and 잠재파워's real type", "\(btns)")
+    } else { check(false, "move hints use the types it has now") }
+    let placed = SidePanel.place(NSSize(width: 238, height: 309), beside: NSRect(x: 100, y: 40, width: 288, height: 288), in: NSRect(x: 0, y: 40, width: 1000, height: 800))
+    let leftSide = SidePanel.place(NSSize(width: 238, height: 309), beside: NSRect(x: 700, y: 400, width: 288, height: 288), in: NSRect(x: 0, y: 40, width: 1000, height: 800))
+    check(placed.minY == 40 && placed.minX == 394 && leftSide.maxX == 694 && leftSide.maxY == 688, "the panel sits beside the device, top-aligned, never below the screen's bottom", "\(placed) \(leftSide)")
 
     // 7c Battle Tower + shops
     w = Walk(); w.companion = Mon(dex: 25, level: 20, female: false); w.box = [Mon(dex: 16, level: 5, female: false), Mon(dex: 143, level: 30, female: false), Mon(dex: 19, level: 12, female: false)]

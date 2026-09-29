@@ -34,8 +34,9 @@ struct Battle: Equatable {
     /// Replays one beat onto HP / status / who's out (the UI shows it happening mid-turn).
     mutating func apply(_ b: Beat) {
         switch b {
-        case .sendOut(.me, let i): me = i
-        case .sendOut(.it, let i): it = i
+        case .sendOut(.me, let i): mine[me].types = nil; mine[me].form = nil; me = i         // the one going back loses its 변신 / new types
+        case .sendOut(.it, let i): theirs[it].types = nil; theirs[it].form = nil; it = i
+        case .retype(let s, let t): mod(s) { $0.types = t }
         case .hit(let s, _, let d, _, _), .hurt(let s, let d, _): mod(s) { $0.hp = max(0, $0.hp - d) }
         case .heal(let s, let n, _): mod(s) { $0.hp = min($0.maxHP, $0.hp + n) }
         case .status(let s, let st, _): mod(s) { $0.status = st }
@@ -53,6 +54,8 @@ struct Battle: Equatable {
         let h = min(f(s).maxHP - f(s).hp, max(1, n)); guard h > 0 else { say(s, josa(nm(s), "의", "의") + " HP는 가득하다!"); return }
         out.append(.heal(s, amount: h, text: text)); apply(out.last!)
     }
+    /// After the engine changed a fighter's types: a beat, so the replay (and the panel's type badges) follow.
+    mutating func retyped(_ s: Side) { let x = f(s); out.append(.retype(s, x.types ?? monTypes[(x.form ?? x.mon).dex])) }
     mutating func setStatus(_ s: Side, _ st: Status?, _ text: String) { out.append(.status(s, st, text: text)); apply(out.last!) }
 
     // MARK: stats, speed, accuracy

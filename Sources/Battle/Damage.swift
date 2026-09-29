@@ -99,13 +99,19 @@ extension Battle {
     }
 
     // MARK: damaging moves
-    mutating func damageMove(_ s: Side, _ t: Side, _ m: MoveInfo) {
-        let id = m.id, n = nm(s), tn = nm(t)
+    /// The type (and power) a move really has when s uses it: 노말스킨, 발버둥 (typeless), 잠재파워, 웨더볼, 심판의뭉치.
+    func moveType(_ s: Side, _ m: MoveInfo) -> (type: String, power: Int) {
+        let id = m.id
         var type = f(s).has(96) && id != 165 ? "normal" : m.type, power = m.power
         if id == 165 { type = "" }
         if id == 237 { (type, power) = hiddenPower(f(s).mon) }
         if id == 311 { switch weatherOn { case .sun: type = "fire"; power = 100; case .rain: type = "water"; power = 100; case .sand: type = "rock"; power = 100; case .hail: type = "ice"; power = 100; default: break } }
         if id == 449 { type = monTypes[f(s).mon.dex][0] }
+        return (type, power)
+    }
+    mutating func damageMove(_ s: Side, _ t: Side, _ m: MoveInfo) {
+        let id = m.id, n = nm(s), tn = nm(t)
+        var (type, power) = moveType(s, m)
         // immunity abilities first
         if !type.isEmpty {
             if (type == "water" && (dAb(t, 11, by: s) || dAb(t, 87, by: s))) || (type == "electric" && dAb(t, 10, by: s)) {
@@ -219,7 +225,7 @@ extension Battle {
         if endured { say(t, josa(nm(t), "은", "는") + " 공격을 버텼다!") }
         mod(t) { $0.hitThisTurn = true; $0.lastHitDmg = d; $0.lastHitSpecial = m.special; if $0.bide > 0 { $0.bideDmg += d } }
         if f(t).rage, f(t).alive { boost(t, 1, 1, from: t) }
-        if f(t).alive, dAb(t, 16, by: s), !m.type.isEmpty, !f(t).typeList.elementsEqual([m.type]) { mod(t) { $0.types = [m.type] }; say(t, josa(nm(t), "은", "는") + " " + (typeKo[m.type] ?? m.type) + " 타입이 되었다!") }
+        if f(t).alive, dAb(t, 16, by: s), !m.type.isEmpty, !f(t).typeList.elementsEqual([m.type]) { mod(t) { $0.types = [m.type] }; retyped(t); say(t, josa(nm(t), "은", "는") + " " + (typeKo[m.type] ?? m.type) + " 타입이 되었다!") }
         if !f(t).alive, f(t).destinyBond { say(t, josa(nm(t), "은", "는") + " 상대를 길동무로 삼았다!"); hurt(s, f(s).hp, "") }
     }
     /// After the hits: drain / recoil, contact abilities, secondary effects, and each move's own aftermath.

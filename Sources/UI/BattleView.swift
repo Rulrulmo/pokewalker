@@ -21,7 +21,10 @@ extension WalkerView {
         case .moves(let x, let sel):
             b = x; msg = "어떤 기술을 쓸까?"
             let f = x.mine[x.me]
-            mode = .moves(f.moves.enumerated().map { k, id in let m = moveTable[id]!; return .init(name: m.name, type: m.type, power: m.power, effect: m.isStatus ? 1 : effectiveness(m.type, on: x.theirs[x.it].mon.dex), pp: f.pp[k], maxPP: m.pp) }, sel)
+            mode = .moves(f.moves.enumerated().map { k, id in                                       // hints from the types it has now, as the damage sees them
+                let m = moveTable[id]!, real = x.moveType(.me, m)
+                return .init(name: m.name, type: real.type.isEmpty ? m.type : real.type, power: real.power, effect: m.isStatus ? 1 : x.typeEff(real.type, .it, by: .me), pp: f.pp[k], maxPP: m.pp)
+            }, sel)
         case .party(let x, let sel): b = x; msg = x.mustReplace ? "다음은 누구를 내보낼까?" : "누구로 교체할까?"; mode = .party(x.mine.enumerated().map { card($1, out: $0 == x.me) }, sel)
         case .bagBattle(let x, let sel): b = x; msg = "무엇을 사용할까?"; mode = .items(battleItems(x).map { "\($0.name) ×\(state.count($0.name))" }, sel)
         case .beats:
@@ -30,7 +33,8 @@ extension WalkerView {
         default: return nil
         }
         let foe = b.theirs[b.it], mine = b.mine[b.me]
-        return SideModel(foe: card(foe, out: true), foeBalls: b.trainer == nil ? [] : b.theirs.map(\.alive),
+        var theirs = card(foe, out: true); theirs.types = foe.typeList; theirs.owned = (state.owned ?? []).contains(foe.mon.dex)
+        return SideModel(foe: theirs, foeBalls: b.trainer == nil ? [] : b.theirs.map(\.alive),
                          mine: card(mine, out: true), myBalls: b.mine.count > 1 ? b.mine.map(\.alive) : [],
                          trainer: b.trainer, message: msg, mode: mode)
     }
@@ -79,7 +83,7 @@ extension WalkerView {
         case .hurt(let s, _, _): return .show(s, dx: u < 0.4 ? shake : 0, dy: 0, flash: false, visible: u > 0.4 || blink)
         case .heal(let s, _, _): return .show(s, dx: 0, dy: Int(-4 * arc(0.2, 0.4)), flash: false, visible: u > 0.3 || blink)
         case .status(let s, _, _): return .show(s, dx: 0, dy: 0, flash: u < 0.4 && blink, visible: true)
-        case .note(let s, _): return .show(s, dx: 0, dy: 0, flash: false, visible: bt.f(s).alive)
+        case .note(let s, _), .retype(let s, _): return .show(s, dx: 0, dy: 0, flash: false, visible: bt.f(s).alive)
         case .fainted(let s): return u < 0.35 ? .show(s, dx: 0, dy: 0, flash: false, visible: blink) : .show(s, dx: 0, dy: Int(60 * min(1, (u - 0.35) / 0.6)), flash: false, visible: true)
         case .thrown(let shakes):                                                                  // arcs in, swallows it, drops, rocks
             if u < 0.55 { let k = u / 0.55; return .ball(x: Int(80 - 39 * k), y: Int(34 - 28 * k) - Int(16 * sin(.pi * k)), tilt: nil, burst: false, stars: false) }
@@ -120,10 +124,11 @@ extension WalkerView {
         guard hud else { return }
         // HUD: theirs top-left (name, Lv, bar; a trainer's remaining balls), ours top-right; each on its own plate so the sprite's head can't muddle it
         let ft = monNames[foe.dex] + " \(foe.level)" + (b.theirs[b.it].status.map { " " + $0.badge } ?? ""), mt = "\(monNames[mine.dex]) \(mine.level)" + (b.mine[b.me].status.map { " " + $0.badge } ?? "")
-        let lw = max(38, textWidth(ft, small: true) + 2) + (b.trainer != nil ? 13 : 0)
+        let owned = (state.owned ?? []).contains(foe.dex), lw = max(38, textWidth(ft, small: true) + 2 + (owned ? 7 : 0)) + (b.trainer != nil ? 13 : 0)
         let rw = max(38, textWidth(mt, small: true) + 2)
         for (x0, w) in [(0, lw), (96 - rw, rw)] { for y in 0..<14 { for x in x0..<min(96, x0 + w) { fb.set(x, y, 0) } } }
         fb.text(ft, 1, 0, 3, small: true)
+        if owned { fb.draw(caughtMark, textWidth(ft, small: true) + 3, 2, ballPal) }                 // caught before: the HGSS ball mark
         hpBar(&fb, 1, 9, 36, b.theirs[b.it].hp, b.theirs[b.it].maxHP)
         if b.trainer != nil { for (k, x) in b.theirs.enumerated() { fb.draw(gem, 39 + 4 * k, 9, x.alive ? ballPal : [ballPal[3], ballPal[3], ballPal[3], ballPal[3]]) } }
         fb.text(mt, 95, 0, 3, right: true, small: true)
@@ -146,6 +151,7 @@ extension WalkerView {
         case .heal(let s, _, let t): return t.isEmpty ? b.nm(s) + "의 체력이 회복되었다!" : t
         case .status(let s, let st, let t): return t.isEmpty ? josa(b.nm(s), "은", "는") + (st == nil ? " 건강해졌다!" : " " + st!.badge + " 상태가 되었다!") : t
         case .note(_, let t): return t
+        case .retype: return ""
         case .fainted(let s): return josa(s == .me ? me : it, "은", "는") + " 쓰러졌다!"
         case .thrown: return u < 1.25 ? "가랏, " + usedItem + "!" : dots
         case .broke: return "앗! 나와버렸다!"

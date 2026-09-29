@@ -40,7 +40,12 @@ extension Battle {
         }
         forecast()
     }
-    mutating func forecast() { for s in [Side.me, .it] where f(s).mon.dex == 351 && f(s).has(59) { let ty = ["sun": "fire", "rain": "water", "hail": "ice"]["\(weatherOn)"] ?? "normal"; mod(s) { $0.types = [ty] } } }
+    mutating func forecast() {
+        for s in [Side.me, .it] where f(s).mon.dex == 351 && f(s).has(59) {
+            let ty = ["sun": "fire", "rain": "water", "hail": "ice"]["\(weatherOn)"] ?? "normal"
+            if f(s).types != [ty] { mod(s) { $0.types = [ty] }; retyped(s) }
+        }
+    }
     /// s sends out #i (baton = keep stages, substitute, confusion, seeds...).
     mutating func switchIn(_ s: Side, _ i: Int, baton: Bool = false) {
         let keep = f(s)

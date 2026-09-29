@@ -3,7 +3,7 @@ import AppKit
 
 // MARK: - battle side panel: names, HP, messages and big buttons next to the device, so the 96x64 screen keeps the stage
 struct SideModel: Equatable {
-    struct Card: Equatable { var name: String; var level, hp, max: Int; var out: Bool; var status: String? = nil }
+    struct Card: Equatable { var name: String; var level, hp, max: Int; var out: Bool; var status: String? = nil; var types: [String] = []; var owned = false }   // types / owned: shown for theirs
     struct MoveBtn: Equatable { var name, type: String; var power: Int; var effect: Double; var pp = 0, maxPP = 0 }
     enum Mode: Equatable { case none, menu([String], Int), moves([MoveBtn], Int), party([Card], Int), items([String], Int) }
     var foe: Card; var foeBalls: [Bool]; var mine: Card; var myBalls: [Bool]; var trainer: String?; var message: String; var mode: Mode
@@ -98,16 +98,33 @@ final class SideView: NSView {
             let r = NSRect(x: right - width(st, small) - 6 * u, y: y, width: width(st, small) + 6 * u, height: 7.5 * u)
             round(r, 3.5 * u).fill(with: c); label(st, in: r, small, .white)
         }
-        // their box: name, Lv, (a trainer's team), bar
-        let fr = NSRect(x: 6 * u, y: 6 * u, width: W - 12 * u, height: 26 * u)
+        /// The HGSS "caught" mark: a small Poké Ball, `d` across, top-left at (x, y).
+        func caughtBall(_ x: CGFloat, _ y: CGFloat, _ d: CGFloat) {
+            let r = NSRect(x: x, y: y, width: d, height: d), o = NSBezierPath(ovalIn: r)
+            NSColor.white.setFill(); o.fill()
+            NSGraphicsContext.saveGraphicsState(); o.addClip(); NSColor(red: 0.90, green: 0.22, blue: 0.20, alpha: 1).setFill(); NSRect(x: x, y: y, width: d, height: d / 2).fill(); NSGraphicsContext.restoreGraphicsState()
+            ink.setFill(); NSRect(x: x, y: y + d / 2 - d * 0.07, width: d, height: d * 0.14).fill()
+            ink.setStroke(); o.lineWidth = d * 0.1; o.stroke()
+            let c = NSBezierPath(ovalIn: NSRect(x: x + d * 0.34, y: y + d * 0.34, width: d * 0.32, height: d * 0.32)); NSColor.white.setFill(); c.fill(); c.lineWidth = d * 0.09; c.stroke()
+        }
+        // their box: name (+ the caught mark), Lv, (a trainer's team), bar, their types
+        let fr = NSRect(x: 6 * u, y: 6 * u, width: W - 12 * u, height: 36 * u)
         box(fr)
         label(m.foe.name, in: NSRect(x: fr.minX, y: fr.minY + 2 * u, width: fr.width, height: 10 * u), body, ink, alignLeft: 5 * u)
+        if m.foe.owned { caughtBall(fr.minX + 5 * u + width(m.foe.name, body) + 2.5 * u, fr.minY + 3.5 * u, 7 * u) }
         label("Lv\(m.foe.level)", in: NSRect(x: fr.minX, y: fr.minY + 2 * u, width: fr.width, height: 10 * u), small, dim, alignRight: 5 * u)
-        statusPill(m.foe.status, fr.maxX - 5 * u - width("Lv\(m.foe.level)", small) - 3 * u, fr.minY + 3.5 * u)
-        if !m.foeBalls.isEmpty { teamDots(m.foeBalls, NSRect(x: fr.maxX - 32 * u - CGFloat(m.foeBalls.count) * 7 * u, y: fr.minY + 4.5 * u, width: 0, height: 0)) }
+        let pillRight = fr.maxX - 5 * u - width("Lv\(m.foe.level)", small) - 3 * u
+        statusPill(m.foe.status, pillRight, fr.minY + 3.5 * u)
+        let dotsRight = pillRight - (m.foe.status.map { width($0, small) + 6 * u + 3 * u } ?? 0)       // a trainer's team: left of the status pill, never under it
+        if !m.foeBalls.isEmpty { teamDots(m.foeBalls, NSRect(x: dotsRight - CGFloat(m.foeBalls.count) * 7 * u + 2 * u, y: fr.minY + 4.5 * u, width: 0, height: 0)) }
         bar(fr.minX + 5 * u, fr.minY + 15 * u, fr.width - 10 * u, m.foe.hp, m.foe.max)
+        var tx = fr.minX + 5 * u                                                                  // type badges, in their colours
+        for t in m.foe.types {
+            let tk = typeKo[t] ?? t, r = NSRect(x: tx, y: fr.minY + 25.5 * u, width: width(tk, small) + 8 * u, height: 7.5 * u)
+            round(r, 3.5 * u).fill(with: typeColor[t] ?? .gray); label(tk, in: r, small, .white, shadow: NSColor(white: 0, alpha: 0.35)); tx = r.maxX + 2 * u
+        }
         // ours: + HP numbers (and the team)
-        let mr = NSRect(x: 6 * u, y: 36 * u, width: W - 12 * u, height: 36 * u)
+        let mr = NSRect(x: 6 * u, y: 46 * u, width: W - 12 * u, height: 36 * u)
         box(mr)
         label(m.mine.name, in: NSRect(x: mr.minX, y: mr.minY + 2 * u, width: mr.width, height: 10 * u), body, ink, alignLeft: 5 * u)
         label("Lv\(m.mine.level)", in: NSRect(x: mr.minX, y: mr.minY + 2 * u, width: mr.width, height: 10 * u), small, dim, alignRight: 5 * u)
@@ -116,7 +133,7 @@ final class SideView: NSView {
         label("\(m.mine.hp) / \(m.mine.max)", in: NSRect(x: mr.minX, y: mr.minY + 24 * u, width: mr.width, height: 9 * u), body, ink, alignRight: 5 * u)
         if !m.myBalls.isEmpty { teamDots(m.myBalls, NSRect(x: mr.minX + 5 * u, y: mr.minY + 26 * u, width: 0, height: 0)) }
         // message: the DS dialogue box, double frame
-        let msg = NSRect(x: 6 * u, y: 77 * u, width: W - 12 * u, height: 30 * u)
+        let msg = NSRect(x: 6 * u, y: 87 * u, width: W - 12 * u, height: 30 * u)
         round(msg, 3 * u).fill(with: ink); round(msg.insetBy(dx: u, dy: u), 2.5 * u).fill(with: NSColor(red: 0.62, green: 0.70, blue: 0.86, alpha: 1)); round(msg.insetBy(dx: 2 * u, dy: 2 * u), 2 * u).fill(with: paper)
         var lines: [String] = [], cur = ""                                                        // wrap by hand so each line goes through the pixel-snapped text()
         for ch in m.message { if width(cur + String(ch), body) > msg.width - 10 * u { lines.append(cur); cur = "" }; cur.append(ch) }
@@ -133,7 +150,7 @@ final class SideView: NSView {
             (on ? NSColor.white : c.blended(withFraction: 0.6, of: .black)!).setStroke(); p.lineWidth = on ? 2 * u : u; p.stroke()
             hits.append((r, idx))
         }
-        let shadow = NSColor(white: 0, alpha: 0.45), top = 112 * u, bottom = H - 7 * u
+        let shadow = NSColor(white: 0, alpha: 0.45), top = 122 * u, bottom = H - 7 * u
         let colors: [String: NSColor] = ["공격": NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1), "볼": NSColor(red: 0.95, green: 0.72, blue: 0.14, alpha: 1),
                                          "도구": NSColor(red: 0.28, green: 0.70, blue: 0.36, alpha: 1), "교체": NSColor(red: 0.28, green: 0.70, blue: 0.36, alpha: 1),
                                          "도망": NSColor(red: 0.24, green: 0.50, blue: 0.90, alpha: 1), "기권": NSColor(red: 0.50, green: 0.52, blue: 0.58, alpha: 1)]
@@ -257,15 +274,21 @@ final class SidePanel: NSPanel {
         isOpaque = false; backgroundColor = .clear; hasShadow = true; level = .floating; hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]; contentView = view
     }
+    /// Beside the device (right if it fits, else left), top-aligned with it, kept above the Dock / screen bottom.
+    static func place(_ size: NSSize, beside f: NSRect, in room: NSRect) -> NSRect {
+        place(size, top: f.maxY, x: f.maxX + 6 + size.width <= room.maxX ? f.maxX + 6 : f.minX - 6 - size.width, in: room)
+    }
+    static func place(_ size: NSSize, top: CGFloat, x: CGFloat, in room: NSRect) -> NSRect {
+        NSRect(x: x, y: max(room.minY, min(top, room.maxY) - size.height), width: size.width, height: size.height)
+    }
     func show(_ m: SideModel?, dex: DexModel?, beside parent: NSWindow?) {
         guard m != nil || dex != nil, let parent else { if isVisible { parent?.removeChildWindow(self); orderOut(nil) }; view.model = nil; view.dex = nil; return }
-        let u = SideView.unit(parent.backingScaleFactor), size = NSSize(width: 140 * u, height: (dex != nil ? 186 : 172) * u)   // grows with the text on a 1x screen
+        let u = SideView.unit(parent.backingScaleFactor), size = NSSize(width: 140 * u, height: (dex != nil ? 186 : 182) * u)   // grows with the text on a 1x screen
+        let room = parent.screen?.visibleFrame ?? parent.frame
         if !isVisible {
-            let f = parent.frame, room = parent.screen?.visibleFrame ?? f
-            let x = f.maxX + 6 + size.width <= room.maxX ? f.maxX + 6 : f.minX - 6 - size.width
-            setFrame(NSRect(x: x, y: f.maxY - size.height, width: size.width, height: size.height), display: false)
+            setFrame(SidePanel.place(size, beside: parent.frame, in: room), display: false)
             parent.addChildWindow(self, ordered: .above); orderFrontRegardless()
-        } else if frame.size != size { setContentSize(size) }
+        } else if frame.size != size { setFrame(SidePanel.place(size, top: frame.maxY, x: frame.minX, in: room), display: true) }   // battle <-> dex: keep the top where it is
         if view.model != m || view.dex != dex { view.model = m; view.dex = dex; view.needsDisplay = true }
     }
 }

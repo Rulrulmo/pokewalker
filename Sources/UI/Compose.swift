@@ -49,11 +49,11 @@ extension WalkerView {
             for (k, r) in menuRanges(opts).enumerated() { fb.text(opts[k], r.lowerBound + 1, 52, 3, small: true); if k == sel { fb.invert(r.lowerBound, 52, r.count, 12) } }
         case .moves(let b, let sel):
             stage(&fb, b, now, .idle)
-            let x = b.mine[b.me], ms = x.moves, foe = b.theirs[b.it].mon.dex
+            let x = b.mine[b.me], ms = x.moves
             fb.fill(0, 37, 96, 27, 0); for y in 37..<64 { for x in 0..<96 { fb.col[y * 96 + x] = 0 } }; fb.fill(0, 37, 96, 1, 2)
             let x0 = x
             for (k, id) in ms.enumerated() {                                                          // 2 x 2: name (dim at 0 PP), then ▲ super effective / ▼ not very / × none
-                let m = moveTable[id]!, x = (k % 2) * 48, y = 39 + (k / 2) * 12, e = m.isStatus ? 1 : effectiveness(m.type, on: foe)
+                let m = moveTable[id]!, x = (k % 2) * 48, y = 39 + (k / 2) * 12, e = m.isStatus ? 1 : b.typeEff(b.moveType(.me, m).type, .it, by: .me)
                 let w = fb.text(m.name, x + 2, y, x0.pp[k] > 0 ? 3 : 1, small: true)
                 fb.text(e == 0 ? "×" : e > 1 ? "▲" : e < 1 ? "▼" : "", x + 46, y, 2, right: true, small: true)
                 if k == sel { fb.invert(x, y - 1, max(w + 3, 47), 11) }

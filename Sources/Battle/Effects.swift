@@ -100,19 +100,19 @@ extension Battle {
         case 144:
             guard f(t).form == nil else { fail(); return }
             let src = f(t)
-            mod(s) { $0.form = src.form ?? src.mon; $0.types = src.typeList; $0.stage = src.stage; $0.moves = src.moves; $0.pp = src.moves.map { _ in 5 }; $0.abilityOver = src.ability }
+            mod(s) { $0.form = src.form ?? src.mon; $0.types = src.typeList; $0.stage = src.stage; $0.moves = src.moves; $0.pp = src.moves.map { _ in 5 }; $0.abilityOver = src.ability }; retyped(s)
             say(s, josa(n, "은", "는") + " " + josa(monNames[src.mon.dex], "으로", "로") + " 변신했다!")
         case 102:
             guard f(t).lastMove != 0, !f(s).moves.contains(f(t).lastMove), let k = f(s).moves.firstIndex(of: 102) else { fail(); return }
             let lm = f(t).lastMove; mod(s) { $0.moves[k] = lm; $0.pp[k] = 5 }; say(s, josa(n, "은", "는") + " " + josa(moveTable[lm]!.name, "을", "를") + " 흉내 냈다!")
         case 160:
             let ts = f(s).moves.compactMap { moveTable[$0]?.type }.filter { !f(s).typeList.contains($0) && $0 != "" }
-            guard let ty = ts.first else { fail(); return }; mod(s) { $0.types = [ty] }; say(s, josa(n, "은", "는") + " " + (typeKo[ty] ?? ty) + " 타입이 되었다!")
+            guard let ty = ts.first else { fail(); return }; mod(s) { $0.types = [ty] }; retyped(s); say(s, josa(n, "은", "는") + " " + (typeKo[ty] ?? ty) + " 타입이 되었다!")
         case 176:
             guard let lt = moveTable[f(t).lastMove]?.type else { fail(); return }
             let resist = typeKo.keys.filter { (typeChart[lt]?[$0] ?? 1) < 1 }.sorted()
-            guard !resist.isEmpty else { fail(); return }; let ty = resist[roll(resist.count)]; mod(s) { $0.types = [ty] }; say(s, josa(n, "은", "는") + " " + (typeKo[ty] ?? ty) + " 타입이 되었다!")
-        case 293: mod(s) { $0.types = ["normal"] }; say(s, josa(n, "은", "는") + " 노말 타입이 되었다!")
+            guard !resist.isEmpty else { fail(); return }; let ty = resist[roll(resist.count)]; mod(s) { $0.types = [ty] }; retyped(s); say(s, josa(n, "은", "는") + " " + (typeKo[ty] ?? ty) + " 타입이 되었다!")
+        case 293: mod(s) { $0.types = ["normal"] }; retyped(s); say(s, josa(n, "은", "는") + " 노말 타입이 되었다!")
         case 169, 212, 335: guard !f(t).trapped else { fail(); return }; mod(t) { $0.trapped = true }; say(t, josa(tn, "은", "는") + " 이제 도망칠 수 없다!")
         case 170, 199: mod(s) { $0.lockOn = 2 }; say(s, josa(n, "은", "는") + " " + josa(tn, "을", "를") + " 노리고 있다!")
         case 174:

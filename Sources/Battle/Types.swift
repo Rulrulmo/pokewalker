@@ -85,6 +85,7 @@ enum Beat: Equatable {
     case heal(Side, amount: Int, text: String)
     case status(Side, Status?, text: String)         // set or cured
     case note(Side, text: String)                    // anything else to read; Side = whose sprite shows
+    case retype(Side, [String])                      // its types changed (변색, 텍스처, 변신, 포캐스트): no time on screen, it keeps the replayed type badges right
     case fainted(Side)
     case thrown(shakes: Int), broke, caught          // the ball rocks `shakes` times, then breaks open or clicks
     case gained(exp: Int, level: Int?, foe: Int, to: Int)   // after a KO, for each of ours that faced it (mine[to]); level if it went up; foe = the EV yield's species
@@ -99,6 +100,7 @@ enum Beat: Equatable {
         case .caught: 1.8
         case .fainted, .won, .lost: 1.4
         case .gained(_, let l, _, _): l == nil ? 1.2 : 1.8
+        case .retype: 0
         default: 1.3
         }
     }
