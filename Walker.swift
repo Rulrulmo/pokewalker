@@ -43,6 +43,7 @@ let legendOdds = (base: 0.02, perChain: 0.01)          // a legend course's rada
 /// What a bag item does here. The real walker only ferried items to the game; this app has no game, so they get jobs of their own.
 enum ItemKind: Equatable {
     case heal(Int)                 // battle: restores this many HP (999 = all)
+    case battle(ItemUse)           // battle: status cures, 회복약, PP, X items
     case revive(Int)               // used by itself when the last one faints: back up with this % of max HP
     case ball(Double)              // thrown instead of the basic ball: catch chance x this
     case candy                     // 이상한사탕: +1 level
@@ -51,7 +52,15 @@ enum ItemKind: Equatable {
     case sell(Int)                 // watts at the exchange
 
     static func of(_ i: String) -> ItemKind {
-        let heal = ["상처약": 20, "좋은상처약": 50, "고급상처약": 200, "풀회복약": 999, "회복약": 999, "오랭열매": 10, "자뭉열매": 30, "맛있는물": 50, "미네랄사이다": 60,
+        let all: [Status] = [.poison, .burn, .paralysis, .sleep, .freeze]
+        let use: [String: ItemUse] = ["해독제": .cure([.poison], confusion: false), "화상치료제": .cure([.burn], confusion: false), "마비치료제": .cure([.paralysis], confusion: false),
+            "잠깨는약": .cure([.sleep], confusion: false), "얼음상태치료제": .cure([.freeze], confusion: false), "만병통치제": .cure(all, confusion: true), "숲의양갱": .cure(all, confusion: true),
+            "용암전병": .cure(all, confusion: true), "버치열매": .cure([.paralysis], confusion: false), "유루열매": .cure([.sleep], confusion: false), "복슝열매": .cure([.poison], confusion: false),
+            "복분열매": .cure([.burn], confusion: false), "배리열매": .cure([.freeze], confusion: false), "시몬열매": .cure([], confusion: true), "리샘열매": .cure(all, confusion: true),
+            "회복약": .restore, "PP에이드": .pp(10, all: false), "PP회복": .pp(99, all: false), "PP에이더": .pp(10, all: true), "PP맥스": .pp(99, all: true),
+            "플러스파워": .x(1, 1), "디펜드업": .x(2, 1), "스페셜업": .x(3, 1), "스페셜가드": .x(4, 1), "스피드업": .x(5, 1), "잘-맞히기": .x(6, 1), "크리티컬커터": .direHit, "이펙트가드": .guardSpec]
+        if let u = use[i] { return .battle(u) }
+        let heal = ["상처약": 20, "좋은상처약": 50, "고급상처약": 200, "풀회복약": 999, "오랭열매": 10, "자뭉열매": 30, "맛있는물": 50, "미네랄사이다": 60,
                     "후르츠밀크": 80, "튼튼밀크": 100, "힘의가루": 50, "힘의뿌리": 200]   // Gen IV amounts
         if let n = heal[i] { return .heal(n) }
         if i == "기력의조각" { return .revive(50) }
@@ -64,7 +73,7 @@ enum ItemKind: Equatable {
         let price = ["금구슬": 100, "큰진주": 80, "별의조각": 60, "하트비늘": 30, "진주": 30, "큰버섯": 30, "별의모래": 20, "작은버섯": 10]
         if let p = price[i] { return .sell(p) }
         if i.hasPrefix("기술머신") { return .sell(50) }
-        if i.hasPrefix("PP") || ["포인트업", "사포닌", "리보플라빈", "이펙트가드", "스페셜업", "스페셜가드", "디펜드업", "스피드업", "플러스파워", "크리티컬커터", "잘-맞히기"].contains(i) { return .sell(20) }
+        if ["포인트업", "사포닌", "리보플라빈"].contains(i) { return .sell(20) }
         return .sell(10)
     }
 }
@@ -74,12 +83,16 @@ struct Mon: Codable, Equatable {
     var shiny: Bool? = nil               // Optionals: saves from before these fields still decode
     var exp: Int? = nil                  // nil = the minimum for `level`
     var walked: Int? = nil               // steps as the companion (friendship)
+    var known: [Int]? = nil              // its 4 moves once chosen (nil = the last 4 it learned by level)
+    var ability: Int? = nil              // ability slot (0 / 1); nature 0-24; IVs / EVs HP Atk Def SpA SpD Spe — nil = never rolled (IV 15, no EV)
+    var nature: Int? = nil, ivs: [Int]? = nil, evs: [Int]? = nil
 
     var points: Int { exp ?? expTable[growthRate[dex]][level] }
     static func level(dex: Int, exp: Int) -> Int { let t = expTable[growthRate[dex]]; return (1...100).last { t[$0] <= exp } ?? 1 }
     /// 1 step = 1 EXP, like HGSS. Returns true on a level-up.
     mutating func gain(_ n: Int) -> Bool {
         let e = points + n, before = level
+        if known == nil { known = moves }
         exp = e; walked = (walked ?? 0) + n; level = max(level, Mon.level(dex: dex, exp: e))
         return level > before
     }
@@ -100,6 +113,7 @@ struct Walk: Codable, Equatable {
     var days = 1                           // days walked with this device
     var caught: [Mon] = [], items: [String] = []        // on the walker, max 3 each
     var box: [Mon] = [], bag: [String] = []             // sent back by Connect; overflow goes straight here
+    var learn: [Int]? = nil                             // moves waiting to be learned: (ref, move) pairs, ref as in party()
     var counter: UInt32 = 0, boot: Double = 0           // system input-event counter at the last poll, and the boot it belongs to
     var seen: [Int]? = nil, owned: [Int]? = nil         // Pokédex, sorted; Optional so older saves decode (see `dex()`)
     var shinyOwned: [Int]? = nil                        // species ever owned as 이로치 (the dex shows those colours too)
@@ -139,7 +153,9 @@ struct Walk: Codable, Equatable {
         let w = remainder / 20; remainder %= 20
         watts = min(9999, watts + w); earned += w
         egg?.left -= n
-        return companion.gain(n)
+        let lv = companion.level
+        guard companion.gain(n) else { return false }
+        queueMoves(-1, from: lv); return true
     }
 
     // MARK: companion events: every 150-400 steps it emotes, and 1 in 4 times brings back an item from the course
@@ -158,7 +174,7 @@ struct Walk: Codable, Equatable {
     }
     var hatchDue: Bool { (egg?.left ?? 1) <= 0 }
     mutating func hatch<R: RandomNumberGenerator>(_ r: inout R) -> Mon {
-        let m = Mon(dex: egg!.dex, level: 1, female: Bool.random(using: &r), shiny: Int.random(in: 0..<shinyOdds, using: &r) == 0 ? true : nil)
+        let m = Mon.wild(egg!.dex, level: 1, shiny: Int.random(in: 0..<shinyOdds, using: &r) == 0 ? true : nil, &r)
         egg = nil; _ = keep(m); return m
     }
     /// On a legend course the radar sometimes turns up one you don't have yet.
@@ -206,8 +222,9 @@ struct Walk: Codable, Equatable {
     }
     mutating func feedCandy() -> Bool {
         guard companion.level < 100, take("이상한사탕") else { return false }
-        let e = expTable[growthRate[companion.dex]][companion.level + 1]
-        companion.exp = e; companion.level = Mon.level(dex: companion.dex, exp: e); return true          // levels, not steps: friendship untouched
+        let e = expTable[growthRate[companion.dex]][companion.level + 1], lv = companion.level
+        if companion.known == nil { companion.known = companion.moves }
+        companion.exp = e; companion.level = Mon.level(dex: companion.dex, exp: e); queueMoves(-1, from: lv); return true          // levels, not steps: friendship untouched
     }
     mutating func feedBerry(_ i: String) -> Bool {
         guard ItemKind.of(i) == .berry, take(i) else { return false }
@@ -221,8 +238,10 @@ struct Walk: Codable, Equatable {
     }
 
     // MARK: shops
-    static let shop: [(item: String, watts: Int)] = [("상처약", 20), ("좋은상처약", 60), ("고급상처약", 150), ("풀회복약", 300), ("기력의조각", 200), ("슈퍼볼", 40), ("하이퍼볼", 100)]
-    static let bpShop: [(item: String, bp: Int)] = [("하이퍼볼", 2), ("고급상처약", 3), ("풀회복약", 5), ("부활초", 6), ("이상한사탕", 8)]
+    static let shop: [(item: String, watts: Int)] = [("상처약", 20), ("좋은상처약", 60), ("고급상처약", 150), ("풀회복약", 300), ("회복약", 400), ("기력의조각", 200), ("슈퍼볼", 40), ("하이퍼볼", 100),
+        ("해독제", 10), ("마비치료제", 20), ("잠깨는약", 25), ("화상치료제", 25), ("얼음상태치료제", 25), ("만병통치제", 60), ("PP에이드", 120),
+        ("플러스파워", 50), ("디펜드업", 55), ("스페셜업", 35), ("스페셜가드", 35), ("스피드업", 35), ("잘-맞히기", 95), ("크리티컬커터", 65), ("이펙트가드", 70)]
+    static let bpShop: [(item: String, bp: Int)] = [("하이퍼볼", 2), ("고급상처약", 3), ("풀회복약", 5), ("회복약", 6), ("부활초", 6), ("PP에이더", 4), ("PP맥스", 8), ("이상한사탕", 8)]
     /// Two legends for the patient: 칠색조 for a full tank of watts (9,999 is the cap), 뮤츠 for 300 BP (~30 tower sets). Once each.
     static let legendShop: [(dex: Int, level: Int, watts: Int, bp: Int)] = [(250, 50, 9999, 0), (150, 70, 0, 300)]
     func legendBought(_ dex: Int) -> Bool { (bought ?? []).contains("legend:\(dex)") }
@@ -230,7 +249,7 @@ struct Walk: Codable, Equatable {
         let l = Walk.legendShop[i]
         guard !legendBought(l.dex), watts >= l.watts, (bp ?? 0) >= l.bp else { return nil }
         watts -= l.watts; bp = (bp ?? 0) - l.bp; bought = (bought ?? []) + ["legend:\(l.dex)"]
-        let m = Mon(dex: l.dex, level: l.level, female: false); _ = keep(m); return m
+        var g = SystemRandomNumberGenerator(); let m = Mon.wild(l.dex, level: l.level, &g); _ = keep(m); return m
     }
     mutating func buy(_ item: String, watts price: Int) -> Bool { guard spend(price) else { return false }; bag.append(item); return true }
     mutating func buy(_ item: String, bp price: Int) -> Bool { guard (bp ?? 0) >= price else { return false }; bp = (bp ?? 0) - price; bag.append(item); return true }
@@ -242,13 +261,16 @@ struct Walk: Codable, Equatable {
         let others = caught.enumerated().map { (-2 - $0.offset, $0.element) } + box.enumerated().map { ($0.offset, $0.element) }
         return [(-1, companion)] + others.sorted { $0.1.points > $1.1.points }.prefix(2).map { (ref: $0.0, mon: $0.1) }
     }
-    /// Writes a fight's EXP back to whoever took part (skips a ref that no longer points at the same species).
+    /// Writes a fight's EXP back to whoever took part (skips a ref that no longer points at the same species), and queues what they learn.
     mutating func writeBack(_ refs: [Int], _ mons: [Mon]) {
-        for (r, m) in zip(refs, mons) {
-            if r == -1, companion.dex == m.dex { companion = m }
-            else if r <= -2, caught.indices.contains(-2 - r), caught[-2 - r].dex == m.dex { caught[-2 - r] = m }
-            else if r >= 0, box.indices.contains(r), box[r].dex == m.dex { box[r] = m }
-        }
+        for (r, m) in zip(refs, mons) { guard let old = mon(r), old.dex == m.dex else { continue }; setMon(r, m); queueMoves(r, from: old.level) }
+    }
+    func mon(_ ref: Int) -> Mon? { ref == -1 ? companion : ref <= -2 ? caught[safe: -2 - ref] : box[safe: ref] }
+    mutating func setMon(_ ref: Int, _ m: Mon) { if ref == -1 { companion = m } else if ref <= -2 { caught[-2 - ref] = m } else { box[ref] = m } }
+    /// Moves the one at `ref` reached since level `lv`, waiting to be learned (see `learn`).
+    mutating func queueMoves(_ ref: Int, from lv: Int) {
+        guard let m = mon(ref), m.level > lv else { return }
+        learn = (learn ?? []) + m.newMoves(from: lv, to: m.level).flatMap { [ref, $0] }
     }
     /// The next trainer: 3 non-legends at the party's average level + streak / 3 (+0-2), fully evolved from Lv.30.
     func towerFoes<R: RandomNumberGenerator>(_ r: inout R) -> (trainer: String, foes: [Mon]) {
@@ -260,7 +282,7 @@ struct Walk: Codable, Equatable {
             let lv = min(100, max(5, avg + (towerStreak ?? 0) / 3 + Int.random(in: 0...2, using: &r)))
             let pool = (1...493).filter { d in !legends.contains(d) && d != 292 && (stageOf[d] == 0 || stageOf[d] == 1 && lv >= 20 || stageOf[d] >= 2 && lv >= 35)
                                               && (lv < 30 || !evolutions.contains { $0.from == d }) }
-            return Mon(dex: pool.randomElement(using: &r)!, level: lv, female: Bool.random(using: &r))
+            return Mon.wild(pool.randomElement(using: &r)!, level: lv, &r)
         }
         return (names.randomElement(using: &r)! + " " + given.randomElement(using: &r)!, foes)
     }
@@ -343,8 +365,10 @@ struct Walk: Codable, Equatable {
     func evolutionItems() -> [String] { Array(Set(evolutions.filter { $0.from == companion.dex }.compactMap(\.item))).sorted() }
     mutating func evolve(_ e: Evo) {
         if let i = e.item { if let k = bag.firstIndex(of: i) { bag.remove(at: k) } else if let k = items.firstIndex(of: i) { items.remove(at: k) } }
+        if companion.known == nil { companion.known = companion.moves }
         companion.dex = e.to; own(e.to, shiny: companion.shiny)
-        if e.to == 291 { _ = keep(Mon(dex: 292, level: companion.level, female: false, shiny: companion.shiny)) }   // 토중몬 -> 아이스크 leaves a 껍질몬 behind
+        queueMoves(-1, from: companion.level - 1)                                                  // the new form's move at this level
+        if e.to == 291 { var g = SystemRandomNumberGenerator(), m = Mon.wild(292, level: companion.level, shiny: companion.shiny, &g); m.known = companion.known; _ = keep(m) }   // 토중몬 -> 아이스크 leaves a 껍질몬 behind
     }
 
     /// Steps = keys + clicks since the last poll. Same boot and a counter that only grew => the gap (also while the app was quit) counts;
@@ -405,151 +429,14 @@ extension DateFormatter {
     static let day: DateFormatter = { let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.calendar = Calendar.current; f.timeZone = .current; return f }()
 }
 
-// MARK: - battle (Gen IV rules, no status conditions): stats from base stats and level, 4 learned moves, type chart, speed order, the Gen IV catch formula
-struct MoveInfo { let name, type: String; let power, accuracy: Int; let special: Bool; let priority: Int }   // accuracy 0 = never misses
-
-extension Mon {
-    /// HP Atk Def SpA SpD Spe. Gen IV formula with IVs 15 and no EVs.
-    var stats: [Int] {
-        let b = baseStats[dex], l = level
-        return (0..<6).map { $0 == 0 ? (2 * b[0] + 15) * l / 100 + l + 10 : (2 * b[$0] + 15) * l / 100 + 5 }
-    }
-    /// The last 4 damaging moves learned by this level (발버둥 if none yet).
-    var moves: [Int] {
-        let ls = learnsets[dex]
-        var out: [Int] = []
-        for k in stride(from: 0, to: ls.count, by: 2) where ls[k] <= level { out.removeAll { $0 == ls[k + 1] }; out.append(ls[k + 1]) }
-        return out.isEmpty ? [165] : Array(out.suffix(4))
-    }
-    /// Battle EXP only (walking EXP also counts friendship steps). Returns true on a level-up.
-    mutating func gainBattleExp(_ n: Int) -> Bool {
-        let before = level, e = points + n
-        exp = e; level = max(level, Mon.level(dex: dex, exp: e)); return level > before
-    }
+/// 을/를, 이/가, 은/는 by the last syllable's final consonant.
+func josa(_ w: String, _ with: String, _ without: String) -> String {
+    guard let u = w.unicodeScalars.last?.value, (0xAC00...0xD7A3).contains(u) else { return w + without }
+    let jong = (u - 0xAC00) % 28
+    return w + (jong != 0 && !(with == "으로" && jong == 8) ? with : without)                    // ㄹ takes 로, not 으로
 }
-func effectiveness(_ type: String, on d: Int) -> Double { monTypes[d].reduce(1) { $0 * (typeChart[type]?[$1] ?? 1) } }
 
-enum Side: Equatable { case me, it }
-struct Fighter: Equatable {
-    var mon: Mon; var hp: Int
-    init(_ m: Mon) { mon = m; hp = m.stats[0] }
-    var maxHP: Int { mon.stats[0] }
-    var alive: Bool { hp > 0 }
-}
-enum Move: Equatable { case fight(Int), capture, item, swap(Int), run }
-enum Beat: Equatable {
-    case appear                                      // a wild one slides in
-    case sendOut(Side, Int)                          // that side's fighter #i comes in
-    case used(Side, move: Int, damage: Int, effect: Double, crit: Bool)
-    case missed(Side, move: Int)
-    case fainted(Side)
-    case thrown(shakes: Int), broke, caught          // the ball rocks `shakes` times, then breaks open or clicks
-    case healed(Int), revived(Int)                   // HP back
-    case gained(exp: Int, level: Int?)               // after a KO; level if it went up
-    case fled, ran, won, lost
-    var ends: Bool { [.caught, .fled, .ran, .won, .lost].contains(self) }
-    var length: Double {                             // seconds on screen
-        switch self {
-        case .appear, .sendOut: 1.4
-        case .used(_, _, _, let e, let c): e != 1 || c ? 1.9 : 1.3
-        case .thrown(let s): 1.25 + 0.6 * Double(s)
-        case .caught: 1.8
-        case .broke: 1.2
-        case .fainted, .won, .lost: 1.4
-        case .gained(_, let l): l == nil ? 1.2 : 1.8
-        default: 1.2
-        }
-    }
-}
-struct Battle: Equatable {
-    var mine: [Fighter], theirs: [Fighter]
-    var me = 0, it = 0
-    var trainer: String? = nil
-    var chain = 0                                    // radar chain this fight belongs to
-    var wild: Mon { theirs[it].mon }
-
-    init(wild: Mon, companion: Mon, chain: Int = 0) { mine = [Fighter(companion)]; theirs = [Fighter(wild)]; self.chain = chain }
-    init(party: [Mon], trainer: String, foes: [Mon]) { mine = party.map(Fighter.init); theirs = foes.map(Fighter.init); self.trainer = trainer }
-
-    /// Replays one beat onto the HP / who's out (the UI shows it happening mid-turn).
-    mutating func apply(_ b: Beat) {
-        switch b {
-        case .sendOut(.me, let i): me = i
-        case .sendOut(.it, let i): it = i
-        case .used(let s, _, let d, _, _): if s == .me { theirs[it].hp = max(0, theirs[it].hp - d) } else { mine[me].hp = max(0, mine[me].hp - d) }
-        case .healed(let n): mine[me].hp = min(mine[me].maxHP, mine[me].hp + n)
-        case .revived(let n): mine[me].hp = n
-        case .gained(let e, _): let old = mine[me].maxHP; if mine[me].mon.gainBattleExp(e) { mine[me].hp += mine[me].maxHP - old }   // a level-up raises current HP too
-        default: break
-        }
-    }
-
-    static func damage<R: RandomNumberGenerator>(_ a: Mon, _ d: Mon, _ id: Int, _ r: inout R) -> (damage: Int, effect: Double, crit: Bool) {
-        let m = moveTable[id]!, sa = a.stats, sd = d.stats
-        let atk = m.special ? sa[3] : sa[1], def = max(1, m.special ? sd[4] : sd[2])
-        let base = (2 * a.level / 5 + 2) * m.power * atk / def / 50 + 2
-        let eff = effectiveness(m.type, on: d.dex), crit = Int.random(in: 0..<16, using: &r) == 0
-        let x = Double(base) * (monTypes[a.dex].contains(m.type) ? 1.5 : 1) * eff * (crit ? 2 : 1) * Double.random(in: 0.85...1, using: &r)
-        return (eff == 0 ? 0 : max(1, Int(x)), eff, crit)
-    }
-    /// The other side's pick. Wild ones pick at random, as in the games; a trainer mostly takes the move that hits hardest on paper, sometimes any.
-    /// (Always-hardest made wild 두두 & co. spam 전광석화 and move first every single turn.)
-    func foeMove<R: RandomNumberGenerator>(_ r: inout R) -> Int {
-        let a = theirs[it].mon, d = mine[me].mon, ms = a.moves
-        if trainer == nil || Int.random(in: 0..<5, using: &r) == 0 { return ms.randomElement(using: &r)! }
-        return ms.max { x, y in
-            func v(_ i: Int) -> Double { let m = moveTable[i]!; return Double(m.power) * (monTypes[a.dex].contains(m.type) ? 1.5 : 1) * effectiveness(m.type, on: d.dex) * Double(m.accuracy == 0 ? 100 : m.accuracy) }
-            return v(x) < v(y)
-        }!
-    }
-
-    /// One turn. The last beat `ends` the battle when it's over. heal = HP of the potion the UI picked; ball = its catch multiplier.
-    mutating func turn<R: RandomNumberGenerator>(_ m: Move, _ r: inout R, heal: Int = 0, ball: Double = 1) -> [Beat] {
-        var out: [Beat] = []
-        /// One attack; returns true when it ended the battle.
-        func attack(_ s: Side, _ id: Int) -> Bool {
-            let a = s == .me ? mine[me].mon : theirs[it].mon, d = s == .me ? theirs[it].mon : mine[me].mon, acc = moveTable[id]!.accuracy
-            if acc > 0, Int.random(in: 0..<100, using: &r) >= acc { out.append(.missed(s, move: id)); return false }
-            let h = Battle.damage(a, d, id, &r)
-            out.append(.used(s, move: id, damage: h.damage, effect: h.effect, crit: h.crit)); apply(out.last!)
-            if s == .me, !theirs[it].alive {
-                out.append(.fainted(.it))
-                let e = baseExp[theirs[it].mon.dex] * theirs[it].mon.level / 7 * (trainer == nil ? 2 : 3) / 2
-                var probe = mine[me].mon; let up = probe.gainBattleExp(e)
-                out.append(.gained(exp: e, level: up ? probe.level : nil)); apply(out.last!)
-                if let n = theirs.indices.first(where: { theirs[$0].alive }) { out.append(.sendOut(.it, n)); apply(out.last!); return false }
-                out.append(.won); return true
-            }
-            if s == .it, !mine[me].alive {
-                out.append(.fainted(.me))
-                if let n = mine.indices.first(where: { mine[$0].alive }) { out.append(.sendOut(.me, n)); apply(out.last!); return false }
-                out.append(.lost); return true
-            }
-            return false
-        }
-        switch m {
-        case .run: return [.ran]
-        case .item: out.append(.healed(heal)); apply(out.last!)
-        case .swap(let i): out.append(.sendOut(.me, i)); apply(out.last!)
-        case .capture:
-            let f = theirs[it], a = Double((3 * f.maxHP - 2 * f.hp) * catchRate[f.mon.dex]) * ball / Double(3 * f.maxHP)
-            let b = a >= 255 ? 65536 : 65536 / pow(255 / max(a, 0.1), 0.1875)
-            var shakes = 0
-            while shakes < 4, Double(Int.random(in: 0..<65536, using: &r)) < b { shakes += 1 }
-            out.append(.thrown(shakes: min(shakes, 3)))
-            if shakes == 4 { out.append(.caught); return out }
-            out.append(.broke)
-        case .fight(let id):
-            let foe = foeMove(&r), mp = moveTable[id]!.priority, fp = moveTable[foe]!.priority
-            let meFirst = mp != fp ? mp > fp : mine[me].mon.stats[5] != theirs[it].mon.stats[5] ? mine[me].mon.stats[5] > theirs[it].mon.stats[5] : Bool.random(using: &r)
-            if meFirst { if attack(.me, id) || out.contains(.fainted(.it)) { return out }; _ = attack(.it, foe) }       // a fresh replacement doesn't get a free hit
-            else { if attack(.it, foe) || out.contains(.fainted(.me)) { return out }; _ = attack(.me, id) }
-            return out
-        }
-        _ = attack(.it, foeMove(&r))                                                         // after a ball / potion / switch, it attacks
-        return out
-    }
-}
+extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil } }
 
 // MARK: - save
 enum Store {
