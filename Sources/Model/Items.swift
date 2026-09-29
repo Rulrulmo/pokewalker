@@ -15,6 +15,18 @@ enum ItemKind: Equatable {
     case evolution                 // stones and held items
     case sell(Int)                 // watts at the exchange
 
+    /// One line on what it does (the bag list, the shops).
+    var summary: String {
+        switch self {
+        case .heal(let n): "배틀 HP +\(n)"; case .revive(let n): "쓰러지면 HP \(n)%로 부활"; case .ball(let x): "포획 ×\(x == 2 ? "2" : "1.5")"
+        case .candy: "레벨 +1"; case .evReset: "노력치 전부 0"; case .bottleCap(let gold): gold ? "특훈: 모든 개체값 → 31 (Lv.50부터)" : "특훈: 개체값 하나 → 31 (Lv.50부터)"
+        case .vitamin(let k, let d): "\(["HP", "공격", "방어", "특공", "특방", "스피드"][k]) 노력치 \(d > 0 ? "+" : "−")10"; case .berry: "친밀도 +500걸음"; case .evolution: "진화 도구"; case .sell(let p): "팔면 \(p)W"
+        case .battle(let u):
+            switch u { case .cure(let s, let conf): s.count >= 5 ? "배틀 상태이상 전부 회복" : s.isEmpty && conf ? "배틀 혼란 회복" : "배틀 " + s.map(\.badge).joined(separator: "·") + " 회복"
+            case .restore: "배틀 HP·상태 전부 회복"; case .pp(let n, let all): (all ? "모든 기술" : "기술 하나") + " PP " + (n >= 99 ? "전부" : "+\(n)")
+            case .x(let k, _): "배틀 \(statNames[k]) +1"; case .guardSpec: "배틀 능력 저하 막기 (5턴)"; case .direHit: "배틀 급소율 +"; case .heal: "" }
+        }
+    }
     static func of(_ i: String) -> ItemKind {
         let all: [Status] = [.poison, .burn, .paralysis, .sleep, .freeze]
         let use: [String: ItemUse] = ["해독제": .cure([.poison], confusion: false), "화상치료제": .cure([.burn], confusion: false), "마비치료제": .cure([.paralysis], confusion: false),

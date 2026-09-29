@@ -12,10 +12,6 @@ extension WalkerView {
         let ivRow = names.indices.map { k in names[k] + " " + (m.hyper?.contains(k) == true ? "\(iv[k])→31" : "\(iv[k])") }.joined(separator: " · ")   // 특훈: its own IV → 31
         return ["능력치  " + row(m.stats), "개체값\(vMark(m))  " + ivRow + (m.ivs == nil ? " (예전 포켓몬)" : ""), "노력치  " + row(ev) + " · 합 \(ev.reduce(0, +))/510"]
     }
-    /// What a shop row can't say by its name alone.
-    func shopNote(_ item: String) -> String {
-        switch ItemKind.of(item) { case .evReset: " (노력치 초기화)"; case .bottleCap(let gold): gold ? " (특훈: 개체값 전부 → 31)" : " (특훈: 개체값 하나 → 31)"; default: "" }
-    }
     /// " · 3V" (31s, 특훈 included), or nothing at 0V.
     func vMark(_ m: Mon) -> String { m.perfectIVs > 0 ? " · \(m.perfectIVs)V" : "" }
     /// The 3V+ colour: amber, darker on light menus (systemOrange there is ~2:1 on white), orange on dark ones.
@@ -111,28 +107,6 @@ extension WalkerView {
             for (i, e) in stones.enumerated() { let it = sm.addItem(withTitle: "\(e.item!) → \(monNames[e.to])", action: #selector(useStone(_:)), keyEquivalent: ""); it.target = self; it.tag = i }
             sh.submenu = sm
         }
-        let sh = m.addItem(withTitle: "상점 · \(state.watts)W", action: nil, keyEquivalent: ""), shm = NSMenu()
-        for (i, w) in Walk.shop.enumerated() {
-            let it = shm.addItem(withTitle: "\(w.item)\(shopNote(w.item)) — \(w.watts)W", action: state.watts >= w.watts ? #selector(buyShop(_:)) : nil, keyEquivalent: ""); it.target = self; it.tag = i
-        }
-        for (i, l) in Walk.legendShop.enumerated() where l.watts > 0 { shm.addItem(.separator()); legendItem(shm, i, l.dex, "\(l.watts.formatted())W", state.watts >= l.watts) }
-        sh.submenu = shm
-        let bh2 = m.addItem(withTitle: "BP 교환소 · \(state.bp ?? 0)BP", action: nil, keyEquivalent: ""), bpm = NSMenu()
-        for (i, w) in Walk.bpShop.enumerated() {
-            let it = bpm.addItem(withTitle: "\(w.item)\(shopNote(w.item)) — \(w.bp)BP", action: (state.bp ?? 0) >= w.bp ? #selector(buyBP(_:)) : nil, keyEquivalent: ""); it.target = self; it.tag = i
-        }
-        for (i, s) in shells.enumerated() where s.bp > 0 {
-            let owned = (state.bought ?? []).contains(s.name)
-            let it = bpm.addItem(withTitle: "기기 색: \(s.name) — \(owned ? "보유" : "\(s.bp)BP")", action: !owned && (state.bp ?? 0) >= s.bp ? #selector(buyShell(_:)) : nil, keyEquivalent: ""); it.target = self; it.tag = i
-        }
-        for (i, l) in Walk.legendShop.enumerated() where l.bp > 0 { bpm.addItem(.separator()); legendItem(bpm, i, l.dex, "\(l.bp)BP", (state.bp ?? 0) >= l.bp) }
-        bh2.submenu = bpm
-        let wares = state.evolutionItems()
-        if !wares.isEmpty {                                                                     // HGSS sold these for Pokéathlon points; here, watts
-            let xh = m.addItem(withTitle: "교환소 · \(price)W", action: nil, keyEquivalent: ""), xm = NSMenu()
-            for (i, w) in wares.enumerated() { let it = xm.addItem(withTitle: "\(w)\(state.bag.contains(w) ? " (있음)" : "")", action: state.watts >= price ? #selector(buy(_:)) : nil, keyEquivalent: ""); it.target = self; it.tag = i }
-            xh.submenu = xm
-        }
         let inv = state.inventory
         if !inv.isEmpty {                                                                         // everything carried: walker + bag
             let bh = m.addItem(withTitle: "가방 · \(state.items.count + state.bag.count)개", action: nil, keyEquivalent: ""), bm = NSMenu()
@@ -183,13 +157,7 @@ extension WalkerView {
             }
             bm.addItem(.separator())
             for i in inv {
-                let use: String = switch ItemKind.of(i) {
-                case .heal(let n): "배틀 HP +\(n)"; case .revive(let n): "쓰러지면 HP \(n)로 부활"; case .ball(let x): "포획 ×\(x == 2 ? "2" : "1.5")"
-                case .candy: "레벨 +1"; case .evReset: "노력치 전부 0"; case .bottleCap(let gold): gold ? "특훈: 모든 개체값 → 31 (Lv.50부터)" : "특훈: 개체값 하나 → 31 (Lv.50부터)"; case .vitamin(let k, let d): "\(["HP", "공격", "방어", "특공", "특방", "스피드"][k]) 노력치 \(d > 0 ? "+" : "−")10"; case .berry: "친밀도 +500걸음"; case .evolution: "진화"; case .sell(let p): "\(p)W"
-                case .battle(let u): switch u { case .cure: "배틀 상태이상 회복"; case .restore: "배틀 HP·상태 전부 회복"; case .pp: "배틀 PP 회복"; case .x: "배틀 능력 +1"
-                    case .guardSpec: "배틀 능력 저하 막기"; case .direHit: "배틀 급소율 +"; case .heal: "" }
-                }
-                bm.addItem(withTitle: "\(i) ×\(state.count(i)) · \(use)", action: nil, keyEquivalent: "")
+                bm.addItem(withTitle: "\(i) ×\(state.count(i)) · \(ItemKind.of(i).summary)", action: nil, keyEquivalent: "")
             }
             bh.submenu = bm
         }
@@ -244,28 +212,6 @@ extension WalkerView {
         } else { toggleShown(nil) }
     }
     @objc func setCourse(_ i: NSMenuItem) { state.setCourse(i.tag, &rng); screen = .say(["커넥트 완료", state.here.name], next: .home, since: Date()); save(nil) }
-    func legendItem(_ menu: NSMenu, _ i: Int, _ dex: Int, _ cost: String, _ afford: Bool) {
-        let owned = state.legendBought(dex)
-        let it = menu.addItem(withTitle: "전설: \(monNames[dex]) Lv.\(Walk.legendShop[i].level) — \(owned ? "보유" : cost)", action: !owned && afford ? #selector(buyLegend(_:)) : nil, keyEquivalent: "")
-        it.target = self; it.tag = i
-    }
-    @objc func buyLegend(_ i: NSMenuItem) {
-        let l = Walk.legendShop[i.tag]
-        NSApp.activate(ignoringOtherApps: true)
-        let a = NSAlert(); a.messageText = "\(monNames[l.dex])을(를) 데려올까요?"
-        a.informativeText = (l.watts > 0 ? "\(l.watts.formatted())W" : "\(l.bp)BP") + "가 들어요. 한 번만 살 수 있어요."
-        a.addButton(withTitle: "데려오기"); a.addButton(withTitle: "취소")
-        guard a.runModal() == .alertFirstButtonReturn, let m = state.buyLegend(i.tag) else { return }
-        screen = .say(["전설의 " + monNames[m.dex] + "!", "Lv.\(m.level) · 워커에 왔다"], next: .home, since: Date()); save(nil)
-        notify("unlock", "전설의 \(monNames[m.dex])", "Lv.\(m.level)이 워커에 왔어요")
-    }
-    @objc func buyShop(_ i: NSMenuItem) { let w = Walk.shop[i.tag]; guard state.buy(w.item, watts: w.watts) else { return }; screen = .say([josa(w.item, "을", "를"), "샀다! (-\(w.watts)W)"], next: .home, since: Date()); save(nil) }
-    @objc func buyBP(_ i: NSMenuItem) { let w = Walk.bpShop[i.tag]; guard state.buy(w.item, bp: w.bp) else { return }; screen = .say([josa(w.item, "을", "를"), "받았다! (-\(w.bp)BP)"], next: .home, since: Date()); save(nil) }
-    @objc func buyShell(_ i: NSMenuItem) {
-        let s = shells[i.tag]; guard (state.bp ?? 0) >= s.bp else { return }
-        state.bp = (state.bp ?? 0) - s.bp; state.bought = (state.bought ?? []) + [s.name]; theme = i.tag; UserDefaults.standard.set(theme, forKey: "shell")
-        screen = .say(["기기 색", s.name + " 획득!"], next: .home, since: Date()); save(nil)
-    }
     @objc func useCandy(_ i: NSMenuItem) {
         guard state.feedCandy() else { return }
         levelled = true; screen = .home; save(nil)                                              // the home screen shows the level-up (or an evolution)
@@ -297,10 +243,6 @@ extension WalkerView {
         screen = .say(["전부 팔았다", "+\(w)W"], next: .home, since: Date()); save(nil)
     }
     @objc func useStone(_ i: NSMenuItem) { let s = state.stoneEvolutions(Date()); guard s.indices.contains(i.tag) else { return }; startEvolving(s[i.tag], Date()) }
-    @objc func buy(_ i: NSMenuItem) {
-        let w = state.evolutionItems(); guard w.indices.contains(i.tag), state.spend(price) else { return }
-        state.bag.append(w[i.tag]); screen = .say([josa(w[i.tag], "을", "를"), "받았다!"], next: .home, since: Date()); save(nil)
-    }
     @objc func pair(_ i: NSMenuItem) {
         if i.tag < 0 { guard state.caught.indices.contains(-1 - i.tag) else { return }; state.pair(-1 - i.tag, onWalker: true) }
         else { guard state.box.indices.contains(i.tag) else { return }; state.pair(i.tag) }

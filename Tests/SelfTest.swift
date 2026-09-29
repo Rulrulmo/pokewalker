@@ -403,8 +403,8 @@ import AppKit
     check(g == [1, 1, 1, 1, 1, 1, 4, 2] && w.bp == 12 && w.towerBest == 8, "BP: 1 a win, +3 on the 7th, 2 a win after 7", "\(g)")
     w.towerEnd(); check(w.towerStreak == 0 && w.towerBest == 8, "a loss ends the streak, best kept")
     var up = w.box[1]; _ = up.gainBattleExp(50_000); w.writeBack([w.id(-1)!, w.id(1)!], [w.companion, up]); check(w.box[1].level > 30, "tower EXP goes back to the box")
-    w.watts = 100; check(w.buy("슈퍼볼", watts: 40) && w.watts == 60 && w.bag.last == "슈퍼볼" && !w.buy("풀회복약", watts: 300), "W shop")
-    check(w.buy("이상한사탕", bp: 8) && w.bp == 4 && !w.buy("이상한사탕", bp: 8), "BP exchange")
+    w.watts = 100; check(w.purchase(.init(kind: .item("슈퍼볼"), price: 40), 1, bp: false) != nil && w.watts == 60 && w.bag.last == "슈퍼볼" && w.purchase(.init(kind: .item("풀회복약"), price: 300), 1, bp: false) == nil, "W shop")
+    check(w.purchase(.init(kind: .item("이상한사탕"), price: 8), 1, bp: true) != nil && w.bp == 4 && w.purchase(.init(kind: .item("이상한사탕"), price: 8), 1, bp: true) == nil, "BP exchange")
     w = Walk(); w.watts = 9998; check(w.buyLegend(0) == nil, "칠색조 needs the full 9,999 W")
     w.watts = 9999; check(w.buyLegend(0)?.dex == 250 && w.watts == 0 && w.caught.last?.level == 50 && w.buyLegend(0) == nil, "칠색조: 9,999 W, once")
     w.bp = 299; check(w.buyLegend(1) == nil, "뮤츠 needs 300 BP"); w.bp = 300
@@ -545,8 +545,54 @@ import AppKit
     let bigItems = bigV.buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items ?? []
     check(bigItems.contains { $0.title == "3V 이상 · 1" && $0.attributedTitle != nil } && bigItems.contains { $0.title.hasPrefix("No.001–050") && $0.title.hasSuffix("최고 4V") },
           "big box: a 3V 이상 list, and the dex range flags its best", "\(bigItems.map(\.title))")
-    let shopTitles = bigV.buildMenu().items.compactMap(\.submenu).flatMap(\.items).map(\.title)
-    check(shopTitles.contains("순백떡 (노력치 초기화) — 200W") && shopTitles.contains("금색병뚜껑 (특훈: 개체값 전부 → 31) — 120BP"), "shop rows say what 순백떡 / 병뚜껑 do", "\(shopTitles.filter { $0.contains("떡") || $0.contains("뚜껑") })")
+    // 7f the shops: in the walker's menu, several at once
+    check(!bigV.buildMenu().items.contains { $0.title.hasPrefix("상점") || $0.title.hasPrefix("BP 교환소") || $0.title.hasPrefix("교환소") }, "the shops left the right-click menu")
+    var sw = Walk(); sw.watts = 5000; sw.bp = 200; sw.companion = Mon(dex: 133, level: 20, female: false)             // 이브이: it has evolution items to sell
+    let wW = sw.wares(bp: false, shells: []), wB = sw.wares(bp: true, shells: [(name: "배틀 골드", bp: 40)])
+    check(wW.count == Walk.shop.count + sw.evolutionItems().count + 1 && wW.last?.kind == .legend(0) && wW.contains { $0.kind == .item("불꽃의돌") && $0.price == Walk.evoItemPrice }
+          && wB.count == Walk.bpShop.count + 2 && wB.contains { $0.kind == .shell("배틀 골드") } && wB.last?.kind == .legend(1), "상점: goods + the companion's evolution items + 칠색조; BP 교환소: goods + 배틀 골드 + 뮤츠")
+    let mochi = wW.first { $0.kind == .item("순백떡") }!, cap = wB.first { $0.kind == .item("금색병뚜껑") }!
+    check(sw.canBuy(mochi, bp: false) == 25 && sw.canBuy(Walk.Ware(kind: .item("해독제"), price: 10), bp: false) == 99 && sw.canBuy(cap, bp: true) == 1 && sw.canBuy(wW.last!, bp: false) == 0,
+          "how many: what the money covers, at most 99; 칠색조 needs 9,999W")
+    check(sw.purchase(mochi, 3, bp: false) == .items("순백떡", 3) && sw.watts == 4400 && sw.count("순백떡") == 3 && sw.purchase(mochi, 23, bp: false) == nil && sw.watts == 4400,
+          "3 순백떡 at once: -600W; more than the money covers: nothing happens")
+    check(sw.purchase(wB[Walk.bpShop.count], 1, bp: true) == .shell("배틀 골드") && sw.bp == 160 && sw.canBuy(wB[Walk.bpShop.count], bp: true) == 0 && sw.purchase(wB[Walk.bpShop.count], 1, bp: true) == nil,
+          "once-only (a device colour): bought once, then 보유")
+    let shopV = WalkerView(state: { var s = Walk(); s.watts = 1000; s.bp = 30; return s }()); shopV.persist = false; shopV.rng = Seeded(s: 41)
+    shopV.screen = .menu(9); shopV.press(1); let tower = on(shopV) { if case .tower = $0 { return true }; return false }
+    shopV.screen = .menu(7); shopV.press(1)
+    let opened = on(shopV) { if case .shop(false, 0, nil) = $0 { return true }; return false }
+    shopV.press(2); shopV.press(1); shopV.press(2); shopV.press(2)                              // row 1 (좋은상처약 60W), how many: 3
+    let three = on(shopV) { if case .shop(false, 1, 3?) = $0 { return true }; return false }
+    shopV.press(1)
+    check(tower && opened && three && shopV.state.count("좋은상처약") == 3 && shopV.state.watts == 820 && on(shopV) { if case .say(_, .shop(false, 1, nil), _) = $0 { return true }; return false },
+          "menu → 상점: ▶ a row, ● how many, ▶▶ 3, ● buys 3 at once and goes back to the list")
+    shopV.screen = .shop(bp: false, sel: 0, qty: 1); shopV.shopStep(10); let ten = on(shopV) { if case .shop(_, _, 11?) = $0 { return true }; return false }
+    shopV.shopStep(nil); let most = on(shopV) { if case .shop(_, _, 41?) = $0 { return true }; return false }     // 820W / 20W
+    shopV.press(0); shopV.press(3); let back = on(shopV) { if case .shop(false, 0, nil) = $0 { return true }; return false }
+    check(ten && most && back, "how many: +10 (↑), 최대, and ⌂ back to the list")
+    shopV.screen = .shop(bp: true, sel: 0, qty: nil); shopV.shopTap(2100 + Walk.bpShop.firstIndex { $0.item == "은색병뚜껑" }!)
+    let sm = shopV.shopModel()
+    check(sm?.title == "BP 교환소" && sm?.qty == 1 && sm?.most == 1 && sm?.total == "25BP" && sm?.after == "5BP" && sm?.rows[sm!.sel].note.contains("특훈") == true,
+          "the shop panel: a row click picks it (how many 1), with what it does and the total", "\(String(describing: sm))")
+    shopV.shopTap(2005); check(shopV.state.count("은색병뚜껑") == 1 && shopV.state.bp == 5, "the panel's 구매 buys it")
+    check(shopV.shopModel()?.hint.contains("받았다") == true && shopV.shopModel()?.qty == nil, "the panel stays up through the shop's message (shown in its box)")
+    // a legend: how many, then 정말? (아니오 first), and never by a double-click or a held key
+    let lg = WalkerView(state: { var s = Walk(); s.watts = 9999; return s }()); lg.persist = false; lg.rng = Seeded(s: 42)
+    lg.screen = .shop(bp: false, sel: 0, qty: nil); lg.press(0); lg.press(1); lg.press(1)                                  // ◀ wraps to 칠색조, ● how many, ●
+    let asked = on(lg) { if case .shopConfirm(false, _, false) = $0 { return true }; return false }
+    lg.press(1); check(asked && lg.state.watts == 9999 && on(lg) { if case .shop(false, _, nil) = $0 { return true }; return false }, "칠색조: ◀ ● ● asks, and ● on 아니오 buys nothing")
+    lg.press(1); lg.press(1); lg.press(2); lg.press(1)
+    check(lg.state.watts == 0 && lg.state.legendBought(250), "… and ▶ 예 ● brings it")
+    let dc = WalkerView(state: { var s = Walk(); s.watts = 1000; return s }()); dc.persist = false; dc.rng = Seeded(s: 43)
+    dc.screen = .shop(bp: false, sel: 0, qty: nil); dc.clickCount = 1; _ = dc.touch(48, 20); dc.clickCount = 2; _ = dc.touch(48, 20)   // double-click on the picked row
+    let rowTap = on(dc) { if case .shop(false, 0, 1?) = $0 { return true }; return false }
+    dc.clickCount = 2; _ = dc.touch(48, 30); check(rowTap && dc.state.watts == 1000, "LCD: a double-click opens how-many at most, its 2nd click never buys")
+    let heldReturn = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: true, keyCode: 36)!
+    dc.keyDown(with: heldReturn); check(dc.state.watts == 1000, "a held return doesn't buy")
+    dc.clickCount = 1; dc.shopStep(10); dc.shopRow(1); check(on(dc) { if case .shop(false, 1, nil) = $0 { return true }; return false }, "scrolling the panel moves a row and leaves how-many (never the amount)")
+    dc.screen = .shop(bp: false, sel: 0, qty: nil); check(!dc.touch(48, 63) && dc.shopModel()?.hint.contains("●") == true, "the LCD's bottom dot row isn't a hidden 6th row; the panel says what ● does")
+    dc.screen = .shop(bp: false, sel: dc.wares(false).count - 1, qty: nil); check(dc.shopModel()?.hint == "W가 부족해요 · 9,999W 필요", "the panel says why a row can't be bought", "\(dc.shopModel()?.hint ?? "")")
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0
 }

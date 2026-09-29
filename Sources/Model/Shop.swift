@@ -82,8 +82,51 @@ extension Walk {
         watts -= l.watts; bp = (bp ?? 0) - l.bp; bought = (bought ?? []) + ["legend:\(l.dex)"]
         var g = SystemRandomNumberGenerator(); let m = Mon.wild(l.dex, level: l.level, perfect: 3, &g); _ = keep(m); return m   // legends: 3 IVs at 31
     }
-    mutating func buy(_ item: String, watts price: Int) -> Bool { guard spend(price) else { return false }; bag.append(item); return true }
-    mutating func buy(_ item: String, bp price: Int) -> Bool { guard (bp ?? 0) >= price else { return false }; bp = (bp ?? 0) - price; bag.append(item); return true }
+    /// Evolution items for the companion, sold in the 상점 (HGSS traded them for Pokéathlon points).
+    static let evoItemPrice = 1000
+
+    /// One row of the 상점 (W) or the BP 교환소.
+    struct Ware: Equatable {
+        enum Kind: Equatable { case item(String), legend(Int), shell(String) }   // legend = Walk.legendShop index; shell = a device colour's name
+        var kind: Kind; var price: Int
+        var once: Bool { if case .item = kind { return false }; return true }
+    }
+    enum Bought: Equatable { case items(String, Int), legend(Mon), shell(String) }
+    /// The rows, in order: the goods, then (상점) the companion's evolution items, then the once-only ones. `shells` = the device colours sold for BP.
+    func wares(bp: Bool, shells: [(name: String, bp: Int)]) -> [Ware] {
+        if bp {
+            return Walk.bpShop.map { Ware(kind: .item($0.item), price: $0.bp) } + shells.map { Ware(kind: .shell($0.name), price: $0.bp) }
+                + Walk.legendShop.indices.filter { Walk.legendShop[$0].bp > 0 }.map { Ware(kind: .legend($0), price: Walk.legendShop[$0].bp) }
+        }
+        return Walk.shop.map { Ware(kind: .item($0.item), price: $0.watts) } + evolutionItems().map { Ware(kind: .item($0), price: Walk.evoItemPrice) }
+            + Walk.legendShop.indices.filter { Walk.legendShop[$0].watts > 0 }.map { Ware(kind: .legend($0), price: Walk.legendShop[$0].watts) }
+    }
+    func wareName(_ w: Ware) -> String {
+        switch w.kind { case .item(let i): i; case .legend(let k): monNames[Walk.legendShop[k].dex] + " (전설)"; case .shell(let s): s + " (기기 색)" }
+    }
+    func wareNote(_ w: Ware) -> String {
+        switch w.kind { case .item(let i): ItemKind.of(i).summary; case .legend(let k): "Lv.\(Walk.legendShop[k].level) · 3V · 한 번만"; case .shell: "기기 색 바꾸기 · 한 번만" }
+    }
+    /// How many are carried (once-only: 1 when bought).
+    func owned(_ w: Ware) -> Int {
+        switch w.kind { case .item(let i): count(i); case .legend(let k): legendBought(Walk.legendShop[k].dex) ? 1 : 0; case .shell(let s): (bought ?? []).contains(s) ? 1 : 0 }
+    }
+    /// How many of it can be bought right now: what the money covers, up to 99 at a time (once-only: 0 or 1).
+    func canBuy(_ w: Ware, bp useBP: Bool) -> Int {
+        let money = useBP ? bp ?? 0 : watts, n = w.price > 0 ? money / w.price : 99
+        return w.once ? (owned(w) == 0 && n >= 1 ? 1 : 0) : min(99, n)
+    }
+    /// Buys n at once; nil when it can't (not enough, or once-only and already had).
+    mutating func purchase(_ w: Ware, _ n: Int, bp useBP: Bool) -> Bought? {
+        guard n >= 1, n <= canBuy(w, bp: useBP) else { return nil }
+        switch w.kind {
+        case .item(let i):
+            if useBP { bp = (bp ?? 0) - w.price * n } else { watts -= w.price * n }
+            bag += Array(repeating: i, count: n); return .items(i, n)
+        case .legend(let k): return buyLegend(k).map { .legend($0) }
+        case .shell(let s): bp = (bp ?? 0) - w.price; bought = (bought ?? []) + [s]; return .shell(s)
+        }
+    }
 
     // MARK: Battle Tower: 3 against a trainer's 3, 50 W to enter, BP per win
     static let towerFee = 50

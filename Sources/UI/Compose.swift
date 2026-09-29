@@ -29,10 +29,11 @@ extension WalkerView {
         case .menu(let i):
             fb.text("◀", 1, 26, 2); fb.text("▶", 95, 26, 2, right: true)
             fb.text(menuItems[i], 0, 20, center: true)
-            let sub = [" 10W", " 3W", "상자로 보내기", "", "", "\(state.box.count)마리", "\(dexCount) / 493", "\(state.bp ?? 0)BP"][i]
+            let sub = [" 10W", " 3W", "상자로 보내기", "", "", "\(state.box.count)마리", "\(dexCount) / 493", "W로 사기", "\(state.bp ?? 0)BP로 교환", "\(state.bp ?? 0)BP"][i]
             if !sub.isEmpty { fb.text(sub.trimmingCharacters(in: .whitespaces), 0, 34, 2, center: true) }
             fb.text("\(state.watts)W", 94, 1, 2, right: true, small: true)
-            for k in 0..<menuItems.count { fb.fill(36 + 5 * k, 58, 3, 3, k == i ? 3 : 1) }
+            let x0 = 48 - (5 * menuItems.count - 2) / 2                                                 // page dots, centred
+            for k in 0..<menuItems.count { fb.fill(x0 + 5 * k, 58, 3, 3, k == i ? 3 : 1) }
         case .radar(let b, let c, let since, let chain):
             let u = now.timeIntervalSince(since), live = (1.5...(1.5 + radarWindow(chain))).contains(u)
             if chain > 0, u < 1.5 { fb.text("연쇄 \(chain)!", 0, 13, 3, center: true); if let n = chainNote { fb.text(n, 0, 25, 2, center: true, small: true) } }   // between the bush rows
@@ -81,6 +82,36 @@ extension WalkerView {
                 let y = 15 + 10 * (k - top)
                 fb.text(it.name, 2, y, 3, small: true); fb.text("×\(state.count(it.name))", 94, y, 2, right: true, small: true)
                 if k == sel { fb.invert(0, y - 1, 96, 10) }
+            }
+        case .shop(let bp, let sel, let qty):
+            func fit(_ s: String, _ w: Int) -> String {                                              // cut to w dots, with … (small text)
+                guard textWidth(s, small: true) > w else { return s }
+                var t = s; while t.count > 1, textWidth(t + "…", small: true) > w { t.removeLast() }; return t + "…"
+            }
+            let ws = wares(bp), unit = bp ? "BP" : "W", money = bp ? state.bp ?? 0 : state.watts
+            fb.text(bp ? "BP 교환소" : "상점", 2, 0); fb.text("\(money)\(unit)", 94, 1, 2, right: true, small: true); fb.fill(0, 12, 96, 1, 2)   // plain numbers, like the rest of the LCD
+            if let q = qty, let w = ws[safe: sel] {                                                  // how many: ◀ ▶, ● buys, ⌂ back
+                let have = "보유 \(state.owned(w))"
+                fb.text(fit(state.wareName(w), 88 - textWidth(have, small: true)), 2, 14, 3, small: true); fb.text(have, 94, 14, 2, right: true, small: true)
+                fb.text(fit(state.wareNote(w), 92), 2, 23, 2, small: true)
+                fb.text("◀", 14, 34, w.once ? 1 : 2); fb.text("× \(q)", 0, 34, 3, center: true); fb.text("▶", 82, 34, w.once ? 1 : 2, right: true)
+                fb.fill(0, 50, 96, 1, 2)
+                fb.text("\(w.price * q)\(unit) → 남음 \(money - w.price * q)\(unit)", 0, 53, 2, center: true, small: true)
+            } else {
+                let top = max(0, min(sel - 2, ws.count - 5))                                          // 5 rows, the pick kept in view
+                for (k, w) in ws.enumerated() where k >= top && k < top + 5 {
+                    let y = 14 + 10 * (k - top), can = state.canBuy(w, bp: bp) > 0, had = w.once && state.owned(w) > 0
+                    let price = had ? "보유" : "\(w.price)\(unit)", pw = textWidth(price, small: true)
+                    fb.text(fit(state.wareName(w), 88 - pw), 2, y, can ? 3 : 1, small: true); fb.text(price, 94, y, can ? 2 : 1, right: true, small: true)
+                    if k == sel { fb.invert(0, y - 1, 96, 10) }
+                }
+            }
+        case .shopConfirm(let bp, let sel, let yes):
+            let unit = bp ? "BP" : "W"
+            fb.text(bp ? "BP 교환소" : "상점", 2, 0); fb.text("\(bp ? state.bp ?? 0 : state.watts)\(unit)", 94, 1, 2, right: true, small: true); fb.fill(0, 12, 96, 1, 2)
+            if let w = wares(bp)[safe: sel] {
+                fb.text(state.wareName(w), 0, 16, 3, center: true, small: true); fb.text("\(w.price)\(unit) · 정말 살까?", 0, 27, 2, center: true, small: true)
+                for (k, o) in ["아니오", "예"].enumerated() { let x = 14 + 40 * k, tw = fb.text(o, x + 2, 44, 3, small: true); if (k == 1) == yes { fb.invert(x, 43, tw + 4, 11) } }
             }
         case .learn(let sel):
             var st = state
@@ -234,6 +265,27 @@ extension WalkerView {
         return DexModel(num: d, name: st > 0 ? monNames[d] : "???", status: st, shiny: (state.shinyOwned ?? []).contains(d), types: st > 0 ? monTypes[d] : [],
                         stats: st > 0 ? baseStats[d] : [], found: found, evos: evos, owned: owned.count, seen: seen.count,
                         strip: strip, stripStatus: strip.map { owned.contains($0) ? 2 : seen.contains($0) ? 1 : 0 })
+    }
+    /// What the side panel shows on a shop screen; nil elsewhere.
+    func shopModel() -> ShopModel? {
+        var sc = screen, said: String? = nil
+        if case .say(let lines, let next, _) = sc, case .shop = next { said = lines.joined(separator: " "); sc = next }   // the shop's own messages keep the panel up
+        let bp: Bool, sel: Int, qty: Int?, ask: Bool?
+        switch sc {
+        case .shop(let b, let s, let q): bp = b; sel = s; qty = q; ask = nil
+        case .shopConfirm(let b, let s, let y): bp = b; sel = s; qty = nil; ask = y
+        default: return nil
+        }
+        let ws = wares(bp), unit = bp ? "BP" : "W", money = bp ? state.bp ?? 0 : state.watts, w = ws[safe: sel]
+        let rows = ws.map { w in ShopModel.Row(name: state.wareName(w), note: state.wareNote(w), price: w.once && state.owned(w) > 0 ? "보유" : "\(w.price.formatted())\(unit)",
+                                                 owned: state.owned(w), can: state.canBuy(w, bp: bp) > 0, once: w.once) }
+        let cost = (w?.price ?? 0) * (qty ?? 0)
+        let hint = said ?? w.map { w in
+            w.once && state.owned(w) > 0 ? "이미 가지고 있어요" : state.canBuy(w, bp: bp) == 0 ? "\(unit)가 부족해요 · \(w.price.formatted())\(unit) 필요" : "클릭하거나 ●를 누르면 몇 개 살지 정해요"
+        } ?? ""
+        let spend = ask != nil ? w?.price ?? 0 : cost
+        return ShopModel(title: bp ? "BP 교환소" : "상점", money: "\(money.formatted())\(unit)", rows: rows, sel: sel, qty: qty, most: w.map { max(1, state.canBuy($0, bp: bp)) } ?? 1,
+                         total: "\(spend.formatted())\(unit)", after: "\((money - spend).formatted())\(unit)", hint: hint, ask: ask)
     }
     func dexJump(_ n: Int) { if let i = seenList.firstIndex(of: n) { lastInput = Date(); screen = .dex(i); shown = nil } }
 }

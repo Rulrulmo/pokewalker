@@ -8,6 +8,13 @@ struct SideModel: Equatable {
     enum Mode: Equatable { case none, menu([String], Int), moves([MoveBtn], Int), party([Card], Int), items([String], Int) }
     var foe: Card; var foeBalls: [Bool]; var mine: Card; var myBalls: [Bool]; var trainer: String?; var message: String; var mode: Mode
 }
+/// The 상점 / BP 교환소 page on the side panel: the list with what each does, and the how-many controls.
+struct ShopModel: Equatable {
+    struct Row: Equatable { var name, note, price: String; var owned: Int; var can: Bool; var once: Bool }
+    var title, money: String; var rows: [Row]; var sel: Int; var qty: Int?; var most: Int; var total, after: String
+    var hint: String                                                   // the bottom box when nothing is being counted: a message, or why not
+    var ask: Bool?                                                     // a once-only row's 정말? (true = 예 highlighted)
+}
 /// The Pokédex page on the side panel.
 struct DexModel: Equatable {
     var num: Int; var name: String; var status: Int                    // 0 not met, 1 seen, 2 caught
@@ -24,6 +31,9 @@ let typeColor: [String: NSColor] = (["normal": (168, 168, 120), "fire": (240, 12
 final class SideView: NSView {
     var model: SideModel?
     var dex: DexModel?
+    var shop: ShopModel?
+    var scrolled: CGFloat = 0                                              // trackpad scroll not yet turned into a row step
+    var shopTop = 0, shopTitle = ""                                        // the list's first visible row: moves only when the pick leaves the window
     var hits: [(NSRect, Int)] = []                                         // clickable rows: index, or -1 = back
     weak var walker: WalkerView?
     override var isFlipped: Bool { true }
@@ -32,7 +42,14 @@ final class SideView: NSView {
     override func mouseDown(with e: NSEvent) {
         let p = convert(e.locationInWindow, from: nil)
         guard let k = hits.first(where: { $0.0.contains(p) })?.1 else { return }
-        if k >= 1000 { walker?.dexJump(k - 1000) } else if k < 0 { walker?.press(3) } else { walker?.sidePick(k) }
+        if k >= 2000 { walker?.shopTap(k) } else if k >= 1000 { walker?.dexJump(k - 1000) } else if k < 0 { walker?.press(3) } else { walker?.sidePick(k) }
+    }
+    override func scrollWheel(with e: NSEvent) {                                                 // the shop list scrolls a row per notch (or per 6 pt of trackpad)
+        guard shop != nil else { return super.scrollWheel(with: e) }
+        if !e.hasPreciseScrollingDeltas { if e.scrollingDeltaY != 0 { walker?.shopRow(e.scrollingDeltaY > 0 ? -1 : 1) }; return }   // rows only, never the amount
+        if e.phase == .began { scrolled = 0 }
+        scrolled += e.scrollingDeltaY
+        while abs(scrolled) >= 6 { walker?.shopRow(scrolled > 0 ? -1 : 1); scrolled -= scrolled > 0 ? 6 : -6 }
     }
     override func resetCursorRects() { for (r, _) in hits { addCursorRect(r, cursor: .pointingHand) } }
     // text: Galmuri at 3x its pixel size on a Retina screen (15 / 12 pt at the normal size), so every glyph pixel is whole
@@ -68,6 +85,7 @@ final class SideView: NSView {
     override func draw(_ dirty: NSRect) {
         hits = []
         if let d = dex { drawDex(d); return }
+        if let s = shop { drawShop(s); return }
         guard let m = model else { return }
         let u = SideView.unit(backing), W = bounds.width, H = bounds.height, ink = SideView.ink, dim = SideView.dim, paper = NSColor(white: 0.98, alpha: 1)
         /// "HP" tag + bar, the HGSS way: dark track, the colour on top with a little shine.
@@ -204,6 +222,66 @@ final class SideView: NSView {
     }
 }
 extension SideView {
+    /// The shop page: the HGSS blue, a list (name, what it does, price, how many carried), then how many and 구매.
+    func drawShop(_ s: ShopModel) {
+        let u = SideView.unit(backing), W = bounds.width, H = bounds.height, ink = SideView.ink, dim = SideView.dim, paper = NSColor(white: 0.98, alpha: 1)
+        let bg = round(bounds.insetBy(dx: u / 2, dy: u / 2), 9 * u)
+        NSGraphicsContext.saveGraphicsState(); bg.addClip()
+        NSGradient(starting: NSColor(red: 0.20, green: 0.30, blue: 0.52, alpha: 1), ending: NSColor(red: 0.10, green: 0.15, blue: 0.30, alpha: 1))!.draw(in: bounds, angle: -90)
+        NSGraphicsContext.restoreGraphicsState(); ink.setStroke(); bg.lineWidth = 1.2; bg.stroke()
+        let head = NSRect(x: 0, y: 4 * u, width: W, height: 12 * u)
+        label(s.title, in: head, body, .white, alignLeft: 8 * u); label(s.money, in: head, body, NSColor(red: 1, green: 0.85, blue: 0.35, alpha: 1), alignRight: 8 * u)
+        // the list: 6 rows, the pick kept in view
+        let listR = NSRect(x: 6 * u, y: 19 * u, width: W - 12 * u, height: 6 * 17 * u + 4 * u), rows = 6
+        round(listR, 4 * u).fill(with: paper); ink.setStroke(); let lp = round(listR, 4 * u); lp.lineWidth = u; lp.stroke()
+        if s.title != shopTitle { shopTitle = s.title; shopTop = max(0, s.sel - 2) }             // a stable window: a click never scrolls the row under the pointer away
+        if s.sel < shopTop { shopTop = s.sel } else if s.sel >= shopTop + rows { shopTop = s.sel - rows + 1 }
+        shopTop = max(0, min(shopTop, s.rows.count - rows)); let first = shopTop
+        for (i, r) in s.rows.enumerated() where i >= first && i < first + rows {
+            let rr = NSRect(x: listR.minX + 2 * u, y: listR.minY + 2 * u + CGFloat(i - first) * 17 * u, width: listR.width - 4 * u, height: 17 * u)
+            if i == s.sel { round(rr, 3 * u).fill(with: NSColor(red: 0.30, green: 0.56, blue: 0.86, alpha: 1)) }
+            let fg = i == s.sel ? NSColor.white : r.can ? ink : dim, fg2 = i == s.sel ? NSColor(white: 1, alpha: 0.85) : dim
+            label(r.name, in: NSRect(x: rr.minX, y: rr.minY + 1 * u, width: rr.width, height: 9 * u), body, fg, alignLeft: 3 * u)
+            label(r.price, in: NSRect(x: rr.minX, y: rr.minY + 1 * u, width: rr.width, height: 9 * u), small, fg, alignRight: 3 * u)
+            label(r.note, in: NSRect(x: rr.minX, y: rr.minY + 9.5 * u, width: rr.width, height: 7 * u), small, fg2, alignLeft: 3 * u)
+            if !r.once { label("보유 \(r.owned)", in: NSRect(x: rr.minX, y: rr.minY + 9.5 * u, width: rr.width, height: 7 * u), small, fg2, alignRight: 3 * u) }
+            hits.append((rr, 2100 + i))
+        }
+        if s.rows.count > rows {                                                                    // where in the list: a thin bar on the right
+            let track = NSRect(x: listR.maxX - 2 * u, y: listR.minY + 3 * u, width: 1.2 * u, height: listR.height - 6 * u)
+            NSColor(white: 0, alpha: 0.12).setFill(); track.fill()
+            let h = track.height * CGFloat(rows) / CGFloat(s.rows.count), y = track.minY + (track.height - h) * CGFloat(first) / CGFloat(s.rows.count - rows)
+            NSColor(white: 0, alpha: 0.35).setFill(); NSRect(x: track.minX, y: y, width: track.width, height: h).fill()
+        }
+        // how many, then 구매
+        let box = NSRect(x: 6 * u, y: listR.maxY + 4 * u, width: W - 12 * u, height: H - listR.maxY - 11 * u)
+        round(box, 4 * u).fill(with: paper); ink.setStroke(); let bp = round(box, 4 * u); bp.lineWidth = u; bp.stroke()
+        func button(_ r: NSRect, _ t: String, _ c: NSColor, _ code: Int, _ on: Bool = true) {
+            round(r, 3 * u).fill(with: on ? c : NSColor(white: 0.8, alpha: 1)); label(t, in: r, small, .white); if on { hits.append((r, code)) }
+        }
+        if let yes = s.ask, let r = s.rows[safe: s.sel] {                                          // 정말? for a once-only row
+            label("\(r.name) · \(s.total)", in: NSRect(x: box.minX, y: box.minY + 4 * u, width: box.width, height: 9 * u), body, ink)
+            label("정말 살까요? 한 번만 살 수 있어요 (남음 \(s.after))", in: NSRect(x: box.minX, y: box.minY + 14 * u, width: box.width, height: 8 * u), small, dim)
+            let half = (box.width - 13 * u) / 2, by = box.minY + 25 * u, h = box.maxY - by - 4 * u
+            for (k, (t, c, code)) in [("아니오", NSColor(red: 0.42, green: 0.47, blue: 0.58, alpha: 1), 2007), ("예", NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1), 2006)].enumerated() {
+                let br = NSRect(x: box.minX + 5 * u + CGFloat(k) * (half + 3 * u), y: by, width: half, height: h)
+                button(br, t, c, code)
+                if (k == 1) == yes { NSColor.white.setStroke(); let o = round(br.insetBy(dx: u, dy: u), 3 * u); o.lineWidth = u; o.stroke() }
+            }
+            window?.invalidateCursorRects(for: self); return
+        }
+        guard let q = s.qty else { label(s.hint, in: box, small, dim); window?.invalidateCursorRects(for: self); return }
+        let bw = (box.width - 10 * u - 4 * 2 * u - 22 * u) / 4, by = box.minY + 4 * u, grey = NSColor(red: 0.42, green: 0.47, blue: 0.58, alpha: 1)
+        var x = box.minX + 5 * u
+        for (t, code, on) in [("−10", 2000, q > 1), ("−1", 2001, q > 1)] { button(NSRect(x: x, y: by, width: bw, height: 10 * u), t, grey, code, on); x += bw + 2 * u }
+        label("× \(q)", in: NSRect(x: x, y: by, width: 22 * u, height: 10 * u), body, ink); x += 22 * u + 2 * u
+        for (t, code, on) in [("+1", 2002, q < s.most), ("+10", 2003, q < s.most)] { button(NSRect(x: x, y: by, width: bw, height: 10 * u), t, grey, code, on); x += bw + 2 * u }
+        label("\(s.total) → 남음 \(s.after)", in: NSRect(x: box.minX, y: by + 12 * u, width: box.width, height: 8 * u), small, dim, alignLeft: 5 * u)
+        button(NSRect(x: box.maxX - 5 * u - 20 * u, y: by + 12 * u, width: 20 * u, height: 8 * u), "최대 \(s.most)", grey, 2004, q < s.most)
+        let buy = NSRect(x: box.minX + 5 * u, y: by + 22 * u, width: box.width - 10 * u, height: box.maxY - by - 26 * u)
+        button(buy, "구매", NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1), 2005)
+        window?.invalidateCursorRects(for: self)
+    }
     /// The Pokédex page: a red handheld-dex body, a white entry card (types, base stats), where to find it, how it evolves, and a number strip.
     func drawDex(_ d: DexModel) {
         let u = SideView.unit(backing), W = bounds.width, ink = SideView.ink, dim = SideView.dim, red = NSColor(red: 0.80, green: 0.20, blue: 0.18, alpha: 1)
@@ -281,14 +359,14 @@ final class SidePanel: NSPanel {
     static func place(_ size: NSSize, top: CGFloat, x: CGFloat, in room: NSRect) -> NSRect {
         NSRect(x: x, y: max(room.minY, min(top, room.maxY) - size.height), width: size.width, height: size.height)
     }
-    func show(_ m: SideModel?, dex: DexModel?, beside parent: NSWindow?) {
-        guard m != nil || dex != nil, let parent else { if isVisible { parent?.removeChildWindow(self); orderOut(nil) }; view.model = nil; view.dex = nil; return }
-        let u = SideView.unit(parent.backingScaleFactor), size = NSSize(width: 140 * u, height: (dex != nil ? 186 : 182) * u)   // grows with the text on a 1x screen
+    func show(_ m: SideModel?, dex: DexModel?, shop: ShopModel? = nil, beside parent: NSWindow?) {
+        guard m != nil || dex != nil || shop != nil, let parent else { if isVisible { parent?.removeChildWindow(self); orderOut(nil) }; view.model = nil; view.dex = nil; view.shop = nil; return }
+        let u = SideView.unit(parent.backingScaleFactor), size = NSSize(width: 140 * u, height: (dex != nil || shop != nil ? 186 : 182) * u)   // grows with the text on a 1x screen
         let room = parent.screen?.visibleFrame ?? parent.frame
         if !isVisible {
             setFrame(SidePanel.place(size, beside: parent.frame, in: room), display: false)
             parent.addChildWindow(self, ordered: .above); orderFrontRegardless()
         } else if frame.size != size { setFrame(SidePanel.place(size, top: frame.maxY, x: frame.minX, in: room), display: true) }   // battle <-> dex: keep the top where it is
-        if view.model != m || view.dex != dex { view.model = m; view.dex = dex; view.needsDisplay = true }
+        if view.model != m || view.dex != dex || view.shop != shop { view.model = m; view.dex = dex; view.shop = shop; view.needsDisplay = true }
     }
 }

@@ -63,6 +63,59 @@ extension WalkerView {
             screen = .learn(sel: 0); return
         }
     }
+    /// The 상점's (bp false) or BP 교환소's rows.
+    func wares(_ bp: Bool) -> [Walk.Ware] { state.wares(bp: bp, shells: shells.filter { $0.bp > 0 }.map { (name: $0.name, bp: $0.bp) }) }
+    /// Buys q of the row; a line to say, then back to the list.
+    func buyWare(_ w: Walk.Ware, _ q: Int, bp: Bool, sel: Int, _ now: Date) {
+        let back = Screen.shop(bp: bp, sel: sel, qty: nil), cost = "(-\(w.price * q)\(bp ? "BP" : "W"))"
+        switch state.purchase(w, q, bp: bp) {
+        case .items(let i, let n)?: screen = .say([josa(i, "을", "를") + (n > 1 ? " \(n)개" : ""), (bp ? "받았다! " : "샀다! ") + cost], next: back, since: now)
+        case .legend(let m)?:
+            screen = .say(["전설의 " + monNames[m.dex] + "!", "Lv.\(m.level) · 워커에 왔다"], next: back, since: now)
+            notify("unlock", "전설의 \(monNames[m.dex])", "Lv.\(m.level)이 워커에 왔어요")
+        case .shell(let s)?:
+            if let t = shells.firstIndex(where: { $0.name == s }) { theme = t; if persist { UserDefaults.standard.set(t, forKey: "shell") } }   // wear it straight away
+            screen = .say(["기기 색", s + " 획득!"], next: back, since: now)
+        case nil: screen = .say([bp ? "BP가 부족하다" : "W가 부족하다"], next: back, since: now); return
+        }
+        save(nil)
+    }
+    /// ↑ ↓ keys and the panel's buttons: in the list a row up / down, in how-many ±n (clamped, not wrapping); `nil` = as many as can be bought.
+    func shopStep(_ d: Int?) {
+        guard case .shop(let bp, let sel, let qty) = screen else { return }
+        lastInput = Date(); shown = nil; needsDisplay = true
+        let ws = wares(bp); guard let w = ws[safe: sel] else { return }
+        let most = state.canBuy(w, bp: bp)
+        if let q = qty { screen = .shop(bp: bp, sel: sel, qty: d.map { max(1, min(max(1, most), q + $0)) } ?? max(1, most)) }
+        else if let d { screen = .shop(bp: bp, sel: max(0, min(ws.count - 1, sel + d.signum())), qty: nil) }
+    }
+    /// The scroll wheel / trackpad on the shop panel: a row up or down, leaving how-many (the amount only changes on purpose).
+    func shopRow(_ d: Int) {
+        let bp: Bool, sel: Int
+        switch screen { case .shop(let b, let s, _), .shopConfirm(let b, let s, _): bp = b; sel = s; default: return }
+        lastInput = Date(); shown = nil; needsDisplay = true
+        screen = .shop(bp: bp, sel: max(0, min(wares(bp).count - 1, sel + d)), qty: nil)
+    }
+    /// A click on the shop panel: 2100 + k = row k (and how-many, if it can be bought), 2000-2004 = −10 −1 +1 +10 max, 2005 = buy, 2006 / 2007 = 예 / 아니오.
+    func shopTap(_ code: Int) {
+        if case .shopConfirm(let bp, let sel, _) = screen {
+            if code == 2006 { screen = .shopConfirm(bp: bp, sel: sel, yes: true); press(1) }
+            else if code == 2007 { screen = .shop(bp: bp, sel: sel, qty: nil) }
+            else if code >= 2100 { screen = .shop(bp: bp, sel: sel, qty: nil); shopTap(code) }
+            return
+        }
+        guard case .shop(let bp, _, let qty) = screen else { return }
+        lastInput = Date(); shown = nil; needsDisplay = true
+        if code >= 2100 {
+            let k = code - 2100; guard let w = wares(bp)[safe: k] else { return }
+            screen = .shop(bp: bp, sel: k, qty: state.canBuy(w, bp: bp) > 0 ? 1 : nil); return
+        }
+        guard qty != nil else { return }                                                           // a stale click on buttons that are gone
+        switch code {
+        case 2000: shopStep(-10); case 2001: shopStep(-1); case 2002: shopStep(1); case 2003: shopStep(10); case 2004: shopStep(nil)
+        default: if case .shop(_, _, .some) = screen { press(1) }
+        }
+    }
     /// Bag items that would do something for ours right now.
     func battleItems(_ b: Battle) -> [(name: String, use: ItemUse)] {
         state.inventory.compactMap { i in
@@ -79,6 +132,7 @@ extension WalkerView {
             switch screen {
             case .beats: return
             case .party(let b, _) where b.mustReplace: return                                       // someone has to come in
+            case .shop(let bp, let sel, .some), .shopConfirm(let bp, let sel, _): screen = .shop(bp: bp, sel: sel, qty: nil)   // back to the list
             case .moves(let b, _), .party(let b, _), .bagBattle(let b, _): screen = .battle(b, sel: 0)   // back out of the sub-menu
             case .battle(let b, _) where b.trainer != nil: let s = state.towerStreak ?? 0; state.towerEnd(); towerRun = false; screen = .say(["기권했다", "\(s)연승에서 끝"], next: .home, since: now)
             case .battle: screen = .say(["무사히", "도망쳤다!"], next: .home, since: now)
@@ -142,6 +196,22 @@ extension WalkerView {
                 let from = b; let beats = b.turn(.item(it.use), &rng)
                 screen = .beats(b, [.note(.me, text: josa(it.name, "을", "를") + " 사용했다!")] + beats, since: now, from: from)
             } else { screen = .battle(b, sel: 0) }
+        case .shop(let bp, let sel, let qty):
+            let ws = wares(bp), n = max(1, ws.count)
+            guard let w = ws[safe: sel] else { screen = .shop(bp: bp, sel: 0, qty: nil); return }
+            if let q = qty {                                                                       // how many: ◀ ▶ one at a time (wrapping, like the games), ● buys
+                let most = max(1, state.canBuy(w, bp: bp))
+                if k == 0 { screen = .shop(bp: bp, sel: sel, qty: q > 1 ? q - 1 : most) }
+                else if k == 2 { screen = .shop(bp: bp, sel: sel, qty: q < most ? q + 1 : 1) }
+                else if w.once { screen = .shopConfirm(bp: bp, sel: sel, yes: false) }                 // 전설 · 기기 색: one more step, 아니오 first
+                else { buyWare(w, q, bp: bp, sel: sel, now) }
+            } else if k == 0 { screen = .shop(bp: bp, sel: (sel + n - 1) % n, qty: nil) }
+            else if k == 2 { screen = .shop(bp: bp, sel: (sel + 1) % n, qty: nil) }
+            else if state.canBuy(w, bp: bp) > 0 { screen = .shop(bp: bp, sel: sel, qty: 1) }
+            else { screen = .say(w.once && state.owned(w) > 0 ? ["이미 가지고 있다"] : [bp ? "BP가 부족하다" : "W가 부족하다"], next: .shop(bp: bp, sel: sel, qty: nil), since: now) }
+        case .shopConfirm(let bp, let sel, let yes):
+            if k != 1 { screen = .shopConfirm(bp: bp, sel: sel, yes: !yes); return }
+            if yes, let w = wares(bp)[safe: sel] { buyWare(w, 1, bp: bp, sel: sel, now) } else { screen = .shop(bp: bp, sel: sel, qty: nil) }
         case .learn(let sel):
             guard let (ref, id) = state.nextToLearn(), var m = state.mon(ref) else { screen = .home; return }
             if k != 1 { screen = .learn(sel: (sel + (k == 0 ? 4 : 1)) % 5); return }
@@ -213,7 +283,8 @@ extension WalkerView {
         case 3: screen = .card(0)
         case 4: screen = .bag(0)
         case 5: screen = .box(0, act: nil, confirm: false)
-        case 7: screen = .tower
+        case 7, 8: screen = .shop(bp: i == 8, sel: 0, qty: nil)
+        case 9: screen = .tower
         default: screen = .dex(max(0, seenList.firstIndex(of: state.companion.dex) ?? 0))
         }
     }
@@ -239,6 +310,17 @@ extension WalkerView {
             let n = battleItems(b).count, top = max(0, min(sel - 2, n - 5)), k = top + (y - 14) / 10
             guard y >= 14, k < n else { press(3); return true }
             pick { screen = .bagBattle(b, sel: k) }
+        case .shop(let bp, let sel, let qty):
+            if qty != nil {                                                                        // ◀ − | ● buy | + ▶ — a double-click's second click never buys
+                if (32..<64).contains(x), clickCount > 1 { return true }
+                press(x < 32 ? 0 : x >= 64 ? 2 : 1); return true
+            }
+            let n = wares(bp).count, top = max(0, min(sel - 2, n - 5)), k = top + (y - 13) / 10
+            guard y >= 13, k - top < 5, k < n else { return false }
+            if k == sel { if clickCount == 1 { press(1) } } else { lastInput = Date(); screen = .shop(bp: bp, sel: k, qty: nil) }   // tap = pick, tap it again = how many
+        case .shopConfirm(let bp, let sel, _):
+            guard clickCount == 1, y >= 40 else { return true }
+            screen = .shopConfirm(bp: bp, sel: sel, yes: x >= 48); press(1)
         case .learn:
             let k = (y - 12) / 10
             guard y >= 12, k < 5 else { return false }

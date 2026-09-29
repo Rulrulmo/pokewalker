@@ -18,6 +18,7 @@ final class WalkerView: NSView {
     var dexCount: Int { (state.owned ?? []).count }
     var pressed: Int? = nil, pressedAt = Date()
     var rng = Seeded(s: .random(in: .min ... .max))
+    var clickCount = 1                                                     // the mouse event's, for touch(): a double-click's 2nd click never buys
 
     init(state: Walk) { self.state = state; super.init(frame: NSRect(origin: .zero, size: devSize)) }
     required init?(coder: NSCoder) { fatalError() }
@@ -90,12 +91,13 @@ final class WalkerView: NSView {
         case .say(_, let next, let since) where now.timeIntervalSince(since) > 3: screen = next
         case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
-        case .menu, .card, .bag, .dex, .box, .tower: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
+        case .menu, .card, .bag, .dex, .box, .tower, .shop, .shopConfirm: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
         default: break
         }
         if now.timeIntervalSince(lastSave) > 60 { save(nil) }
         updateStatus()
-        side?.show(window?.isVisible == true ? sideModel(now) : nil, dex: window?.isVisible == true ? dexModel() : nil, beside: window)
+        let seen = window?.isVisible == true
+        side?.show(seen ? sideModel(now) : nil, dex: seen ? dexModel() : nil, shop: seen ? shopModel() : nil, beside: window)
         guard window?.isVisible ?? true else { return }                                         // hidden in the menu bar: rules keep running, nothing to draw
         let fb = compose(now)
         if fb.px != shown?.px || fb.col != shown?.col || fb.runs != shown?.runs || fb.flips != shown?.flips || now.timeIntervalSince(pressedAt) < 0.3 { shown = fb; needsDisplay = true }   // idle home = ~2 redraws a second
@@ -103,18 +105,24 @@ final class WalkerView: NSView {
     var persist = true                                                     // false in --selftest: flows must never touch the real save (nor notify)
     lazy var unlockedAt = state.earned                                     // lifetime watts already announced
     var lastStatus = ""
-    let price = 1000
 
     // MARK: input
     override func mouseDown(with e: NSEvent) {
         let p = convert(e.locationInWindow, from: nil)
+        clickCount = e.clickCount
+        var buying: Bool { switch screen { case .shop(_, _, .some), .shopConfirm: true; default: false } }
         if let i = buttons.firstIndex(where: { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r + PX }) {
+            if i == 1, e.clickCount > 1, buying { return }                                         // ● twice fast on how-many: once
             pressed = i; pressedAt = Date(); press(i)
             perform(#selector(tick(_:)), with: nil, afterDelay: 0.15, inModes: [.common])
         } else if lcdRect.contains(p), touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needsDisplay = true }
         else { window?.performDrag(with: e) }
     }
-    override func keyDown(with e: NSEvent) { if let i = [123: 0, 36: 1, 49: 1, 124: 2, 53: 3][Int(e.keyCode)] { press(i) } else { super.keyDown(with: e) } }   // ← return/space → esc
+    override func keyDown(with e: NSEvent) {                                                  // ← return/space → esc; in a shop ↑ ↓ = a row, or ±10
+        if case .shop(_, _, let q) = screen, let d = [126: -1, 125: 1][Int(e.keyCode)] { shopStep(q == nil ? d : -10 * d); return }
+        switch screen { case .shop, .shopConfirm: if e.isARepeat, [36, 49].contains(Int(e.keyCode)) { return }; default: break }   // a held return / space doesn't keep buying
+        if let i = [123: 0, 36: 1, 49: 1, 124: 2, 53: 3][Int(e.keyCode)] { press(i) } else { super.keyDown(with: e) }
+    }
     override var acceptsFirstResponder: Bool { true }
     override func resetCursorRects() { addCursorRect(lcdRect, cursor: .pointingHand); for b in buttons { addCursorRect(NSRect(x: b.c.x - b.r, y: b.c.y - b.r, width: 2 * b.r, height: 2 * b.r), cursor: .pointingHand) } }
 
