@@ -64,7 +64,7 @@ Mac엔 만보기가 없으니 **키 누름·마우스 클릭 1회 = 1걸음**. �
 - **서식지 손님**(원작엔 없음): 코스마다 5종, 레이더 발견의 10%. 코스 하나에서 최대 17종이 매번 섞여 나옴.
 - 도구도 같은 방식(희귀한 것부터, 상처약류가 보장).
 - 함께 걷는 포켓몬이 코스의 특기 타입 3개 중 하나면 필요 걸음 25% 감소(4세대 타입 기준).
-- **이로치**: 레이더에서 만난 포켓몬이 1/128 확률로 이로치(4세대 원작은 1/8192 — 여기선 하루 몇 판이라 너무 희박, `Walker.swift`의 `shinyOdds`). `✦ 반짝! ✦` + 배틀 중 반짝임, 목록엔 ★. 이로치 색은 HGSS 일반/이로치 스프라이트의 픽셀 대응으로 만든 종별 팔레트. 원작 포켓워커엔 없는 요소.
+- **이로치**: 레이더에서 만난 포켓몬이 1/128 확률로 이로치(4세대 원작은 1/8192 — 여기선 하루 몇 판이라 너무 희박, `Sources/Model/Mon.swift`의 `shinyOdds`). `✦ 반짝! ✦` + 배틀 중 반짝임, 목록엔 ★. 이로치 색은 HGSS 일반/이로치 스프라이트의 픽셀 대응으로 만든 종별 팔레트. 원작 포켓워커엔 없는 요소.
 - 원작과 다른 점: 소리 없음, 이벤트 코스는 도감 수로 해금, 동료 교체 시 코스 걸음 유지.
 
 ## 배틀 타워 · 상점
@@ -132,18 +132,16 @@ Mac엔 만보기가 없으니 **키 누름·마우스 클릭 1회 = 1걸음**. �
 
 ## 파일
 
-| 파일 | 내용 |
+| 경로 | 내용 |
 |---|---|
-| `Walker.swift` | 규칙 엔진 + 저장 상태 + 저장/복구 (`Foundation`만) |
-| `Battle.swift` | 4세대 싱글 배틀 엔진: 개체(개체값·노력치·성격·특성·기술), 턴 진행, 기술·특성·날씨·상태이상, 결과를 `Beat`(한국어 대사 포함)로 내보냄 |
-| `main.swift` | AppKit UI: 기기, 96×64 4계조 LCD, 화면들, 메뉴 |
-| `Data.swift` | **생성됨** — 493종 한국어 이름·타입·성장 곡선·4세대 종족값·HGSS 레벨업 기술표, 4세대 상성표, 진화 250종, 35코스(일반 20 · 이벤트 7 · 전설 8), 알 풀 |
-| `BattleData.swift` | **생성됨** — 기술 467개(위력·명중·PP·분류·우선도·상태이상·랭크 변화·연속·흡수·플래그), 특성 칸(4세대)·이름, 성격 25개, 노력치, 몸무게, 성비 |
-| `sprites.bin` | **생성됨** — 493종 × 2프레임 × 64×48, 2bpp 흑백 |
-| `color.bin` | **생성됨** — 같은 도트의 컬러판, 종별 일반/이로치 15색 팔레트 + 4bpp |
-| `fonts/` | Galmuri9·Galmuri7 (이민서, SIL OFL 1.1 — `fonts/OFL.md`). 닌텐도 DS 시스템 폰트를 본뜬 한글 도트 폰트, 원래 크기(10/8px)로만 써서 글자가 도트에 딱 맞음 |
-| `tools/gen.py` | 위 둘을 원본(추출 스프라이트 시트, Serebii, PokeAPI)에서 재생성. Pillow 필요 |
-| `Test.swift` | `PokeWalker --selftest` (166 checks) — 걸음/W/날짜/추첨 확률/배틀/레벨·진화/날씨/상자/저장/데이터 + 실제 뷰를 버튼·터치로 조작하는 흐름 검사(세이브는 건드리지 않음) |
+| `Sources/Model/` | 규칙과 저장 상태 (`Foundation`만): `Walk` 걸음·W·동료 이벤트·레이더·상자·날씨·도감·진화 / `Shop` 도구 사용·상점·배틀 타워 / `Mon` 개체(레벨·개체값·노력치·성격·특성·기술) / `Items` 도구 종류 / `Course` 코스·진화 레코드 / `Store` 저장·복구 |
+| `Sources/Battle/` | 4세대 싱글 배틀 엔진: `Types` 기술·상태이상·Fighter·Beat / `Battle` 상태·기본 동작 / `Turn` 턴 진행 / `Damage` 명중·상성·데미지 / `Effects` 상태이상·변화기 / `EndOfTurn` 턴 끝·기절·볼·도망·도구·상대 AI. 결과는 `Beat`(한국어 대사 포함)로 |
+| `Sources/UI/` | AppKit: `WalkerView` 기기 뷰(틱·입력·그리기) / `Flow` 버튼·터치 처리 / `Compose` 화면별 LCD 그리기 / `BattleView` 배틀 연출·HUD·패널 모델 / `Menu` 우클릭 메뉴 / `SidePanel` 배틀·도감 패널 / `Pixels` 스프라이트·폰트·프레임버퍼 / `Device` 기기 크기·색·LCD |
+| `Sources/App/main.swift` | 실행: `--selftest` 또는 메뉴 막대 앱 |
+| `Sources/Data/` | **생성됨** (`tools/gen.py`) — `Data.swift` 493종 이름·타입·성장 곡선·4세대 종족값·레벨업 기술·상성·진화·35코스·알 풀 / `BattleData.swift` 기술 467개·특성·성격·노력치·몸무게·성비 |
+| `Resources/` | **생성됨** `sprites.bin`(493종 × 2프레임 × 64×48, 2bpp 흑백) · `color.bin`(컬러판 + 종별 일반/이로치 팔레트) / `fonts/` Galmuri9·Galmuri7 (이민서, SIL OFL 1.1 — `fonts/OFL.md`) |
+| `Tests/SelfTest.swift` | `PokeWalker --selftest` (166 checks) — 규칙·배틀·데이터 + 실제 뷰를 버튼·터치로 조작하는 흐름 검사(세이브는 건드리지 않음). 빌드할 때마다 돌고, 실패하면 빌드 실패 |
+| `tools/gen.py` | `Sources/Data/`·`Resources/`를 원본(추출 스프라이트 시트, Serebii, PokeAPI)에서 재생성. Pillow 필요 |
 
 세이브: `~/Library/Application Support/PokeWalker/state.json` (+ `.bak`, 손상 시 `state.corrupt-*.json`). 창 위치·크기·색은 `defaults dev.khmin.pokewalker`.
 

@@ -4,11 +4,11 @@
 # ./build.sh dist   dist/PokeWalker.zip for other Macs: Apple Silicon + Intel, macOS 13+, ad-hoc signed (no Apple Developer ID)
 set -e
 cd "$(dirname "$0")"
-SRC="Walker.swift Battle.swift Data.swift BattleData.swift Test.swift main.swift"
+SRC=$(find Sources Tests -name "*.swift")
 bundle() {   # $1 = .app path
     mkdir -p "$1/Contents/MacOS" "$1/Contents/Resources"
     cp Info.plist "$1/Contents/Info.plist"
-    cp sprites.bin color.bin fonts/Galmuri9.ttf fonts/Galmuri7.ttf "$1/Contents/Resources/"
+    cp Resources/sprites.bin Resources/color.bin Resources/fonts/Galmuri9.ttf Resources/fonts/Galmuri7.ttf "$1/Contents/Resources/"
 }
 if [ "$1" = dist ]; then
     A=dist/PokeWalker.app; rm -rf dist; bundle $A
