@@ -79,17 +79,40 @@ extension Walk {
         let others = caught.enumerated().map { (-2 - $0.offset, $0.element) } + box.enumerated().map { ($0.offset, $0.element) }
         return [(-1, companion)] + others.sorted { $0.1.points > $1.1.points }.prefix(2).map { (ref: $0.0, mon: $0.1) }
     }
-    /// Writes a fight's EXP back to whoever took part (skips a ref that no longer points at the same species), and queues what they learn.
-    mutating func writeBack(_ refs: [Int], _ mons: [Mon]) {
-        for (r, m) in zip(refs, mons) { guard let old = mon(r), old.dex == m.dex else { continue }; setMon(r, m); queueMoves(r, from: old.level) }
+    /// Writes a fight's EXP back to whoever took part, found by uid wherever they are now (gone or evolved = skipped), and queues what they learn.
+    mutating func writeBack(_ uids: [Int], _ mons: [Mon]) {
+        for (u, m) in zip(uids, mons) {
+            guard let r = ref(uid: u), let old = mon(r), old.dex == m.dex else { continue }
+            var m = m; m.uid = u; setMon(r, m); queueMoves(r, from: old.level)
+        }
+    }
+    /// The uid of the one at `ref`, handing one out the first time.
+    mutating func id(_ ref: Int) -> Int? {
+        guard var m = mon(ref) else { return nil }
+        if m.uid == nil { lastUID = (lastUID ?? 0) + 1; m.uid = lastUID; setMon(ref, m) }
+        return m.uid
+    }
+    /// Where that one is now: -1 companion, -2-i caught[i], i box[i].
+    func ref(uid: Int) -> Int? {
+        if companion.uid == uid { return -1 }
+        if let i = caught.firstIndex(where: { $0.uid == uid }) { return -2 - i }
+        return box.firstIndex { $0.uid == uid }
     }
     func mon(_ ref: Int) -> Mon? { ref == -1 ? companion : ref <= -2 ? caught[safe: -2 - ref] : box[safe: ref] }
     mutating func setMon(_ ref: Int, _ m: Mon) { if ref == -1 { companion = m } else if ref <= -2 { caught[-2 - ref] = m } else { box[ref] = m } }
-    /// Moves the one at `ref` reached since level `lv`, waiting to be learned (see `learn`).
+    /// Moves the one at `ref` reached since level `lv`, waiting to be learned (see `learning`).
     mutating func queueMoves(_ ref: Int, from lv: Int) {
         guard let m = mon(ref), m.level > lv else { return }
-        learn = (learn ?? []) + m.newMoves(from: lv, to: m.level).flatMap { [ref, $0] }
+        let new = m.newMoves(from: lv, to: m.level)
+        guard !new.isEmpty, let u = id(ref) else { return }
+        learning = (learning ?? []) + new.flatMap { [u, $0] }
     }
+    /// The first queued move whose Pokémon is still here (queued ones for released Pokémon are dropped): where it is, and the move.
+    mutating func nextToLearn() -> (ref: Int, move: Int)? {
+        while let q = learning, q.count >= 2 { if let r = ref(uid: q[0]) { return (r, q[1]) }; learning = Array(q.dropFirst(2)) }
+        return nil
+    }
+    mutating func learned() { if let q = learning, q.count >= 2 { learning = Array(q.dropFirst(2)) } }
     /// The next trainer: 3 non-legends at the party's average level + streak / 3 (+0-2), fully evolved from Lv.30.
     func towerFoes<R: RandomNumberGenerator>(_ r: inout R) -> (trainer: String, foes: [Mon]) {
         let ps = party().map(\.mon), avg = ps.map(\.level).reduce(0, +) / max(1, ps.count)

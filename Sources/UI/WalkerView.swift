@@ -17,7 +17,7 @@ final class WalkerView: NSView {
     lazy var rewarded = dexCount                                           // dex count already celebrated (no fanfare for old progress)
     var dexCount: Int { (state.owned ?? []).count }
     var pressed: Int? = nil, pressedAt = Date()
-    var rng = SystemRandomNumberGenerator()
+    var rng = Seeded(s: .random(in: .min ... .max))
 
     init(state: Walk) { self.state = state; super.init(frame: NSRect(origin: .zero, size: devSize)) }
     required init?(coder: NSCoder) { fatalError() }
@@ -81,12 +81,12 @@ final class WalkerView: NSView {
                 if state.companion.level % 5 == 0 { notify("grow", "레벨 업!", name + " Lv.\(state.companion.level)") }
             }
         }
-        if case .home = screen, (state.learn ?? []).count >= 2 { nextLearn(now) }
+        if case .home = screen, (state.learning ?? []).count >= 2 { nextLearn(now) }
         switch screen {
         case .radar(_, _, let since, let chain) where now.timeIntervalSince(since) > 1.5 + radarWindow(chain):
             screen = .say(chain > 0 ? ["...!", "연쇄가 끊겼다 (\(chain))"] : ["...!", "사라져버렸다"], next: .home, since: now)
         case .beats(let bt, let beats, let since, _) where now.timeIntervalSince(since) >= beats.map(\.length).reduce(0, +):
-            screen = beats.last!.ends ? after(bt, beats.last!, now) : .battle(bt, sel: 0)
+            screen = beats.last!.ends ? after(bt, beats.last!, now) : bt.mustReplace ? .party(bt, sel: bt.mine.indices.first { bt.mine[$0].alive } ?? 0) : .battle(bt, sel: 0)
         case .say(_, let next, let since) where now.timeIntervalSince(since) > 3: screen = next
         case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home

@@ -47,6 +47,7 @@ extension Battle {
         if f(s).has(30), f(s).status != nil, f(s).alive { mod(s) { $0.status = nil } }             // 자연회복 (quietly, as it leaves)
         mod(s) { $0.clearVolatile() }
         out.append(.sendOut(s, i)); apply(out.last!)
+        if s == .me { faced.insert(i) } else { faced = [me] }
         if baton { mod(s) { $0.stage = keep.stage; $0.sub = keep.sub; $0.confused = keep.confused; $0.seeded = keep.seeded; $0.focus = keep.focus; $0.cursed = keep.cursed; $0.ingrain = keep.ingrain; $0.aquaRing = keep.aquaRing; $0.perish = keep.perish; $0.magnetRise = keep.magnetRise } }
         entry(s)
     }
@@ -57,6 +58,9 @@ extension Battle {
         for s in [Side.me, .it] { mod(s) { $0.protected = false; $0.endure = false; $0.flinch = false; $0.hitThisTurn = false; $0.movedThisTurn = false; $0.magicCoat = false } }
         let foe = foeChoice(), (mi, ti) = (me, it)
         planned = [0, foe]
+        if trainer != nil, let i = foeSwitch() {                                                   // switching goes before any move; it then doesn't act (ti is gone)
+            say(.it, josa(trainer!, "은", "는") + " " + josa(monNames[f(.it).mon.dex], "을", "를") + " 돌아오게 했다!"); switchIn(.it, i); planned[1] = 0
+        }
         switch m {
         case .run:
             if trainer != nil { say(.me, "승부 중에는 도망칠 수 없다!"); return out }
@@ -75,6 +79,8 @@ extension Battle {
         if !over { endOfTurn() }
         return out
     }
+    /// Ours fainted and the player picked who's next (the turn's already over).
+    mutating func replace(_ i: Int) -> [Beat] { out = []; mustReplace = false; switchIn(.me, i); return out }
     /// Priority, then speed (Trick Room flips it; 늑장 goes last); ties at random.
     mutating func moveFirst(_ a: Int, _ b: Int) -> Bool {
         let pa = moveTable[a]!.priority, pb = moveTable[b]!.priority
@@ -91,6 +97,7 @@ extension Battle {
         mod(s) { $0.movedThisTurn = true }
         let n = nm(s)
         var id = id0
+        if moveTable[id0]!.onFoe, !f(other(s)).alive { return }                                  // its target fainted (a replacement is coming at the end of the turn)
         if f(s).recharge { mod(s) { $0.recharge = false }; say(s, josa(n, "은", "는") + " 공격의 반동으로 움직일 수 없다!"); return }
         if f(s).charging != 0 { id = f(s).charging } else if f(s).lock > 0 { id = f(s).lockMove } else if f(s).bide > 0 { id = 117 } else if f(s).encore > 0 { id = f(s).encoreMove }
         if f(s).status == .sleep {
@@ -122,7 +129,7 @@ extension Battle {
     }
     mutating func confusionHit(_ s: Side) -> Int {
         let a = f(s), A = Double(base(s, 1)) * mult(a.stage[1]), D = Double(base(s, 2)) * mult(a.stage[2])
-        return max(1, Int((floor(floor(Double(2 * a.mon.level / 5 + 2) * 40 * A / D) / 50) + 2) * Double(217 + roll(39)) / 255))
+        return max(1, Int((floor(floor(Double(2 * a.mon.level / 5 + 2) * 40 * A / D) / 50) + 2) * Double(85 + roll(16)) / 100))
     }
     mutating func deductPP(_ s: Side, _ id: Int) {
         let cost = f(other(s)).has(46) ? 2 : 1
@@ -165,6 +172,9 @@ extension Battle {
         if m.onFoe, f(t).semi != 0, !canHitSemi(id, f(t).semi), !(f(s).has(99) || f(t).has(99)), f(s).lockOn == 0 { say(t, josa(nm(t), "에게는", "에게는") + " 맞지 않았다!"); crash(s, t, m); return }
         if (m.onFoe || m.accuracy > 0) && !m.onSelf, !hits(s, t, m) { say(t, josa(n, "의", "의") + " 공격은 빗나갔다!"); crash(s, t, m); mod(s) { $0.rollout = 0; $0.furyCutter = 0 }; return }
         if m.onFoe, m.sound, dAb(t, 43, by: s) { say(t, josa(nm(t), "은", "는") + " 방음으로 소리를 막았다!"); return }
+        if id == 86, typeEff("electric", t, by: s) == 0 || dAb(t, 10, by: s) || dAb(t, 78, by: s) {        // 전기자석파 is the one status move type immunity stops
+            say(t, josa(nm(t), "에게는", "에게는") + " 효과가 없는 것 같다..."); return
+        }
         if m.power > 0 || Moves.fixedOrVariable.contains(id) { damageMove(s, t, m) } else { statusMove(s, t, m) }
     }
 }

@@ -5,6 +5,7 @@
 set -e
 cd "$(dirname "$0")"
 SRC=$(find Sources Tests -name "*.swift")
+OPT="-O -wmo -num-threads $(sysctl -n hw.ncpu) -swift-version 6"   # whole-module, codegen on every core
 bundle() {   # $1 = .app path
     mkdir -p "$1/Contents/MacOS" "$1/Contents/Resources"
     cp Info.plist "$1/Contents/Info.plist"
@@ -12,7 +13,7 @@ bundle() {   # $1 = .app path
 }
 if [ "$1" = dist ]; then
     A=dist/PokeWalker.app; rm -rf dist; bundle $A
-    for arch in arm64 x86_64; do swiftc -O -swift-version 6 -target $arch-apple-macos13 $SRC -o dist/PokeWalker-$arch; done
+    for arch in arm64 x86_64; do swiftc $OPT -target $arch-apple-macos13 $SRC -o dist/PokeWalker-$arch; done
     lipo -create dist/PokeWalker-arm64 dist/PokeWalker-x86_64 -output $A/Contents/MacOS/PokeWalker; rm dist/PokeWalker-*
     $A/Contents/MacOS/PokeWalker --selftest > /dev/null
     codesign --force --deep -s - $A
@@ -21,6 +22,6 @@ if [ "$1" = dist ]; then
     exit
 fi
 A=PokeWalker.app; bundle $A
-swiftc -O -swift-version 6 $SRC -o $A/Contents/MacOS/PokeWalker
+swiftc $OPT $SRC -o $A/Contents/MacOS/PokeWalker
 $A/Contents/MacOS/PokeWalker --selftest
 if [ "$1" = run ]; then pkill -x PokeWalker || true; open PokeWalker.app; fi

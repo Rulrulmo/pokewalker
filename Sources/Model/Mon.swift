@@ -9,6 +9,7 @@ struct Mon: Codable, Equatable {
     var known: [Int]? = nil              // its 4 moves once chosen (nil = the last 4 it learned by level)
     var ability: Int? = nil              // ability slot (0 / 1); nature 0-24; IVs / EVs HP Atk Def SpA SpD Spe — nil = never rolled (IV 15, no EV)
     var nature: Int? = nil, ivs: [Int]? = nil, evs: [Int]? = nil
+    var uid: Int? = nil                  // given the first time something has to find this one again (Walk.id(_:))
 
     var points: Int { exp ?? expTable[growthRate[dex]][level] }
     static func level(dex: Int, exp: Int) -> Int { let t = expTable[growthRate[dex]]; return (1...100).last { t[$0] <= exp } ?? 1 }

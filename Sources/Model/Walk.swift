@@ -19,7 +19,8 @@ struct Walk: Codable, Equatable {
     var days = 1                           // days walked with this device
     var caught: [Mon] = [], items: [String] = []        // on the walker, max 3 each
     var box: [Mon] = [], bag: [String] = []             // sent back by Connect; overflow goes straight here
-    var learn: [Int]? = nil                             // moves waiting to be learned: (ref, move) pairs, ref as in party()
+    var learning: [Int]? = nil                          // moves waiting to be learned: (uid, move) pairs
+    var lastUID: Int? = nil
     var counter: UInt32 = 0, boot: Double = 0           // system input-event counter at the last poll, and the boot it belongs to
     var seen: [Int]? = nil, owned: [Int]? = nil         // Pokédex, sorted; Optional so older saves decode (see `dex()`)
     var shinyOwned: [Int]? = nil                        // species ever owned as 이로치 (the dex shows those colours too)
@@ -100,7 +101,7 @@ struct Walk: Codable, Equatable {
         let i = here.items[0].item; _ = keep(i); return i
     }
     /// 1/128 at the start, x(1 + n/2) better per link, capped at 10 links (1/21). 1/(128/(2n+1)) handed out 이로치 far too easily.
-    static func chainShinyOdds(_ chain: Int) -> Int { Int(Double(shinyOdds) / (1 + 0.5 * Double(min(chain, 10)))) }
+    static func chainShinyOdds(_ chain: Int) -> Int { let better: Double = 1 + 0.5 * Double(min(chain, 10)); return Int(Double(shinyOdds) / better) }
 
     // MARK: box
     /// Lets box[i] go; a few watts back as thanks (level / 2, at least 1).

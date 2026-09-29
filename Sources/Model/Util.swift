@@ -12,4 +12,9 @@ func josa(_ w: String, _ with: String, _ without: String) -> String {
     return w + (jong != 0 && !(with == "으로" && jong == 8) ? with : without)                    // ㄹ takes 로, not 으로
 }
 
+/// SplitMix64: the app's dice (seeded at random; tests seed it to replay exactly).
+struct Seeded: RandomNumberGenerator {
+    var s: UInt64
+    mutating func next() -> UInt64 { s &+= 0x9E3779B97F4A7C15; var z = s; z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9; z = (z ^ (z >> 27)) &* 0x94D049BB133111EB; return z ^ (z >> 31) }
+}
 extension Array { subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil } }

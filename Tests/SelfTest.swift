@@ -1,10 +1,6 @@
 import Foundation
 
 /// Headless rule check: `PokeWalker --selftest`. One line per check, then PASS/FAIL. `check` instead of assert: -O strips asserts.
-struct Seeded: RandomNumberGenerator {                                   // SplitMix64: reproducible draws
-    var s: UInt64
-    mutating func next() -> UInt64 { s &+= 0x9E3779B97F4A7C15; var z = s; z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9; z = (z ^ (z >> 27)) &* 0x94D049BB133111EB; return z ^ (z >> 31) }
-}
 @MainActor func selftest() -> Bool {
     var failed = 0, total = 0
     func check(_ ok: Bool, _ name: String, _ detail: @autoclosure () -> String = "") {
@@ -161,7 +157,7 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     check(pika50.stats == [102, 67, 42, 62, 52, 102], "stats: Gen IV base stats (방어 30, 특방 40) and formula, IV 15, no EV", "\(pika50.stats)")
     var adamant = pika50; adamant.nature = natures.firstIndex { $0.name == "고집" }!
     check(adamant.stats[1] == 67 * 11 / 10 && adamant.stats[3] == 62 * 9 / 10 && adamant.stats[5] == 102, "nature: 고집 +10 % 공격, -10 % 특수공격", "\(adamant.stats)")
-    var wr = SystemRandomNumberGenerator(), rolled = (0..<200).map { _ in Mon.wild(25, level: 10, &wr) }
+    var wr = Seeded(s: 3), rolled = (0..<200).map { _ in Mon.wild(25, level: 10, &wr) }
     check(rolled.allSatisfy { $0.ivs!.allSatisfy { (0...31).contains($0) } && abilitySlots[25].contains($0.abilityID) } && Set(rolled.map(\.nature)).count > 15 && rolled.contains(where: \.female) && rolled.contains { !$0.female },
           "wild ones roll IVs, a nature, an ability slot and a sex by ratio")
     check(abilitySlots[94] == [26] && Mon(dex: 94, level: 50, female: false).abilityName == "부유", "팬텀 has 부유 (Gen IV)")
@@ -186,7 +182,7 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     check(bad.isEmpty && ends.contains("won"), "fights end won (it at 0 HP) or lost (ours at 0)", "\(bad)")
     var xb = Battle(wild: Mon(dex: 16, level: 10, female: false), companion: Mon(dex: 25, level: 5, female: false)); xb.theirs[0].hp = 1
     let xbeats = xb.turn(.fight(84), &r)
-    if xbeats.contains(.fainted(.it)) { check(xbeats.contains(.gained(exp: baseExp[16] * 10 / 7, level: nil, foe: 16)) && xb.mine[0].mon.points == 125 + baseExp[16] * 10 / 7 && xb.mine[0].mon.evs?[5] == evYield[16][5], "a KO pays base EXP x level / 7, and EVs") }
+    if xbeats.contains(.fainted(.it)) { check(xbeats.contains(.gained(exp: baseExp[16] * 10 / 7, level: nil, foe: 16, to: 0)) && xb.mine[0].mon.points == 125 + baseExp[16] * 10 / 7 && xb.mine[0].mon.evs?[5] == evYield[16][5], "a KO pays base EXP x level / 7, and EVs") }
     func catches(_ m: Mon, hp: Int?, ball: Double, status: Status? = nil) -> Int { var n = 0; for _ in 0..<2000 { var b = Battle(wild: m, companion: pika50); if let hp { b.theirs[0].hp = hp }; b.theirs[0].status = status; if b.turn(.capture, &r, ball: ball).contains(.caught) { n += 1 } }; return n }
     let pFull = catches(Mon(dex: 16, level: 5, female: false), hp: nil, ball: 1), p1 = catches(Mon(dex: 16, level: 5, female: false), hp: 1, ball: 1)
     let mew = catches(Mon(dex: 150, level: 50, female: false), hp: 1, ball: 2), mewZ = catches(Mon(dex: 150, level: 50, female: false), hp: 1, ball: 2, status: .sleep)
@@ -201,17 +197,17 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     _ = hb.turn(.item(.x(1, 1)), &r); check(hb.mine[0].stage[1] == 1, "플러스파워: 공격 +1")
     check(ItemKind.of("마비치료제") == .battle(.cure([.paralysis], confusion: false)) && ItemKind.of("회복약") == .battle(.restore) && ItemKind.of("리샘열매") == .battle(.cure([.poison, .burn, .paralysis, .sleep, .freeze], confusion: true)),
           "cures, 회복약 and cure berries are battle items")
-    var pz = Battle(wild: Mon(dex: 16, level: 20, female: false), companion: pika50); pz.theirs[0].status = .poison
-    let pzb = pz.turn(.fight(45), &r); check(pzb.contains(.hurt(.it, damage: pz.theirs[0].maxHP / 8, text: "야생 구구는 독의 데미지를 입었다!")), "poison: 1/8 at the end of the turn")
+    var pz = Battle(wild: Mon(dex: 16, level: 20, female: false), companion: pika50); pz.theirs[0].status = .poison; pz.theirs[0].moves = [150]; pz.theirs[0].pp = [40]   // (its 날려버리기 would end a wild fight)
+    let pzb = pz.turn(.fight(45), &r); check(pzb.contains(.hurt(.it, damage: pz.theirs[0].maxHP / 8, text: "야생 구구는 독의 데미지를 입었다!")), "poison: 1/8 at the end of the turn", "\(pzb)")
     var gh = Battle(wild: Mon(dex: 94, level: 50, female: false), companion: lax50); gh.mine[0].moves = [89]; gh.mine[0].pp = [10]
     check(dealt(gh.turn(.fight(89), &r), .it, 89) == 0, "부유: 지진 can't touch 팬텀")
     var ib = Battle(wild: gyara50, companion: pika50); let ibeats = ib.begin(weather: .rain, &r)
     check(ibeats.first == .appear && ib.mine[0].stage[1] == -1 && ib.sky == .rain, "the opening: 위협 lowers 공격; the course's rain falls on the field")
     var rb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); check(rb.turn(.run, &r) == [.ran], "run ends a wild fight at once")
     var lb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: Mon(dex: 25, level: 5, female: false)); lb.mine[0].hp = 10
-    let lmax = lb.mine[0].maxHP; lb.apply(.gained(exp: 5000, level: nil, foe: 16))
+    let lmax = lb.mine[0].maxHP; lb.apply(.gained(exp: 5000, level: nil, foe: 16, to: 0))
     check(lb.mine[0].mon.level > 5 && lb.mine[0].hp == 10 + lb.mine[0].maxHP - lmax && lb.mine[0].mon.known != nil, "a level-up mid-fight raises current HP by the same amount (and freezes the moveset)")
-    let fv = WalkerView(state: { var s = Walk(); s.bag = ["기력의조각"]; return s }()); fv.persist = false
+    let fv = WalkerView(state: { var s = Walk(); s.bag = ["기력의조각"]; return s }()); fv.persist = false; fv.rng = Seeded(s: 11)
     var fainted = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); fainted.mine[0].hp = 0; fainted.mine[0].down = true; fainted.over = true
     if case .beats(let nb, let rbeats, _, let from) = fv.after(fainted, .lost, Date()), case .heal(.me, let h, _)? = rbeats.first {
         check(nb.mine[0].hp == h && h == pika50.stats[0] / 2 && from.mine[0].hp == 0 && !nb.over && !nb.mine[0].down, "a revive leaves the fight at the revived HP (not 0)")
@@ -228,25 +224,142 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
         var bs = b.begin(weather: [Weather.rain, .snow, nil].randomElement(using: &r)!, &r), k = 0
         while !(bs.last?.ends ?? false), k < 400 {
             let x = b.mine[b.me], ok = x.moves.indices.filter { x.pp[$0] > 0 }
-            var from = b; bs = b.turn(.fight(b.forced ?? (ok.isEmpty ? 165 : x.moves[ok.randomElement(using: &r)!])), &r); k += 1
+            var from = b; k += 1
+            bs = b.mustReplace ? b.replace(b.mine.indices.first { b.mine[$0].alive }!) : b.turn(.fight(b.forced ?? (ok.isEmpty ? 165 : x.moves[ok.randomElement(using: &r)!])), &r)
             for bt in bs { from.apply(bt) }
             if from.me != b.me || from.it != b.it || from.mine.map(\.hp) != b.mine.map(\.hp) || from.theirs.map(\.hp) != b.theirs.map(\.hp) { fuzzBad += 1 }
         }
         if k >= 400 { fuzzStall += 1 }
     }
     check(fuzzBad == 0 && fuzzStall == 0, "300 random fights: all end, and the beats replay to the engine's HP", "\(fuzzBad) \(fuzzStall)")
+    // 7a' rules the menus follow: trapping, 도발 / 트집, choosing who's next, EXP split, trainers switching
+    check(abilitySlots[202] == [23], "마자용 has 그림자밟기")
+    var trap = Battle(party: [pika50, lax50], trainer: "x", foes: [Mon(dex: 202, level: 30, female: false)])
+    check(trap.switchBlock != nil && trap.trapped(.me), "그림자밟기: ours can't switch out")
+    let wob = Battle(party: [Mon(dex: 202, level: 30, female: false), lax50], trainer: "x", foes: [Mon(dex: 202, level: 30, female: false)])
+    check(wob.switchBlock == nil, "그림자밟기 doesn't hold another 그림자밟기 (Gen IV)")
+    var wildWob = Battle(wild: Mon(dex: 202, level: 30, female: false), companion: pika50); check(!wildWob.canEscape(), "그림자밟기: no running either")
+    trap.theirs[0] = Fighter(Mon(dex: 16, level: 5, female: false)); trap.mine[0].charging = 76; check(trap.locked && trap.switchBlock == "지금은 교체할 수 없다!", "charging 솔라빔: no switching")
+    var tz = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); tz.mine[0].moves = [86, 85]; tz.mine[0].pp = [20, 15]; tz.mine[0].taunt = 2
+    check(tz.usable(.me) == [85], "도발: status moves can't be picked")
+    tz.mine[0].pp = [20, 0]; check(tz.usable(.me).isEmpty, "도발 + no PP on the rest: nothing to pick (→ 발버둥)")
+    var rep = Battle(party: [Mon(dex: 129, level: 5, female: false), lax50], trainer: "x", foes: [Mon(dex: 68, level: 60, female: false)]), rn = 0, rbs: [Beat] = []
+    while !rep.mustReplace, !rep.over, rn < 30 { rbs = rep.turn(.fight(rep.mine[0].moves[0]), &r); rn += 1 }
+    check(rep.mustReplace && rep.me == 0 && !rep.over && !rbs.contains(.sendOut(.me, 1)), "ours fainted: the battle waits for the player's pick")
+    let repB = rep.replace(1); check(repB.first == .sendOut(.me, 1) && rep.me == 1 && !rep.mustReplace, "the pick comes in")
+    var split = Battle(party: [pika50, lax50], trainer: "x", foes: [Mon(dex: 16, level: 10, female: false), Mon(dex: 16, level: 10, female: false)])
+    split.theirs[0].moves = [45]; split.theirs[0].pp = [40]; _ = split.turn(.swap(1), &r); split.theirs[0].hp = 1
+    var sb: [Beat] = []; while !sb.contains(.fainted(.it)), !split.over { sb = split.turn(.fight(split.mine[1].moves.first { !moveTable[$0]!.isStatus }!), &r) }
+    let half = baseExp[16] * 10 / 7 * 3 / 2 / 2
+    check(sb.contains(.gained(exp: half, level: nil, foe: 16, to: 0)) && sb.contains(.gained(exp: half, level: nil, foe: 16, to: 1)), "EXP split between the two that faced it", "\(sb)")
+    var swaps = 0, stays = 0
+    for _ in 0..<40 {
+        var sw = Battle(party: [Mon(dex: 9, level: 40, female: false)], trainer: "x", foes: [Mon(dex: 5, level: 40, female: false), Mon(dex: 1, level: 40, female: false)]); sw.mine[0].moves = [55]; sw.mine[0].pp = [25]
+        if sw.turn(.fight(55), &r).contains(.sendOut(.it, 1)) { swaps += 1 }
+        var st = Battle(party: [Mon(dex: 9, level: 40, female: false)], trainer: "x", foes: [Mon(dex: 1, level: 40, female: false), Mon(dex: 5, level: 40, female: false)]); st.mine[0].moves = [55]; st.mine[0].pp = [25]
+        if st.turn(.fight(55), &r).contains(.sendOut(.it, 1)) { stays += 1 }
+    }
+    check(swaps > 10 && swaps < 40 && stays == 0, "a trainer's 리자드 facing 물대포 often pulls back for 이상해씨; 이상해씨 stays", "\(swaps) \(stays)")
+    // 7d against the Gen IV formula: Bulbapedia's example (Lv.75 글레이시아 공격 123, 얼음엄니 → 한카리아스 방어 163 = 168-196), then each modifier by hand
+    var gl = Mon(dex: 471, level: 75, female: true); gl.nature = 0; gl.ivs = [31, 31, 31, 31, 31, 31]; gl.evs = [0, 28, 0, 0, 0, 0]
+    var gc = Mon(dex: 445, level: 75, female: false); gc.nature = 0; gc.ivs = [31, 31, 21, 31, 31, 31]
+    check(gl.stats[1] == 123 && gc.stats[2] == 163 && moveTable[423]!.power == 65 && moveTable[423]!.physical, "reference setup: 공격 123, 방어 163, 얼음엄니 65 physical", "\(gl.stats) \(gc.stats)")
+    func spread(_ setup: (inout Battle) -> Void, crit: Bool = false) -> ClosedRange<Int> {
+        var b = Battle(wild: gc, companion: gl); setup(&b); var lo = 9999, hi = 0; let m = moveTable[423]!
+        for _ in 0..<800 { let d = b.calc(.me, .it, m, power: 65, type: "ice", eff: 4, crit: crit); lo = min(lo, d); hi = max(hi, d) }
+        return lo...hi
+    }
+    check(spread { _ in } == 168...196, "damage: 168-196 exactly (85-100 % roll, STAB, x4, rounding down each step)", "\(spread { _ in })")
+    check(spread { $0.mine[0].status = .burn } == 84...100, "burn halves physical damage", "\(spread { $0.mine[0].status = .burn })")
+    check(spread { $0.sides[1].reflect = 5 } == 84...100 && spread({ $0.sides[1].reflect = 5 }, crit: true) == 336...396, "리플렉터 halves it; a critical ignores it")
+    check(spread({ _ in }, crit: true) == 336...396, "critical: x2 (Gen IV)")
+    check(spread { $0.mine[0].stage[1] = -1 } == 108...132, "공격 -1: x2/3", "\(spread { $0.mine[0].stage[1] = -1 })")
+    check(spread { $0.mine[0].abilityOver = 91 } == 224...264, "적응력: STAB x2")
+    check(spread { $0.theirs[0].abilityOver = 111 } == 126...147, "필터: super effective x0.75")
+    check(spread { $0.theirs[0].abilityOver = 47 } == 84...100, "두꺼운지방: ice / fire at half 공격")
+    // behaviour, one move each (the other side 튀어오르기)
+    func duel(_ a: Mon, _ b: Mon, _ am: [Int], _ bm: [Int] = [150]) -> Battle {
+        var x = Battle(wild: b, companion: a); x.mine[0].moves = am; x.mine[0].pp = am.map { moveTable[$0]!.pp }; x.theirs[0].moves = bm; x.theirs[0].pp = bm.map { moveTable[$0]!.pp }; return x
+    }
+    let rat = Mon(dex: 19, level: 50, female: false)
+    var d1 = duel(pika50, Mon(dex: 50, level: 30, female: false), [86]); _ = d1.turn(.fight(86), &r)
+    var d2 = duel(pika50, rat, [86]); _ = d2.turn(.fight(86), &r)
+    check(d1.theirs[0].status == nil && d2.theirs[0].status == .paralysis, "전기자석파: paralyses, not a ground type", "\(d1.theirs[0].status as Any) \(d2.theirs[0].status as Any) \(d2.theirs[0].mon.abilityName)")
+    var d3 = duel(pika50, Mon(dex: 4, level: 30, female: false), [261]); for _ in 0..<6 { _ = d3.turn(.fight(261), &r) }
+    var d4 = duel(pika50, rat, [261]); for _ in 0..<12 where d4.theirs[0].status == nil { _ = d4.turn(.fight(261), &r) }
+    check(d3.theirs[0].status == nil && d4.theirs[0].status == .burn, "도깨비불: burns, not a fire type")
+    var d5 = duel(pika50, rat, [92, 150]), poisonHits: [Int] = []
+    for _ in 0..<12 where poisonHits.count < 2 {
+        for bt in d5.turn(.fight(d5.theirs[0].status == nil ? 92 : 150), &r) { if case .hurt(.it, let d, let t) = bt, t.contains("독") { poisonHits.append(d) } }
+    }
+    let rmax = d5.theirs[0].maxHP; check(poisonHits == [rmax / 16, rmax * 2 / 16], "맹독: 1/16, then 2/16 …", "\(poisonHits) \(rmax)")
+    var d6 = duel(pika50, rat, [73]); d6.mine[0].hp = 50; let s6 = d6.turn(.fight(73), &r)
+    check(s6.contains(.hurt(.it, damage: d6.theirs[0].maxHP / 8, text: "씨뿌리기가 야생 꼬렛의 체력을 빼앗는다!")) && s6.contains { if case .heal(.me, d6.theirs[0].maxHP / 8, _) = $0 { return true }; return false }, "씨뿌리기: 1/8 a turn, to the user", "\(s6)")
+    var d7 = duel(pika50, Mon(dex: 1, level: 30, female: false), [73]); _ = d7.turn(.fight(73), &r); check(!d7.theirs[0].seeded, "씨뿌리기 doesn't take on grass types")
+    var d8 = duel(pika50, rat, [182], [33]); check(!d8.turn(.fight(182), &r).contains { if case .hit(.me, _, _, _, _) = $0 { return true }; return false }, "방어: the attack is blocked")
+    var hz = Battle(party: [pika50], trainer: "x", foes: [Mon(dex: 16, level: 30, female: false), Mon(dex: 6, level: 30, female: false), rat])
+    hz.sides[1].stealthRock = true; hz.out = []; hz.switchIn(.it, 1); let charMax = hz.theirs[1].maxHP
+    check(hz.out.contains(.hurt(.it, damage: charMax / 2, text: "뾰족한 바위가 상대 리자몽을 파고들었다!")), "스텔스록: 1/8 x rock effectiveness (리자몽 1/2)", "\(hz.out)")
+    hz.sides[1] = SideState(); hz.sides[1].spikes = 1; hz.out = []; hz.switchIn(.it, 2); let spikeRat = hz.out; hz.out = []; hz.switchIn(.it, 0)
+    check(spikeRat.contains { if case .hurt(.it, hz.theirs[2].maxHP / 8, _) = $0 { return true }; return false } && !hz.out.contains { if case .hurt = $0 { return true }; return false }, "압정뿌리기: 1/8 on the ground, nothing on a flying type")
+    var d9 = duel(pika50, rat, [446]); _ = d9.turn(.fight(446), &r); check(d9.sides[1].stealthRock, "스텔스록 lays the rocks")
+    var d10 = duel(Mon(dex: 291, level: 30, female: false), rat, [150]); _ = d10.turn(.fight(150), &r); _ = d10.turn(.fight(150), &r)
+    check(abilitySlots[291] == [3] && d10.mine[0].stage[5] >= 1, "가속: 스피드 up at the end of the turn")
+    var sleeps = Set<Int>(); for _ in 0..<300 { var b = duel(pika50, rat, [150]); b.seed = r.next() | 1; b.inflict(.it, .sleep, from: .me, loud: false); sleeps.insert(b.theirs[0].sleep) }
+    check(sleeps == [1, 2, 3, 4], "sleep lasts 1-4 turns (Gen IV)", "\(sleeps)")
+    var d11 = duel(pika50, rat, [156]); d11.mine[0].hp = 20; _ = d11.turn(.fight(156), &r)
+    check(d11.mine[0].hp == d11.mine[0].maxHP && d11.mine[0].status == .sleep && d11.mine[0].sleep == 2, "잠자기: full HP, asleep 2 turns")
+    var d12 = duel(pika50, Mon(dex: 19, level: 5, female: false), [164, 150], [33]); _ = d12.turn(.fight(164), &r); let afterSub = d12.mine[0].hp
+    _ = d12.turn(.fight(150), &r)
+    check(afterSub == d12.mine[0].maxHP - d12.mine[0].maxHP / 4 && d12.mine[0].hp == afterSub && d12.mine[0].sub < d12.mine[0].maxHP / 4, "대타출동: 1/4 HP, then it takes the hits")
+    var bp = Battle(party: [pika50, lax50], trainer: "x", foes: [Mon(dex: 19, level: 5, female: false)]); bp.mine[0].moves = [14, 226]; bp.mine[0].pp = [20, 40]; bp.theirs[0].moves = [150]; bp.theirs[0].pp = [40]
+    _ = bp.turn(.fight(14), &r); _ = bp.turn(.fight(226), &r); check(bp.me == 1 && bp.mine[1].stage[1] == 2, "바톤터치 passes 칼춤's +2")
+    var d13 = duel(pika50, rat, [389], [150]), d14 = duel(pika50, rat, [389], [33])
+    let hitsIt: ([Beat]) -> Bool = { $0.contains { if case .hit(.it, 389, _, _, _) = $0 { return true }; return false } }
+    check(!hitsIt(d13.turn(.fight(389), &r)) && hitsIt(d14.turn(.fight(389), &r)), "기습: only against an attack")
+    var d15 = duel(pika50, Mon(dex: 292, level: 30, female: false), [55, 52])
+    let wg1 = d15.turn(.fight(55), &r), wg2 = d15.turn(.fight(52), &r)
+    check(abilitySlots[292] == [25] && !wg1.contains { if case .hit(.it, _, _, _, _) = $0 { return true }; return false } && wg2.contains(.fainted(.it)), "불가사의부적: only super-effective hits land")
+    var d16 = duel(pika50, Mon(dex: 58, level: 30, female: false), [52]); d16.theirs[0].abilityOver = 18; let ff = d16.turn(.fight(52), &r)
+    check(!ff.contains { if case .hit(.it, _, _, _, _) = $0 { return true }; return false } && d16.theirs[0].flashFire, "타오르는불꽃: fire is absorbed")
+    var d17 = duel(pika50, Mon(dex: 135, level: 50, female: false), [85]); d17.theirs[0].hp = d17.theirs[0].maxHP / 2; let va = d17.turn(.fight(85), &r)
+    check(abilitySlots[135] == [10] && va.contains { if case .heal(.it, _, _) = $0 { return true }; return false } && d17.theirs[0].hp > d17.theirs[0].maxHP / 2, "축전: electric moves heal it")
+    var ohko = 0, sturdyKO = 0
+    for _ in 0..<40 {
+        var a = duel(lax50, Mon(dex: 74, level: 30, female: false), [12]); a.theirs[0].abilityOver = 5; _ = a.turn(.fight(12), &r); if !a.theirs[0].alive { sturdyKO += 1 }
+        var c = duel(lax50, Mon(dex: 74, level: 30, female: false), [12]); c.theirs[0].abilityOver = 69; _ = c.turn(.fight(12), &r); if !c.theirs[0].alive { ohko += 1 }
+    }
+    check(sturdyKO == 0 && ohko > 10, "옹골참 stops one-hit KO moves (Gen IV)", "\(sturdyKO) \(ohko)")
+    var d18 = duel(Mon(dex: 287, level: 30, female: false), Mon(dex: 19, level: 60, female: false), [33]), uses = 0
+    for _ in 0..<2 { uses += d18.turn(.fight(33), &r).filter { if case .use(.me, _) = $0 { return true }; return false }.count }
+    check(abilitySlots[287] == [54] && uses == 1, "게으름: every other turn")
+    var d19 = duel(pika50, Mon(dex: 118, level: 30, female: false), [150]); d19.theirs[0].abilityOver = 33; let dry = d19.speed(.it); d19.sky = .rain
+    check(d19.speed(.it) == dry * 2, "쓱쓱: 스피드 x2 in rain")
+    var stat = 0; for _ in 0..<300 { var b = duel(rat, pika50, [33]); _ = b.turn(.fight(33), &r); if b.mine[0].status == .paralysis { stat += 1 } }
+    check(abilitySlots[25] == [9] && (55...125).contains(stat), "정전기: 30 % on contact", "\(stat)")
+    var cr = duel(pika50, rat, [33]), crits = 0; for _ in 0..<3200 { if cr.critical(.me, .it, moveTable[33]!) { crits += 1 } }
+    check((140...260).contains(crits), "critical rate 1/16", "\(crits)")
+    var wet = duel(Mon(dex: 7, level: 50, female: false), rat, [55]); var hiDry = 0, hiWet = 0
+    for _ in 0..<400 { hiDry = max(hiDry, wet.calc(.me, .it, moveTable[55]!, power: 40, type: "water", eff: 1, crit: false)) }; wet.sky = .rain
+    for _ in 0..<400 { hiWet = max(hiWet, wet.calc(.me, .it, moveTable[55]!, power: 40, type: "water", eff: 1, crit: false)) }
+    check(Double(hiWet) >= Double(hiDry) * 1.4, "rain: water x1.5", "\(hiDry) \(hiWet)")
+
     // 7b new moves: the forget-one choice
-    let ls25 = learnsets[25], next = stride(from: 0, to: ls25.count, by: 2).map { (ls25[$0], ls25[$0 + 1]) }.first { $0.0 > 12 && Moves.supported($0.1) }!
+    let ls25 = learnsets[25], pairs25: [(Int, Int)] = stride(from: 0, to: ls25.count, by: 2).map { (ls25[$0], ls25[$0 + 1]) }, next = pairs25.first { $0.0 > 12 && Moves.supported($0.1) }!
     var lw = Walk(); lw.companion = Mon(dex: 25, level: next.0 - 1, female: false); lw.companion.known = [84, 45, 39, 86].filter { $0 != next.1 }.prefix(4).map { $0 }
     lw.walk(expTable[growthRate[25]][next.0] - lw.companion.points, at: Date())
-    check(lw.companion.level == next.0 && Array((lw.learn ?? []).prefix(2)) == [-1, next.1], "a level-up by walking queues the new move", "\(lw.learn ?? [])")
-    let lv = WalkerView(state: lw); lv.persist = false; lv.nextLearn(Date())
+    check(lw.companion.level == next.0 && lw.companion.uid != nil && Array((lw.learning ?? []).prefix(2)) == [lw.companion.uid!, next.1], "a level-up by walking queues the new move", "\(lw.learning ?? [])")
+    let lv = WalkerView(state: lw); lv.persist = false; lv.rng = Seeded(s: 12); lv.nextLearn(Date())
     if case .learn = lv.screen { lv.press(1); check(lv.state.companion.known?[0] == next.1 && lv.state.companion.moves.count == 4, "forget move 1 for the new one") } else { check(false, "4 moves known: the forget-one screen") }
-    let before4 = lv.state.companion.known; lv.state.learn = [-1, 85]; lv.screen = .learn(sel: 4); lv.press(1)
-    check(lv.state.companion.known == before4 && lv.state.learn == [], "배우지 않는다 keeps the four")
-    lv.state.companion.known = [84, 45]; lv.state.learn = [-1, next.1]; lv.screen = .home; lv.nextLearn(Date())
+    let before4 = lv.state.companion.known; lv.state.learning = [lv.state.id(-1)!, 85]; lv.screen = .learn(sel: 4); lv.press(1)
+    check(lv.state.companion.known == before4 && lv.state.learning == [], "배우지 않는다 keeps the four")
+    lv.state.companion.known = [84, 45]; lv.state.learning = [lv.state.id(-1)!, next.1]; lv.screen = .home; lv.nextLearn(Date())
     check(lv.state.companion.known == [84, 45, next.1], "a free slot: learned straight away")
-    let bv = WalkerView(state: { var s = Walk(); s.bag = ["마비치료제", "상처약"]; return s }()); bv.persist = false
+    var bw = Walk(); bw.box = [Mon(dex: 16, level: 5, female: false), Mon(dex: 25, level: next.0, female: false)]; bw.box[1].known = [84, 45]
+    bw.queueMoves(1, from: next.0 - 1); bw.box.remove(at: 0)
+    check(bw.nextToLearn()?.ref == 0 && bw.nextToLearn()?.move == next.1, "a queued move follows its Pokémon when the box shifts")
+    bw.box.removeAll(); check(bw.nextToLearn() == nil && bw.learning == [], "released: its queued moves are dropped")
+    let bv = WalkerView(state: { var s = Walk(); s.bag = ["마비치료제", "상처약"]; return s }()); bv.persist = false; bv.rng = Seeded(s: 13)
     var bb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); bb.mine[0].status = .paralysis
     check(bv.battleItems(bb).map(\.name) == ["마비치료제"], "full HP: only the cure is offered")
     bv.screen = .bagBattle(bb, sel: 0); bv.press(1)
@@ -260,7 +373,7 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     var g: [Int] = []; for _ in 0..<8 { g.append(w.towerWin()) }
     check(g == [1, 1, 1, 1, 1, 1, 4, 2] && w.bp == 12 && w.towerBest == 8, "BP: 1 a win, +3 on the 7th, 2 a win after 7", "\(g)")
     w.towerEnd(); check(w.towerStreak == 0 && w.towerBest == 8, "a loss ends the streak, best kept")
-    var up = w.box[1]; _ = up.gainBattleExp(50_000); w.writeBack([-1, 1], [w.companion, up]); check(w.box[1].level > 30, "tower EXP goes back to the box")
+    var up = w.box[1]; _ = up.gainBattleExp(50_000); w.writeBack([w.id(-1)!, w.id(1)!], [w.companion, up]); check(w.box[1].level > 30, "tower EXP goes back to the box")
     w.watts = 100; check(w.buy("슈퍼볼", watts: 40) && w.watts == 60 && w.bag.last == "슈퍼볼" && !w.buy("풀회복약", watts: 300), "W shop")
     check(w.buy("이상한사탕", bp: 8) && w.bp == 4 && !w.buy("이상한사탕", bp: 8), "BP exchange")
     w = Walk(); w.watts = 9998; check(w.buyLegend(0) == nil, "칠색조 needs the full 9,999 W")
@@ -326,7 +439,7 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
     // 9 UI flows: the real view, driven through press() / touch() / tick()
     func on(_ v: WalkerView, _ p: (Screen) -> Bool) -> Bool { p(v.screen) }
     var s0w = Walk(); s0w.watts = 100
-    let v = WalkerView(state: s0w); v.persist = false
+    let v = WalkerView(state: s0w); v.persist = false; v.rng = Seeded(s: 14)
     v.press(2); check(on(v) { if case .menu(0) = $0 { return true }; return false }, "home ▶ opens the menu")
     v.press(1); check(v.state.watts == 90 && on(v) { if case .radar = $0 { return true }; return false }, "radar costs 10W")
     v.screen = .radar(bush: 2, cursor: 0, since: Date().addingTimeInterval(-2), chain: 0)
@@ -347,6 +460,12 @@ struct Seeded: RandomNumberGenerator {                                   // Spli
         v.screen = .beats(after, [.appear], since: Date().addingTimeInterval(-30), from: after); v.tick(nil)
         if case .battle(let next, _) = v.screen { check(next.theirs[0].hp == after.theirs[0].hp && next.mine[0].hp == after.mine[0].hp, "next turn's menu shows the same HP") }
     } else { check(false, "the battle kept after a turn is the one AFTER it (HP stays down next turn)") }
+    var mr = Battle(party: [Mon(dex: 25, level: 30, female: false), Mon(dex: 143, level: 30, female: false)], trainer: "x", foes: [Mon(dex: 16, level: 30, female: false)])
+    mr.mine[0].hp = 0; mr.mine[0].down = true; mr.mustReplace = true
+    v.screen = .beats(mr, [.fainted(.me)], since: Date().addingTimeInterval(-30), from: mr); v.tick(nil)
+    let picking = on(v) { if case .party(_, 1) = $0 { return true }; return false }; v.press(3)
+    let stuck = on(v) { if case .party = $0 { return true }; return false }; v.press(1)
+    check(picking && stuck && on(v) { if case .beats(let nb, let bs, _, _) = $0 { return bs.first == .sendOut(.me, 1) && nb.me == 1 }; return false }, "ours fainted: pick who's next (⌂ can't skip it)")
     v.screen = .menu(0); v.press(3); check(on(v) { if case .home = $0 { return true }; return false }, "⌂ goes home")
     v.state.box = [Mon(dex: 16, level: 20, female: false)]; let wBefore = v.state.watts
     v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(2); v.press(1); v.press(2); v.press(1)

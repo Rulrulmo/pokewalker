@@ -37,9 +37,11 @@ extension WalkerView {
             for (dex, group) in groups {
                 let head = into.addItem(withTitle: "\(monNames[dex])\(group.contains { $0.1.shiny == true } ? " ★" : "") · \(group.count)", action: nil, keyEquivalent: ""), sm = NSMenu()
                 // look-alikes (same level, sex, 이로치, place) are one row "×n"; picking it takes the one with the most EXP
-                let rows = Dictionary(grouping: group, by: { "\($0.1.shiny == true)|\($0.1.level)|\($0.1.female)|\($0.1.nature ?? 0)|\($0.1.abilityID)|\($0.2)" }).values
-                    .map { (best: $0.max(by: { $0.1.points < $1.1.points })!, n: $0.count) }
-                    .sorted { ($0.best.1.shiny == true ? 1 : 0, $0.best.1.points) > ($1.best.1.shiny == true ? 1 : 0, $1.best.1.points) }
+                func key(_ e: (Int, Mon, String)) -> String { let m = e.1; return "\(m.shiny == true)|\(m.level)|\(m.female)|\(m.nature ?? 0)|\(m.abilityID)|\(e.2)" }
+                func rank(_ m: Mon) -> (Int, Int) { (m.shiny == true ? 1 : 0, m.points) }
+                let rows: [(best: (Int, Mon, String), n: Int)] = Dictionary(grouping: group, by: key).values
+                    .map { g in (best: g.max { $0.1.points < $1.1.points }!, n: g.count) }
+                    .sorted { rank($0.best.1) > rank($1.best.1) }
                 for r in rows.prefix(rows.count > 10 ? 8 : 10) { individual(sm, r.best, named: false, count: r.n) }
                 if rows.count > 10 {                                                                   // the long tail, by level band
                     let rest = rows.dropFirst(8), mh = sm.addItem(withTitle: "그 밖 \(rest.reduce(0) { $0 + $1.n })마리", action: nil, keyEquivalent: ""), mm = NSMenu()

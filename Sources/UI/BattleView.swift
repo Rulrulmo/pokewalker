@@ -22,7 +22,7 @@ extension WalkerView {
             b = x; msg = "어떤 기술을 쓸까?"
             let f = x.mine[x.me]
             mode = .moves(f.moves.enumerated().map { k, id in let m = moveTable[id]!; return .init(name: m.name, type: m.type, power: m.power, effect: m.isStatus ? 1 : effectiveness(m.type, on: x.theirs[x.it].mon.dex), pp: f.pp[k], maxPP: m.pp) }, sel)
-        case .party(let x, let sel): b = x; msg = "누구로 교체할까?"; mode = .party(x.mine.enumerated().map { card($1, out: $0 == x.me) }, sel)
+        case .party(let x, let sel): b = x; msg = x.mustReplace ? "다음은 누구를 내보낼까?" : "누구로 교체할까?"; mode = .party(x.mine.enumerated().map { card($1, out: $0 == x.me) }, sel)
         case .bagBattle(let x, let sel): b = x; msg = "무엇을 사용할까?"; mode = .items(battleItems(x).map { "\($0.name) ×\(state.count($0.name))" }, sel)
         case .beats:
             guard let s = beatState(now) else { return nil }
@@ -150,7 +150,7 @@ extension WalkerView {
         case .thrown: return u < 1.25 ? "가랏, " + usedItem + "!" : dots
         case .broke: return "앗! 나와버렸다!"
         case .caught: return "딸깍! " + josa(it, "을", "를") + " 잡았다!"
-        case .gained(let e, let l, _): return l.map { me + " Lv.\($0)!" } ?? "경험치 \(e) 획득"
+        case .gained(let e, let l, _, let k): let who = monNames[b.mine[k].mon.dex]; return l.map { who + " Lv.\($0)!" } ?? josa(who, "은", "는") + " 경험치 \(e) 획득"
         case .fled: return josa(it, "은", "는") + " 도망쳤다..."
         case .ran: return "무사히 도망쳤다!"
         case .won: return b.trainer == nil ? "승리!" : (b.trainer ?? "") + "에게 이겼다!"

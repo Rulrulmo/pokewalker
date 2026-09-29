@@ -77,8 +77,9 @@ extension WalkerView {
                 if k == sel { fb.invert(0, y - 1, 96, 10) }
             }
         case .learn(let sel):
-            if let q = state.learn, q.count >= 2, let m = state.mon(q[0]) {
-                fb.text("새 기술: " + moveTable[q[1]]!.name, 2, 1, 3, small: true); fb.fill(0, 10, 96, 1, 2)
+            var st = state
+            if let (ref, id) = st.nextToLearn(), let m = state.mon(ref) {
+                fb.text("새 기술: " + moveTable[id]!.name, 2, 1, 3, small: true); fb.fill(0, 10, 96, 1, 2)
                 for (k, label) in (m.moves.map { moveTable[$0]!.name } + ["배우지 않는다"]).enumerated() {
                     let y = 13 + 10 * k
                     fb.text(label, 2, y, 3, small: true)

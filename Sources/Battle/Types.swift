@@ -87,7 +87,7 @@ enum Beat: Equatable {
     case note(Side, text: String)                    // anything else to read; Side = whose sprite shows
     case fainted(Side)
     case thrown(shakes: Int), broke, caught          // the ball rocks `shakes` times, then breaks open or clicks
-    case gained(exp: Int, level: Int?, foe: Int)     // after a KO; level if it went up; foe = the EV yield's species
+    case gained(exp: Int, level: Int?, foe: Int, to: Int)   // after a KO, for each of ours that faced it (mine[to]); level if it went up; foe = the EV yield's species
     case fled, ran, won, lost
     var ends: Bool { [.caught, .fled, .ran, .won, .lost].contains(self) }
     var length: Double {                             // seconds on screen
@@ -98,7 +98,7 @@ enum Beat: Equatable {
         case .thrown(let s): 1.25 + 0.6 * Double(s)
         case .caught: 1.8
         case .fainted, .won, .lost: 1.4
-        case .gained(_, let l, _): l == nil ? 1.2 : 1.8
+        case .gained(_, let l, _, _): l == nil ? 1.2 : 1.8
         default: 1.3
         }
     }

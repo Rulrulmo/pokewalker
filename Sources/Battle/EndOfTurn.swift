@@ -77,16 +77,19 @@ extension Battle {
         guard !over else { return }
         if !f(.it).alive, !f(.it).down {
             mod(.it) { $0.down = true }; out.append(.fainted(.it))
-            if f(.me).alive {
-                let foe = f(.it).mon, e = baseExp[foe.dex] * foe.level / 7 * (trainer == nil ? 2 : 3) / 2
-                var probe = f(.me).mon; let up = probe.gainBattleExp(e)
-                out.append(.gained(exp: e, level: up ? probe.level : nil, foe: foe.dex)); apply(out.last!)
+            let share = faced.filter { mine[$0].alive }.sorted()                                  // Gen IV: EXP split among those that faced it, EVs in full
+            if !share.isEmpty {
+                let foe = f(.it).mon, e = max(1, baseExp[foe.dex] * foe.level / 7 * (trainer == nil ? 2 : 3) / 2 / share.count)
+                for k in share {
+                    var probe = mine[k].mon; let up = probe.gainBattleExp(e)
+                    out.append(.gained(exp: e, level: up ? probe.level : nil, foe: foe.dex, to: k)); apply(out.last!)
+                }
             }
             if let n = theirs.indices.first(where: { theirs[$0].alive }) { switchIn(.it, n) } else { out.append(.won); over = true; return }
         }
         if !f(.me).alive, !f(.me).down {
             mod(.me) { $0.down = true }; out.append(.fainted(.me))
-            if let n = mine.indices.first(where: { mine[$0].alive }) { switchIn(.me, n) } else { out.append(.lost); over = true }
+            if mine.contains(where: \.alive) { mustReplace = true } else { out.append(.lost); over = true }
         }
     }
 
@@ -103,9 +106,8 @@ extension Battle {
     }
     /// Gen IV: sure if we're faster, else by the speed ratio and how many tries; trapping moves and abilities stop it.
     mutating func canEscape() -> Bool {
-        let x = f(.me), y = f(.it)
-        if x.has(50) { return true }
-        if x.trapped || x.bound > 0 || x.ingrain || y.has(23) || (y.has(71) && grounded(.me)) || (y.has(42) && x.typeList.contains("steel")) { return false }
+        if f(.me).has(50) { return true }
+        if trapped(.me) { return false }
         let a = speed(.me), b = max(1, speed(.it)); escapes += 1
         if a >= b { return true }
         return roll(256) < (Int(a * 128 / b) + 30 * escapes) % 256
@@ -137,10 +139,7 @@ extension Battle {
     mutating func foeChoice() -> Int {
         let x = f(.it)
         if x.charging != 0 { return x.charging }; if x.lock > 0 { return x.lockMove }; if x.bide > 0 { return 117 }
-        let ok = x.moves.indices.filter { i in
-            let id = x.moves[i], m = moveTable[id]!
-            return x.pp[i] > 0 && !(x.disable > 0 && x.disabledMove == id) && !(x.taunt > 0 && m.isStatus) && !(x.torment && id == x.lastMove) && !(x.encore > 0 && id != x.encoreMove)
-        }.map { x.moves[$0] }
+        let ok = usable(.it)
         guard !ok.isEmpty else { return 165 }
         if trainer == nil || roll(5) == 0 { return ok[roll(ok.count)] }
         let d = f(.me)
@@ -161,6 +160,39 @@ extension Battle {
 
 // MARK: - what the menus need
 extension Battle {
+    /// Held in place: 검은눈빛 / 조이기 / 뿌리박기, or their 그림자밟기 (not on another), 개미지옥 (on the ground), 자력 (on steel).
+    func trapped(_ s: Side) -> Bool {
+        let x = f(s), y = f(other(s))
+        if x.trapped || x.bound > 0 || x.ingrain { return true }
+        return y.alive && (y.has(23) && !x.has(23) || y.has(71) && grounded(s) || y.has(42) && x.typeList.contains("steel"))
+    }
+    /// Ours is mid-move (charging, rampaging, recharging, biding): 공격 (or giving up) is all the player can do.
+    var locked: Bool { let x = mine[me]; return x.charging != 0 || x.lock > 0 || x.bide > 0 || x.recharge }
+    /// Why ours can't switch out now (nil = it can).
+    var switchBlock: String? {
+        if locked { return "지금은 교체할 수 없다!" }
+        return trapped(.me) ? josa(nm(.me), "은", "는") + " 돌아올 수 없다!" : nil
+    }
+    /// The moves that side may pick this turn: PP left, not disabled, no status move under 도발, not the same one under 트집, the encored one only.
+    func usable(_ s: Side) -> [Int] {
+        let x = f(s)
+        return x.moves.indices.filter { i in
+            let id = x.moves[i], m = moveTable[id]!
+            return x.pp[i] > 0 && !(x.disable > 0 && x.disabledMove == id) && !(x.taunt > 0 && m.isStatus) && !(x.torment && id == x.lastMove) && !(x.encore > 0 && id != x.encoreMove)
+        }.map { x.moves[$0] }
+    }
+    /// A trainer pulls back one that can't hurt ours but gets hit hard, for a teammate that resists all of ours' attacks. Not two turns running.
+    mutating func foeSwitch() -> Int? {
+        let x = f(.it), y = f(.me)
+        guard x.alive, !trapped(.it), x.charging == 0, x.lock == 0, x.bide == 0, !x.recharge, turnNo - foeSwapTurn > 2 else { return nil }
+        func eff(_ type: String, _ on: [String]) -> Double { on.reduce(1) { $0 * (typeChart[type]?[$1] ?? 1) } }
+        func threat(_ on: [String]) -> Double { y.moves.compactMap { moveTable[$0] }.filter { !$0.isStatus && $0.power > 0 }.map { eff($0.type, on) }.max() ?? 1 }
+        func offense(_ z: Fighter) -> Double { z.moves.compactMap { moveTable[$0] }.filter { !$0.isStatus && $0.power > 0 }.map { eff($0.type, y.typeList) }.max() ?? 0 }
+        guard threat(x.typeList) >= 2, offense(x) <= 1 else { return nil }
+        let safe = theirs.indices.filter { $0 != it && theirs[$0].alive && threat(theirs[$0].typeList) <= 0.5 }
+        guard let i = safe.max(by: { offense(theirs[$0]) < offense(theirs[$1]) }), pct(60) else { return nil }
+        foeSwapTurn = turnNo; return i
+    }
     /// Ours can't pick this turn (charging, rampaging, recharging, biding, encored): the move it's stuck with.
     var forced: Int? {
         let x = mine[me]

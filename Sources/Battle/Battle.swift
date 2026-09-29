@@ -10,6 +10,9 @@ struct Battle: Equatable {
     var sky = Sky.clear, skyTurns = 0                // skyTurns 0 with a sky = lasts (the course's weather, or an ability's)
     var trickRoom = 0, gravity = 0, mudSport = false, waterSport = false, lastUsed = 0, escapes = 0, turnNo = 0
     var out: [Beat] = [], over = false, seed: UInt64 = 1, planned = [0, 0]      // planned = each side's chosen move this turn (기습 needs it)
+    var faced: Set<Int> = [0]                        // ours that have been out against their current one (they share its EXP)
+    var mustReplace = false                          // ours fainted with others left: the player picks who's next (replace(_:))
+    var foeSwapTurn = -9                             // when the trainer last pulled one back
     var wild: Mon { theirs[it].mon }
 
     init(wild: Mon, companion: Mon, chain: Int = 0) { mine = [Fighter(companion)]; theirs = [Fighter(wild)]; self.chain = chain }
@@ -36,10 +39,10 @@ struct Battle: Equatable {
         case .hit(let s, _, let d, _, _), .hurt(let s, let d, _): mod(s) { $0.hp = max(0, $0.hp - d) }
         case .heal(let s, let n, _): mod(s) { $0.hp = min($0.maxHP, $0.hp + n) }
         case .status(let s, let st, _): mod(s) { $0.status = st }
-        case .gained(let e, _, let foe):
-            let old = mine[me].maxHP
-            if mine[me].mon.gainBattleExp(e) { mine[me].hp += mine[me].maxHP - old }                 // a level-up raises current HP too
-            mine[me].mon.gainEVs(from: foe)
+        case .gained(let e, _, let foe, let k):
+            let old = mine[k].maxHP
+            if mine[k].mon.gainBattleExp(e) { mine[k].hp += mine[k].maxHP - old }                    // a level-up raises current HP too
+            mine[k].mon.gainEVs(from: foe)
         default: break
         }
     }

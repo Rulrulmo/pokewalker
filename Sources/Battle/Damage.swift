@@ -51,7 +51,7 @@ extension Battle {
         let st = min(4, m.crit + (f(s).focus ? 2 : 0) + (f(s).has(105) ? 1 : 0))
         return roll([16, 8, 4, 3, 2][st]) == 0
     }
-    /// Gen IV damage: base, then burn, screens, weather, +2, crit, random, STAB, type, 필터/색안경.
+    /// Gen IV damage: base, then burn, screens, weather, +2, crit, random, STAB, type, 필터/색안경 — rounding down after each, as DPPt/HGSS do.
     mutating func calc(_ s: Side, _ t: Side, _ m: MoveInfo, power: Int, type: String, eff: Double, crit: Bool) -> Int {
         let a = f(s), d = f(t), phys = m.physical || m.id == 165
         var A = Double(base(s, phys ? 1 : 3)), D = Double(base(t, phys ? 2 : 4))
@@ -83,10 +83,10 @@ extension Battle {
         if weatherOn == .sun { if type == "fire" { x *= 1.5 }; if type == "water" { x *= 0.5 } }
         x += 2
         if crit { x *= a.has(97) ? 3 : 2 }
-        x = floor(x * Double(217 + roll(39)) / 255)
-        if !type.isEmpty, a.typeList.contains(type) { x *= a.has(91) ? 2 : 1.5 }
-        x *= eff
-        if eff > 1, dAb(t, 111, by: s) || dAb(t, 116, by: s) { x *= 0.75 }
+        x = floor(x * Double(85 + roll(16)) / 100)                                                  // Gen III-IV: 85-100 %
+        if !type.isEmpty, a.typeList.contains(type) { x = floor(x * (a.has(91) ? 2 : 1.5)) }        // each step rounds down
+        x = floor(x * eff)
+        if eff > 1, dAb(t, 111, by: s) || dAb(t, 116, by: s) { x = floor(x * 0.75) }
         if eff < 1, a.has(110) { x *= 2 }
         return max(1, Int(x))
     }
