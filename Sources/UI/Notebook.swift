@@ -8,7 +8,9 @@ let paperNames = ["점 격자 수첩", "모눈 노트", "줄 노트", "크라프
 @MainActor var paperStyle = min(max(UserDefaults.standard.integer(forKey: "paper"), 0), paperNames.count - 1)
 /// The polaroid round courseBox (half-dots): 4 px of white round the photo, 12 under it.
 let polaroid = (x: 2 * courseBox.x - 4, y: 2 * courseBox.y - 4, w: 2 * courseBox.w + 8, h: 2 * courseBox.h + 16)
-let stickerFeet = (x: 156, y: 114)                                                  // the big companion's feet (half-dots)
+let stickerFeet = (x: 148, y: 114)                                                  // the big companion's feet (half-dots): the widest sprite and its rim still clear the right bezel
+/// Whose sticker rims are in the picture store: a new companion lets the old one's go (dozens of animation frames each).
+@MainActor var rimDex = 0
 
 extension WalkerView {
     /// Home (and under the menu, which is the pane's): the page, the polaroid and the walker in it, the tape, the calendar, the stickers, the companion, its emote.
@@ -31,11 +33,12 @@ extension WalkerView {
             let k = min(3, state.caught.count), tau = t.truncatingRemainder(dividingBy: 1.6), ang = e.left < 500 && tau < 0.5 ? 12 * sin(tau / 0.25 * 2 * .pi) * (1 - tau / 0.5) : 0
             fb.pic("nb|egg|" + tone, 20 + 30 * k + Int((11 * sin(ang * .pi / 180)).rounded()), 123 - hop(k) - Int((11 * cos(ang * .pi / 180)).rounded()), angle: ang, behind: true) { lcdReady(sticker(miniEgg, night: night)) }   // about its foot
         }
+        if rimDex != me.dex { rimDex = me.dex; picStore = picStore.filter { !$0.key.hasPrefix("nb|me|") }; picImages = picImages.filter { !$0.key.hasPrefix("nb|me|") } }
         let a = animT("home", me.dex, now, start: false), f = a.flatMap { anim(me.dex)?.frame(at: $0) }, an = f.flatMap { _ in anim(me.dex) }
         let bob = now.timeIntervalSince(lastStep) < 3 ? Int(t * 2) % 2 : Int(t) % 2                // steps coming in => breathes twice as fast
         if let f, let an {                                                                       // the rim round this frame of its animation
-            fb.stuck("nb|me|\(me.dex)|\(f)|" + tone, fx - 42 + an.x, fy - 82 + an.y) { sticker(animFramePic(an, f), night: night, rimOnly: true) }
-        } else { fb.stuck("nb|me|\(me.dex)|s|" + tone, fx - 42, fy - 82 - bob) { sticker(spritePic(me.dex), night: night, rimOnly: true) } }
+            fb.stuck("nb|me|\(me.dex)|\(f)|\(night)", fx - 42 + an.x, fy - 82 + an.y) { sticker(animFramePic(an, f), night: night, rimOnly: true) }   // (a rim: the same on any LCD style)
+        } else { fb.stuck("nb|me|\(me.dex)|s|\(night)", fx - 42, fy - 82 - bob) { sticker(spritePic(me.dex), night: night, rimOnly: true) } }
         fb.sprite(me, fx / 2 - 16, fy / 2 - 32, bob: bob, anim: a)
         if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { fb.pic("nb|bubble|\(e.kind)", fx - 18, max(10, fy - 84 + spriteTop(me.dex))) { bubblePic(e.kind) } }   // by its head
     }
@@ -247,5 +250,11 @@ func bubblePic(_ kind: Int) -> Pic {
         if w.clip[0] < photo.x || w.clip[1] < photo.y || w.clip[0] + w.clip[2] > photo.x + photo.w || w.clip[1] + w.clip[3] > photo.y + photo.h || w.x - 16 < photo.x || w.x + 16 > photo.x + photo.w { inside = false }
     }
     c.append((inside, "home: the walker walks the polaroid's photo, clipped to it, end to end"))
+    var right = 0                                                                              // the rightmost opaque column of any front sprite
+    for d in 1...493 { for x in stride(from: 79, to: right, by: -1) where (0..<80).contains(where: { spritePixel(d, back: false, x, $0, shiny: false) != 0 }) { right = x; break } }
+    let edge: Int = stickerFeet.x - 40 + right + 3
+    c.append((edge < 192, "home: the widest companion and its sticker rim clear the right bezel"))
+    v.state.companion = Mon(dex: 6, level: 30, female: false); _ = v.compose(t0)
+    c.append((!picStore.keys.contains { $0.hasPrefix("nb|me|25|") } && picStore.keys.contains { $0.hasPrefix("nb|me|6|") }, "home: a new companion lets the old one's sticker rims go"))
     return c
 }
