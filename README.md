@@ -22,6 +22,22 @@ zip을 보내면 받는 사람은 압축을 풀고 `PokeWalker.app`을 응용 �
 
 경고 없이 더블클릭으로 열리게 하려면 Apple Developer Program(연 $99)의 Developer ID 서명 + 공증(notarization)이 필요. 세이브는 사람마다 따로(`~/Library/Application Support/PokeWalker`).
 
+## 윈도우 (Windows 10 / 11, x64)
+
+GitHub Actions(`.github/workflows/windows.yml`, `win-port` 브랜치에 push할 때)가 빌드·셀프테스트·렌더까지 하고 두 가지를 올림:
+- **`PokeWalker-windows-x64`** — 압축을 풀면 폴더 하나(`PokeWalker.exe` + Swift 런타임 DLL + `Resources/`). 폴더째 아무 데나 두고 `PokeWalker.exe` 실행. 설치·관리자 권한 필요 없음.
+- **`PokeWalker-renders`** — 소프트웨어 캔버스로 그린 대표 화면 22장(PNG, Mac 골든과 같은 이름) — 윈도우에서 어떻게 보이는지 미리 확인용.
+
+처음 실행할 때 서명이 없어서 **SmartScreen**("Windows의 PC 보호")이 막음 → **추가 정보 → 실행**. (zip을 받은 뒤 파일 속성에서 "차단 해제"를 체크해도 됨.)
+
+Mac과 같은 것: 몬스터볼 카드(항상 위, 둥근 모서리, 드래그로 이동, 위치 기억), 띠의 키·키보드(← → ↑ ↓ PageUp/Down Tab Enter/Space Esc M)·패널 클릭·휠, 우클릭 메뉴, 크기(보통·크게·아주 크게 × 모니터 배율), 알림, 세이브 형식.
+Mac과 다른 것:
+- **메뉴 막대 대신 알림 영역(트레이)** 의 몬스터볼 아이콘 — **클릭 = 보이기/숨기기**, 우클릭 = 메뉴, 마우스를 올리면 오늘 걸음·W. 알림은 트레이 풍선(윈도우 10/11에선 알림 센터 토스트)으로. 작업 표시줄 버튼은 없음(`PokeWalker.exe`를 다시 실행하면 숨긴 카드가 다시 나옴).
+- **앱을 꺼 둔 동안의 입력은 걸음으로 안 셈** — 윈도우엔 Mac의 시스템 입력 카운터가 없어서, 실행 중에만 키 누름(길게 눌러 반복되는 건 1번)·마우스 좌/우 클릭을 Raw Input으로 횟수만 셈(무엇을 눌렀는지는 안 봄, 권한 필요 없음). 로그인할 때 자동으로 켜 두려면 `Win+R` → `shell:startup` 폴더에 `PokeWalker.exe` 바로 가기를 넣기.
+- 글꼴은 **맑은 고딕**(한글은 크기의 0.9, 영문·숫자는 그대로; 보통·세미볼드는 레귤러를 굵혀서) — 줄 길이는 Mac과 거의 같지만 글자 모양은 다름. 카드 그림자는 없음.
+- 세이브: `%APPDATA%\PokeWalker\state.json`(+ `.bak`) — Mac의 `state.json`과 같은 형식이라 서로 복사해 옮길 수 있음(앱을 끈 뒤). 설정(크기·기기·화면·알림·창 위치)은 같은 폴더의 `settings.json`.
+- `PokeWalker.exe --selftest > st.txt` 셀프테스트, `PokeWalker.exe --render <폴더>` 대표 화면 PNG(창 앱이라 콘솔에 바로 안 찍힘 — 파일로 받기).
+
 ## 메뉴 막대 · 알림
 
 - 상단 메뉴 막대에 몬스터볼 아이콘 + 현재 W(알이 곧 부화하면 `·알`). **클릭 = 워커 숨기기/보이기**, 우클릭 = 기기와 같은 메뉴. 숨겨도 걸음·이벤트·부화는 계속(숨기면 홈 화면에 둠). 메뉴 막대 아이콘이 안 보일 때(아이콘이 많거나 노치에 가려질 때, 시스템 설정 › 메뉴 막대에서 꺼졌을 때): **앱을 다시 열면**(Finder·Spotlight에서 PokeWalker 더블클릭) 워커가 다시 나오고, 실행할 때도 늘 보임.
@@ -170,7 +186,8 @@ Mac엔 만보기가 없으니 **키 누름·마우스 클릭 1회 = 1걸음**. �
 | `Sources/Battle/` | 4세대 싱글 배틀 엔진: `Types` 기술·상태이상·Fighter·Beat / `Battle` 상태·기본 동작 / `Turn` 턴 진행 / `Damage` 명중·상성·데미지 / `Effects` 상태이상·변화기 / `EndOfTurn` 턴 끝·기절·볼·도망·도구·상대 AI. 결과는 `Beat`(한국어 대사 포함)로 |
 | `Sources/Core/` | 플랫폼과 무관한 몸통 (`Foundation`만, 윈도우 버전과 같이 씀): `Walker` 상태·시계·키 / `Flow` 버튼·터치 처리 / `Compose` 화면별 LCD 그리기 / `Notebook` 홈의 스티커 수첩(종이·폴라로이드·스티커) / `BattleView` 배틀 연출·HUD·패널 모델 / `Pane` 패널 페이지 모델 / `Card` 카드·LCD 그리기 / `Page` 패널 페이지 그리기(배틀·도감·포켓몬(상자)·포켓몬 상세·상점·메뉴·상태) / `Menu` 우클릭 메뉴(항목 트리) / `Canvas` 그리기·글자 인터페이스 / `Pixels` 스프라이트·폰트·프레임버퍼 / `Device` 기기 크기·색·LCD / `Platform` 설정·호스트 / `Inflate` DEFLATE 풀기 |
 | `Sources/Mac/` | AppKit 껍데기: `WalkerView` 기기 뷰(틱·입력) / `SideView` 패널 뷰(클릭·스크롤) / `MacCanvas` Canvas·글꼴(AppKit·CoreText, 예전과 픽셀 단위로 같게) / `MenuBar` 메뉴 트리 → NSMenu·메뉴 막대 / `MacHost` 설정(UserDefaults)·알림·걸음 수·창·대화상자 |
-| `Sources/App/main.swift` | 실행: `--selftest` 또는 메뉴 막대 앱 |
+| `Sources/Windows/` | Win32 껍데기(윈도우에서만 컴파일): `WinApp` 실행(`--selftest` · `--render` · 한 번만 실행 · DPI · 설정 JSON) / `WinCard` 레이어드 창·입력·타이머·트레이·메뉴·Raw Input 걸음·알림 / `SoftCanvas` 소프트웨어 Canvas(다각형 면적 안티앨리어싱·클립·레이어·그림·글자 합성·키 기호, 플랫폼 무관: `-D SOFTCANVAS`로 Mac에서도 빌드) / `WinFonts` GDI 글꼴(폭·높이·도트·글자 커버리지) / `WinRender` CI 렌더 22장 |
+| `Sources/App/main.swift` | 실행: `--selftest` 또는 메뉴 막대 앱 (윈도우: `windowsMain()`) |
 | `Sources/Data/` | **생성됨** (`tools/gen.py`) — `Data.swift` 493종 이름·타입·성장 곡선·4세대 종족값·레벨업 기술·상성·진화·35코스·알 풀 / `BattleData.swift` 기술 467개·특성·성격·노력치·몸무게·성비 |
 | `Resources/` | **생성됨** `hgss.bin`(493종 × 앞·뒤 80×80, 4bpp + 종별 일반/이로치 15색 팔레트) · `icons.bin`(4세대 박스 아이콘 32×32) · `frames.bin`(HGSS 알 + 4세대 트레이너 15명, Showdown) · `anims.bin`(493종 HGSS 등장 애니메이션, 종별 raw deflate) · `walk.bin`(493종 HGSS 필드 걷기 도트 좌·우·앞 × 4프레임, 일반·이로치) / `fonts/` Galmuri9·Galmuri7 (이민서, SIL OFL 1.1 — `fonts/OFL.md`) |
 | `Tests/SelfTest.swift` | `PokeWalker --selftest` (346 checks, 그림 파일마다 자체 검사 포함) — 규칙·배틀(데미지 공식은 Bulbapedia 예시 수치로, 특성·기술 20여 개는 한 기술씩) · 데이터 · 무작위 배틀 300판 + 실제 뷰를 버튼·패널 클릭·키로 조작하는 흐름 검사(세이브는 건드리지 않음). 빌드할 때마다 돌고, 실패하면 빌드 실패 |
