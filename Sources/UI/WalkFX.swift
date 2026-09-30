@@ -204,9 +204,9 @@ extension FB {
         egg("w.egg|0", 96, 96, 30, scale: 2, angle: close && tau < 0.8 ? 7 * sin(tau / 0.4 * 2 * .pi) * (1 - tau / 0.8) : 0, shade: 40) { eggPic(0) }
     }
     /// A Pokémon on the shows' spot (its feet on dot (48, 49)), scaled about its middle; tint = a silhouette in that colour.
-    mutating func showMon(_ m: Mon, scale s: Double = 1, alpha: Double = 1, tint: UInt32? = nil, bob: Int = 0) {
+    mutating func showMon(_ m: Mon, scale s: Double = 1, alpha: Double = 1, tint: UInt32? = nil, bob: Int = 0, anim u: Double? = nil) {
         let mid = Double(80 - spriteTop(m.dex)) / 4                                                      // its middle, in dots above its feet
-        sprite(m, 32, 17 - Int((mid * (1 - s)).rounded()), bob: bob, tint: tint.map { (0, $0) })
+        sprite(m, 32, 17 - Int((mid * (1 - s)).rounded()), bob: bob, tint: tint.map { (0, $0) }, anim: u)
         sprites[sprites.count - 1].scale = s; sprites[sprites.count - 1].alpha = alpha
     }
     /// A glow on (x, y) half-dots, cut off at the message row (y 100) so the light stays on the stage.
@@ -246,7 +246,7 @@ extension FB {
         if u >= 2.95 {                                                                               // out of the light: a white shape growing, then its colours
             let g = min(1, (u - 2.95) / 0.45), s = 0.3 + 0.7 * (1 - (1 - g) * (1 - g)), top = spriteTop(m.dex)
             if u < 3.9 { stageGlow("born", ex, 98 - (80 - top) / 2, 40, 36, glow, hot: true, alpha: min(1, (3.9 - u) / 0.6)) }
-            showMon(m, scale: s, bob: u > 3.8 ? bob : 0)
+            showMon(m, scale: s, bob: u > 3.8 ? bob : 0, anim: u > 3.8 ? u - 3.8 : nil)             // out of the light: its own HGSS animation
             if u < 3.75 { showMon(m, scale: s, alpha: min(1, (3.75 - u) / 0.4), tint: rgb(255, 255, 255)) }
         }
         whiteOut(u < 2.7 ? 0 : u < 2.85 ? (u - 2.7) / 0.15 : u < 3.0 ? 1 : 1 - (u - 3.0) / 0.45)
@@ -281,7 +281,7 @@ extension FB {
             let k = (u - 1.2) / 2.8, n = 1.5 * k + 11 * k * k                                            // half-turns so far: 12.5 by 4.0 s
             showMon(Int(n + 0.5) % 2 == 0 ? from : to, scale: 0.3 + 0.7 * abs(cos(n * .pi)), tint: rgb(255, 255, 255))
         } else {
-            showMon(to, bob: u > 4.9 ? bob : 0)
+            showMon(to, bob: u > 4.9 ? bob : 0, anim: u > 4.9 ? u - 4.9 : nil)
             if u > 4.5 { sparkles(u - 4.5, 96, mid(to), Double(98 - mid(to)) + 14, n: 8, big: true) }
         }
         whiteOut(u < 3.85 ? 0 : u < 4.0 ? (u - 3.85) / 0.15 : u < 4.4 ? 1 : 1 - (u - 4.4) / 0.5)

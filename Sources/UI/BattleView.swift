@@ -108,7 +108,7 @@ extension WalkerView {
         let t = now.timeIntervalSinceReferenceDate, f = Int(t * 2) % 2
         let at: [Side: (x: Int, y: Int)] = [.it: (60, hud ? 14 : 8), .me: (8, hud ? 22 : 32)]   // where each stands (feet at y + 32, centre x + 16; sprites are 40 dots): theirs clear of the HP box, ours flush with the bottom
         fb.battleGround(at, art: state.here.art, hour: state.hour, season: state.season, weather: state.weather ?? .sunny, indoor: b.trainer != nil)   // the ground, the pads they stand on
-        defer { fb.weatherFX(state.weather ?? .sunny, 0, hud ? 12 : 0, 96, hud ? 38 : 64, t) }                         // over the fighters, under the HUD
+        defer { fb.weatherFX(b.trainer == nil ? state.weather ?? .sunny : .sunny, 0, hud ? 12 : 0, 96, hud ? 38 : 64, t) }   // over the fighters, under the HUD (the tower is indoors)
         let foe = b.theirs[b.it].mon, mine = b.mine[b.me].mon
         let up: [Side: Bool] = [.it: b.theirs[b.it].alive || pending.contains(.it), .me: b.mine[b.me].alive || pending.contains(.me)]   // fainted = gone, once its faint has played
         var shown: [Side: (dx: Int, dy: Int, flash: Bool, on: Bool)] = [.it: (0, 0, false, up[.it]!), .me: (0, 0, false, up[.me]!)]
@@ -123,7 +123,9 @@ extension WalkerView {
         for s in [Side.it, .me] where shown[s]!.on {                                                // theirs first: ours is nearer
             let v = shown[s]!, a = at[s]!
             let alive = s == .me ? b.mine[b.me].alive : b.theirs[b.it].alive                         // only a fainting one sinks behind its pad; a lunge isn't clipped
-            fb.sprite(s == .me ? mine : foe, a.x + v.dx, a.y + v.dy, back: s == .me, bob: s == .me ? f - 1 : f, flash: v.flash, floor: alive ? 64 : a.y + 32)   // ours bobs down: its cut-off back never lifts
+            let plain = s == .it && alive && shot?.glow == nil && !v.flash && { if case .ball = p { return false }; return true }()   // out and standing: HGSS plays its own animation once
+            fb.sprite(s == .me ? mine : foe, a.x + v.dx, a.y + v.dy, back: s == .me, bob: s == .me ? f - 1 : f, flash: v.flash, floor: alive ? 64 : a.y + 32,
+                      anim: plain ? animT("foe \(b.seed) \(b.it)", foe.dex, now) : nil)   // ours bobs down: its cut-off back never lifts
             if let g = shot?.glow, shot?.side == s { fb.glow(g) }                                     // going into / coming out of a ball
         }
         if case .idle = p, foe.shiny == true, shown[.it]!.on {                                      // sparkles around it, from its head down

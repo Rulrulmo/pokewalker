@@ -330,8 +330,11 @@ final class WalkerView: NSView {
     /// They fade while a move or a ball flies under them.
     func drawHUD(_ m: SideModel) {
         let k = K, o = lcdRect.origin
-        var fade: CGFloat = 1
-        if case .beats = screen, let s = beatState(Date()) { switch s.beat { case .use, .thrown: fade = 0.4; default: break } }
+        var fade: CGFloat = 1, foeUp = true
+        if case .beats = screen, let s = beatState(Date()) {
+            switch s.beat { case .use, .thrown: fade = 0.4; default: break }
+            if isIntro(s.beat, s.names), s.u < 2.2 { foeUp = false }                               // the tower's trainer is still out front: no Pokémon to show yet
+        }
         let cg = NSGraphicsContext.current!.cgContext; cg.saveGState(); cg.setAlpha(fade); cg.beginTransparencyLayer(auxiliaryInfo: nil)
         defer { cg.endTransparencyLayer(); cg.restoreGState() }
         func box(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> NSRect {
@@ -342,16 +345,18 @@ final class WalkerView: NSView {
             let f = font(7, .bold), w = width(st, f) + 7 * k; pill(NSRect(x: x, y: cy - 5 * k, width: w, height: 10 * k), Ink.faint); say(st, x + w / 2, cy, f, .white, 0.5); return w
         }
         // theirs: [caught] name · Lv on top; its types (and a status) then the HP bar below
-        let f = box(4, 4, 110, 30), fr = m.foe.max > 0 ? CGFloat(m.foe.hp) / CGFloat(m.foe.max) : 0
-        var x = f.minX + 7 * k
-        if m.foe.owned { miniBall(NSPoint(x: f.minX + 9.5 * k, y: f.minY + 10 * k), 4.2 * k); x = f.minX + 17 * k }
-        let lv = "Lv\(m.foe.level)", lvf = font(8, .semibold)
-        let nw = say(m.foe.name, x, f.minY + 10.5 * k, font(10, .bold), Ink.ink, maxW: f.maxX - 7 * k - x - width(lv, lvf) - 3 * k)
-        say(lv, x + nw + 3 * k, f.minY + 11 * k, lvf, Ink.sub)
-        var bx = f.minX + 6 * k
-        for t in m.foe.types { bx += typePill(t, bx, f.minY + 23 * k, h: 9 * k, size: 6.5) + 2 * k }
-        if let st = m.foe.status { bx += status(st, bx, f.minY + 23 * k) + 2 * k }
-        bar(bx + k, f.maxX - 7 * k, f.minY + 23 * k, fr, Ink.hp(fr), h: 4 * k)
+        if foeUp {
+            let f = box(4, 4, 110, 30), fr = m.foe.max > 0 ? CGFloat(m.foe.hp) / CGFloat(m.foe.max) : 0
+            var x = f.minX + 7 * k
+            if m.foe.owned { miniBall(NSPoint(x: f.minX + 9.5 * k, y: f.minY + 10 * k), 4.2 * k); x = f.minX + 17 * k }
+            let lv = "Lv\(m.foe.level)", lvf = font(8, .semibold)
+            let nw = say(m.foe.name, x, f.minY + 10.5 * k, font(10, .bold), Ink.ink, maxW: f.maxX - 7 * k - x - width(lv, lvf) - 3 * k)
+            say(lv, x + nw + 3 * k, f.minY + 11 * k, lvf, Ink.sub)
+            var bx = f.minX + 6 * k
+            for t in m.foe.types { bx += typePill(t, bx, f.minY + 23 * k, h: 9 * k, size: 6.5) + 2 * k }
+            if let st = m.foe.status { bx += status(st, bx, f.minY + 23 * k) + 2 * k }
+            bar(bx + k, f.maxX - 7 * k, f.minY + 23 * k, fr, Ink.hp(fr), h: 4 * k)
+        }
         let me = box(98, 86, 90, 38), mr = m.mine.max > 0 ? CGFloat(m.mine.hp) / CGFloat(m.mine.max) : 0
         let lw = say("Lv\(m.mine.level)", me.maxX - 7 * k, me.minY + 10 * k, font(8, .semibold), Ink.sub, 1)
         say(m.mine.name, me.minX + 7 * k, me.minY + 9.5 * k, font(10, .bold), Ink.ink, maxW: me.width - 17 * k - lw)

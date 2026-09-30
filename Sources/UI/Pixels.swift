@@ -142,32 +142,23 @@ func iconPixel(_ dex: Int, _ x: Int, _ y: Int) -> UInt32 {
 func dim(_ c: UInt32, _ k: Double) -> UInt32 { rgb(UInt8(Double(c >> 16 & 255) * k), UInt8(Double(c >> 8 & 255) * k), UInt8(Double(c & 255) * k)) }
 func rgb(_ r: UInt8, _ g: UInt8, _ b: UInt8) -> UInt32 { 0xFF00_0000 | UInt32(r) << 16 | UInt32(g) << 8 | UInt32(b) }
 /// Colour-LCD palettes for the hand-drawn bits, by shade 0...3.
-let greens = [rgb(196, 232, 150), rgb(120, 200, 90), rgb(60, 150, 70), rgb(30, 80, 45)]
 let ballPal = [rgb(250, 250, 250), rgb(250, 250, 250), rgb(222, 52, 44), rgb(30, 32, 40)]
 let redPal = [UInt32](repeating: rgb(226, 48, 40), count: 4)
 let gemPal = [rgb(250, 250, 250), rgb(250, 250, 250), rgb(80, 140, 235), rgb(30, 32, 40)]
 
 /// Hand-drawn bits: " .:#" = shade 0...3, "_" = transparent.
 func art(_ rows: [String]) -> [[UInt8?]] { rows.map { $0.map { c in c == "_" ? nil : UInt8(" .:#".firstIndex(of: c).map { " .:#".distance(from: " .:#".startIndex, to: $0) } ?? 0) } } }
-let bush = art(["____:##:_____", "__:#:..:#____", "_#:..::..#:__", "#:.::..::.:#_", "#..:..::..:.#", "#.::..:..::.#", ":#..::..::.#:", "_:#:..::.:#:_", "__:##::##:___", "____#__#_____"])
-let bang = art(["##", "##", "##", "##", "__", "##"])
 let ball = art(["__###__", "_#:::#_", "#:::::#", "###.###", "#.....#", "_#...#_", "__###__"])
 let foot = art(["_##_##", "_##_##", "______", "#####_", "######", "_####_"])
 let gem = art(["_#_", "#:#", "_#_"])
 let vDiamond = art(["__#__", "_#:#_", "#:::#", "_#:#_", "__#__"])            // 3V and up (a diamond: the sparkle means 이로치)
 let vPal = [rgb(250, 250, 250), rgb(250, 250, 250), rgb(245, 178, 40), rgb(160, 100, 10)]
 let caughtMark = art(["_###_", "#:::#", "#####", "#...#", "_###_"])        // a 5-dot Poké Ball: species caught before
-let ballTilt = [art(["_###___", "#:::#__", "#::::#_", "##.####", "_#....#", "_#...#_", "__###__"]), art(["___###_", "__#:::#", "_#::::#", "####.##", "#....#_", "_#...#_", "__###__"])]
-let burstArt = art(["#___#___#", "_#__#__#_", "__#___#__", "___###___", "###_#_###", "___###___", "__#___#__", "_#__#__#_", "#___#___#"])
 let bubble = art(["_#########_", "#.........#", "#.........#", "#.........#", "#.........#", "#.........#", "#.........#", "_####.####_", "_____##____", "_____#_____"])
 let emotes = [art(["__##_", "__#_#", "__#__", "###__", "###__"]), art(["_#_#_", "#####", "#####", "_###_", "__#__"]), art(["__#__", "__#__", "__#__", "_____", "__#__"])]   // ♪ ♥ !
-let eggArt = art(["__###__", "_#...#_", "#.....#", "#..:..#", "#.....#", "#.:..:#", "#.....#", "_#...#_", "__###__"])
-let eggCrack = art(["__###__", "_#...#_", "#..#..#", "#.#.#.#", "##...##", "#.:..:#", "#.....#", "_#...#_", "__###__"])
-let eggPal = [rgb(252, 250, 240), rgb(252, 250, 240), rgb(120, 190, 110), rgb(40, 44, 52)]
 let legendDex = Set(courses.flatMap(\.legends))
 let spark = art(["__#__", "__#__", "##:##", "__#__", "__#__"])
 let sparkPal = [rgb(255, 236, 120), rgb(255, 236, 120), rgb(255, 250, 200), rgb(250, 190, 40)]
-let pip = (full: art(["###", "###", "###"]), empty: art(["###", "# #", "###"]))
 
 /// Galmuri (OFL, a pixel font drawn after the Nintendo DS system font) at its native sizes, so every glyph lands on whole dots.
 let fontsReady: Bool = {

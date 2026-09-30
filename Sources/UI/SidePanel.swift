@@ -194,7 +194,10 @@ final class SideView: NSView {
         switch m.mode {
         case .none:                                                                               // a turn playing: the message, up to three lines
             var lines: [String] = [], cur = "", f = font(11, .medium)
-            for ch in m.message { if width(cur + String(ch), f) > x(w - 4) { lines.append(cur); cur = "" }; cur.append(ch) }
+            for word in m.message.split(separator: " ") {                                          // by words, as HGSS's box does ("!" never alone on a line)
+                let t = cur.isEmpty ? String(word) : cur + " " + word
+                if width(t, f) > x(w - 4), !cur.isEmpty { lines.append(cur); cur = String(word) } else { cur = t }
+            }
             lines.append(cur); if lines.count > 3 { f = font(10, .medium) }
             for (j, l) in lines.prefix(4).enumerated() { say(l.trimmingCharacters(in: .whitespaces), x(X0 + 2), y(top + 8 + CGFloat(j) * 17), f, Ink.ink) }
             return
