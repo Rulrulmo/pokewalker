@@ -1,6 +1,7 @@
+// Launch: --selftest, or the app — the Mac's menu-bar app with its floating device here, Windows' in Sources/Windows/WinApp.swift.
+#if os(macOS)
 import AppKit
 import UserNotifications
-// Launch: --selftest, or the menu-bar app with its floating device.
 
 // MARK: - app
 settings = UserDefaults.standard                                                               // before anything reads a setting (the look's globals)
@@ -73,3 +74,6 @@ let ws = NSWorkspace.shared.notificationCenter
 ws.addObserver(view, selector: #selector(WalkerView.save(_:)), name: NSWorkspace.willSleepNotification, object: nil)
 NotificationCenter.default.addObserver(view, selector: #selector(WalkerView.save(_:)), name: NSApplication.willTerminateNotification, object: nil)
 app.run()
+#elseif os(Windows)
+windowsMain()
+#endif

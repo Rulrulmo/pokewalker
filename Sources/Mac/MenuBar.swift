@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 // The menu on the Mac: the walker's MenuItem tree (Core/Menu.swift) as an NSMenu (right-click, the menu-bar item), the menu-bar item, showing and
 // hiding the card, the 크기 menu's screen.
@@ -54,3 +55,4 @@ extension WalkerView {
         var g = f; g.origin.x = min(max(g.minX, s.minX), s.maxX - g.width); g.origin.y = min(max(g.minY, s.minY), s.maxY - g.height); return g
     }
 }
+#endif

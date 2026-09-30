@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 // The Mac's Canvas and Fonts (Core/Canvas.swift): AppKit into the current NSGraphicsContext — the very calls the card was always drawn with, so it looks
 // the same to the pixel. A Bitmap becomes an NSImage on its first draw (kept on it); Galmuri comes from the bundled files.
@@ -96,3 +97,4 @@ extension Path {
         return (0..<h).map { y in (0..<w).map { px[y * w + $0] > 127 } }
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import UserNotifications
 // The Mac's side of Core/Platform.swift: settings in UserDefaults; the walker's host is its view, WalkerView (its redraws: Mac/WalkerView.swift), with the banners,
@@ -41,3 +42,4 @@ extension WalkerView: Host {
     }
     func quit() { NSApp.terminate(nil) }
 }
+#endif

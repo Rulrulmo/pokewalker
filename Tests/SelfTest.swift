@@ -1,4 +1,7 @@
-import AppKit
+import Foundation
+#if os(macOS)
+import AppKit                                                                                     // the Mac shell's own checks: its menu's colour, keys through the view, the window's geometry
+#endif
 
 /// Headless rule check: `PokeWalker --selftest`. One line per check, then PASS/FAIL. `check` instead of assert: -O strips asserts.
 @MainActor func selftest() -> Bool {
@@ -11,7 +14,7 @@ import AppKit
     var r = Seeded(s: 42)
 
     // 1 persistence
-    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-selftest-\(getpid())", isDirectory: true)
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-selftest-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
     let f = tmp.appendingPathComponent("state.json"), b = tmp.appendingPathComponent("state.json.bak")
     var s0 = Walk(); s0.walk(1234, at: at(10)); s0.caught = [Mon(dex: 16, level: 5, female: false)]; s0.bag = ["상처약"]
     Store.save(s0, file: f, bak: b)
@@ -460,7 +463,7 @@ import AppKit
           && inflate(hex("000300fcff616263cb48cdc9c90700")) == Array("abchello".utf8)
           && inflate(hex("558e890d003008026785fd87a8b9421f6d0251844a9e923528f8801841987fb3fdb614ce96c2c891e6f0ed421d8e7776bd8bb76f46ec9d7f5ee9614dafbc04c54393dcc502")) == ab
           && inflate(hex("cb48cdc9c957c840")) == nil && inflate(hex("010a00f5fe506f6b6557616c6b6572")) == nil, "inflate: stored, fixed with copies, two blocks, dynamic; cut short or a bad LEN => nil")
-    #if canImport(Darwin)
+    #if os(macOS)                                                                          // Apple's own zlib to compare with
     let raw = [ab, Array(String(repeating: "피카츄 이브이 리자몽 ", count: 40).utf8), (0..<5000).map { UInt8(truncatingIfNeeded: $0 * $0 / 7) }].map { Data($0) }
     check(raw.allSatisfy { p in (try? (p as NSData).compressed(using: .zlib)).map { inflate($0 as Data) == [UInt8](p) } == true }, "inflate: NSData's own DEFLATE round-trips")
     var blocks = 0, differ: [String] = []
@@ -560,8 +563,8 @@ import AppKit
     bk.sideOn = false; bk.screen = .forfeit(tw, yes: false); let lcdTap = bk.touch(55, 56); bk.sidePick(0)
     check(!lcdTap && bk.state.towerStreak == 5 && isBattle(bk.screen, "기권"), "the LCD answers nothing even without the pane; the pane's 아니오 is 아니오")
     bk.screen = .battle(wild, sel: 0)
-    let battleMenuItems = WalkerView(walker: bk).buildMenu().items
-    check(battleMenuItems.contains { $0.title.hasPrefix("⚔ 배틀 중") } && battleMenuItems.first { $0.title.hasPrefix("코스") }?.submenu?.items.allSatisfy { $0.action == nil } == true,
+    let battleMenuItems = bk.menu()
+    check(battleMenuItems.contains { $0.title.hasPrefix("⚔ 배틀 중") } && battleMenuItems.first { $0.title.hasPrefix("코스") }?.children?.allSatisfy { $0.action == nil } == true,
           "mid-battle the menu's jump-away actions wait (no one-click escape)")
     let hider = Walker(state: Walk()); hider.persist = false; hider.screen = .say(["PP가 없다"], next: .moves(wild, sel: 0), since: Date())
     let midFight = hider.inBattle; hider.screen = .say(["샀다"], next: .shop(bp: false, sel: 0, qty: nil), since: Date())
@@ -640,12 +643,12 @@ import AppKit
     check(gv.state.box.map(\.dex) == [19, 25] && gv.boxOrder.first == 1, "함께: the old companion goes to the box's end, first on 최근")
 
     v.state.box = (1...120).map { Mon(dex: $0 * 4 % 493 + 1, level: 5, female: false, shiny: $0 % 17 == 0 ? true : nil) }
-    let walkMenu = WalkerView(walker: v).buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu
+    let walkMenu = v.menu().first { $0.title.hasPrefix("함께 걷기") }?.children
     v.state.box += (0..<40).map { Mon(dex: 29, level: 1 + $0 % 25, female: $0 % 2 == 0) }
-    let nido = WalkerView(walker: v).buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title.hasPrefix("니드런♀") }?.submenu
-    check((nido?.items.count ?? 99) <= 12 && nido?.items.contains { $0.title.hasPrefix("그 밖") } == true && nido?.items.last?.title.hasPrefix("중복 놓아주기") == true,
-          "40 니드런♀: ≤ 12 rows, the rest under 그 밖, and 중복 놓아주기", "\(nido?.items.count ?? -1)")
-        check((walkMenu?.items.count ?? 99) <= 26 && walkMenu?.items.contains { $0.title.hasPrefix("★ 이로치") } == true, "big box: 함께 걷기 stays short (recent, shinies, dex ranges)", "\(walkMenu?.items.count ?? -1)")
+    let nido = v.menu().first { $0.title.hasPrefix("함께 걷기") }?.children?.compactMap(\.children).joined().first { $0.title.hasPrefix("니드런♀") }?.children
+    check((nido?.count ?? 99) <= 12 && nido?.contains { $0.title.hasPrefix("그 밖") } == true && nido?.last?.title.hasPrefix("중복 놓아주기") == true,
+          "40 니드런♀: ≤ 12 rows, the rest under 그 밖, and 중복 놓아주기", "\(nido?.count ?? -1)")
+        check((walkMenu?.count ?? 99) <= 26 && walkMenu?.contains { $0.title.hasPrefix("★ 이로치") } == true, "big box: 함께 걷기 stays short (recent, shinies, dex ranges)", "\(walkMenu?.count ?? -1)")
 
     // 7e 3V: radar chains, the menu's marks, 중복 놓아주기 by V
     let cv = Walker(state: Walk()); cv.persist = false; cv.rng = Seeded(s: 31); cv.state.watts = 100
@@ -666,19 +669,23 @@ import AppKit
     var ow = Walk(); ow.box = [Mon(dex: 16, level: 60, female: false), withIVs(16, [30, 30, 30, 30, 30, 30], level: 5)]
     check(ow.duplicates(of: 16) == [1], "same V: the higher level stays (an old Lv.60 isn't traded for a fresh catch's IV total)")
     let mv = Walker(state: { var s = Walk(); s.box = [v3, v1]; s.companion = withIVs(25, [31, 31, 31, 31, 0, 0]); return s }()); mv.persist = false
-    let walkItems = WalkerView(walker: mv).buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items ?? []
-    let pidgey = walkItems.first { $0.title.hasPrefix("구구") }, rowsIn = pidgey?.submenu?.items ?? []
+    let walkItems = mv.menu().first { $0.title.hasPrefix("함께 걷기") }?.children ?? []
+    let pidgey = walkItems.first { $0.title.hasPrefix("구구") }, rowsIn = pidgey?.children ?? []
     let r3 = rowsIn.first { $0.title.contains("3V") }, r1 = rowsIn.first { $0.title.contains("1V") }
-    let gold = r3?.attributedTitle.map { $0.attribute(.foregroundColor, at: ($0.string as NSString).range(of: "3V").location, effectiveRange: nil) as? NSColor } ?? nil
-    check(r3 != nil && gold == WalkerView.vColor && r1 != nil && r1?.attributedTitle == nil && pidgey?.title.contains("최고 3V") == true && walkItems.first?.title.hasSuffix("4V") == true,
+    #if os(macOS)
+    let gold = r3.flatMap { WalkerView.nsMenu([$0]).items.first?.attributedTitle }.flatMap { $0.attribute(.foregroundColor, at: ($0.string as NSString).range(of: "3V").location, effectiveRange: nil) as? NSColor } == WalkerView.vColor   // the Mac's menu paints it
+    #else
+    let gold = true
+    #endif
+    check(r3?.strong == "3V" && gold && r1 != nil && r1?.strong == nil && pidgey?.title.contains("최고 3V") == true && walkItems.first?.title.hasSuffix("4V") == true,
           "menu: 1V / 2V plain, 3V+ in gold, the species row flags its best, the companion shows its V", "\(walkItems.first?.title ?? "") \(rowsIn.map(\.title))")
     check(statLines({ var m = v1; m.hyper = [2]; return m }())[1].contains("방어 5→31") && statLines(v3)[1].hasPrefix("개체값 · 3V"), "the numbers stay; a 특훈 IV reads 5→31")
     let bigV = Walker(state: { var s = Walk(); s.box = (1...14).map { Mon(dex: $0, level: 5, female: false) } + [withIVs(20, [31, 31, 31, 31, 0, 0])]; s.bag = []; return s }()); bigV.persist = false
-    let bigItems = WalkerView(walker: bigV).buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items ?? []
-    check(bigItems.contains { $0.title == "3V 이상 · 1" && $0.attributedTitle != nil } && bigItems.contains { $0.title.hasPrefix("No.001–050") && $0.title.hasSuffix("최고 4V") },
+    let bigItems = bigV.menu().first { $0.title.hasPrefix("함께 걷기") }?.children ?? []
+    check(bigItems.contains { $0.title == "3V 이상 · 1" && $0.strong == "3V" } && bigItems.contains { $0.title.hasPrefix("No.001–050") && $0.title.hasSuffix("최고 4V") },
           "big box: a 3V 이상 list, and the dex range flags its best", "\(bigItems.map(\.title))")
     // 7f the shops: in the walker's menu, several at once
-    check(!WalkerView(walker: bigV).buildMenu().items.contains { $0.title.hasPrefix("상점") || $0.title.hasPrefix("BP 교환소") || $0.title.hasPrefix("교환소") }, "the shops left the right-click menu")
+    check(!bigV.menu().contains { $0.title.hasPrefix("상점") || $0.title.hasPrefix("BP 교환소") || $0.title.hasPrefix("교환소") }, "the shops left the right-click menu")
     var sw = Walk(); sw.watts = 5000; sw.bp = 200; sw.companion = Mon(dex: 133, level: 20, female: false)             // 이브이: it has evolution items to sell
     let wW = sw.wares(bp: false, shells: []), wB = sw.wares(bp: true, shells: [(name: "배틀 골드", bp: 40)])
     check(wW.count == Walk.shop.count + sw.evolutionItems().count + 1 && wW.last?.kind == .legend(0) && wW.contains { $0.kind == .item("불꽃의돌") && $0.price == Walk.evoItemPrice }
@@ -720,24 +727,37 @@ import AppKit
     dc.screen = .shop(bp: false, sel: 0, qty: nil); let shopLCD = dc.touch(48, 20); dc.shopTap(2100)
     let rowTap = on(dc) { if case .shop(false, 0, 1?) = $0 { return true }; return false }
     check(!shopLCD && rowTap && dc.state.watts == 1000, "a row on the pane opens how-many (the LCD never buys)")
+    #if os(macOS)                                                                                 // the Mac: through its view's key map (36 = return)
     let heldReturn = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: true, keyCode: 36)!
-    let dcv = WalkerView(walker: dc); dcv.keyDown(with: heldReturn); check(dc.state.watts == 1000, "a held return doesn't buy")
+    let dcv = WalkerView(walker: dc); dcv.keyDown(with: heldReturn)
+    #else
+    _ = dc.key(.enter, held: true)
+    #endif
+    check(dc.state.watts == 1000, "a held return doesn't buy")
     dc.shopStep(10); dc.shopRow(1); check(on(dc) { if case .shop(false, 1, nil) = $0 { return true }; return false }, "scrolling the panel moves a row and leaves how-many (never the amount)")
     dc.screen = .shop(bp: false, sel: 0, qty: nil); check(dc.shopModel()?.hint.contains("●") == true, "the panel says what ● does")
     dc.screen = .shop(bp: false, sel: dc.wares(false).count - 1, qty: nil); check(dc.shopModel()?.hint == "W가 부족해요 · 9,999W 필요", "the panel says why a row can't be bought", "\(dc.shopModel()?.hint ?? "")")
     // 7g the Poké Ball card: the LCD 2 pt a dot at 보통, the keys on the band, the page under it growing down per screen
     let size0 = SIZE; SIZE = 2
-    check(PX == 2 && K == 1 && devSize == NSSize(width: 216, height: 199) && lcdRect == NSRect(x: 12, y: 27, width: 192, height: 128),
+    check(PX == 2 && K == 1 && devSize == CGSize(width: 216, height: 199) && lcdRect == CGRect(x: 12, y: 27, width: 192, height: 128),
           "보통: a 216 x 199 card, the LCD 192 x 128 (2 pt a dot: whole pixels on a 1x screen)", "\(devSize) \(lcdRect)")
     check(buttons.count == 5 && buttons.allSatisfy { $0.c.y == Layout.seam && $0.c.x - $0.r >= 0 && $0.c.x + $0.r <= Layout.w } && buttons[1].r > buttons[0].r && buttons.prefix(4).map(\.c.x) == buttons.prefix(4).map(\.c.x).sorted()
           && buttons[4].c.x + buttons[3].c.x == Layout.w * K, "메뉴 ◀ ● ▶ ↩ on the band, ● the ball's own bigger button, 메뉴 across from ↩")
-    let gk = Walker(state: Walk()), gw = WalkerView(walker: gk); gk.persist = false; gk.statusOpen = false
-    gk.refreshPane(Date(), force: true); let idleH = gw.frame.height
-    gk.screen = .dex(25, filter: 0, detail: false); gk.refreshPane(Date(), force: true); let gridH = gw.frame.height
-    gk.screen = .battle(wild, sel: 0); gk.refreshPane(Date(), force: true); let fightH = gw.frame.height, hudUp = gk.hud == nil
+    let gk = Walker(state: Walk()); gk.persist = false; gk.statusOpen = false
+    #if os(macOS)
+    let gw = WalkerView(walker: gk)                                                               // the Mac: its view, the host, follows the card
+    #endif
+    gk.refreshPane(Date(), force: true); let idleH = gk.cardH
+    gk.screen = .dex(25, filter: 0, detail: false); gk.refreshPane(Date(), force: true); let gridH = gk.cardH
+    gk.screen = .battle(wild, sel: 0); gk.refreshPane(Date(), force: true); let fightH = gk.cardH, hudUp = gk.hud == nil
     gk.screen = .home; gk.statusOpen = true; gk.refreshPane(Date(), force: true)
-    check(idleH == 199 && gridH == 422 && fightH == 311 && gw.frame.height == 354 && gw.frame.width == 216 && gw.page.frame.minY == Layout.pane && hudUp,
-          "the card grows down to the page: idle 199, battle 311, a grid 422, the status sheet 354 (the page under the band)", "\(idleH) \(gridH) \(fightH) \(gw.frame)")
+    #if os(macOS)
+    let viewed = gw.frame.size == CGSize(width: 216, height: 354) && gw.page.frame.minY == Layout.pane
+    #else
+    let viewed = true
+    #endif
+    check(idleH == 199 && gridH == 422 && fightH == 311 && gk.cardH == 354 && viewed && hudUp,
+          "the card grows down to the page: idle 199, battle 311, a grid 422, the status sheet 354 (the page under the band)", "\(idleH) \(gridH) \(fightH) \(gk.cardH)")
     SIZE = 3; check(PX == 3 && 422 * K < 850, "크게: 3 pt a dot, its tallest page still under a 13-inch screen's height"); SIZE = size0
     let pv = Walker(state: { var s = Walk(); s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); pv.persist = false; pv.rng = Seeded(s: 61)
     func kind(_ sc: Screen) -> String {
@@ -751,8 +771,10 @@ import AppKit
     check(kind(.say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date())) == "battle" && kind(.say(["W가 부족하다"], next: .menu(menuAt("포켓 레이더")), since: Date())) == "menu0"
           && pv.paneContent(Date()).menu != nil, "a fight's / a menu page's message keeps its page up")
     pv.screen = .say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date()); check(pv.sideModel(Date())?.message == "기술의 남은 PP가 없다!", "… with the message in the battle page's box")
+    #if os(macOS)                                                                                 // the Mac window's placement
     let grown = WalkerView.onScreen(NSRect(x: 2248, y: 24 + 288 - 376, width: 584, height: 376), in: NSRect(x: 0, y: 0, width: 2560, height: 1410))
     check(grown == NSRect(x: 1976, y: 0, width: 584, height: 376), "an old device at the bottom-right corner grows into the screen, not onto the next one", "\(grown)")
+    #endif
     pv.screen = .menu(menuAt("포켓 레이더")); pv.menuTap(menuAt("포켓몬"))
     check({ if case .box = pv.screen { return true }; return false }(), "메뉴: a click on a tile opens it")
     // the walker's other pages: one click does what ● would
@@ -796,17 +818,26 @@ import AppKit
           "the box's: 워커로 brings it back onto the walker (picked there)")
     pt.screen = .say(["W가 부족하다"], next: .menu(menuAt("포켓 레이더")), since: Date()); pt.menuTap(menuAt("트레이너 카드"))
     check(pts { if case .card(0) = $0 { return true }; return false }, "a click on a page still up under its message ends the message and counts")
+    #if os(macOS)                                                                                 // the Mac: through its view's key map (48 = tab)
     let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48)!
-    let ptv = WalkerView(walker: pt); pt.screen = .dex(1, filter: 0, detail: false); ptv.keyDown(with: tab); let tabbed = pts { if case .dex(_, 1, false) = $0 { return true }; return false }
-    pt.screen = .home; pt.statusOpen = false; ptv.keyDown(with: tab)
+    let ptv = WalkerView(walker: pt); func pressTab() { ptv.keyDown(with: tab) }
+    #else
+    func pressTab() { _ = pt.key(.tab) }
+    #endif
+    pt.screen = .dex(1, filter: 0, detail: false); pressTab(); let tabbed = pts { if case .dex(_, 1, false) = $0 { return true }; return false }
+    pt.screen = .home; pt.statusOpen = false; pressTab()
     check(tabbed && pt.statusOpen, "Tab: a grid's next tab; on home, the status sheet")
     let stm = pv.statusModel(); check(stm.level == "Lv.5" && stm.numbers.count == 3 && stm.rows.count == 3 && stm.exp >= 0 && stm.exp <= 1, "the status sheet: level, EXP to next, today / W / total, egg / tower / dex")
+    #if os(macOS)
     let frameTimer = { (v: Walker) -> [(Bool, String)] in                                        // the frame timer is the Mac view's
         let mac = WalkerView(walker: v)
         v.screen = .dex(25, filter: 0, detail: true); mac.tick(nil); let fast = mac.fast != nil
         v.animOn = ("dex", 25, .distantPast); mac.tick(nil)
         return [(fast && mac.fast == nil, "an animation plays at 30 fps, then back to the tick's 10")]
     }
+    #else
+    let frameTimer = { (_: Walker) -> [(Bool, String)] in [] }                                    // P3: Windows' SetTimer shell
+    #endif
     for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks(timer: frameTimer) + notebookChecks() { check(ok, name) }   // the drawing files' own checks
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0

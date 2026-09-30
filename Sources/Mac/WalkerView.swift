@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 // The Mac's device view: it owns the Walker (Core/Walker.swift) and is its host — it passes on the clock, clicks and keys; the walker draws the card
 // on it (Core/Card.swift, through Mac/MacCanvas.swift).
@@ -104,3 +105,4 @@ final class WalkerView: NSView {
     }
 }
 final class Panel: NSPanel { override var canBecomeKey: Bool { true } }                    // arrow keys work after a click; still never activates the app
+#endif

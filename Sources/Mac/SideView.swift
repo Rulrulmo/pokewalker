@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 // The pane's page on the Mac: the card's white bottom under the band. The walker's page draws itself on it (Core/Page.swift); clicks, the scroll wheel
 // and the pointer go by what it drew (its hits).
@@ -39,3 +40,4 @@ final class SideView: NSView {
         window?.invalidateCursorRects(for: self)
     }
 }
+#endif

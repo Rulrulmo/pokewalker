@@ -1,0 +1,45 @@
+# Windows: SwiftPM builds PokeWalker.exe and runs its self-test; the artifact is a folder to unzip and run (exe + the Swift runtime DLLs it loads + Resources).
+name: windows
+on:
+  push:
+    branches: [win-port]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: compnerd/gha-setup-swift@main
+        with:
+          swift-version: swift-6.1.2-release   # the Mac's compiler (Apple Swift 6.1.2)
+          swift-build: 6.1.2-RELEASE
+      - run: swift build -c release
+      - name: Resources next to the exe
+        run: |
+          New-Item -ItemType Directory -Force .build\release\Resources | Out-Null
+          Copy-Item Resources\*.bin, Resources\fonts\*.ttf .build\release\Resources
+      - run: .build\release\PokeWalker.exe --selftest
+      - name: Package (the exe, the DLLs it loads from the Swift runtime + the VC runtime, Resources)
+        run: |
+          $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          $dumpbin = (Get-ChildItem "$vs\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe" | Select-Object -First 1).FullName
+          $rt = Split-Path (where.exe swiftCore.dll | Select-Object -First 1)
+          $out = "dist\PokeWalker"; New-Item -ItemType Directory -Force $out | Out-Null
+          Copy-Item .build\release\PokeWalker.exe, .build\release\Resources $out -Recurse
+          $queue = [System.Collections.Queue]::new(); $queue.Enqueue("$out\PokeWalker.exe"); $seen = @{}
+          while ($queue.Count) {
+            $deps = & $dumpbin /nologo /dependents $queue.Dequeue() | ForEach-Object { if ($_ -match '^\s+(\S+\.dll)\s*$') { $Matches[1] } }
+            foreach ($dll in $deps) {
+              if ($seen[$dll]) { continue }; $seen[$dll] = $true
+              $from = @("$rt\$dll", "$env:SystemRoot\System32\$dll") | Where-Object { Test-Path $_ } | Select-Object -First 1
+              if ($from -and ($from.StartsWith($rt) -or $dll -match '^(vcruntime|msvcp)')) { Copy-Item $from $out; $queue.Enqueue("$out\$dll") }
+            }
+          }
+          Get-ChildItem $out | Format-Table Name, Length
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"                     # no toolchain on the PATH: the folder must run on its own
+          & "$out\PokeWalker.exe" --selftest | Select-Object -Last 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PokeWalker-windows-x64
+          path: dist/PokeWalker

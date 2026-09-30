@@ -35,5 +35,9 @@ protocol Settings {
 /// What a redraw covers: the LCD, the pane's page, the 메뉴 / 홈 key, the title row, or the whole card.
 enum CardPart { case lcd, page, key, title, all }
 
-/// A bundled file's bytes by name ("hgss.bin", "Galmuri9.ttf"), from the app's Resources (the Mac's .app: Bundle.main); nil = missing.
-func resource(_ name: String) -> Data? { Bundle.main.resourceURL.flatMap { try? Data(contentsOf: $0.appendingPathComponent(name), options: .mappedIfSafe) } }
+/// A bundled file's bytes by name ("hgss.bin", "Galmuri9.ttf"), from the app's Resources (the Mac's .app: Bundle.main; Windows: resourceDir,
+/// a Resources folder next to the exe: Windows/WinApp.swift); nil = missing.
+func resource(_ name: String) -> Data? { resourceDir.flatMap { try? Data(contentsOf: $0.appendingPathComponent(name), options: .mappedIfSafe) } }
+#if !os(Windows)
+var resourceDir: URL? { Bundle.main.resourceURL }
+#endif
