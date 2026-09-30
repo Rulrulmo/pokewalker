@@ -23,20 +23,19 @@ func spritePixel(_ dex: Int, back: Bool, _ x: Int, _ y: Int, shiny: Bool) -> UIn
 }
 /// A sprite laid over the dots at 1 pt per pixel (x 1.5 / x 2 on the bigger sizes): its 80x80 frame (40x40 dots) stands on (x + 16, y + 32); `floor` = the dot row it sinks behind.
 /// scale (about the feet) and alpha: growing out of / shrinking into a ball; frame = one of its animation's (Anim.swift; nil = the static sprite).
-struct SpriteRun: Equatable { var dex: Int; var shiny, back: Bool; var x, y, bob: Int; var tint: UInt32?, tintShade: UInt8; var floor: Int; var inverted = false; var scale = 1.0, alpha = 1.0; var frame: Int? = nil
-    var flip = false, nudge = 0 }                                          // flip = facing right (the front sprite mirrored); nudge = half-dots right of x (smooth walking)
+struct SpriteRun: Equatable { var dex: Int; var shiny, back: Bool; var x, y, bob: Int; var tint: UInt32?, tintShade: UInt8; var floor: Int; var inverted = false; var scale = 1.0, alpha = 1.0; var frame: Int? = nil }
 @MainActor var spriteCache: [String: NSImage] = [:]
 /// The sprite as the LCD shows it: its colours, or on a grey screen 4 shades by brightness (white = the blank screen, like the walker's own art); a tint = a silhouette.
 /// Inverted (a full-screen flash) = the grey shades flipped, on any screen, as the dots are.
 @MainActor func spriteImage(_ r: SpriteRun, _ l: LCD) -> NSImage {
-    let key = "\(r.dex) \(r.shiny) \(r.back) \(l.name) \(r.tint ?? 0) \(r.tintShade) \(r.inverted) \(r.frame ?? -1) \(r.flip)"
+    let key = "\(r.dex) \(r.shiny) \(r.back) \(l.name) \(r.tint ?? 0) \(r.tintShade) \(r.inverted) \(r.frame ?? -1)"
     if let i = spriteCache[key] { return i }
     if spriteCache.count > 64 { spriteCache.removeAll() }                                   // ponytail: drop all at 64, an LRU if browsing ever stutters
     let shades = l.shades.map { c -> UInt32 in let s = c.usingColorSpace(.sRGB)!; return rgb(UInt8(s.redComponent * 255), UInt8(s.greenComponent * 255), UInt8(s.blueComponent * 255)) }
     let a = playing(r), w = a?.w ?? 80, h = a?.h ?? 80                                         // an animation frame: its own box
     var px = [UInt32](repeating: 0, count: w * h)
     for y in 0..<h { for x in 0..<w {
-        let sx = r.flip ? w - 1 - x : x, c = a.map { $0.pixel(r.frame!, sx, y, shiny: r.shiny) } ?? spritePixel(r.dex, back: r.back, sx, y, shiny: r.shiny)
+        let c = a.map { $0.pixel(r.frame!, x, y, shiny: r.shiny) } ?? spritePixel(r.dex, back: r.back, x, y, shiny: r.shiny)
         guard c != 0 else { continue }
         let lum = (0.299 * Double(c >> 16 & 255) + 0.587 * Double(c >> 8 & 255) + 0.114 * Double(c & 255)) / 255
         let shade = Int(r.tint != nil ? r.tintShade : lum > 0.78 ? 0 : lum > 0.5 ? 1 : lum > 0.25 ? 2 : 3)
@@ -76,7 +75,7 @@ struct Pic {
 }
 /// Where a picture goes: centred on (x, y) in half-dots (the LCD is 192 x 128 of them), scaled and turned (degrees, clockwise) about its centre;
 /// behind = under the sprites (a backdrop), else over them (a ball, a move's effect).
-struct PicRun: Equatable { var key: String; var x, y: Int; var scale = 1.0, alpha = 1.0, angle = 0.0; var behind = false; var inverted = false }
+struct PicRun: Equatable { var key: String; var x, y: Int; var scale = 1.0, alpha = 1.0, angle = 0.0; var behind = false; var inverted = false; var clip: [Int] = [] }   // clip: x, y, w, h in half-dots
 /// Every picture drawn so far, by key. Keys must come from a finite set (animate with position / scale / alpha / angle or a bounded frame number):
 /// the store is never emptied, so a frame's FB can be redrawn any time.
 @MainActor var picStore: [String: Pic] = [:]
@@ -212,14 +211,14 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
         sprite(m, x + 16, y + 16, bob: f, flash: flash, tint: tint, anim: u)
     }
     /// anim = seconds into its entry animation (nil, < 0 or past its end: the static sprite); while a frame shows it doesn't bob.
-    mutating func sprite(_ m: Mon, _ x: Int, _ y: Int, back: Bool = false, bob: Int = 0, flash: Bool = false, tint: (UInt8, UInt32)? = nil, floor: Int = 64, anim u: Double? = nil, flip: Bool = false, nudge: Int = 0) {
+    mutating func sprite(_ m: Mon, _ x: Int, _ y: Int, back: Bool = false, bob: Int = 0, flash: Bool = false, tint: (UInt8, UInt32)? = nil, floor: Int = 64, anim u: Double? = nil) {
         let t = tint ?? (flash ? (2, rgb(238, 84, 72)) : nil), f = back ? nil : u.flatMap { anim(m.dex)?.frame(at: $0) }
-        sprites.append(SpriteRun(dex: m.dex, shiny: m.shiny == true, back: back, x: x, y: y, bob: f == nil ? bob : 0, tint: t?.1, tintShade: t?.0 ?? 0, floor: floor, frame: f, flip: flip, nudge: nudge))
+        sprites.append(SpriteRun(dex: m.dex, shiny: m.shiny == true, back: back, x: x, y: y, bob: f == nil ? bob : 0, tint: t?.1, tintShade: t?.0 ?? 0, floor: floor, frame: f))
     }
     /// A picture at sprite resolution centred on (x, y) in half-dots; `make` draws it the first time its key is seen (keys: a finite set).
-    mutating func pic(_ key: String, _ x: Int, _ y: Int, scale: Double = 1, alpha: Double = 1, angle: Double = 0, behind: Bool = false, _ make: () -> Pic) {
+    mutating func pic(_ key: String, _ x: Int, _ y: Int, scale: Double = 1, alpha: Double = 1, angle: Double = 0, behind: Bool = false, clip: [Int] = [], _ make: () -> Pic) {
         if picStore[key] == nil { picStore[key] = make() }
-        pics.append(PicRun(key: key, x: x, y: y, scale: scale, alpha: alpha, angle: angle, behind: behind))
+        pics.append(PicRun(key: key, x: x, y: y, scale: scale, alpha: alpha, angle: angle, behind: behind, clip: clip))
     }
     /// Too wide for the screen => the small font, one row lower so baselines match.
     @discardableResult mutating func text(_ s: String, _ x: Int, _ y: Int, _ shade: UInt8 = 3, center: Bool = false, right: Bool = false, small: Bool = false) -> Int {

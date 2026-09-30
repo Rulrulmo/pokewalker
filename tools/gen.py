@@ -29,6 +29,9 @@ SRC = {
     **{f'plat/{s}{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/platinum/{"shiny/" if s else ""}{i}.png'
        for i in (422, 423) for s in ('', 's')},
     'serebii.html': 'https://www.serebii.net/heartgoldsoulsilver/pokewalker-area.shtml',
+    # the HGSS following Pokémon (the overworld walking sprites), teobz/pkmn-hgss-animated-overworld-sprites: 4 frames a direction
+    **{f'ow/{d}/{v}{i:03}.png': f'https://raw.githubusercontent.com/teobz/pkmn-hgss-animated-overworld-sprites/main/APNG/by-direction/{d}/{"shiny" if v else "regular"}/{i:03}_{v}{d}.png'
+       for i in range(1, 494) for d in ('left', 'right', 'down') for v in ('', 'shiny_')},
     'frames/egg.png': 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/heartgold-soulsilver/egg.png',
     **{f'frames/{t}.png': f'https://play.pokemonshowdown.com/sprites/trainers/{t}.png' for t in [
         'acetrainer-gen4', 'acetrainerf-gen4', 'veteran-gen4', 'veteranf', 'lady-gen4', 'hiker-gen4', 'scientist-gen4', 'blackbelt-gen4',
@@ -206,6 +209,38 @@ for b in blocks: off.append(off[-1] + len(b))
 aout = b''.join(struct.pack('<I', v) for v in off) + b''.join(blocks)
 open('Resources/anims.bin', 'wb').write(aout)
 print(f'anims.bin {len(aout) / 1e6:.2f} MB; no animation: {none}; rest frame off the front (dex, mask IoU, same index):', poor)
+
+# --- walk.bin: the HGSS following Pokémon, walking (the home screen's course picture). Per species, raw DEFLATE of: size (uint8: 32, or 64 for the
+# big ones), 15 normal + 15 shiny RGB (slot pairs, as in hgss.bin: the shiny files have the same pixels in other colours), then left, right,
+# down x 4 frames, size x size at 4 bpp. The file: 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none), then the blocks.
+wblocks, wover, wnone = [], [], []
+for dex in range(1, N + 1):
+    four = lambda fs: (fs * 4)[:4]                                                   # 4 frames a direction (딱충이 facing us has 3: round again)
+    try: dirs = [(four([f for f, _ in apng(get(f'ow/{d}/{dex:03}.png'))]), four([f for f, _ in apng(get(f'ow/{d}/shiny_{dex:03}.png'))])) for d in ('left', 'right', 'down')]
+    except Exception: wnone.append(dex); wblocks.append(b''); continue
+    size = dirs[0][0][0].size[0]; assert all(len(n) == 4 == len(sh) and all(f.size == (size, size) for f in n + sh) for n, sh in dirs), dex
+    pairs = {}
+    for n, sh in dirs:
+        for a, b in zip(n, sh):
+            for p, q in zip(a.getdata(), b.getdata()):
+                if p[3] >= 128: pairs.setdefault(p[:3], {}).setdefault(q[:3] if q[3] >= 128 else p[:3], 0); pairs[p[:3]][q[:3] if q[3] >= 128 else p[:3]] += 1
+    pal = sorted(pairs, key=lambda c: -sum(pairs[c].values()))
+    if len(pal) > 15: wover.append((dex, len(pal))); pal = pal[:15]
+    near = lambda c: min(range(len(pal)), key=lambda i: dist(pal[i], c))
+    blk = bytearray([size])
+    for c in pal + [(0, 0, 0)] * (15 - len(pal)): blk += bytes(c)
+    for c in pal: blk += bytes(max(pairs[c], key=pairs[c].get))
+    blk += bytes(3 * (15 - len(pal)))
+    for n, _ in dirs:
+        for f in n:
+            px = list(f.getdata()); cell = lambda p: (pal.index(p[:3]) if p[:3] in pal else near(p[:3])) + 1 if p[3] >= 128 else 0
+            for k in range(0, size * size, 2): blk.append(cell(px[k]) << 4 | cell(px[k + 1]))
+    c = zlib.compressobj(9, zlib.DEFLATED, -15); wblocks.append(c.compress(bytes(blk)) + c.flush())
+off = [494 * 4]                                                                     # offsets into the file, as anims.bin's
+for b in wblocks: off.append(off[-1] + len(b))
+wout = b''.join(struct.pack('<I', v) for v in off) + b''.join(wblocks)
+open('Resources/walk.bin', 'wb').write(wout)
+print(f'walk.bin {len(wout) / 1e6:.2f} MB; none: {wnone}; palette cut to 15:', wover, '; 64 px:', sum(1 for b in wblocks if b and zlib.decompress(b, -15)[0] == 64))
 
 # --- names / types
 ko, en_item, ko_item, types = {}, {}, {}, {}

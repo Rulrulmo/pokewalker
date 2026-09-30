@@ -8,7 +8,7 @@ final class WalkerView: NSView {
     var boxSort = 0                                                        // the 상자 grid's order: 번호순 / 레벨순 / V순 / 최근
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
     var keyShown: Bool?? = .none                                           // the 메뉴 / 홈 key as last drawn (see homeKey)
-    var strollX = 60.0, strollRight = false, strollAt = Date(), strollTurnAt = Date(), stepRate = 0.0   // home: the companion's feet (dots), which way it faces, its pace
+    var strollX = 54.0, strollRight = false, strollAt = Date(), strollTurnAt = Date(), stepRate = 0.0   // home: the walking sprite's middle in the course picture (half-dots), which way it goes, the pace
     var fast: Timer?                                                       // the 30 fps frame timer while a fight or a show plays
     var usedItem = "몬스터볼"                                                // the potion / ball / revive the current beat names
     var towerRefs: [Int] = [], towerRun = false
@@ -295,6 +295,7 @@ final class WalkerView: NSView {
             for r in fb.pics where r.behind == behind {
                 guard let (img, p) = picImage(r, l) else { continue }
                 NSGraphicsContext.saveGraphicsState()
+                if r.clip.count == 4 { NSBezierPath(rect: NSRect(x: lcdRect.minX + CGFloat(r.clip[0]) * s, y: lcdRect.minY + CGFloat(r.clip[1]) * s, width: CGFloat(r.clip[2]) * s, height: CGFloat(r.clip[3]) * s)).addClip() }
                 NSGraphicsContext.current!.imageInterpolation = .none
                 let c = NSPoint(x: lcdRect.minX + CGFloat(r.x) * s, y: lcdRect.minY + CGFloat(r.y) * s), w = CGFloat(p.w) * s * r.scale, h = CGFloat(p.h) * s * r.scale
                 if r.angle != 0 { let t = NSAffineTransform(); t.translateX(by: c.x, yBy: c.y); t.rotate(byDegrees: r.angle); t.translateX(by: -c.x, yBy: -c.y); t.concat() }
@@ -308,9 +309,8 @@ final class WalkerView: NSView {
             NSGraphicsContext.saveGraphicsState()
             NSBezierPath(rect: NSRect(x: lcdRect.minX, y: lcdRect.minY, width: lcdRect.width, height: CGFloat(min(64, r.floor)) * PX)).addClip()
             NSGraphicsContext.current!.imageInterpolation = .none
-            let feet = NSPoint(x: lcdRect.minX + CGFloat(r.x + 16) * PX + CGFloat(r.nudge) * s, y: lcdRect.minY + CGFloat(r.y + 32) * PX), k = s * r.scale   // its 80x80 frame stands on the run's feet (bottom-centre)
-            let a = playing(r), (ox0, oy, w, h) = a.map { (CGFloat($0.x), CGFloat($0.y), CGFloat($0.w), CGFloat($0.h)) } ?? (0, 0, 80, 80)   // an animation frame: its box in the 80x80 frame
-            let ox = r.flip ? 80 - ox0 - w : ox0                                                          // mirrored about the frame's middle
+            let feet = NSPoint(x: lcdRect.minX + CGFloat(r.x + 16) * PX, y: lcdRect.minY + CGFloat(r.y + 32) * PX), k = s * r.scale   // its 80x80 frame stands on the run's feet (bottom-centre)
+            let a = playing(r), (ox, oy, w, h) = a.map { (CGFloat($0.x), CGFloat($0.y), CGFloat($0.w), CGFloat($0.h)) } ?? (0, 0, 80, 80)   // an animation frame: its box in the 80x80 frame
             let box = r.scale == 1 ? NSRect(x: snap(feet.x + (ox - 40) * s), y: snap(feet.y + (oy - 80) * s - CGFloat(r.bob) * s), width: w * s, height: h * s)
                                    : NSRect(x: feet.x + (ox - 40) * k, y: feet.y + (oy - 80) * k - CGFloat(r.bob) * s, width: w * k, height: h * k)
             spriteImage(r, l).draw(in: box, from: .zero, operation: .sourceOver, fraction: r.alpha, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none.rawValue])

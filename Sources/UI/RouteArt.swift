@@ -3,6 +3,8 @@ import AppKit
 // made once per art / season / light / overcast (fb.pic keys), with small moving bits (clouds, glints, foam, the weather) over it.
 
 /// The game clock's light (as for evolutions): 0 day, 1 dawn 4-6, 2 dusk 17-20, 3 night 20-4.
+/// The home screen's course picture, in dots: its framed window (the art inside is 2 px a dot); the companion's walking sprite goes along its bottom.
+let courseBox = (x: 1, y: 14, w: 52, h: 34)
 func lightBand(_ hour: Double) -> Int { hour < 4 || hour >= 20 ? 3 : hour < 6 ? 1 : hour >= 17 ? 2 : 0 }
 
 extension FB {
@@ -23,12 +25,6 @@ extension FB {
         if tb == 3, !grey, a != .cave { for (k, (sx, sy)) in [(14, 6), (58, 4)].enumerated() where (Int(t * 1.5) + k) % 3 != 0 { pic("route|star", 2 * x + sx, 2 * y + sy, behind: true) { skyStarPic() } } }
         weatherFX(w, x + 1, y + 1, 40, 24, t, cave: a == .cave, behind: true)
         pic("route|frame", cx, cy, behind: true) { windowPic(84, 52) }
-    }
-    /// Home: the course as a wide band, y 12 ..< 50 dots, for the companion to walk in (the sky, the scenery, the ground it walks on at y ~48; the weather over it).
-    mutating func homeScene(_ a: Art, weather w: Weather, t: Double, hour: Double, season: Season) {
-        let tb = lightBand(hour), grey = w != .sunny, g = lcds[lcdStyle].color ? "" : "|g"
-        pic("home|\(a)|\(season.rawValue)|\(tb)|\(grey)" + g, 96, 62, behind: true) { lcdReady(stagePic(a, season, tb, grey, 192, 76, [(-60, 52, 0.1, 0.1)])) }
-        weatherFX(w, 0, 12, 96, 38, t, cave: a == .cave, behind: true)
     }
     /// Under a fight: an HGSS battle backdrop (the course's scenery pale on the horizon, the ground, a pad under each side; indoor = the Battle Tower's hall).
     /// With the old in-LCD HUD the stage is only y 14 ..< 50 (dots), so the backdrop is too. Pads: under the feet (at[s].y + 32), centred on at[s].x + 16.

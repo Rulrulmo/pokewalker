@@ -1,20 +1,62 @@
 import AppKit
-// Home: the companion walks the course while steps come in (the faster they come, the faster it goes), and stands about when they stop.
+// Home: the companion's HGSS walking sprite goes along the course picture while steps come in (the faster they come, the faster),
+// turning at the ends; when they stop it turns to face us.
+
+/// The HGSS following Pokémon (tools/gen.py walk.bin): 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none), then per species a
+/// raw-DEFLATE block: size (32, or 64 for the big ones), 15 normal + 15 shiny RGB, then left, right, down x 4 frames, size x size at 4 bpp.
+let walkData: Data = Bundle.main.url(forResource: "walk", withExtension: "bin").flatMap { try? Data(contentsOf: $0, options: .mappedIfSafe) } ?? Data()
+struct WalkSprite {
+    let size: Int, bytes: [UInt8]
+    /// Direction 0 left, 1 right, 2 down (facing us); frame 0...3.
+    func pic(_ dir: Int, _ f: Int, shiny: Bool) -> Pic {
+        var p = Pic(w: size, h: size); let at = 91 + (dir * 4 + f) * size * size / 2
+        for k in 0..<size * size {
+            let b = bytes[at + k / 2], i = Int(k % 2 == 0 ? b >> 4 : b & 15)
+            if i > 0 { let c = 1 + (shiny ? 45 : 0) + (i - 1) * 3; p.px[k] = rgb(bytes[c], bytes[c + 1], bytes[c + 2]) }
+        }
+        return p
+    }
+}
+@MainActor var walkCache: [Int: WalkSprite?] = [:]
+/// A species' walking sprite (nil = none), unpacked the first time it's wanted.
+@MainActor func walkSprite(_ dex: Int) -> WalkSprite? {
+    if let w = walkCache[dex] { return w }
+    if walkCache.count >= 8 { walkCache.removeAll() }
+    func off(_ i: Int) -> Int { Int(walkData[i * 4]) | Int(walkData[i * 4 + 1]) << 8 | Int(walkData[i * 4 + 2]) << 16 | Int(walkData[i * 4 + 3]) << 24 }
+    var w: WalkSprite? = nil
+    if (1...493).contains(dex), walkData.count > 494 * 4, off(dex - 1) < off(dex), off(dex) <= walkData.count,
+       let d = try? (walkData.subdata(in: off(dex - 1)..<off(dex)) as NSData).decompressed(using: .zlib) {
+        let u = [UInt8](d as Data), size = Int(u.first ?? 0)
+        if size > 0, u.count >= 91 + 12 * size * size / 2 { w = WalkSprite(size: size, bytes: u) }
+    }
+    walkCache[dex] = w; return w
+}
 
 extension WalkerView {
     /// Steps are coming in: it's walking (and the screen draws at 30 fps).
     func strolling(_ now: Date) -> Bool { now.timeIntervalSince(lastStep) < 1.2 }
-    /// One frame of it: along the path, turning at the ends; still, it looks the other way now and then. It stops while it does its HGSS animation.
+    /// Where it may go: its middle, in half-dots, inside the picture's window.
+    var strollRange: ClosedRange<Double> { Double(2 * courseBox.x + 16)...Double(2 * (courseBox.x + courseBox.w) - 16) }
+    /// One frame of it: along the path, turning at the ends; still, it looks the other way now and then (facing us meanwhile). It waits while the big one does its HGSS animation.
     func stroll(_ now: Date) {
         let dt = min(0.2, max(0, now.timeIntervalSince(strollAt))); strollAt = now
         switch screen { case .home, .menu: break; default: return }
         guard !animating else { return }
         if strolling(now) {
-            strollX += (strollRight ? 1 : -1) * min(18, 6 + 1.5 * stepRate) * dt                 // dots a second
-            if strollX > 80 { strollX = 80; strollRight = false } else if strollX < 16 { strollX = 16; strollRight = true }
+            strollX += (strollRight ? 1 : -1) * min(36, 12 + 2 * stepRate) * dt                   // half-dots a second
+            if strollX > strollRange.upperBound { strollX = strollRange.upperBound; strollRight = false } else if strollX < strollRange.lowerBound { strollX = strollRange.lowerBound; strollRight = true }
         } else if now > strollTurnAt {
             strollTurnAt = now.addingTimeInterval(Double.random(in: 6...14))                        // the system's dice, as perk's: flows stay seeded
             if Bool.random() { strollRight.toggle() }
         }
+    }
+    /// The walking sprite on the picture's path: its steps while it walks (quicker with the pace), facing us when it stands.
+    func walker(_ fb: inout FB, _ m: Mon, _ now: Date) {
+        guard let w = walkSprite(m.dex) else { return }
+        let t = now.timeIntervalSinceReferenceDate, moving = strolling(now) && !animating, dir = moving ? (strollRight ? 1 : 0) : 2
+        let frame = moving ? Int(t * min(12, 6 + stepRate / 2)) % 4 : Int(t / 0.6) % 2 == 0 ? 0 : 1 // HGSS's step cycle; standing, a slow shuffle
+        let scale = w.size > 32 ? 0.5 : 1.0, feet = 2 * (courseBox.y + courseBox.h) - 7, shiny = m.shiny == true
+        fb.pic("walk|\(m.dex)|\(dir)|\(frame)|\(shiny)", Int(strollX.rounded()), feet - Int(Double(w.size) * scale / 2), scale: scale, behind: true,
+               clip: [2 * courseBox.x + 3, 2 * courseBox.y + 3, 2 * courseBox.w - 6, 2 * courseBox.h - 6]) { w.pic(dir, frame, shiny: shiny) }
     }
 }
