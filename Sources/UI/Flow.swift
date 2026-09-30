@@ -98,6 +98,7 @@ extension WalkerView {
     }
     /// A click on the shop panel: 2100 + k = row k (and how-many, if it can be bought), 2000-2004 = −10 −1 +1 +10 max, 2005 = buy, 2006 / 2007 = 예 / 아니오.
     func shopTap(_ code: Int) {
+        throughSay()
         if case .shopConfirm(let bp, let sel, _) = screen {
             if code == 2006 { screen = .shopConfirm(bp: bp, sel: sel, yes: true); press(1) }
             else if code == 2007 { screen = .shop(bp: bp, sel: sel, qty: nil) }
@@ -296,11 +297,12 @@ extension WalkerView {
             } else if tries == 1 { screen = .say(["아무것도", "없었다..."], next: .home, since: now) }
             else { screen = .dowse(cursor: c, prize: prize, tries: 1, hint: abs(c - prize) == 1 ? "가깝다!" : "멀다...") }
         case .card(let p): screen = k == 1 ? .menu(3) : .card((p + (k == 0 ? 2 : 1)) % 3)
-        case .bag(let p):
+        case .bag(let p):                                                                         // 0 = the companion, then the walker's Pokémon, then the items
             let n = bagPages
             if k != 1 { screen = .bag((p + (k == 0 ? n - 1 : 1)) % n) }
-            else if state.caught.indices.contains(p), p < n - 1 {                           // ● on a Pokémon: walk with it
-                state.pair(p, onWalker: true)
+            else if p == 0 { screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷고 있다"], next: .bag(0), since: now) }
+            else if state.caught.indices.contains(p - 1), p < n - 1 {                      // ● on one of the walker's: walk with it
+                state.pair(p - 1, onWalker: true)
                 screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: now)
             } else { screen = .menu(4) }
         case .say(_, let next, _): screen = next
@@ -345,56 +347,7 @@ extension WalkerView {
         }
     }
 
-    /// Tap on the screen (dot coords 96x64). Returns false where the click should drag the device instead.
-    func touch(_ x: Int, _ y: Int) -> Bool {
-        func pick(_ select: () -> Void) { select(); press(1) }
-        if sideOn { switch screen { case .battle, .moves, .party, .bagBattle, .forfeit: return false; default: break } }   // the LCD shows only the stage: its buttons are on the panel, a click drags
-        switch screen {
-        case .home, .say: press(1)
-        case .menu, .card, .bag, .dex: press(x < 32 ? 0 : x >= 64 ? 2 : 1)
-        case .box(_, let act, _, _):
-            if act != nil, y >= 50 { press(1) } else { press(x < 32 ? 0 : x >= 64 ? 2 : 1) }                             // left third ◀, middle ●, right third ▶
-        case .radar(let b, _, let since, let chain): pick { screen = .radar(bush: b, cursor: (x < 48 ? 0 : 1) + (y < 32 ? 0 : 2), since: since, chain: chain) }
-        case .battle(let b, _):
-            guard y >= 50, let k = menuRanges(battleMenu(b)).firstIndex(where: { $0.contains(x) }) else { return false }
-            pick { screen = .battle(b, sel: k) }
-        case .forfeit(let b, _):
-            guard y >= 50, clickCount == 1 else { return true }
-            pick { screen = .forfeit(b, yes: x >= 70) }                                            // 아니오 is drawn at 48, 예 at 72
-        case .moves(let b, _):
-            guard y >= 37 else { press(3); return true }                                           // tap the stage = back
-            let k = (x < 48 ? 0 : 1) + (y < 50 ? 0 : 2)
-            guard k < b.mine[b.me].moves.count else { return false }
-            pick { screen = .moves(b, sel: k) }
-        case .bagBattle(let b, let sel):
-            let n = battleItems(b).count, top = max(0, min(sel - 2, n - 5)), k = top + (y - 14) / 10
-            guard y >= 14, k < n else { press(3); return true }
-            pick { screen = .bagBattle(b, sel: k) }
-        case .shop(let bp, let sel, let qty):
-            if qty != nil {                                                                        // ◀ − | ● buy | + ▶ — a double-click's second click never buys
-                if (32..<64).contains(x), clickCount > 1 { return true }
-                press(x < 32 ? 0 : x >= 64 ? 2 : 1); return true
-            }
-            let n = wares(bp).count, top = max(0, min(sel - 2, n - 5)), k = top + (y - 13) / 10
-            guard y >= 13, k - top < 5, k < n else { return false }
-            if k == sel { if clickCount == 1 { press(1) } } else { lastInput = Date(); screen = .shop(bp: bp, sel: k, qty: nil) }   // tap = pick, tap it again = how many
-        case .shopConfirm(let bp, let sel, _):
-            guard clickCount == 1, y >= 40 else { return true }
-            screen = .shopConfirm(bp: bp, sel: sel, yes: x >= 48); press(1)
-        case .learn:
-            let k = (y - 12) / 10
-            guard y >= 12, k < 5 else { return false }
-            pick { screen = .learn(sel: k) }
-        case .party(let b, _):
-            let k = (y - 15) / 15
-            guard y >= 15, k < b.mine.count else { press(3); return true }
-            pick { screen = .party(b, sel: k) }
-        case .tower: press(1)
-        case .dowse(_, let prize, let tries, _):
-            guard (20..<48).contains(y) else { return false }
-            pick { screen = .dowse(cursor: min(5, max(0, (x - 2) / 16)), prize: prize, tries: tries, hint: nil) }
-        case .beats, .evolve, .hatch: return false
-        }
-        return true
-    }
+    /// A click on the LCD: it's the screen to look at — the pane's page and the keys are what you press. Only a message goes on (as ● would).
+    /// Returns false where the click drags the device instead.
+    func touch(_ x: Int, _ y: Int) -> Bool { if case .say = screen { press(1); return true }; return false }
 }

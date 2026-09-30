@@ -257,8 +257,8 @@ extension WalkerView {
         else { guard state.box.indices.contains(i.tag) else { return }; state.pair(i.tag) }
         screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: Date()); save(nil)
     }
-    /// The tallest page (the 도감 / 상자 grids) at that size fits the screen the card is on.
-    func sizeFits(_ size: CGFloat) -> Bool { 422 * size / 2 <= (window?.screen ?? NSScreen.main)?.visibleFrame.height ?? .infinity }
+    /// The tallest page (포켓몬 · 도구) at that size fits the screen the card is on.
+    func sizeFits(_ size: CGFloat) -> Bool { SideView.tallest * size / 2 <= (window?.screen ?? NSScreen.main)?.visibleFrame.height ?? .infinity }
     @objc func setSize(_ item: NSMenuItem) {                     // keeps the top-left corner, as the card grows down
         guard sizeFits(CGFloat(item.tag)) else { NSSound.beep(); return }
         SIZE = CGFloat(item.tag); UserDefaults.standard.set(item.tag, forKey: "px")

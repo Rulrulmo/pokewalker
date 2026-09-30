@@ -153,7 +153,7 @@ final class WalkerView: NSView {
         clickCount = e.clickCount
         var buying: Bool { switch screen { case .shop(_, _, .some), .shopConfirm: true; default: false } }
         if let i = buttons.firstIndex(where: { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r + 2 * K }) {
-            if i == 1, e.clickCount > 1, buying { return }                                         // ● twice fast on how-many: once
+            if i == 1, e.clickCount > 1 { return }                                                  // ● twice fast: once (the 2nd would act on what the 1st opened)
             pressed = i; pressedAt = Date(); press(i)
             perform(#selector(tick(_:)), with: nil, afterDelay: 0.15, inModes: [.common])
         } else if chevronRect.contains(p), title().chevron != nil { toggleStatus() }
@@ -163,12 +163,21 @@ final class WalkerView: NSView {
     override func keyDown(with e: NSEvent) {                                                  // ← return/space → esc (= ↩ 뒤로); in a shop ↑ ↓ = a row, or ±10
         if case .shop(_, _, let q) = screen, let d = [126: -1, 125: 1][Int(e.keyCode)] { shopStep(q == nil ? d : -10 * d); return }
         switch screen { case .dex(_, _, false), .box(_, .none, _, false): if let d = [126: -6, 125: 6, 116: -30, 121: 30][Int(e.keyCode)] { gridStep(d, ends: abs(d) == 30); return }; default: break }   // the grids: ↑ ↓ a row, page up / down a page
+        if e.keyCode == 48 {                                                                      // tab: a grid's next tab (shift: the one before); where no page is up, the status sheet
+            let back = e.modifierFlags.contains(.shift)
+            switch screen {
+            case .dex(_, let f, false): gridTap(4100 + (f + (back ? 3 : 1)) % 4)
+            case .box(_, .none, _, false): gridTap(4100 + (boxSort + (back ? 3 : 1)) % 4)
+            default: if title().chevron != nil { toggleStatus() }
+            }
+            return
+        }
         switch screen { case .shop, .shopConfirm: if e.isARepeat, [36, 49].contains(Int(e.keyCode)) { return }; default: break }   // a held return / space doesn't keep buying
         if let i = [123: 0, 36: 1, 49: 1, 124: 2, 53: 3][Int(e.keyCode)] { press(i) } else { super.keyDown(with: e) }
     }
     override var acceptsFirstResponder: Bool { true }
     override func resetCursorRects() {
-        addCursorRect(lcdRect, cursor: .pointingHand); if title().chevron != nil { addCursorRect(chevronRect, cursor: .pointingHand) }
+        if title().chevron != nil { addCursorRect(chevronRect, cursor: .pointingHand) }                   // the LCD is to look at: no hand over it
         for b in buttons { addCursorRect(NSRect(x: b.c.x - b.r, y: b.c.y - b.r, width: 2 * b.r, height: 2 * b.r), cursor: .pointingHand) }
     }
 
@@ -229,12 +238,19 @@ final class WalkerView: NSView {
             let left = { (fs: [Fighter]) in fs.filter(\.alive).count }
             return (tr, "배틀 타워 · 남은 \(left(b.theirs)) : \(left(b.mine))", nil)
         }
+        let when = "\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · \((state.weather ?? .sunny).name)"
         switch sc {
         case .dex: return ("도감", "잡음 \(dexCount) · 봤음 \(seenList.count)", nil)
         case .box: return ("상자", "", nil)
         case .menu: return ("메뉴", "", nil)
         case .shop(let bp, _, _), .shopConfirm(let bp, _, _): return (bp ? "BP 교환소" : "상점", "", nil)
-        default: return (state.here.name, "\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · \((state.weather ?? .sunny).name)", statusOpen)
+        case .radar: return ("포켓 레이더", state.here.name, nil)
+        case .dowse: return ("다우징", state.here.name, nil)
+        case .card: return ("트레이너 카드", "", nil)
+        case .learn: return ("기술 배우기", "", nil)
+        case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP", nil)
+        case .bag: return ("포켓몬 · 도구", "워커 \(state.caught.count)마리 · 도구 \(state.items.count)", nil)
+        default: return (state.here.name, when, statusOpen)                                      // screens without a page of their own: the status sheet's ⌄
         }
     }
     /// The 96x64 screen: dots (colour or 4 greys), sprites, smooth text over them, a fight's HP boxes, a shadow from the bezel.

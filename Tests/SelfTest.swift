@@ -479,7 +479,7 @@ import AppKit
     v.press(2); v.press(2); v.press(1)
     check(on(v) { if case .beats(_, let bs, _, _) = $0 { return bs.first == .appear }; return false } && v.state.seen?.isEmpty == false, "▶▶● on the shaking bush: a wild one appears (and is seen)")
     if case .beats(let b, _, _, _) = v.screen { v.screen = .battle(b, sel: 0) }
-    if case .battle(let bb, _) = v.screen { _ = v.touch(v.menuRanges(v.battleMenu(bb))[3].lowerBound + 1, 56) }
+    if case .battle = v.screen { v.sidePick(3) }                                                      // the pane's 도망
     check(on(v) { if case .beats(_, let bs, _, _) = $0 { return bs == [.ran] || bs.first == .note(.me, text: "도망칠 수 없었다!") }; return false }, "tapping 도망 tries to run (Gen IV odds)")
     let caughtB = Battle(wild: Mon(dex: 16, level: 3, female: false), companion: v.state.companion, chain: 1)
     v.screen = .beats(caughtB, [.thrown(shakes: 3), .caught], since: Date().addingTimeInterval(-30), from: caughtB); v.tick(nil)
@@ -529,8 +529,8 @@ import AppKit
           "box: ↩ from 놓아줄까? back (= 아니오), from a Pokémon's page to the grid, from the grid to the menu")
     bk.sideOn = true; bk.state.towerStreak = 5; bk.towerRun = true; bk.screen = .forfeit(tw, yes: false)
     check(!bk.touch(80, 56) && bk.state.towerStreak == 5, "with the side panel, an LCD tap in a fight answers nothing (it drags)")
-    bk.sideOn = false; bk.screen = .forfeit(tw, yes: false); bk.clickCount = 1; _ = bk.touch(55, 56)
-    check(bk.state.towerStreak == 5 && isBattle(bk.screen, "기권"), "no panel: a tap on the drawn 아니오 is 아니오")
+    bk.sideOn = false; bk.screen = .forfeit(tw, yes: false); let lcdTap = bk.touch(55, 56); bk.sidePick(0)
+    check(!lcdTap && bk.state.towerStreak == 5 && isBattle(bk.screen, "기권"), "the LCD answers nothing even without the pane; the pane's 아니오 is 아니오")
     bk.screen = .battle(wild, sel: 0)
     let battleMenuItems = bk.buildMenu().items
     check(battleMenuItems.contains { $0.title.hasPrefix("⚔ 배틀 중") } && battleMenuItems.first { $0.title.hasPrefix("코스") }?.submenu?.items.allSatisfy { $0.action == nil } == true,
@@ -545,7 +545,9 @@ import AppKit
     v.state.box = [Mon(dex: 1, level: 7, female: false)]; v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(1); v.press(1)
     check(v.state.companion.dex == 1 && v.state.box.first?.dex == 25, "box: ● its page, ● 함께 swaps the companion")
     v.screen = .menu(6); v.press(1); check(on(v) { if case .dex = $0 { return true }; return false }, "menu 도감 opens the dex")
-    _ = v.touch(80, 30); _ = v.touch(10, 30); _ = v.touch(48, 30); check(on(v) { if case .dex(_, _, true) = $0 { return true }; return false }, "dex taps: ▶ ◀, then ● opens the entry page")
+    let dexTaps = [v.touch(80, 30), v.touch(10, 30), v.touch(48, 30)]; let still = on(v) { if case .dex(_, _, false) = $0 { return true }; return false }; v.press(1)
+    check(dexTaps == [false, false, false] && still && on(v) { if case .dex(_, _, true) = $0 { return true }; return false }, "LCD clicks don't step (they drag); ● opens the entry page")
+    v.screen = .say(["어라?"], next: .menu(2), since: Date()); check(v.touch(10, 10) && on(v) { if case .menu(2) = $0 { return true }; return false }, "… only a message goes on with a click on the LCD")
 
     // the 도감 / 상자 grids on the pane
     let gv = WalkerView(state: { var s = Walk(); s.owned = [1, 4, 25]; s.seen = [1, 4, 7, 25, 94]
@@ -569,8 +571,9 @@ import AppKit
     let pg = gv.paneContent(Date()).grid
     check(pg?.page == 17 && pg?.pages == 17 && pg?.cells.count == 13 && pg?.sel == 12 && pg?.cells.first?.dex == 481, "the last page: 481-493, the pick in its cell")
     gv.gridTap(4101); check(gs { if case .dex(1, 1, false) = $0 { return true }; return false }, "a tab: the pick moves onto it when it isn't on it")
-    gv.gridTap(10002); check(gs { if case .dex(25, 1, false) = $0 { return true }; return false }, "a cell: picks it")
-    gv.gridTap(10002); check(gv.paneContent(Date()).dex?.num == 25, "the picked one again: its entry page")
+    gv.gridHover(10002); let hovered = gs { if case .dex(25, 1, false) = $0 { return true }; return false }; gv.gridHover(10000)
+    check(hovered && gs { if case .dex(1, 1, false) = $0 { return true }; return false }, "the pointer over a cell shows it on the LCD")
+    gv.gridTap(10002); check(gv.paneContent(Date()).dex?.num == 25, "a click on a cell opens its entry page")
     gv.press(2); check(gs { if case .dex(1, 1, true) = $0 { return true }; return false }, "▶ on the entry page: the next on the tab, wrapping")
     gv.press(3); let toGrid = gs { if case .dex(1, 1, false) = $0 { return true }; return false }; gv.press(3)
     check(toGrid && gs { if case .menu(6) = $0 { return true }; return false }, "↩: the entry page → the grid → the menu")
@@ -584,9 +587,9 @@ import AppKit
     gv.boxSort = 3; check(gv.boxOrder == [2, 1, 0], "최근: the last to arrive first"); gv.boxSort = 1
     gv.boxSort = 2; gv.state.box[1].ivs = [31, 31, 31, 0, 0, 0]; check(gv.boxOrder.first == 1 && gv.paneContent(Date()).grid?.cells.first?.v3 == true, "V순: 3V first, marked"); gv.state.box[1].ivs = nil; gv.boxSort = 1
     let shinyCell = gv.paneContent(Date()).grid?.cells[1].shiny == true
-    gv.gridTap(10001); let boxPicked = gs { if case .box(2, nil, false, false) = $0 { return true }; return false }; gv.gridTap(10001); gv.gridTap(10001)
+    gv.gridHover(10001); let boxPicked = gs { if case .box(2, nil, false, false) = $0 { return true }; return false }; gv.gridTap(10001); gv.gridTap(10001)
     check(boxPicked && shinyCell && gs { if case .box(2, nil, false, true) = $0 { return true }; return false } && gv.paneContent(Date()).mon != nil,
-          "a cell picks, the picked one again opens its page, and stays there (★ = 이로치)")
+          "the pointer picks a cell, a click opens its page and stays there (★ = 이로치)")
     gv.state.box[2].nature = 3; gv.state.box[2].ivs = [31, 20, 31, 0, 12, 31]; gv.state.box[2].evs = [252, 0, 6, 0, 0, 252]; gv.state.box[2].hyper = [3]
     let mm = gv.paneContent(Date()).mon
     check(mm?.nature == natures[3].name && mm?.up == natures[3].up && mm?.down == natures[3].down && mm?.natureNote.contains("10% 높고") == true && mm?.ivs == [31, 20, 31, 31, 12, 31]
@@ -687,13 +690,13 @@ import AppKit
     lg.press(1); lg.press(1); lg.press(2); lg.press(1)
     check(lg.state.watts == 0 && lg.state.legendBought(250), "… and ▶ 예 ● brings it")
     let dc = WalkerView(state: { var s = Walk(); s.watts = 1000; return s }()); dc.persist = false; dc.rng = Seeded(s: 43)
-    dc.screen = .shop(bp: false, sel: 0, qty: nil); dc.clickCount = 1; _ = dc.touch(48, 20); dc.clickCount = 2; _ = dc.touch(48, 20)   // double-click on the picked row
+    dc.screen = .shop(bp: false, sel: 0, qty: nil); let shopLCD = dc.touch(48, 20); dc.shopTap(2100)
     let rowTap = on(dc) { if case .shop(false, 0, 1?) = $0 { return true }; return false }
-    dc.clickCount = 2; _ = dc.touch(48, 30); check(rowTap && dc.state.watts == 1000, "LCD: a double-click opens how-many at most, its 2nd click never buys")
+    check(!shopLCD && rowTap && dc.state.watts == 1000, "a row on the pane opens how-many (the LCD never buys)")
     let heldReturn = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: true, keyCode: 36)!
     dc.keyDown(with: heldReturn); check(dc.state.watts == 1000, "a held return doesn't buy")
     dc.clickCount = 1; dc.shopStep(10); dc.shopRow(1); check(on(dc) { if case .shop(false, 1, nil) = $0 { return true }; return false }, "scrolling the panel moves a row and leaves how-many (never the amount)")
-    dc.screen = .shop(bp: false, sel: 0, qty: nil); check(!dc.touch(48, 63) && dc.shopModel()?.hint.contains("●") == true, "the LCD's bottom dot row isn't a hidden 6th row; the panel says what ● does")
+    dc.screen = .shop(bp: false, sel: 0, qty: nil); check(dc.shopModel()?.hint.contains("●") == true, "the panel says what ● does")
     dc.screen = .shop(bp: false, sel: dc.wares(false).count - 1, qty: nil); check(dc.shopModel()?.hint == "W가 부족해요 · 9,999W 필요", "the panel says why a row can't be bought", "\(dc.shopModel()?.hint ?? "")")
     // 7g the Poké Ball card: the LCD 2 pt a dot at 보통, the keys on the band, the page under it growing down per screen
     let size0 = SIZE; SIZE = 2
@@ -723,8 +726,31 @@ import AppKit
     pv.screen = .say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date()); check(pv.sideModel(Date())?.message == "기술의 남은 PP가 없다!", "… with the message in the battle page's box")
     let grown = WalkerView.onScreen(NSRect(x: 2248, y: 24 + 288 - 376, width: 584, height: 376), in: NSRect(x: 0, y: 0, width: 2560, height: 1410))
     check(grown == NSRect(x: 1976, y: 0, width: 584, height: 376), "an old device at the bottom-right corner grows into the screen, not onto the next one", "\(grown)")
-    pv.screen = .menu(0); pv.menuTap(5); let picked = { if case .menu(5) = pv.screen { return true }; return false }(); pv.menuTap(5)
-    check(picked && { if case .box = pv.screen { return true }; return false }(), "메뉴 page: a click picks the page, a click on the picked one opens it")
+    pv.screen = .menu(0); pv.menuTap(5)
+    check({ if case .box = pv.screen { return true }; return false }(), "메뉴: a click on a tile opens it")
+    // the walker's other pages: one click does what ● would
+    let pt = WalkerView(state: { var s = Walk(); s.watts = 500; s.caught = [Mon(dex: 16, level: 5, female: false)]; s.items = ["상처약"]; return s }()); pt.persist = false; pt.rng = Seeded(s: 83)
+    func pts(_ p: (Screen) -> Bool) -> Bool { p(pt.screen) }
+    pt.screen = .radar(bush: 2, cursor: 0, since: Date().addingTimeInterval(-2), chain: 0)
+    let rm = pt.paneContent(Date()).radar; pt.pageTap(5002)
+    check(rm?.live == 2 && pts { if case .beats(_, let bs, _, _) = $0 { return bs.first == .appear }; return false }, "레이더: the rustling bush is marked on the pane, a click on it searches there")
+    pt.screen = .dowse(cursor: 0, prize: 4, tries: 2, hint: nil); pt.pageTap(5104)
+    check(pts { if case .say(let l, _, _) = $0 { return l.last == "찾았다!" || l.first?.hasSuffix("찾았다!") == true }; return false }, "다우징: a click on a spot digs there")
+    pt.screen = .card(0); pt.pageTap(5202); check(pts { if case .card(2) = $0 { return true }; return false } && pt.paneContent(Date()).card?.page == 2, "트레이너 카드: its pages are tabs")
+    pt.screen = .tower; let lobby = pt.paneContent(Date()).tower; pt.pageTap(5400)
+    check(lobby?.party.count == 2 && lobby?.fee == Walk.towerFee && pt.state.watts == 500 - Walk.towerFee && pts { if case .beats = $0 { return true }; return false }, "배틀 타워: the party, and 도전 pays and starts")
+    pt.screen = .menu(4); pt.press(1); let bag0 = pt.paneContent(Date()).bag
+    check(pts { if case .bag(0) = $0 { return true }; return false } && bag0?.chips.map(\.dex) == [25, 16] && bag0?.chips.first?.companion == true && bag0?.mon != nil && bag0?.sel == 0,
+          "포켓몬 · 도구: the companion first (함께), then the walker's; its page in full")
+    pt.pageTap(5502); let itemsUp = pt.paneContent(Date()).bag.map { $0.mon == nil && $0.items.first == "상처약" && $0.sel == 2 } == true; pt.pageTap(5501); pt.pageTap(5510)
+    check(itemsUp && pt.state.companion.dex == 16 && pt.state.caught.first?.dex == 25, "… the last chip is the items; 함께 걷기 on one of the walker's makes it the companion")
+    pt.screen = .bag(0); pt.pageTap(5510); check(pt.state.companion.dex == 16 && pts { if case .bag(0) = $0 { return true }; return false }, "… the companion's own page has nothing to do")
+    pt.screen = .say(["W가 부족하다"], next: .menu(0), since: Date()); pt.menuTap(3)
+    check(pts { if case .card(0) = $0 { return true }; return false }, "a click on a page still up under its message ends the message and counts")
+    let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48)!
+    pt.screen = .dex(1, filter: 0, detail: false); pt.keyDown(with: tab); let tabbed = pts { if case .dex(_, 1, false) = $0 { return true }; return false }
+    pt.screen = .home; pt.statusOpen = false; pt.keyDown(with: tab)
+    check(tabbed && pt.statusOpen, "Tab: a grid's next tab; on home, the status sheet")
     let stm = pv.statusModel(); check(stm.level == "Lv.5" && stm.numbers.count == 3 && stm.rows.count == 3 && stm.exp >= 0 && stm.exp <= 1, "the status sheet: level, EXP to next, today / W / total, egg / tower / dex")
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0

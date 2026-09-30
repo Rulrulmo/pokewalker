@@ -163,16 +163,14 @@ extension WalkerView {
                 fb.text("\(top)", 94, 23, 1, right: true, small: true)
                 fb.text("합계 \(state.total)" + (state.bestChain.map { " · 최고 연쇄 \($0)" } ?? ""), 2, 14, 2, small: true)
             }
-        case .bag(let p):
-            let m = p < bagPages - 1 ? state.caught[safe: p] : nil
-            header(m.map { ($0.shiny == true ? "★" : "") + monNames[$0.dex] + " Lv.\($0.level)" } ?? (p < bagPages - 1 ? "포켓몬" : "도구"))
-            if p < bagPages - 1 {
-                if let m {
-                    fb.mon(m, half, 0, 2)
-                    fb.text("\(p + 1)/\(state.caught.count)", 94, 15, 2, right: true, small: true); vLabel(m, 24)
-                    fb.text("●", 80, 32, 3, center: false); fb.text("함께", 94, 42, 2, right: true, small: true); fb.text("걷기", 94, 51, 2, right: true, small: true)
-                }
-                else { fb.text("없음", 0, 30, 2, center: true) }
+        case .bag(let p):                                                                            // 0 = the companion, then the walker's Pokémon, then the items
+            let m = p == 0 ? state.companion : p < bagPages - 1 ? state.caught[safe: p - 1] : nil
+            header(m.map { ($0.shiny == true ? "★" : "") + monNames[$0.dex] + " Lv.\($0.level)" } ?? "도구")
+            if let m {
+                fb.mon(m, half, 0, 2)
+                fb.text("\(p + 1)/\(bagPages - 1)", 94, 15, 2, right: true, small: true); vLabel(m, 24)
+                if p == 0 { fb.text("함께", 94, 42, 2, right: true, small: true); fb.text("걷는 중", 94, 51, 2, right: true, small: true) }
+                else { fb.text("● 함께", 94, 42, 2, right: true, small: true); fb.text("걷기", 94, 51, 2, right: true, small: true) }
             } else {
                 if state.items.isEmpty { fb.text("없음", 0, 30, 2, center: true) }
                 for (k, it) in state.items.enumerated() { fb.draw(gem, 4, 18 + 12 * k, gemPal); fb.text(it, 12, 14 + 12 * k) }
@@ -243,7 +241,7 @@ extension WalkerView {
         }
         return fb
     }
-    var bagPages: Int { max(1, state.caught.count) + 1 }
+    var bagPages: Int { state.caught.count + 2 }                                                  // the companion, the walker's Pokémon, the items
     func evoText(_ e: Evo) -> String {
         let when = e.time.map { $0 == "day" ? "낮" : "밤" }, sex = e.female.map { $0 ? "♀" : "♂" }
         let place = e.place.map { ["cave": "동굴 코스", "forest": "숲 코스"][$0] ?? "얼음 산길" }
@@ -294,20 +292,25 @@ extension WalkerView {
         default: return nil
         }
     }
-    /// A click on a grid page: 10000 + k = the list's k-th (picks it; the picked one again = its page), 4100 + t = a tab, 4200 / 4201 = a page back / on;
+    /// A click on a grid page: 10000 + k = the list's k-th (opens its page), 4100 + t = a tab, 4200 / 4201 = a page back / on;
     /// a box Pokémon's page: 4400 함께 걷기, 4401 놓아주기 → 4402 아니오 / 4403 예.
+    /// A click on a page still up under its own message (산 뒤, 연승!, W가 부족하다 …): the message ends and the click counts.
+    func throughSay() {
+        guard case .say(_, let next, _) = screen else { return }
+        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .bag, .card: screen = next; default: break }
+    }
     func gridTap(_ code: Int) {
-        if case .say(_, let next, _) = screen { switch next { case .dex, .box: screen = next; default: return } }   // a click during 놓아주기's line = on to the grid
+        throughSay()
         lastInput = Date(); shown = nil; needsDisplay = true
         switch (screen, code) {
-        case (.dex(let d, let f, _), 10000...):
+        case (.dex(_, let f, _), 10000...):
             guard let n = dexList(f)[safe: code - 10000] else { return }
-            screen = .dex(n, filter: f, detail: n == d)
+            screen = .dex(n, filter: f, detail: true)
         case (.dex(let d, _, _), 4100...4103):
             let f = code - 4100, l = dexList(f); screen = .dex(l.contains(d) ? d : l.first ?? d, filter: f, detail: false)   // the pick stays if it's on the new tab
-        case (.box(let i, _, _, _), 10000...):
+        case (.box, 10000...):
             guard let j = boxOrder[safe: code - 10000] else { return }
-            screen = .box(j, act: nil, confirm: false, detail: j == i)                               // the picked one again: its page
+            screen = .box(j, act: nil, confirm: false, detail: true)
         case (.box(let i, _, _, _), 4100...4103): boxSort = code - 4100; screen = .box(i, act: nil, confirm: false)
         case (.box(let i, _, _, true), 4400): screen = .box(i, act: 0, confirm: false, detail: true); press(1)      // = ● 함께
         case (.box(let i, _, _, true), 4401): screen = .box(i, act: 0, confirm: true, detail: true)                  // 놓아줄까? 아니오 first
@@ -323,6 +326,7 @@ extension WalkerView {
         if let d = dexModel() { return PaneContent(dex: d) }
         if let g = gridModel(now) { return PaneContent(grid: g) }
         if let m = monModel() { return PaneContent(mon: m) }
+        if let b = bagModel() { return PaneContent(bag: b) }
         if let s = shopModel() { return PaneContent(shop: s) }
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }                       // a menu page's message (W가 부족하다, 커넥트): the list stays
         if case .menu(let i) = sc {
@@ -330,12 +334,65 @@ extension WalkerView {
                                          "\(state.box.count.formatted())마리", "\(dexCount) / 493", "W로 사기", "\(bp)BP로 교환", "최고 \(state.towerBest ?? 0)연승"]
             return PaneContent(menu: MenuModel(rows: menuItems.indices.map { .init(name: menuItems[$0], note: notes[safe: $0] ?? "") }, sel: i))
         }
+        switch sc {                                                                               // the rest of the walker's pages: what you press is here, the LCD shows it
+        case .radar(let b, let c, let since, let chain):
+            let u = Date().timeIntervalSince(since)
+            return PaneContent(radar: RadarModel(live: (1.5...(1.5 + radarWindow(chain))).contains(u) ? b : nil, cursor: c, chain: chain))
+        case .dowse(let c, _, let tries, let hint): return PaneContent(dowse: DowseModel(cursor: c, tries: tries, hint: hint))
+        case .card(let p): return PaneContent(card: CardModel(page: p))
+        case .learn(let sel):
+            var st = state
+            guard let (ref, id) = st.nextToLearn(), let m = state.mon(ref), let new = moveTable[id] else { break }
+            func mv(_ x: MoveInfo) -> LearnModel.Move { .init(name: x.name, type: x.type, power: x.power, pp: x.pp) }
+            return PaneContent(learn: LearnModel(who: monNames[m.dex], new: mv(new), known: m.moves.compactMap { moveTable[$0] }.map(mv), sel: sel))
+        case .tower:
+            return PaneContent(tower: TowerModel(run: towerRun, streak: state.towerStreak ?? 0, best: state.towerBest ?? 0, bp: state.bp ?? 0, fee: Walk.towerFee,
+                                                 party: state.party().map { .init(dex: $0.mon.dex, name: monNames[$0.mon.dex], level: $0.mon.level) }))
+        default: break
+        }
         return statusOpen ? PaneContent(status: statusModel()) : PaneContent()
+    }
+    /// 포켓몬 · 도구: the companion first, then the walker's Pokémon; the picked one in full (the last chip = the items).
+    func bagModel() -> BagModel? {
+        var sc = screen; if case .say(_, let next, _) = sc { sc = next }
+        guard case .bag(let p) = sc else { return nil }
+        let mons = [state.companion] + state.caught
+        let chips = mons.enumerated().map { BagModel.Chip(dex: $1.dex, name: monNames[$1.dex], level: $1.level, companion: $0 == 0) }
+        return BagModel(chips: chips, sel: min(p, chips.count), mon: mons[safe: p].map { monPage($0) }, items: state.items)
+    }
+    /// A click on a walker page that isn't a grid: 5000 + k a radar bush, 5100 + k a dowsing spot, 5200 + p a card page, 5300 + k a move to forget (4 = don't),
+    /// 5400 / 5401 the tower's 도전 / 나가기, 5500 + k a 포켓몬 · 도구 chip, 5510 its 함께 걷기. One click does it, as ● would.
+    func pageTap(_ code: Int) {
+        throughSay(); lastInput = Date(); shown = nil; needsDisplay = true
+        switch (screen, code) {
+        case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
+        case (.dowse(_, let prize, let tries, _), 5100...5105): screen = .dowse(cursor: code - 5100, prize: prize, tries: tries, hint: nil); press(1)
+        case (.card, 5200...5202): screen = .card(code - 5200)
+        case (.learn, 5300...5304): screen = .learn(sel: code - 5300); press(1)
+        case (.tower, 5400): press(1)
+        case (.tower, 5401): press(3)
+        case (.bag, 5500..<5510): screen = .bag(min(code - 5500, bagPages - 1))
+        case (.bag(let p), 5510) where p > 0 && p < bagPages - 1: press(1)
+        default: return
+        }
+    }
+    /// The pointer over a grid cell: it shows on the LCD (a click opens it).
+    func gridHover(_ code: Int) {
+        switch screen {
+        case .dex(_, let f, false): guard let n = dexList(f)[safe: code - 10000] else { return }; screen = .dex(n, filter: f, detail: false)
+        case .box(_, .none, _, false): guard let j = boxOrder[safe: code - 10000] else { return }; screen = .box(j, act: nil, confirm: false)
+        default: return
+        }
+        lastInput = Date(); shown = nil
     }
     /// The 상자's one-Pokémon page: its nature and ability with what they do, IVs (as battles use them) and EVs; nil elsewhere.
     func monModel() -> MonModel? {
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }
         guard case .box(let i, let act, let confirm, true) = sc, let m = state.box[safe: i] else { return nil }
+        return monPage(m, act: act, confirm: confirm)
+    }
+    /// A Pokémon in full, for its page.
+    func monPage(_ m: Mon, act: Int? = nil, confirm: Bool = false) -> MonModel {
         let n = natures[m.nature ?? 0], neutral = n.up == n.down, name = ["HP", "공격", "방어", "특공", "특방", "스피드"]   // the chips' and hexagons' names: every note fits its line
         let note = neutral ? "능력치에 영향을 주지 않는 성격" : josa(name[n.up], "이", "가") + " 10% 높고 " + josa(name[n.down], "이", "가") + " 10% 낮은 성격"
         return MonModel(nature: m.natureName, natureNote: note, ability: m.abilityName, abilityNote: abilityDescs[m.abilityID] ?? "", up: neutral ? nil : n.up, down: neutral ? nil : n.down,
@@ -354,11 +411,12 @@ extension WalkerView {
                                   .init(key: "배틀 타워", value: "최고 \(state.towerBest ?? 0)연승 · \((state.bp ?? 0).formatted())BP"),
                                   .init(key: "도감", value: "잡음 \(dexCount) · 봤음 \(seenList.count)")])
     }
-    /// A click on the 메뉴 page: pick that page; on the picked one, open it (like ●).
+    /// A click on a 메뉴 tile: open it (as ● on it would).
     func menuTap(_ i: Int) {
-        guard case .menu(let sel) = screen, menuItems.indices.contains(i) else { return }
+        throughSay()
+        guard case .menu = screen, menuItems.indices.contains(i) else { return }
         lastInput = Date(); shown = nil; needsDisplay = true
-        if i == sel { press(1) } else { screen = .menu(i) }
+        screen = .menu(i); press(1)
     }
     /// What the side panel shows on a shop screen; nil elsewhere.
     func shopModel() -> ShopModel? {
