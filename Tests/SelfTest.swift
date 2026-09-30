@@ -404,9 +404,10 @@ import AppKit
     w.watts = 100; check(w.purchase(.init(kind: .item("슈퍼볼"), price: 40), 1, bp: false) != nil && w.watts == 60 && w.bag.last == "슈퍼볼" && w.purchase(.init(kind: .item("풀회복약"), price: 300), 1, bp: false) == nil, "W shop")
     check(w.purchase(.init(kind: .item("이상한사탕"), price: 8), 1, bp: true) != nil && w.bp == 4 && w.purchase(.init(kind: .item("이상한사탕"), price: 8), 1, bp: true) == nil, "BP exchange")
     w = Walk(); w.watts = 9998; check(w.buyLegend(0) == nil, "칠색조 needs the full 9,999 W")
-    w.watts = 9999; check(w.buyLegend(0)?.dex == 250 && w.watts == 0 && w.caught.last?.level == 50 && w.buyLegend(0) == nil, "칠색조: 9,999 W, once")
+    w.watts = 9999; check(w.buyLegend(0)?.dex == 250 && w.watts == 0 && w.caught.last?.level == 50 && w.buyLegend(0) == nil, "칠색조: 9,999 W (not again without the watts)")
+    w.watts = 9999; check(w.buyLegend(0)?.dex == 250 && w.caught.filter { $0.dex == 250 }.count == 2, "… and again once they're back: as often as you can pay")
     w.bp = 299; check(w.buyLegend(1) == nil, "뮤츠 needs 300 BP"); w.bp = 300
-    check(w.buyLegend(1)?.dex == 150 && w.bp == 0 && w.legendBought(150) && (w.owned ?? []).contains(150), "뮤츠: 300 BP, once, in the dex")
+    check(w.buyLegend(1)?.dex == 150 && w.bp == 0 && w.legendBought(150) && (w.owned ?? []).contains(150), "뮤츠: 300 BP, in the dex")
     check((w.caught + w.box).filter { [150, 250].contains($0.dex) }.allSatisfy { $0.perfectIVs >= 3 }, "shop legends come with 3 IVs at 31")
     var pr = Seeded(s: 9); check((0..<60).allSatisfy { _ in Mon.wild(144, level: 50, perfect: 3, &pr).perfectIVs >= 3 } && (0..<60).map { _ in Mon.wild(16, level: 5, &pr).perfectIVs }.max()! < 4, "perfect: n sure 31s")
     check((0...10).map(Walk.chainPerfectIVs) == [0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4], "radar chains: 3 → 1V, 5 → 2V, 7 → 3V, 9 → 4V")

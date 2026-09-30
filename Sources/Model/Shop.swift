@@ -73,14 +73,14 @@ extension Walk {
         ("유석열매", 20), ("시마열매", 20), ("파비열매", 20), ("로매열매", 20), ("또뽀열매", 20), ("토망열매", 20), ("순백떡", 200)]
     static let bpShop: [(item: String, bp: Int)] = [("하이퍼볼", 2), ("고급상처약", 3), ("풀회복약", 5), ("회복약", 6), ("부활초", 6), ("PP에이더", 4), ("PP맥스", 8), ("이상한사탕", 8),
         ("맥스업", 1), ("타우린", 1), ("사포닌", 1), ("리보플라빈", 1), ("키토산", 1), ("알칼로이드", 1), ("은색병뚜껑", 25), ("금색병뚜껑", 120)]
-    /// Two legends for the patient: 칠색조 for a full tank of watts (9,999 is the cap), 뮤츠 for 300 BP (~30 tower sets). Once each.
+    /// Two legends for the patient: 칠색조 for a full tank of watts (9,999 is the cap), 뮤츠 for 300 BP (~30 tower sets). As often as you can pay (a shiny, better IVs).
     static let legendShop: [(dex: Int, level: Int, watts: Int, bp: Int)] = [(250, 50, 9999, 0), (150, 70, 0, 300)]
     func legendBought(_ dex: Int) -> Bool { (bought ?? []).contains("legend:\(dex)") }
     mutating func buyLegend(_ i: Int) -> Mon? {
         let l = Walk.legendShop[i]
-        guard !legendBought(l.dex), watts >= l.watts, (bp ?? 0) >= l.bp else { return nil }
-        watts -= l.watts; bp = (bp ?? 0) - l.bp; bought = (bought ?? []) + ["legend:\(l.dex)"]
-        var g = SystemRandomNumberGenerator(); let m = Mon.wild(l.dex, level: l.level, perfect: 3, &g); _ = keep(m); return m   // legends: 3 IVs at 31
+        guard watts >= l.watts, (bp ?? 0) >= l.bp else { return nil }
+        watts -= l.watts; bp = (bp ?? 0) - l.bp; if !legendBought(l.dex) { bought = (bought ?? []) + ["legend:\(l.dex)"] }
+        var g = SystemRandomNumberGenerator(); let m = Mon.wild(l.dex, level: l.level, shiny: Int.random(in: 0..<shinyOdds, using: &g) == 0 ? true : nil, perfect: 3, &g); _ = keep(m); return m   // legends: 3 IVs at 31, a shiny now and then
     }
     /// Evolution items for the companion, sold in the 상점 (HGSS traded them for Pokéathlon points).
     static let evoItemPrice = 1000
@@ -89,7 +89,7 @@ extension Walk {
     struct Ware: Equatable {
         enum Kind: Equatable { case item(String), legend(Int), shell(String) }   // legend = Walk.legendShop index; shell = a device colour's name
         var kind: Kind; var price: Int
-        var once: Bool { if case .item = kind { return false }; return true }
+        var once: Bool { if case .item = kind { return false }; return true }              // one at a time, with 정말 살까? (a device colour also only ever once)
     }
     enum Bought: Equatable { case items(String, Int), legend(Mon), shell(String) }
     /// The rows, in order: the goods, then (상점) the companion's evolution items, then the once-only ones. `shells` = the device colours sold for BP.
@@ -105,11 +105,11 @@ extension Walk {
         switch w.kind { case .item(let i): i; case .legend(let k): monNames[Walk.legendShop[k].dex] + " (전설)"; case .shell(let s): s + " (기기 색)" }
     }
     func wareNote(_ w: Ware) -> String {
-        switch w.kind { case .item(let i): ItemKind.of(i).summary; case .legend(let k): "Lv.\(Walk.legendShop[k].level) · 3V · 한 번만"; case .shell: "기기 색 바꾸기 · 한 번만" }
+        switch w.kind { case .item(let i): ItemKind.of(i).summary; case .legend(let k): "Lv.\(Walk.legendShop[k].level) · 3V · 여러 번 살 수 있어요"; case .shell: "기기 색 바꾸기 · 한 번만" }
     }
     /// How many are carried (once-only: 1 when bought).
     func owned(_ w: Ware) -> Int {
-        switch w.kind { case .item(let i): count(i); case .legend(let k): legendBought(Walk.legendShop[k].dex) ? 1 : 0; case .shell(let s): (bought ?? []).contains(s) ? 1 : 0 }
+        switch w.kind { case .item(let i): count(i); case .legend: 0; case .shell(let s): (bought ?? []).contains(s) ? 1 : 0 }   // a legend can be bought again
     }
     /// How many of it can be bought right now: what the money covers, up to 99 at a time (once-only: 0 or 1).
     func canBuy(_ w: Ware, bp useBP: Bool) -> Int {
