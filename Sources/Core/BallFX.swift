@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 // The balls: thrown, swallowing the foe, rocking, clicking shut or bursting open; sending a Pokémon out; the tower's trainers.
 
 // MARK: - pictures

@@ -60,8 +60,8 @@ extension Walker {
     }
 }
 
-/// Self-test checks for this file (run by selftest()).
-@MainActor func animChecks() -> [(Bool, String)] {
+/// Self-test checks for this file (run by selftest()); `timer` = the platform's own checks on the walker as left here (the Mac's 30 fps frame timer).
+@MainActor func animChecks(timer: (Walker) -> [(Bool, String)] = { _ in [] }) -> [(Bool, String)] {
     var c: [(Bool, String)] = []
     let pk = anim(25)
     c.append((pk.map { $0.ms.count > 5 && (0.3...5).contains($0.length) && $0.w <= 160 && $0.h <= 160 } == true, "anims.bin: 피카츄 has its entry animation"))
@@ -84,9 +84,5 @@ extension Walker {
     v.screen = .dex(25, filter: 0, detail: false); let d0 = v.compose(now).sprites.first?.frame
     v.screen = .dex(6, filter: 0, detail: false); let d1 = v.compose(now.addingTimeInterval(5)).sprites.first?.frame   // ▶: the next one plays from its start
     c.append((d0 == 0 && d1 == 0 && v.compose(now.addingTimeInterval(20)).sprites.first?.frame == nil, "도감: the shown Pokémon plays once when it changes"))
-    let mac = WalkerView(walker: v)                                                            // the frame timer is the Mac view's
-    v.screen = .dex(25, filter: 0, detail: true); mac.tick(nil); let fast = mac.fast != nil
-    v.animOn = ("dex", 25, .distantPast); mac.tick(nil)
-    c.append((fast && mac.fast == nil, "an animation plays at 30 fps, then back to the tick's 10"))
-    return c
+    return c + timer(v)
 }

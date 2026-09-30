@@ -801,7 +801,13 @@ import AppKit
     pt.screen = .home; pt.statusOpen = false; ptv.keyDown(with: tab)
     check(tabbed && pt.statusOpen, "Tab: a grid's next tab; on home, the status sheet")
     let stm = pv.statusModel(); check(stm.level == "Lv.5" && stm.numbers.count == 3 && stm.rows.count == 3 && stm.exp >= 0 && stm.exp <= 1, "the status sheet: level, EXP to next, today / W / total, egg / tower / dex")
-    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks() + notebookChecks() { check(ok, name) }   // the drawing files' own checks
+    let frameTimer = { (v: Walker) -> [(Bool, String)] in                                        // the frame timer is the Mac view's
+        let mac = WalkerView(walker: v)
+        v.screen = .dex(25, filter: 0, detail: true); mac.tick(nil); let fast = mac.fast != nil
+        v.animOn = ("dex", 25, .distantPast); mac.tick(nil)
+        return [(fast && mac.fast == nil, "an animation plays at 30 fps, then back to the tick's 10")]
+    }
+    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks(timer: frameTimer) + notebookChecks() { check(ok, name) }   // the drawing files' own checks
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0
 }

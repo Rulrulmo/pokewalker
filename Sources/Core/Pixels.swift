@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 // Sprites, hand-drawn bits, the fonts and the 96x64 frame buffer.
 
 // MARK: - pixels
@@ -24,14 +24,14 @@ func spritePixel(_ dex: Int, back: Bool, _ x: Int, _ y: Int, shiny: Bool) -> UIn
 /// A sprite laid over the dots at 1 pt per pixel (x 1.5 / x 2 on the bigger sizes): its 80x80 frame (40x40 dots) stands on (x + 16, y + 32); `floor` = the dot row it sinks behind.
 /// scale (about the feet) and alpha: growing out of / shrinking into a ball; frame = one of its animation's (Anim.swift; nil = the static sprite).
 struct SpriteRun: Equatable { var dex: Int; var shiny, back: Bool; var x, y, bob: Int; var tint: UInt32?, tintShade: UInt8; var floor: Int; var inverted = false; var scale = 1.0, alpha = 1.0; var frame: Int? = nil }
-@MainActor var spriteCache: [String: NSImage] = [:]
+@MainActor var spriteCache: [String: Bitmap] = [:]
 /// The sprite as the LCD shows it: its colours, or on a grey screen 4 shades by brightness (white = the blank screen, like the walker's own art); a tint = a silhouette.
 /// Inverted (a full-screen flash) = the grey shades flipped, on any screen, as the dots are.
-@MainActor func spriteImage(_ r: SpriteRun, _ l: LCD) -> NSImage {
+@MainActor func spriteImage(_ r: SpriteRun, _ l: LCD) -> Bitmap {
     let key = "\(r.dex) \(r.shiny) \(r.back) \(l.name) \(r.tint ?? 0) \(r.tintShade) \(r.inverted) \(r.frame ?? -1)"
     if let i = spriteCache[key] { return i }
     if spriteCache.count > 64 { spriteCache.removeAll() }                                   // ponytail: drop all at 64, an LRU if browsing ever stutters
-    let shades = l.shades.map { c -> UInt32 in let s = c.usingColorSpace(.sRGB)!; return rgb(UInt8(s.redComponent * 255), UInt8(s.greenComponent * 255), UInt8(s.blueComponent * 255)) }
+    let shades = l.shades.map { s in rgb(UInt8(s.red * 255), UInt8(s.green * 255), UInt8(s.blue * 255)) }
     let a = playing(r), w = a?.w ?? 80, h = a?.h ?? 80                                         // an animation frame: its own box
     var px = [UInt32](repeating: 0, count: w * h)
     for y in 0..<h { for x in 0..<w {
@@ -44,18 +44,7 @@ struct SpriteRun: Equatable { var dex: Int; var shiny, back: Bool; var x, y, bob
     let i = image(px, w, h); spriteCache[key] = i; return i
 }
 /// 0xAARRGGBB pixels (0 = clear; any alpha) as a w x h image (square if h is left out), for drawing without smoothing.
-func image(_ px: [UInt32], _ side: Int, _ h: Int? = nil) -> NSImage {
-    let h = h ?? side
-    let pre = px.map { c -> UInt32 in                                                               // premultiplied, as CGImage wants it
-        let a = c >> 24; guard a < 255 else { return c }
-        let r: UInt32 = (c >> 16 & 255) * a / 255, g: UInt32 = (c >> 8 & 255) * a / 255, b: UInt32 = (c & 255) * a / 255
-        return a << 24 | r << 16 | g << 8 | b
-    }
-    let img = CGImage(width: side, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: side * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                      bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
-                      provider: CGDataProvider(data: pre.withUnsafeBufferPointer { Data(buffer: $0) } as CFData)!, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
-    return NSImage(cgImage: img, size: NSSize(width: side, height: h))
-}
+@MainActor func image(_ px: [UInt32], _ side: Int, _ h: Int? = nil) -> Bitmap { var p = Pic(w: side, h: h ?? side); p.px = px; return Bitmap(p) }
 
 // MARK: - pictures
 /// A picture at sprite resolution (1 pixel = half a dot, like the battle sprites): 0xAARRGGBB, 0 = clear, any alpha.
@@ -79,15 +68,15 @@ struct PicRun: Equatable { var key: String; var x, y: Int; var scale = 1.0, alph
 /// Every picture drawn so far, by key. Keys must come from a finite set (animate with position / scale / alpha / angle or a bounded frame number):
 /// the store is never emptied, so a frame's FB can be redrawn any time.
 @MainActor var picStore: [String: Pic] = [:]
-@MainActor var picImages: [String: NSImage] = [:]
+@MainActor var picImages: [String: Bitmap] = [:]
 /// Lets go of the pictures whose keys start with prefix, and their images (a fight's effect masks, an old companion's rims).
 @MainActor func dropPics(_ prefix: String) { picStore = picStore.filter { !$0.key.hasPrefix(prefix) }; picImages = picImages.filter { !$0.key.hasPrefix(prefix) } }
 /// A picture as the LCD shows it: its colours, or on a grey screen 4 shades by brightness (as the sprites); inverted = a full-screen flash.
-@MainActor func picImage(_ r: PicRun, _ l: LCD) -> (NSImage, Pic)? {
+@MainActor func picImage(_ r: PicRun, _ l: LCD) -> Bitmap? {
     guard let p = picStore[r.key] else { return nil }
     let key = r.key + "|" + l.name + (r.inverted ? "~" : "")
-    if let i = picImages[key] { return (i, p) }
-    let shades = l.shades.map { c -> UInt32 in let s = c.usingColorSpace(.sRGB)!; return rgb(UInt8(s.redComponent * 255), UInt8(s.greenComponent * 255), UInt8(s.blueComponent * 255)) }
+    if let i = picImages[key] { return i }
+    let shades = l.shades.map { s in rgb(UInt8(s.red * 255), UInt8(s.green * 255), UInt8(s.blue * 255)) }
     let px = p.px.map { c -> UInt32 in
         guard c >> 24 > 0 else { return 0 }
         if l.color && !r.inverted { return c }
@@ -95,7 +84,7 @@ struct PicRun: Equatable { var key: String; var x, y: Int; var scale = 1.0, alph
         let shade: Int = lum > 0.78 ? 0 : lum > 0.5 ? 1 : lum > 0.25 ? 2 : 3, v: UInt32 = shades[r.inverted ? 3 - shade : shade]
         return (c & 0xFF00_0000) | (v & 0xFF_FFFF)
     }
-    let i = image(px, p.w, p.h); picImages[key] = i; return (i, p)
+    let i = image(px, p.w, p.h); picImages[key] = i; return i
 }
 
 /// Other 80x80 frames (tools/gen.py frames.bin): the HGSS egg, then the Battle Tower's trainers. Per frame 15 RGB, then 80x80 at 4 bpp; each stands on row 79.
@@ -134,9 +123,9 @@ func iconPixel(_ dex: Int, _ x: Int, _ y: Int) -> UInt32 {
     let o = (dex - 1) * 557, b = iconData[o + 45 + y * 16 + x / 2], i = Int(x % 2 == 0 ? b >> 4 : b & 15)
     return i > 0 ? rgb(iconData[o + (i - 1) * 3], iconData[o + (i - 1) * 3 + 1], iconData[o + (i - 1) * 3 + 2]) : 0
 }
-@MainActor var iconCache: [Int: NSImage] = [:]                                            // at most 493 x 2 small images
+@MainActor var iconCache: [Int: Bitmap] = [:]                                            // at most 493 x 2 small images
 /// A species' box icon in colour, or (shadow) as a pale silhouette: seen, not caught.
-@MainActor func iconImage(_ dex: Int, shadow: Bool = false) -> NSImage {
+@MainActor func iconImage(_ dex: Int, shadow: Bool = false) -> Bitmap {
     if let i = iconCache[dex * 2 + (shadow ? 1 : 0)] { return i }
     let px = (0..<1024).map { k -> UInt32 in let c = iconPixel(dex, k % 32, k / 32); return c == 0 ? 0 : shadow ? rgb(196, 200, 208) : c }
     let i = image(px, 32); iconCache[dex * 2 + (shadow ? 1 : 0)] = i; return i
@@ -158,34 +147,22 @@ let legendDex = Set(courses.flatMap(\.legends))
 let spark = art(["__#__", "__#__", "##:##", "__#__", "__#__"])
 let sparkPal = [rgb(255, 236, 120), rgb(255, 236, 120), rgb(255, 250, 200), rgb(250, 190, 40)]
 
-/// Galmuri (OFL, a pixel font drawn after the Nintendo DS system font) at its native sizes, so every glyph lands on whole dots: 9 at 10 px, 7 at 8 px, from the bundled files.
-@MainActor let galmuri: [CTFont?] = [("Galmuri9", 10.0), ("Galmuri7", 8.0)].map { f, size in
-    resource(f + ".ttf").flatMap { CTFontManagerCreateFontDescriptorFromData($0 as CFData) }.map { CTFontCreateWithFontDescriptor($0, size, nil) }
-}
+/// Galmuri (OFL, a pixel font drawn after the Nintendo DS system font) at its native sizes, so every glyph lands on whole dots: 9 at 10 px, 7 at 8 px
+/// (the platform draws them from the bundled files: Fonts.dots).
 @MainActor var textCache: [String: [[Bool]]] = [:]
 /// 11 rows (Galmuri9 10 px) or, small, 9 rows (Galmuri7 8 px); baseline one row up from the bottom.
 @MainActor func textDots(_ s: String, small: Bool = false) -> [[Bool]] {
     let key = (small ? "s|" : "m|") + s
     if let t = textCache[key] { return t }
-    let size: CGFloat = small ? 8 : 10, h = small ? 9 : 11
-    let font: AnyObject = galmuri[small ? 1 : 0] ?? NSFont.systemFont(ofSize: size)
-    let line = CTLineCreateWithAttributedString(NSAttributedString(string: s, attributes: [.font: font, NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true]))
-    let w = max(1, Int(ceil(CTLineGetTypographicBounds(line, nil, nil, nil))))
-    var px = [UInt8](repeating: 0, count: w * h)
-    px.withUnsafeMutableBytes { buf in
-        let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: 0)!
-        ctx.setShouldAntialias(false); ctx.setShouldSmoothFonts(false); ctx.setFillColor(gray: 1, alpha: 1)
-        ctx.textPosition = CGPoint(x: 0, y: 1); CTLineDraw(line, ctx)
-    }
-    let t = (0..<h).map { y in (0..<w).map { px[y * w + $0] > 127 } }
+    let t = fonts.dots(s, small ? FontSpec(size: 8, face: .galmuri7) : FontSpec(size: 10, face: .galmuri9), rows: small ? 9 : 11)
     textCache[key] = t; return t
 }
 /// LCD text: smooth system-font text laid over the dot screen (default), or the old dot font. Sprites, pictures, icons stay dots either way.
 @MainActor var smoothText = settings.bool("smoothText", true)
-@MainActor func lcdFont(_ small: Bool) -> NSFont { .systemFont(ofSize: (small ? 6.5 : 8) * PX, weight: small ? .regular : .medium) }
+@MainActor func lcdFont(_ small: Bool) -> FontSpec { FontSpec(size: (small ? 6.5 : 8) * PX, weight: small ? .regular : .medium) }
 /// A string's width in LCD dots, in whichever text style is on (layout, centring and tap targets all use this).
 @MainActor func textWidth(_ s: String, small: Bool = false) -> Int {
-    smoothText ? Int(ceil((s as NSString).size(withAttributes: [.font: lcdFont(small)]).width / PX)) : (textDots(s, small: small).first?.count ?? 0)
+    smoothText ? Int(ceil(fonts.width(s, lcdFont(small)) / PX)) : (textDots(s, small: small).first?.count ?? 0)
 }
 struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bool; var shade: UInt8 }
 

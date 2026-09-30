@@ -1,5 +1,5 @@
 import Foundation
-// The walker: its state, the clock tick, the keys, the pane's page and the title row as data. What the buttons do: UI/Flow.swift; the LCD: UI/Compose.swift.
+// The walker: its state, the clock tick, the keys, the pane's page and the title row as data. What the buttons do: Core/Flow.swift; the LCD: Core/Compose.swift; the card drawn: Core/Card.swift.
 // Whatever shows it is its host (Core/Platform.swift): the Mac's is WalkerView. No host = headless (the self-test): nothing drawn, no steps counted.
 
 @MainActor final class Walker {

@@ -1,5 +1,5 @@
 import Foundation
-// The pane's pages as data: what the walker shows under the band (Walker.pane), the card's height for each. The Mac draws them in UI/SidePanel.swift.
+// The pane's pages as data: what the walker shows under the band (Walker.pane), the card's height for each. Drawn in Core/Page.swift.
 
 // MARK: - models
 /// The battle: names, HP, types for the LCD's HP boxes; the message and the choices for the page.

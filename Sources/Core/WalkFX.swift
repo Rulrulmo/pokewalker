@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 // The walker's own shows: the Poké Radar's grass, the egg, hatching, evolving. All at sprite resolution (fb.pic, half-dot pixels).
 
 // MARK: - pictures
@@ -147,12 +147,12 @@ let orbPic: Pic = {
 func panelPic(_ w: Int, _ h: Int, _ c: UInt32) -> Pic { var p = Pic(w: w, h: h); p.fill(0, 0, w, h, c); return p }
 
 /// A picture as the pane draws it (colour, 1 pt a pixel x K), from the same store as the LCD's.
-@MainActor func paneImage(_ key: String, _ make: () -> Pic) -> NSImage {
+@MainActor func paneImage(_ key: String, _ make: () -> Pic) -> Bitmap {
     if picStore[key] == nil { picStore[key] = make() }
-    return picImage(PicRun(key: key, x: 0, y: 0), lcds[0])!.0
+    return picImage(PicRun(key: key, x: 0, y: 0), lcds[0])!
 }
 /// A grass patch for the pane, the same picture as the LCD's.
-@MainActor func grassImage(_ w: Int, _ h: Int, _ season: Season, _ f: Int, rustle: Bool = false, flip: Bool = false) -> NSImage {
+@MainActor func grassImage(_ w: Int, _ h: Int, _ season: Season, _ f: Int, rustle: Bool = false, flip: Bool = false) -> Bitmap {
     paneImage(grassKey(w, h, season, f, rustle: rustle, flip: flip)) { grassPic(w, h, season, f, rustle: rustle, flip: flip) }
 }
 func grassKey(_ w: Int, _ h: Int, _ season: Season, _ f: Int, rustle: Bool, flip: Bool) -> String { "w.grass|\(w)x\(h)|\(season.rawValue)|" + (rustle ? "r" : "") + "\(f)" + (flip ? "m" : "") }

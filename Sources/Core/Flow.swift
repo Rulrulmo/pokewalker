@@ -370,7 +370,7 @@ extension Walker {
     /// Returns false where the click drags the device instead.
     func touch(_ x: Int, _ y: Int) -> Bool { if case .say = screen { press(1); return true }; return false }
 
-    // MARK: the menu's actions (the platform builds the menu: Menu.swift on the Mac)
+    // MARK: the menu's actions (the menu: Core/Menu.swift)
     func setCourse(_ i: Int) { state.setCourse(i, &rng); screen = .say(["커넥트 완료", state.here.name], next: .home, since: Date()); save() }
     func useCandy() {
         guard state.feedCandy() else { return }

@@ -168,7 +168,8 @@ Mac엔 만보기가 없으니 **키 누름·마우스 클릭 1회 = 1걸음**. �
 |---|---|
 | `Sources/Model/` | 규칙과 저장 상태 (`Foundation`만): `Walk` 걸음·W·동료 이벤트·레이더·상자·날씨·도감·진화 / `Shop` 도구 사용·상점·배틀 타워 / `Mon` 개체(레벨·개체값·노력치·성격·특성·기술) / `Items` 도구 종류 / `Course` 코스·진화 레코드 / `Store` 저장·복구 |
 | `Sources/Battle/` | 4세대 싱글 배틀 엔진: `Types` 기술·상태이상·Fighter·Beat / `Battle` 상태·기본 동작 / `Turn` 턴 진행 / `Damage` 명중·상성·데미지 / `Effects` 상태이상·변화기 / `EndOfTurn` 턴 끝·기절·볼·도망·도구·상대 AI. 결과는 `Beat`(한국어 대사 포함)로 |
-| `Sources/UI/` | AppKit: `WalkerView` 기기 뷰(틱·입력·그리기) / `Flow` 버튼·터치 처리 / `Compose` 화면별 LCD 그리기 / `Notebook` 홈의 스티커 수첩(종이·폴라로이드·스티커) / `BattleView` 배틀 연출·HUD·패널 모델 / `Menu` 우클릭 메뉴 / `SidePanel` 패널 페이지(배틀·도감·포켓몬(상자)·포켓몬 상세·상점·메뉴·상태) / `Pixels` 스프라이트·폰트·프레임버퍼 / `Device` 기기 크기·색·LCD |
+| `Sources/Core/` | 플랫폼과 무관한 몸통 (`Foundation`만, 윈도우 버전과 같이 씀): `Walker` 상태·시계·키 / `Flow` 버튼·터치 처리 / `Compose` 화면별 LCD 그리기 / `Notebook` 홈의 스티커 수첩(종이·폴라로이드·스티커) / `BattleView` 배틀 연출·HUD·패널 모델 / `Pane` 패널 페이지 모델 / `Card` 카드·LCD 그리기 / `Page` 패널 페이지 그리기(배틀·도감·포켓몬(상자)·포켓몬 상세·상점·메뉴·상태) / `Menu` 우클릭 메뉴(항목 트리) / `Canvas` 그리기·글자 인터페이스 / `Pixels` 스프라이트·폰트·프레임버퍼 / `Device` 기기 크기·색·LCD / `Platform` 설정·호스트 / `Inflate` DEFLATE 풀기 |
+| `Sources/Mac/` | AppKit 껍데기: `WalkerView` 기기 뷰(틱·입력) / `SideView` 패널 뷰(클릭·스크롤) / `MacCanvas` Canvas·글꼴(AppKit·CoreText, 예전과 픽셀 단위로 같게) / `MenuBar` 메뉴 트리 → NSMenu·메뉴 막대 / `MacHost` 설정(UserDefaults)·알림·걸음 수·창·대화상자 |
 | `Sources/App/main.swift` | 실행: `--selftest` 또는 메뉴 막대 앱 |
 | `Sources/Data/` | **생성됨** (`tools/gen.py`) — `Data.swift` 493종 이름·타입·성장 곡선·4세대 종족값·레벨업 기술·상성·진화·35코스·알 풀 / `BattleData.swift` 기술 467개·특성·성격·노력치·몸무게·성비 |
 | `Resources/` | **생성됨** `hgss.bin`(493종 × 앞·뒤 80×80, 4bpp + 종별 일반/이로치 15색 팔레트) · `icons.bin`(4세대 박스 아이콘 32×32) · `frames.bin`(HGSS 알 + 4세대 트레이너 15명, Showdown) · `anims.bin`(493종 HGSS 등장 애니메이션, 종별 raw deflate) · `walk.bin`(493종 HGSS 필드 걷기 도트 좌·우·앞 × 4프레임, 일반·이로치) / `fonts/` Galmuri9·Galmuri7 (이민서, SIL OFL 1.1 — `fonts/OFL.md`) |

@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 // The course picture on the home screen and the ground a fight stands on: HGSS-style scenery at sprite resolution (1 px = half a dot),
 // made once per art / season / light / overcast (fb.pic keys), with small moving bits (clouds, glints, foam, the weather) over it.
 

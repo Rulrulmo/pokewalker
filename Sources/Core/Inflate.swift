@@ -1,5 +1,5 @@
 import Foundation
-// Raw DEFLATE (RFC 1951) in plain Swift: anims.bin's and walk.bin's blocks (tools/gen.py), without the Mac's NSData.decompressed(using: .zlib).
+// Raw DEFLATE (RFC 1951) in plain Swift: anims.bin's and walk.bin's blocks (tools/gen.py), without Apple's own zlib (Foundation's decompression is Apple-only).
 
 /// A canonical Huffman code: how many codes of each length 1...15, and the symbols in code order.
 private struct Huff {

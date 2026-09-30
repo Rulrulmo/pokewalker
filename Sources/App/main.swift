@@ -4,6 +4,7 @@ import UserNotifications
 
 // MARK: - app
 settings = UserDefaults.standard                                                               // before anything reads a setting (the look's globals)
+fonts = MacFonts()                                                                             // before anything lays out text
 if CommandLine.arguments.contains("--selftest") { exit(selftest() ? 0 : 1) }
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)

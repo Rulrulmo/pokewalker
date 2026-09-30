@@ -1,6 +1,7 @@
 import AppKit
 import UserNotifications
-// The Mac's side of Core/Platform.swift: settings in UserDefaults; the walker's host is its view, WalkerView (its redraws: UI/WalkerView.swift), with the banners and the step counter here.
+// The Mac's side of Core/Platform.swift: settings in UserDefaults; the walker's host is its view, WalkerView (its redraws: Mac/WalkerView.swift), with the banners,
+// the step counter and the window's dialogs here.
 
 extension UserDefaults: Settings {
     func bool(_ key: String, _ def: Bool) -> Bool { object(forKey: key) == nil ? def : bool(forKey: key) }
@@ -32,4 +33,15 @@ extension WalkerView: Host {
         [CGEventType.keyDown, .leftMouseDown, .rightMouseDown].reduce(UInt32(0)) { $0 &+ CGEventSource.counterForEventType(.combinedSessionState, eventType: $1) }
     }
     func boot() -> Double { var tv = timeval(), n = MemoryLayout<timeval>.size; sysctlbyname("kern.boottime", &tv, &n, nil, 0); return Double(tv.tv_sec) }
+    // the window's: Mac/MenuBar.swift (toggleShown(_:), fits(size:))
+    var windowHidden: Bool { window?.isVisible == false }
+    func toggleShown() { toggleShown(nil) }
+    func beep() { NSSound.beep() }
+    func confirm(_ title: String, _ body: String, ok: String) -> Bool {
+        NSApp.activate(ignoringOtherApps: true)                                                   // the only time it takes focus: a real confirmation
+        let a = NSAlert(); a.messageText = title; a.informativeText = body
+        a.addButton(withTitle: ok); a.addButton(withTitle: "취소")
+        return a.runModal() == .alertFirstButtonReturn
+    }
+    func quit() { NSApp.terminate(nil) }
 }
