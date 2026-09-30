@@ -93,10 +93,11 @@ enum Beat: Equatable {
     var ends: Bool { [.caught, .fled, .ran, .won, .lost].contains(self) }
     var length: Double {                             // seconds on screen
         switch self {
+        case .sendOut(.it, 0): 3.0                    // a trainer's first: it comes in, says so, throws (a later switch back to #0 just stands longer)
         case .appear, .sendOut: 1.4
         case .use: 0.9
         case .hit(_, _, _, let e, let c): e != 1 || c ? 1.6 : 1.0
-        case .thrown(let s): 1.25 + 0.6 * Double(s)
+        case .thrown(let s): 1.8 + 0.75 * Double(s)   // thrown, swallowing, dropping; then each rock and pause
         case .caught: 1.8
         case .fainted, .won, .lost: 1.4
         case .gained(_, let l, _, _): l == nil ? 1.2 : 1.8

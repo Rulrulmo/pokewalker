@@ -79,15 +79,15 @@ extension WalkerView {
     enum Pose {
         case idle                                        // both breathing
         case show(Side, dx: Int, dy: Int, flash: Bool, visible: Bool)
-        case ball(x: Int, y: Int, tilt: Int?, burst: Bool, stars: Bool, foe: Bool)   // x, y from the foe's box; foe = not swallowed yet
+        case ball(Beat, Double)                          // a ball beat and how far in: the throw, a send-out, a trainer (BallFX.swift)
     }
     func pose(_ b: Beat, _ u: Double, _ bt: Battle) -> Pose {
         if let p = movePose(b, u, bt) { return p }                                                    // a move's own way of moving (MoveFX.swift)
         func arc(_ a: Double, _ len: Double) -> Double { u < a || u > a + len ? 0 : sin(.pi * (u - a) / len) }   // 0 -> 1 -> 0
         let shake = Int(u * 30) % 2 == 0 ? 2 : -2, blink = Int(u * 12) % 2 == 0
         switch b {
-        case .appear: return u < 0.6 ? .show(.it, dx: Int(60 * pow(1 - u / 0.6, 2)), dy: 0, flash: false, visible: true) : .idle   // slides in from the right
-        case .sendOut(let s, _): let k = pow(1 - min(1, u / 0.6), 2); return .show(s, dx: Int((s == .me ? -60 : 60) * k), dy: 0, flash: false, visible: true)
+        case .appear where bt.wild.shiny == true || u < 0.6: return .ball(b, u)                    // slides in from the right; a shiny one sparkles (BallFX.swift)
+        case .appear: return .idle
         case .use(let s, _): let k = arc(0, 0.45); return .show(s, dx: Int((s == .me ? 10 : -10) * k), dy: s == .me ? 0 : Int(5 * k), flash: false, visible: true)   // the dash at the other (ours level: its back sprite is cut off at the bottom)
         case .hit(let s, _, let d, _, _): return .show(s, dx: d > 0 && u < 0.4 ? shake : 0, dy: 0, flash: false, visible: d == 0 || u > 0.4 || blink)
         case .hurt(let s, _, _): return .show(s, dx: u < 0.4 ? shake : 0, dy: 0, flash: false, visible: u > 0.4 || blink)
@@ -95,15 +95,10 @@ extension WalkerView {
         case .status(let s, _, _): return .show(s, dx: 0, dy: 0, flash: u < 0.4 && blink, visible: true)
         case .note(let s, _), .retype(let s, _): return .show(s, dx: 0, dy: 0, flash: false, visible: true)
         case .fainted(let s): return u < 0.35 ? .show(s, dx: 0, dy: 0, flash: false, visible: blink) : .show(s, dx: 0, dy: Int(34 * min(1, (u - 0.35) / 0.6)), flash: false, visible: true)   // sinks behind its pad
-        case .thrown(let shakes):                                                                  // from our side up over the foe, swallows it, drops, rocks
-            if u < 0.55 { let k = u / 0.55; return .ball(x: Int(-50 + 50 * k), y: Int(34 - 32 * k) - Int(16 * sin(.pi * k)), tilt: nil, burst: false, stars: false, foe: true) }
-            if u < 0.8 { return Int(u * 20) % 2 == 0 ? .show(.it, dx: 0, dy: 0, flash: true, visible: true) : .ball(x: 0, y: 2, tilt: nil, burst: false, stars: false, foe: false) }
-            if u < 1.25 { let k = min(1, (u - 0.8) / 0.25); return .ball(x: 0, y: Int(2 + 14 * k * k) - Int(4 * arc(1.05, 0.15)), tilt: nil, burst: false, stars: false, foe: false) }
-            let w = u - 1.25; return .ball(x: 0, y: 16, tilt: w < 0.6 * Double(shakes) && w.truncatingRemainder(dividingBy: 0.6) < 0.3 ? Int(w / 0.6) % 2 : nil, burst: false, stars: false, foe: false)
-        case .caught: return .ball(x: 0, y: 16, tilt: nil, burst: false, stars: Int(u * 8) % 2 == 0, foe: false)
-        case .broke: return u < 0.25 ? .ball(x: 0, y: 16, tilt: nil, burst: true, stars: false, foe: false) : .show(.it, dx: 0, dy: 0, flash: u < 0.4, visible: true)
+        case .sendOut, .thrown, .caught, .broke: return .ball(b, u)                                // thrown, swallowing, rocking, clicking or bursting; sending out (BallFX.swift)
         case .fled: return .show(.it, dx: Int(70 * min(1, u / 0.6)), dy: 0, flash: false, visible: true)
         case .ran: return .show(.me, dx: Int(-70 * min(1, u / 0.6)), dy: 0, flash: false, visible: true)
+        case .won where bt.trainer != nil: return .ball(b, u)                                       // the beaten trainer comes back
         case .gained, .won, .lost: return .idle
         }
     }
@@ -117,29 +112,27 @@ extension WalkerView {
         let foe = b.theirs[b.it].mon, mine = b.mine[b.me].mon
         let up: [Side: Bool] = [.it: b.theirs[b.it].alive || pending.contains(.it), .me: b.mine[b.me].alive || pending.contains(.me)]   // fainted = gone, once its faint has played
         var shown: [Side: (dx: Int, dy: Int, flash: Bool, on: Bool)] = [.it: (0, 0, false, up[.it]!), .me: (0, 0, false, up[.me]!)]
-        var thrown: (x: Int, y: Int, tilt: Int?, burst: Bool, stars: Bool)? = nil
+        var shot: BallShot? = nil
         switch p {
         case .idle: break
         case .show(let s, let dx, let dy, let flash, let visible): shown[s] = (dx, dy, flash, visible && up[s]!)
-        case .ball(let x, let y, let tilt, let burst, let stars, let on): thrown = (x, y, tilt, burst, stars); shown[.it]!.on = on
+        case .ball(let bt, let u):
+            let s = ballShot(bt, u, b, ball: usedItem); shot = s
+            shown[s.side] = (s.glow.map { $0.x / 2 } ?? 0, s.glow.map { $0.y / 2 } ?? 0, false, up[s.side]! && s.glow != nil)   // in the ball / not out yet = off the stage
         }
         for s in [Side.it, .me] where shown[s]!.on {                                                // theirs first: ours is nearer
             let v = shown[s]!, a = at[s]!
             let alive = s == .me ? b.mine[b.me].alive : b.theirs[b.it].alive                         // only a fainting one sinks behind its pad; a lunge isn't clipped
             fb.sprite(s == .me ? mine : foe, a.x + v.dx, a.y + v.dy, back: s == .me, bob: s == .me ? f - 1 : f, flash: v.flash, floor: alive ? 64 : a.y + 32)   // ours bobs down: its cut-off back never lifts
+            if let g = shot?.glow, shot?.side == s { fb.glow(g) }                                     // going into / coming out of a ball
         }
         if case .idle = p, foe.shiny == true, shown[.it]!.on {                                      // sparkles around it, from its head down
             let top = at[.it]!.y + 32 - (80 - spriteTop(foe.dex)) / 2, h = at[.it]!.y + 32 - top          // a sprite pixel is half a dot
             for (k, (sx, sy)) in [(-2, 2), (26, h / 4), (12, -3), (28, h * 3 / 4)].enumerated() where (Int(t * 4) + k) % 3 == 0 { fb.draw(spark, at[.it]!.x + sx, max(0, top + sy), sparkPal) }
         }
         if let (bt, u) = beat { moveFX(&fb, bt, u, b, at) }                                         // a move's effect over the fighters
-        if let (bx, by, tilt, burst, stars) = thrown {
-            let x = at[.it]!.x + 9 + bx, y = at[.it]!.y + by
-            if burst { fb.draw(burstArt, x - 2, y - 2, sparkPal, scale: 2) }
-            let top = usedItem == "하이퍼볼" ? rgb(44, 44, 52) : usedItem.hasSuffix("볼") && usedItem != "몬스터볼" ? rgb(60, 110, 220) : rgb(222, 52, 44)   // 슈퍼볼 & co blue, 하이퍼볼 black
-            fb.draw(tilt.map { ballTilt[$0] } ?? ball, x, y, [ballPal[0], ballPal[1], top, ballPal[3]], scale: 2)
-            if stars { for (sx, sy) in [(-8, -4), (16, -5), (-9, 9), (17, 8)] { fb.draw(spark, x + sx, y + sy, sparkPal) } }
-        }
+        if let s = shot { fb.ballFX(s, at) }                                                        // the ball, its light, a trainer
+        if let (bt, u) = beat, bt == .appear, !legendDex.contains(b.wild.dex) { fb.entryFlash(u) }   // a wild one: two quick flashes first (a legend's screen flips instead)
         guard hud else { return }
         // HUD: theirs top-left (name, Lv, bar; a trainer's remaining balls), ours top-right; each on its own plate so the sprite's head can't muddle it
         let ft = monNames[foe.dex] + " \(foe.level)" + (b.theirs[b.it].status.map { " " + $0.badge } ?? ""), mt = "\(monNames[mine.dex]) \(mine.level)" + (b.mine[b.me].status.map { " " + $0.badge } ?? "")
@@ -155,12 +148,14 @@ extension WalkerView {
         fb.fill(0, 50, 96, 1, 2)
     }
     func message(_ beat: Beat, _ u: Double, _ b: Battle) -> String {
-        let it = monNames[b.theirs[b.it].mon.dex], me = monNames[b.mine[b.me].mon.dex], dots = String(repeating: ".", count: 1 + Int(u / 0.6))
+        let it = monNames[b.theirs[b.it].mon.dex], me = monNames[b.mine[b.me].mon.dex]
         switch beat {
         case .appear:
             if b.wild.shiny == true && u < 0.9 { return "✦ 반짝! ✦" }
             return legendDex.contains(b.wild.dex) ? "전설의 " + it + " 등장!" : "야생 " + josa(it, "이", "가") + " 나타났다!"
-        case .sendOut(.it, let i): return i == 0 && u < 0.7 ? (b.trainer ?? "") + "의 승부!" : "상대는 " + josa(monNames[b.theirs[i].mon.dex], "을", "를") + " 내보냈다"
+        case .sendOut(.it, let i):
+            let t = b.trainer ?? "상대"                                                                // the intro's challenge, then who it sends
+            return isIntro(beat, b) && u < 1.7 ? josa(t, "이", "가") + " 승부를 걸어왔다!" : josa(t, "은", "는") + " " + josa(monNames[b.theirs[i].mon.dex], "을", "를") + " 내보냈다!"
         case .sendOut(.me, let i): return "가랏, " + monNames[b.mine[i].mon.dex] + "!"
         case .use(let s, let id): return b.nm(s) + "의 " + moveTable[id]!.name + "!"
         case .hit(let s, let id, _, let e, let crit):
@@ -172,13 +167,13 @@ extension WalkerView {
         case .note(_, let t): return t
         case .retype: return ""
         case .fainted(let s): return josa(s == .me ? me : it, "은", "는") + " 쓰러졌다!"
-        case .thrown: return u < 1.25 ? "가랏, " + usedItem + "!" : dots
+        case .thrown(let n): return u < 1.8 ? "가랏, " + usedItem + "!" : String(repeating: ".", count: min(n, 1 + Int((u - 1.8) / 0.75)))   // a dot a rock
         case .broke: return "앗! 나와버렸다!"
         case .caught: return "딸깍! " + josa(it, "을", "를") + " 잡았다!"
         case .gained(let e, let l, _, let k): let who = monNames[b.mine[k].mon.dex]; return l.map { who + " Lv.\($0)!" } ?? josa(who, "은", "는") + " 경험치 \(e) 획득"
         case .fled: return josa(it, "은", "는") + " 도망쳤다..."
         case .ran: return "무사히 도망쳤다!"
-        case .won: return b.trainer == nil ? "승리!" : (b.trainer ?? "") + "에게 이겼다!"
+        case .won: return b.trainer.map { josa($0, "과", "와") + "의 승부에서 이겼다!" } ?? "승리!"
         case .lost: return "눈앞이 캄캄해졌다..."
         }
     }
