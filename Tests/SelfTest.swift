@@ -55,7 +55,7 @@ import AppKit
     let top = share(2000); check(abs(top[0] - 70) < 1.5 && abs(top[1] - 22.5) < 1.5 && abs(top[2] - 7.5) < 1, "2000+: A 70 / B 22.5 / C 7.5", "\(top)")
     w.companion = Mon(dex: 4, level: 5, female: false); w.courseSteps = 1500    // charmander: fire is a course type
     check(w.bonus && w.effSteps == 2000, "type bonus: 25 % fewer steps")
-    w = Walk(); check((0..<50).allSatisfy { _ in w.dowse(&r) == "상처약" }, "dowsing at 0 steps: only the common item")
+    w = Walk(); check((0..<50).allSatisfy { _ in w.courseItem(&r) == "상처약" }, "a find at 0 steps: only the common item")
 
     // 6 walker holds 3, overflow goes home
     w = Walk(); for d in 1...4 { _ = w.keep(Mon(dex: d, level: 5, female: false)) }
@@ -474,8 +474,8 @@ import AppKit
     var s0w = Walk(); s0w.watts = 100
     let v = WalkerView(state: s0w); v.persist = false; v.rng = Seeded(s: 14)
     v.press(1); v.press(2); let homeStays = on(v) { if case .home = $0 { return true }; return false } && v.emote?.kind == 1
-    v.press(4); let menuUp = on(v) { if case .menu(0) = $0 { return true }; return false } && v.compose(Date()).sprites.count == 1 && v.homeKey() == false; v.press(0)
-    check(homeStays && menuUp && on(v) { if case .menu(9) = $0 { return true }; return false }, "home: ● pats (♥), ▶ does nothing; the 메뉴 key opens the menu on the pane (the LCD stays home); ◀ goes round")
+    v.press(4); let menuUp = on(v) { if case .menu(menuAt("포켓 레이더")) = $0 { return true }; return false } && v.compose(Date()).sprites.count == 1 && v.homeKey() == false; v.press(0)
+    check(homeStays && menuUp && on(v) { if case .menu(menuAt("배틀 타워")) = $0 { return true }; return false }, "home: ● pats (♥), ▶ does nothing; the 메뉴 key opens the menu on the pane (the LCD stays home); ◀ goes round")
     v.press(4); check(on(v) { if case .home = $0 { return true }; return false } && v.homeKey() == true, "… the same key again: home"); v.press(4)
     v.press(1); check(v.state.watts == 90 && on(v) { if case .radar = $0 { return true }; return false }, "radar costs 10W")
     v.screen = .radar(bush: 2, cursor: 0, since: Date().addingTimeInterval(-2), chain: 0)
@@ -502,7 +502,7 @@ import AppKit
     let picking = on(v) { if case .party(_, 1) = $0 { return true }; return false }; v.press(3)
     let stuck = on(v) { if case .party = $0 { return true }; return false }; v.press(1)
     check(picking && stuck && on(v) { if case .beats(let nb, let bs, _, _) = $0 { return bs.first == .sendOut(.me, 1) && nb.me == 1 }; return false }, "ours fainted: pick who's next (↩ can't skip it)")
-    v.screen = .menu(0); v.press(3); check(on(v) { if case .home = $0 { return true }; return false }, "↩ on a menu page: home")
+    v.screen = .menu(menuAt("포켓 레이더")); v.press(3); check(on(v) { if case .home = $0 { return true }; return false }, "↩ on a menu page: home")
     // ↩ 뒤로: one step up; where an answer is due only the cursor moves; nothing that can't be undone
     let bk = WalkerView(state: { var s = Walk(); s.watts = 500; s.bp = 40; return s }()); bk.persist = false; bk.rng = Seeded(s: 51)
     func back(_ sc: Screen) -> Screen { bk.screen = sc; bk.press(3); return bk.screen }
@@ -519,15 +519,15 @@ import AppKit
     bk.screen = .battle(tw, sel: 3); bk.press(1); bk.press(2); bk.press(1)
     check(bk.state.towerStreak == 0 && !bk.towerRun, "… ▶ 예 ● gives up")
     bk.towerRun = true; bk.state.towerStreak = 2
-    check({ if case .menu(9) = back(.tower) { return true }; return false }() && bk.towerRun && bk.state.towerStreak == 2, "tower lobby: ↩ to the menu, the run stays on")
+    check({ if case .menu(menuAt("배틀 타워")) = back(.tower) { return true }; return false }() && bk.towerRun && bk.state.towerStreak == 2, "tower lobby: ↩ to the menu, the run stays on")
     let radar = Screen.radar(bush: 1, cursor: 0, since: Date(), chain: 4)
     check({ if case .radar(_, _, _, 4) = back(radar) { return true }; return false }(), "radar: ↩ does nothing (the 10W and the chain stay)")
     check({ if case .learn(4) = back(.learn(sel: 1)) { return true }; return false }(), "learn: ↩ onto 배우지 않는다")
-    check({ if case .menu(3) = back(.card(1)) { return true }; return false }() && { if case .menu(4) = back(.bag(0)) { return true }; return false }()
-          && { if case .menu(6) = back(.dex(1, filter: 0, detail: false)) { return true }; return false }() && { if case .dex(1, 0, false) = back(.dex(1, filter: 0, detail: true)) { return true }; return false }() && { if case .dowse = back(.dowse(cursor: 0, prize: 2, tries: 2, hint: nil)) { return true }; return false }()
-          && { if case .menu(8) = back(.shop(bp: true, sel: 0, qty: nil)) { return true }; return false }(), "card / bag / dex / shop list: ↩ to their menu page; dowsing: ↩ does nothing (the 3W round stays)")
+    check({ if case .menu(menuAt("트레이너 카드")) = back(.card(1)) { return true }; return false }() && { if case .menu(menuAt("포켓몬 · 도구")) = back(.bag(0)) { return true }; return false }()
+          && { if case .menu(menuAt("도감")) = back(.dex(1, filter: 0, detail: false)) { return true }; return false }() && { if case .dex(1, 0, false) = back(.dex(1, filter: 0, detail: true)) { return true }; return false }()
+          && { if case .menu(menuAt("BP 교환소")) = back(.shop(bp: true, sel: 0, qty: nil)) { return true }; return false }(), "card / bag / dex / shop list: ↩ to their menu page")
     bk.state.box = [Mon(dex: 16, level: 5, female: false)]
-    check({ if case .menu(5) = back(.box(0, act: nil, confirm: false)) { return true }; return false }() && { if case .box(0, nil, false, false) = back(.box(0, act: 1, confirm: true)) { return true }; return false }() && bk.state.box.count == 1
+    check({ if case .menu(menuAt("상자")) = back(.box(0, act: nil, confirm: false)) { return true }; return false }() && { if case .box(0, nil, false, false) = back(.box(0, act: 1, confirm: true)) { return true }; return false }() && bk.state.box.count == 1
           && { if case .box(0, nil, false, true) = back(.box(0, act: 1, confirm: true, detail: true)) { return true }; return false }() && { if case .box(0, nil, false, false) = back(.box(0, act: nil, confirm: false, detail: true)) { return true }; return false }(),
           "box: ↩ from 놓아줄까? back (= 아니오), from a Pokémon's page to the grid, from the grid to the menu")
     bk.sideOn = true; bk.state.towerStreak = 5; bk.towerRun = true; bk.screen = .forfeit(tw, yes: false)
@@ -547,10 +547,10 @@ import AppKit
     check(v.state.box.isEmpty && v.state.watts == wBefore + 10, "box: ● its page, ● 놓아주기 예 releases for level / 2 W")
     v.state.box = [Mon(dex: 1, level: 7, female: false)]; v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(1); v.press(1)
     check(v.state.companion.dex == 1 && v.state.box.first?.dex == 25, "box: ● its page, ● 함께 swaps the companion")
-    v.screen = .menu(6); v.press(1); check(on(v) { if case .dex = $0 { return true }; return false }, "menu 도감 opens the dex")
+    v.screen = .menu(menuAt("도감")); v.press(1); check(on(v) { if case .dex = $0 { return true }; return false }, "menu 도감 opens the dex")
     let dexTaps = [v.touch(80, 30), v.touch(10, 30), v.touch(48, 30)]; let still = on(v) { if case .dex(_, _, false) = $0 { return true }; return false }; v.press(1)
     check(dexTaps == [false, false, false] && still && on(v) { if case .dex(_, _, true) = $0 { return true }; return false }, "LCD clicks don't step (they drag); ● opens the entry page")
-    v.screen = .say(["어라?"], next: .menu(2), since: Date()); check(v.touch(10, 10) && on(v) { if case .menu(2) = $0 { return true }; return false }, "… only a message goes on with a click on the LCD")
+    v.screen = .say(["어라?"], next: .menu(menuAt("커넥트")), since: Date()); check(v.touch(10, 10) && on(v) { if case .menu(menuAt("커넥트")) = $0 { return true }; return false }, "… only a message goes on with a click on the LCD")
 
     // the 도감 / 상자 grids on the pane
     let gv = WalkerView(state: { var s = Walk(); s.owned = [1, 4, 25]; s.seen = [1, 4, 7, 25, 94]
@@ -561,7 +561,7 @@ import AppKit
     let onCourse: [Int] = here.slots.map(\.dex) + here.extra.map(\.dex) + here.guests + here.legends
     check(gv.dexList(0) == Array(1...493) && gv.dexList(1) == [1, 4, 25] && gv.dexList(2) == [7, 94] && Set(gv.dexList(3)) == Set(onCourse),
           "dex tabs: 전체 (all 493) / 잡음 / 못 잡음 (seen, not caught) / 이 코스")
-    gv.screen = .menu(6); gv.press(1)
+    gv.screen = .menu(menuAt("도감")); gv.press(1)
     check(gs { if case .dex(let d, 0, false) = $0 { return d == gv.state.companion.dex }; return false } && gv.paneContent(Date()).grid?.sel != nil, "도감 opens on the grid, at the companion")
     gv.screen = .dex(25, filter: 0, detail: false); gv.press(2); gv.press(0); gv.press(0)
     check(gs { if case .dex(24, 0, false) = $0 { return true }; return false }, "◀ ▶ step one along the tab")
@@ -577,11 +577,11 @@ import AppKit
     gv.gridTap(10002); check(gv.paneContent(Date()).dex?.num == 25, "a click on a cell opens its entry page")
     gv.press(2); check(gs { if case .dex(1, 1, true) = $0 { return true }; return false }, "▶ on the entry page: the next on the tab, wrapping")
     gv.press(3); let toGrid = gs { if case .dex(1, 1, false) = $0 { return true }; return false }; gv.press(3)
-    check(toGrid && gs { if case .menu(6) = $0 { return true }; return false }, "↩: the entry page → the grid → the menu")
+    check(toGrid && gs { if case .menu(menuAt("도감")) = $0 { return true }; return false }, "↩: the entry page → the grid → the menu")
     gv.state.owned = [1, 4, 7, 25, 94]; gv.screen = .dex(7, filter: 0, detail: false); gv.gridTap(4102)
     check(gv.paneContent(Date()).grid.map { $0.cells.isEmpty && $0.sel == nil && $0.empty == "모두 잡았다!" } == true && gv.compose(Date()).runs.contains { $0.s == "모두 잡았다!" }, "an empty tab says so, on the pane and the LCD")
     gv.press(1); check(gs { if case .dex(_, 2, false) = $0 { return true }; return false } && gv.paneContent(Date()).dex == nil, "● on an empty tab: no entry page for a pick that isn't on it")
-    gv.screen = .menu(5); gv.press(1)
+    gv.screen = .menu(menuAt("상자")); gv.press(1)
     check(gv.boxOrder == [1, 0, 2] && gs { if case .box(1, nil, false, false) = $0 { return true }; return false }, "상자 opens on the grid's first, 번호순 (then the higher level)")
     gv.gridTap(4101); check(gv.boxOrder == [0, 2, 1] && gs { if case .box(1, nil, false, false) = $0 { return true }; return false }, "레벨순 tab: the order changes, the pick stays")
     gv.press(2); check(gs { if case .box(0, nil, false, false) = $0 { return true }; return false }, "▶ follows the grid's order, wrapping")
@@ -665,8 +665,8 @@ import AppKit
     check(sw.purchase(wB[Walk.bpShop.count], 1, bp: true) == .shell("배틀 골드") && sw.bp == 160 && sw.canBuy(wB[Walk.bpShop.count], bp: true) == 0 && sw.purchase(wB[Walk.bpShop.count], 1, bp: true) == nil,
           "once-only (a device colour): bought once, then 보유")
     let shopV = WalkerView(state: { var s = Walk(); s.watts = 1000; s.bp = 30; return s }()); shopV.persist = false; shopV.rng = Seeded(s: 41)
-    shopV.screen = .menu(9); shopV.press(1); let tower = on(shopV) { if case .tower = $0 { return true }; return false }
-    shopV.screen = .menu(7); shopV.press(1)
+    shopV.screen = .menu(menuAt("배틀 타워")); shopV.press(1); let tower = on(shopV) { if case .tower = $0 { return true }; return false }
+    shopV.screen = .menu(menuAt("상점")); shopV.press(1)
     let opened = on(shopV) { if case .shop(false, 0, nil) = $0 { return true }; return false }
     shopV.press(2); shopV.press(1); shopV.press(2); shopV.press(2)                              // row 1 (좋은상처약 60W), how many: 3
     let three = on(shopV) { if case .shop(false, 1, 3?) = $0 { return true }; return false }
@@ -719,15 +719,15 @@ import AppKit
         return c.battle != nil ? "battle" : c.dex != nil ? "dex" : c.grid != nil ? "grid" : c.mon != nil ? "mon" : c.shop != nil ? "shop" : c.menu.map { "menu\($0.sel)" } ?? (c.status != nil ? "status" : "none")
     }
     pv.statusOpen = false; let shut = kind(.home); pv.statusOpen = true
-    check(shut == "none" && kind(.home) == "status" && kind(.box(0, act: nil, confirm: false, detail: true)) == "mon" && kind(.menu(3)) == "menu3" && kind(.battle(wild, sel: 0)) == "battle" && kind(.shop(bp: false, sel: 0, qty: nil)) == "shop" && kind(.dex(1, filter: 0, detail: true)) == "dex"
+    check(shut == "none" && kind(.home) == "status" && kind(.box(0, act: nil, confirm: false, detail: true)) == "mon" && kind(.menu(menuAt("트레이너 카드"))) == "menu\(menuAt("트레이너 카드"))" && kind(.battle(wild, sel: 0)) == "battle" && kind(.shop(bp: false, sel: 0, qty: nil)) == "shop" && kind(.dex(1, filter: 0, detail: true)) == "dex"
           && kind(.dex(1, filter: 0, detail: false)) == "grid" && kind(.box(0, act: nil, confirm: false)) == "grid",
           "the pane: nothing on 홈 until ⌄ opens the status sheet, 메뉴 tiles on the menu, the battle / 상점 pages, 도감 / 상자 grids, the dex entry, a box Pokémon's page")
-    check(kind(.say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date())) == "battle" && kind(.say(["W가 부족하다"], next: .menu(0), since: Date())) == "menu0"
+    check(kind(.say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date())) == "battle" && kind(.say(["W가 부족하다"], next: .menu(menuAt("포켓 레이더")), since: Date())) == "menu0"
           && pv.paneContent(Date()).menu != nil, "a fight's / a menu page's message keeps its page up")
     pv.screen = .say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date()); check(pv.sideModel(Date())?.message == "기술의 남은 PP가 없다!", "… with the message in the battle page's box")
     let grown = WalkerView.onScreen(NSRect(x: 2248, y: 24 + 288 - 376, width: 584, height: 376), in: NSRect(x: 0, y: 0, width: 2560, height: 1410))
     check(grown == NSRect(x: 1976, y: 0, width: 584, height: 376), "an old device at the bottom-right corner grows into the screen, not onto the next one", "\(grown)")
-    pv.screen = .menu(0); pv.menuTap(5)
+    pv.screen = .menu(menuAt("포켓 레이더")); pv.menuTap(menuAt("상자"))
     check({ if case .box = pv.screen { return true }; return false }(), "메뉴: a click on a tile opens it")
     // the walker's other pages: one click does what ● would
     let pt = WalkerView(state: { var s = Walk(); s.watts = 500; s.caught = [Mon(dex: 16, level: 5, female: false)]; s.items = ["상처약"]; return s }()); pt.persist = false; pt.rng = Seeded(s: 83)
@@ -735,18 +735,16 @@ import AppKit
     pt.screen = .radar(bush: 2, cursor: 0, since: Date().addingTimeInterval(-2), chain: 0)
     let rm = pt.paneContent(Date()).radar; pt.pageTap(5002)
     check(rm?.live == 2 && pts { if case .beats(_, let bs, _, _) = $0 { return bs.first == .appear }; return false }, "레이더: the rustling bush is marked on the pane, a click on it searches there")
-    pt.screen = .dowse(cursor: 0, prize: 4, tries: 2, hint: nil); pt.pageTap(5104)
-    check(pts { if case .say(let l, _, _) = $0 { return l.last == "찾았다!" || l.first?.hasSuffix("찾았다!") == true }; return false }, "다우징: a click on a spot digs there")
     pt.screen = .card(0); pt.pageTap(5202); check(pts { if case .card(2) = $0 { return true }; return false } && pt.paneContent(Date()).card?.page == 2, "트레이너 카드: its pages are tabs")
     pt.screen = .tower; let lobby = pt.paneContent(Date()).tower; pt.pageTap(5400)
     check(lobby?.party.count == 2 && lobby?.fee == Walk.towerFee && pt.state.watts == 500 - Walk.towerFee && pts { if case .beats = $0 { return true }; return false }, "배틀 타워: the party, and 도전 pays and starts")
-    pt.screen = .menu(4); pt.press(1); let bag0 = pt.paneContent(Date()).bag
+    pt.screen = .menu(menuAt("포켓몬 · 도구")); pt.press(1); let bag0 = pt.paneContent(Date()).bag
     check(pts { if case .bag(0) = $0 { return true }; return false } && bag0?.chips.map(\.dex) == [25, 16] && bag0?.chips.first?.companion == true && bag0?.mon != nil && bag0?.sel == 0,
           "포켓몬 · 도구: the companion first (함께), then the walker's; its page in full")
     pt.pageTap(5502); let itemsUp = pt.paneContent(Date()).bag.map { $0.mon == nil && $0.items.first == "상처약" && $0.sel == 2 } == true; pt.pageTap(5501); pt.pageTap(5510)
     check(itemsUp && pt.state.companion.dex == 16 && pt.state.caught.first?.dex == 25, "… the last chip is the items; 함께 걷기 on one of the walker's makes it the companion")
     pt.screen = .bag(0); pt.pageTap(5510); check(pt.state.companion.dex == 16 && pts { if case .bag(0) = $0 { return true }; return false }, "… the companion's own page has nothing to do")
-    pt.screen = .say(["W가 부족하다"], next: .menu(0), since: Date()); pt.menuTap(3)
+    pt.screen = .say(["W가 부족하다"], next: .menu(menuAt("포켓 레이더")), since: Date()); pt.menuTap(menuAt("트레이너 카드"))
     check(pts { if case .card(0) = $0 { return true }; return false }, "a click on a page still up under its message ends the message and counts")
     let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48)!
     pt.screen = .dex(1, filter: 0, detail: false); pt.keyDown(with: tab); let tabbed = pts { if case .dex(_, 1, false) = $0 { return true }; return false }

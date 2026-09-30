@@ -185,17 +185,17 @@ extension WalkerView {
         }
         if k == 3 {                                           // ↩ 뒤로 (HGSS's B): one step up; where an answer is due only the cursor moves to the way out — nothing that can't be undone happens
             switch screen {
-            case .home, .beats, .radar, .dowse, .evolve, .hatch: return                            // a turn plays out; radar / dowsing end by themselves (the W paid and the chain stay); shows aren't cancellable
+            case .home, .beats, .radar, .evolve, .hatch: return                                    // a turn plays out; the radar ends by itself (the W paid and the chain stay); shows aren't cancellable
             case .party(let b, _) where b.mustReplace: return                                       // someone has to come in
             case .say(_, let next, _): screen = next                                               // like ●
             case .menu: screen = .home
-            case .card: screen = .menu(3)
-            case .bag: screen = .menu(4)
-            case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : .menu(5)   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
-            case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : .menu(6)   // the entry page → the grid → the menu
+            case .card: screen = .menu(menuAt("트레이너 카드"))
+            case .bag: screen = .menu(menuAt("포켓몬 · 도구"))
+            case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : .menu(menuAt("상자"))   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
+            case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : .menu(menuAt("도감"))   // the entry page → the grid → the menu
             case .shop(let bp, let sel, .some), .shopConfirm(let bp, let sel, _): screen = .shop(bp: bp, sel: sel, qty: nil)
-            case .shop(let bp, _, nil): screen = .menu(bp ? 8 : 7)
-            case .tower: screen = .menu(9)                                                          // a run stays on: ● in the lobby goes on
+            case .shop(let bp, _, nil): screen = .menu(menuAt(bp ? "BP 교환소" : "상점"))
+            case .tower: screen = .menu(menuAt("배틀 타워"))                                                          // a run stays on: ● in the lobby goes on
             case .learn: screen = .learn(sel: 4)                                                    // onto 배우지 않는다; ● decides
             case .moves(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "공격") ?? 0)   // back to where it came from
             case .party(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "교체") ?? 0)
@@ -300,14 +300,7 @@ extension WalkerView {
             if towerRun { startTower(now) }
             else if state.spend(Walk.towerFee) { state.towerStreak = 0; startTower(now) }
             else { screen = .say(["W가 부족하다", "(\(Walk.towerFee)W 필요)"], next: .tower, since: now) }
-        case .dowse(let c, let prize, let tries, _):
-            if k != 1 { screen = .dowse(cursor: (c + (k == 0 ? 5 : 1)) % 6, prize: prize, tries: tries, hint: nil); return }
-            if c == prize {
-                let item = state.dowse(&rng)
-                screen = .say(state.keep(item) ? [josa(item, "을", "를"), "찾았다!"] : [josa(item, "을", "를") + " 찾았다!", "가방으로 보냈다"], next: .home, since: now)
-            } else if tries == 1 { screen = .say(["아무것도", "없었다..."], next: .home, since: now) }
-            else { screen = .dowse(cursor: c, prize: prize, tries: 1, hint: abs(c - prize) == 1 ? "가깝다!" : "멀다...") }
-        case .card(let p): screen = k == 1 ? .menu(3) : .card((p + (k == 0 ? 2 : 1)) % 3)
+        case .card(let p): screen = k == 1 ? .menu(menuAt("트레이너 카드")) : .card((p + (k == 0 ? 2 : 1)) % 3)
         case .bag(let p):                                                                         // 0 = the companion, then the walker's Pokémon, then the items
             let n = bagPages
             if k != 1 { screen = .bag((p + (k == 0 ? n - 1 : 1)) % n) }
@@ -315,12 +308,12 @@ extension WalkerView {
             else if state.caught.indices.contains(p - 1), p < n - 1 {                      // ● on one of the walker's: walk with it
                 state.pair(p - 1, onWalker: true)
                 screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: now)
-            } else { screen = .menu(4) }
+            } else { screen = .menu(menuAt("포켓몬 · 도구")) }
         case .say(_, let next, _): screen = next
         case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
             if k == 1 { if dexList(f).contains(n) { screen = .dex(n, filter: f, detail: !detail) } } else { gridStep(k == 0 ? -1 : 1, wrap: true) }
         case .box(let i, let act, let confirm, let detail):
-            if state.box.isEmpty { screen = .menu(5) }
+            if state.box.isEmpty { screen = .menu(menuAt("상자")) }
             else if confirm {                                                                     // "놓아줄까?" 아니오 / 예
                 if k != 1 { screen = .box(i, act: (act ?? 0) == 0 ? 1 : 0, confirm: true, detail: detail) }
                 else if act == 1 {
@@ -341,19 +334,18 @@ extension WalkerView {
         }
     }
     func open(_ i: Int, _ now: Date) {
-        switch i {
-        case 0: screen = state.spend(10) ? .radar(bush: Int.random(in: 0..<4, using: &rng), cursor: 0, since: now, chain: 0) : .say(["W가 부족하다", "(10W 필요)"], next: .menu(0), since: now)
-        case 1: screen = state.spend(3) ? .dowse(cursor: 0, prize: Int.random(in: 0..<6, using: &rng), tries: 2, hint: nil) : .say(["W가 부족하다", "(3W 필요)"], next: .menu(1), since: now)
-        case 2:
+        switch menuItems[i] {
+        case "포켓 레이더": screen = state.spend(10) ? .radar(bush: Int.random(in: 0..<4, using: &rng), cursor: 0, since: now, chain: 0) : .say(["W가 부족하다", "(10W 필요)"], next: .menu(i), since: now)
+        case "커넥트":
             let n = state.caught.count + state.items.count
             state.connect()
             if let e = state.tradeEvolution(now) { startEvolving(e, now); return }                 // Connect is the walker's link cable
-            screen = .say(n == 0 ? ["보낼 것이", "없다"] : ["상자로", "\(n)개 보냈다"], next: .menu(2), since: now)
-        case 3: screen = .card(0)
-        case 4: screen = .bag(0)
-        case 5: screen = .box(boxOrder.first ?? 0, act: nil, confirm: false)
-        case 7, 8: screen = .shop(bp: i == 8, sel: 0, qty: nil)
-        case 9: screen = .tower
+            screen = .say(n == 0 ? ["보낼 것이", "없다"] : ["상자로", "\(n)개 보냈다"], next: .menu(i), since: now)
+        case "트레이너 카드": screen = .card(0)
+        case "포켓몬 · 도구": screen = .bag(0)
+        case "상자": screen = .box(boxOrder.first ?? 0, act: nil, confirm: false)
+        case "상점", "BP 교환소": screen = .shop(bp: menuItems[i] == "BP 교환소", sel: 0, qty: nil)
+        case "배틀 타워": screen = .tower
         default: screen = .dex(state.companion.dex, filter: 0, detail: false)
         }
     }

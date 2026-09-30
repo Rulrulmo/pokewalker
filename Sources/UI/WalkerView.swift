@@ -142,7 +142,7 @@ final class WalkerView: NSView {
         if now.timeIntervalSince(lastSave) > 60 { save(nil) }
         updateStatus()
         frame(nil)
-        let busy: Bool = { switch screen { case .beats, .hatch, .evolve, .radar, .dowse: true; default: false } }()   // fights and shows play at 30 fps, the rest at the tick's 10
+        let busy: Bool = { switch screen { case .beats, .hatch, .evolve, .radar: true; default: false } }()   // fights and shows play at 30 fps, the rest at the tick's 10
         if busy != (fast != nil) {
             fast?.invalidate(); fast = nil
             if busy { let t = Timer(timeInterval: 1.0 / 30, target: self, selector: #selector(frame(_:)), userInfo: nil, repeats: true); t.tolerance = 0.005; RunLoop.main.add(t, forMode: .common); fast = t }
@@ -259,7 +259,6 @@ final class WalkerView: NSView {
         case .menu: return ("메뉴", "", nil)
         case .shop(let bp, _, _), .shopConfirm(let bp, _, _): return (bp ? "BP 교환소" : "상점", "", nil)
         case .radar: return ("포켓 레이더", state.here.name, nil)
-        case .dowse: return ("다우징", state.here.name, nil)
         case .card: return ("트레이너 카드", "", nil)
         case .learn: return ("기술 배우기", "", nil)
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP", nil)

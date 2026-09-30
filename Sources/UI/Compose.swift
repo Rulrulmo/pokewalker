@@ -132,10 +132,6 @@ extension WalkerView {
             for (k, p) in state.party().enumerated() { fb.text(monNames[p.mon.dex] + " Lv.\(p.mon.level)", 2, 24 + 9 * k, 3, small: true) }
             fb.fill(0, 51, 96, 1, 2)
             fb.text(towerRun ? "● 다음 상대  ↩ 나가기" : "● 도전 \(Walk.towerFee)W", 0, 53, 3, center: true, small: true)
-        case .dowse(let c, _, let tries, let hint):
-            fb.text(hint ?? "어디에 있을까?", 0, 2, center: true)
-            for k in 0..<6 { let x = 2 + 16 * k; fb.draw(bush, x, 28, greens); if k == c { fb.text("▼", x + 6, 16, 3, center: false) } }
-            for k in 0..<tries { fb.draw(pip.full, 88 - 5 * k, 56) }
         case .card(let p):
             header(["트레이너 카드", "최근 7일", "알"][p])
             if p == 2 {
@@ -322,15 +318,14 @@ extension WalkerView {
         if let s = shopModel() { return PaneContent(shop: s) }
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }                       // a menu page's message (W가 부족하다, 커넥트): the list stays
         if case .menu(let i) = sc {
-            let bp = (state.bp ?? 0).formatted(), notes = ["10W", "3W", "상자로 보내기", "오늘 \(state.today.formatted())걸음", "워커 \(state.caught.count)마리 · 도구 \(state.items.count)",
-                                         "\(state.box.count.formatted())마리", "\(dexCount) / 493", "W로 사기", "\(bp)BP로 교환", "최고 \(state.towerBest ?? 0)연승"]
-            return PaneContent(menu: MenuModel(rows: menuItems.indices.map { .init(name: menuItems[$0], note: notes[safe: $0] ?? "") }, sel: i))
+            let notes = ["포켓 레이더": "10W", "커넥트": "상자로 보내기", "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬 · 도구": "워커 \(state.caught.count)마리 · 도구 \(state.items.count)",
+                         "상자": "\(state.box.count.formatted())마리", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승"]
+            return PaneContent(menu: MenuModel(rows: menuItems.map { .init(name: $0, note: notes[$0] ?? "") }, sel: i))
         }
         switch sc {                                                                               // the rest of the walker's pages: what you press is here, the LCD shows it
         case .radar(let b, let c, let since, let chain):
             let u = Date().timeIntervalSince(since)
             return PaneContent(radar: RadarModel(live: (1.5...(1.5 + radarWindow(chain))).contains(u) ? b : nil, cursor: c, chain: chain))
-        case .dowse(let c, _, let tries, let hint): return PaneContent(dowse: DowseModel(cursor: c, tries: tries, hint: hint))
         case .card(let p): return PaneContent(card: CardModel(page: p))
         case .learn(let sel):
             var st = state
@@ -352,13 +347,12 @@ extension WalkerView {
         let chips = mons.enumerated().map { BagModel.Chip(dex: $1.dex, name: monNames[$1.dex], level: $1.level, companion: $0 == 0) }
         return BagModel(chips: chips, sel: min(p, chips.count), mon: mons[safe: p].map { monPage($0) }, items: state.items)
     }
-    /// A click on a walker page that isn't a grid: 5000 + k a radar bush, 5100 + k a dowsing spot, 5200 + p a card page, 5300 + k a move to forget (4 = don't),
+    /// A click on a walker page that isn't a grid: 5000 + k a radar bush, 5200 + p a card page, 5300 + k a move to forget (4 = don't),
     /// 5400 / 5401 the tower's 도전 / 나가기, 5500 + k a 포켓몬 · 도구 chip, 5510 its 함께 걷기. One click does it, as ● would.
     func pageTap(_ code: Int) {
         throughSay(); lastInput = Date(); shown = nil; needsDisplay = true
         switch (screen, code) {
         case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
-        case (.dowse(_, let prize, let tries, _), 5100...5105): screen = .dowse(cursor: code - 5100, prize: prize, tries: tries, hint: nil); press(1)
         case (.card, 5200...5202): screen = .card(code - 5200)
         case (.learn, 5300...5304): screen = .learn(sel: code - 5300); press(1)
         case (.tower, 5400): press(1)

@@ -77,7 +77,7 @@ struct Walk: Codable, Equatable {
             egg = Egg(dex: d, left: eggCycles[d] * 255); return .egg(d)
         }
         guard Int.random(in: 0..<4, using: &r) == 0 else { return nil }
-        let i = dowse(&r); _ = keep(i); return .item(i)
+        let i = courseItem(&r); _ = keep(i); return .item(i)
     }
     var hatchDue: Bool { (egg?.left ?? 1) <= 0 }
     mutating func hatch<R: RandomNumberGenerator>(_ r: inout R) -> Mon {
@@ -220,7 +220,8 @@ struct Walk: Codable, Equatable {
         }
         return pick(here.group(2).filter { effSteps >= $0.steps })
     }
-    func dowse<R: RandomNumberGenerator>(_ r: inout R) -> String {
+    /// One of the course's 10 items (what the companion picks up): rarest first, by the course's steps.
+    func courseItem<R: RandomNumberGenerator>(_ r: inout R) -> String {
         for f in here.items { if effSteps >= f.steps, Int.random(in: 0..<100, using: &r) < f.chance { return f.item } }
         return here.items.last!.item
     }

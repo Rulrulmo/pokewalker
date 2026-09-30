@@ -48,8 +48,6 @@ struct MonModel: Equatable {
 }
 /// 포켓몬 레이더: the four bushes as on the LCD, the one rustling marked.
 struct RadarModel: Equatable { var live: Int?; var cursor: Int; var chain: Int }
-/// 다우징: the six spots, tries left, the last hint.
-struct DowseModel: Equatable { var cursor: Int; var tries: Int; var hint: String? }
 /// 트레이너 카드: its three pages as tabs.
 struct CardModel: Equatable { var page: Int }
 /// A new move to learn: it, then the four known ones and 배우지 않는다.
@@ -71,7 +69,7 @@ struct BagModel: Equatable {
 /// Whatever the pane shows; all nil = no page (the card's idle height).
 struct PaneContent: Equatable {
     var battle: SideModel?; var dex: DexModel?; var shop: ShopModel?; var menu: MenuModel?; var status: StatusModel?; var grid: GridModel?; var mon: MonModel?
-    var radar: RadarModel?; var dowse: DowseModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var bag: BagModel?
+    var radar: RadarModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var bag: BagModel?
 }
 
 // MARK: - the look (card points x K)
@@ -143,7 +141,7 @@ final class SideView: NSView {
     var downOn = 0                                                         // the page a click began on: a double-click's 2nd click on another page is dropped
     var pageKind: Int {
         let c = content
-        return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.dowse != nil, c.card != nil, c.learn != nil, c.tower != nil, c.bag != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
+        return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.card != nil, c.learn != nil, c.tower != nil, c.bag != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
     }
     var hits: [(NSRect, Int)] = []                                         // clickable: battle index, 2000+ shop, 3000+ menu, 4000+ grid / box controls, 5000+ other pages, 10000+ grid cells
     weak var walker: WalkerView?
@@ -155,7 +153,7 @@ final class SideView: NSView {
     override func mouseDown(with e: NSEvent) {
         let p = convert(e.locationInWindow, from: nil)
         guard let k = hits.first(where: { $0.0.contains(p) })?.1 else { window?.performDrag(with: e); return }   // not on a button: drag the whole body
-        if e.clickCount == 1 { downOn = pageKind } else if model != nil || shop?.ask != nil || content.mon != nil || content.dowse != nil || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened (a move, 예, 함께 under 아니오, a dug spot again, a cell under 메뉴's tile): ignored
+        if e.clickCount == 1 { downOn = pageKind } else if model != nil || shop?.ask != nil || content.mon != nil || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened (a move, 예, 함께 under 아니오, a cell under 메뉴's tile): ignored
         if k >= 5000, k < 10000 { walker?.pageTap(k) } else if k >= 4000 { walker?.gridTap(k) } else if k >= 3000 { walker?.menuTap(k - 3000) } else if k >= 2000 { walker?.shopTap(k) } else { walker?.sidePick(k) }
     }
     override func scrollWheel(with e: NSEvent) {                                                 // the shop list: a row per notch (or 6 pt of trackpad); a grid: a page (24 pt)
@@ -178,7 +176,7 @@ final class SideView: NSView {
     static let tallest: CGFloat = 470                                                              // 포켓몬 · 도구: the size menu keeps it on the screen
     static func height(_ c: PaneContent) -> CGFloat {
         c.battle != nil ? 311 : c.grid != nil || c.mon != nil ? 422 : c.bag != nil ? 470 : c.dex != nil ? 390 : c.shop != nil ? 406 : c.menu != nil ? 379
-            : c.radar != nil ? 327 : c.dowse != nil ? 274 : c.card != nil ? 230 : c.learn != nil ? 365 : c.tower != nil ? 353 : c.status != nil ? 354 : Layout.idle
+            : c.radar != nil ? 327 : c.card != nil ? 230 : c.learn != nil ? 365 : c.tower != nil ? 353 : c.status != nil ? 354 : Layout.idle
     }
 
     override func draw(_ dirty: NSRect) {
@@ -186,7 +184,7 @@ final class SideView: NSView {
         let c = content
         if let d = c.dex { drawDex(d) } else if let g = c.grid { drawGrid(g) } else if let m = c.mon { drawMon(m) } else if let s = c.shop { drawShop(s) }
         else if let m = c.menu { drawMenu(m) } else if let m = c.battle { drawBattle(m) } else if let b = c.bag { drawBag(b) } else if let r = c.radar { drawRadar(r) }
-        else if let d = c.dowse { drawDowse(d) } else if let k = c.card { tabs(["트레이너 카드", "최근 7일", "알"], k.page, 198, code: 5200) } else if let l = c.learn { drawLearn(l) }
+        else if let k = c.card { tabs(["트레이너 카드", "최근 7일", "알"], k.page, 198, code: 5200) } else if let l = c.learn { drawLearn(l) }
         else if let t = c.tower { drawTower(t) } else if let s = c.status { drawStatus(s) }
     }
     let X0: CGFloat = 9, X1: CGFloat = 207                                                         // the content column (card points): the bezel's edges
@@ -491,18 +489,6 @@ extension SideView {
             pixelArt(bush, greens, NSPoint(x: rc.midX, y: rc.midY), 2.5 * K)
             if live { say("!", rc.maxX - x(14), rc.midY, font(18, .heavy), Ink.red, 0.5) }
             hits.append((rc, 5000 + k))
-        }
-    }
-    /// 다우징: six spots in a row, as on the LCD.
-    func drawDowse(_ m: DowseModel) {
-        say(m.hint ?? "어디에 있을까?", x(X0 + 2), y(206), font(11, .medium), m.hint == "가깝다!" ? Ink.red : Ink.ink)
-        say("남은 기회 \(m.tries)", x(X1 - 2), y(206), font(9, .semibold), Ink.sub, 1)
-        let cw = (X1 - X0 - 5 * 4) / 6
-        for k in 0..<6 {
-            let rc = r(X0 + CGFloat(k) * (cw + 4), 220, cw, 44), path = rounded(rc, 8 * K)
-            path.fill(with: Ink.tile); if k == m.cursor { Ink.red.setStroke(); path.lineWidth = 1.5 * K; path.stroke() }
-            pixelArt(bush, greens, NSPoint(x: rc.midX, y: rc.midY), 2 * K)
-            hits.append((rc, 5100 + k))
         }
     }
     /// A new move: it on top, then which to forget (or not learn it).

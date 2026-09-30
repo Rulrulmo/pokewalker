@@ -2,7 +2,9 @@ import Foundation
 // Which screen the LCD is on.
 
 // MARK: - screens
-let menuItems = ["포켓 레이더", "다우징", "커넥트", "트레이너 카드", "포켓몬 · 도구", "상자", "도감", "상점", "BP 교환소", "배틀 타워"]   // the tower stays last: ◀ from home
+let menuItems = ["포켓 레이더", "커넥트", "트레이너 카드", "포켓몬 · 도구", "상자", "도감", "상점", "BP 교환소", "배틀 타워"]
+/// A tile's place on the menu, by its name (the code never counts tiles).
+func menuAt(_ name: String) -> Int { menuItems.firstIndex(of: name)! }
 indirect enum Screen {
     case home
     case menu(Int)
@@ -17,7 +19,6 @@ indirect enum Screen {
     case learn(sel: Int)                                               // a new move for state.learn's first: forget one of 4 (sel 0-3), or not learn it (4)
     case tower                                                         // the Battle Tower lobby
     case beats(Battle, [Beat], since: Date, from: Battle)              // one exchange playing out; `from` = HP before it
-    case dowse(cursor: Int, prize: Int, tries: Int, hint: String?)
     case card(Int), bag(Int)
     case say([String], next: Screen, since: Date)                      // any button or 3 s
     case evolve(from: Mon, to: Mon, since: Date)                       // already applied to the state; this is the show
