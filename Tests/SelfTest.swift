@@ -722,7 +722,7 @@ import AppKit
     check(!shopLCD && rowTap && dc.state.watts == 1000, "a row on the pane opens how-many (the LCD never buys)")
     let heldReturn = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: true, keyCode: 36)!
     let dcv = WalkerView(walker: dc); dcv.keyDown(with: heldReturn); check(dc.state.watts == 1000, "a held return doesn't buy")
-    dcv.clickCount = 1; dc.shopStep(10); dc.shopRow(1); check(on(dc) { if case .shop(false, 1, nil) = $0 { return true }; return false }, "scrolling the panel moves a row and leaves how-many (never the amount)")
+    dc.shopStep(10); dc.shopRow(1); check(on(dc) { if case .shop(false, 1, nil) = $0 { return true }; return false }, "scrolling the panel moves a row and leaves how-many (never the amount)")
     dc.screen = .shop(bp: false, sel: 0, qty: nil); check(dc.shopModel()?.hint.contains("●") == true, "the panel says what ● does")
     dc.screen = .shop(bp: false, sel: dc.wares(false).count - 1, qty: nil); check(dc.shopModel()?.hint == "W가 부족해요 · 9,999W 필요", "the panel says why a row can't be bought", "\(dc.shopModel()?.hint ?? "")")
     // 7g the Poké Ball card: the LCD 2 pt a dot at 보통, the keys on the band, the page under it growing down per screen

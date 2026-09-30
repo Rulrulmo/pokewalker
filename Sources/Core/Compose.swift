@@ -413,7 +413,7 @@ extension Walker {
         case .shopConfirm(let b, let s, let y): bp = b; sel = s; qty = nil; ask = y
         default: return nil
         }
-        let ws = wares(bp), unit = bp ? "BP" : "W", money = bp ? state.bp ?? 0 : state.watts, w = ws[safe: sel]
+        let ws = wares(bp), unit = bp ? "BP" : "W", w = ws[safe: sel]
         let rows = ws.map { w in ShopModel.Row(name: state.wareName(w), note: state.wareNote(w), price: w.once && state.owned(w) > 0 ? "보유" : "\(w.price.formatted())\(unit)",
                                                  owned: state.owned(w), can: state.canBuy(w, bp: bp) > 0, once: w.once) }
         let cost = (w?.price ?? 0) * (qty ?? 0)

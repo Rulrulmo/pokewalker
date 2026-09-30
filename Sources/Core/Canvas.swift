@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(CoreGraphics)
+import CoreGraphics                                                                // CGRect's members on Apple platforms (swift-corelibs-foundation has them elsewhere)
+#endif
 // What the core draws on. The card, the LCD and the pane's pages (Core/Card.swift, Core/Page.swift) are drawn through a Canvas, text is measured
 // through `fonts` (the LCD's layout needs widths while composing, with nothing to draw on). A platform sets `fonts` at launch, next to `settings`,
 // and hands its views' draws a Canvas. The Mac's: Mac/MacCanvas.swift (the AppKit calls the card was always drawn with).

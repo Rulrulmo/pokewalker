@@ -6,9 +6,7 @@ import Foundation
 protocol Settings {
     func bool(_ key: String, _ def: Bool) -> Bool
     func int(_ key: String, _ def: Int) -> Int
-    func string(_ key: String, _ def: String) -> String
-    func data(_ key: String) -> Data?
-    func set(_ key: String, _ v: Bool); func set(_ key: String, _ v: Int); func set(_ key: String, _ v: String); func set(_ key: String, _ v: Data)
+    func set(_ key: String, _ v: Bool); func set(_ key: String, _ v: Int)
 }
 @MainActor var settings: (any Settings)! = nil
 

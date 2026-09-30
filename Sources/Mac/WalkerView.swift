@@ -8,7 +8,6 @@ final class WalkerView: NSView {
     let page = SideView()                                                  // the pane's page: battle / 도감 / 상점 / 메뉴 / 상태
     var shown: FB? = nil                                                   // last composed frame; draw() only when it changes
     var pressed: Int? = nil, pressedAt = Date()
-    var clickCount = 1                                                     // the mouse event's, for touch(): a double-click's 2nd click never buys
     var anchorTop: CGFloat? = nil                                          // where the user put the card's top (screen y): a tall page lifts it off the Dock, the next short one drops it back
     var fitting = false                                                    // our own resize is moving the window (not the user)
     var lastStatus = ""
@@ -77,8 +76,6 @@ final class WalkerView: NSView {
     // MARK: input
     override func mouseDown(with e: NSEvent) {
         let p = convert(e.locationInWindow, from: nil)
-        clickCount = e.clickCount
-        var buying: Bool { switch walker.screen { case .shop(_, _, .some), .shopConfirm: true; default: false } }
         if let i = buttons.firstIndex(where: { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r + 2 * K }) {
             if i == 1 || i == 4, e.clickCount > 1 { return }                                        // ● or 메뉴 twice fast: once (the 2nd would act on what the 1st opened)
             pressed = i; pressedAt = Date(); walker.press(i)

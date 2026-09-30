@@ -6,12 +6,8 @@ import UserNotifications
 extension UserDefaults: Settings {
     func bool(_ key: String, _ def: Bool) -> Bool { object(forKey: key) == nil ? def : bool(forKey: key) }
     func int(_ key: String, _ def: Int) -> Int { object(forKey: key) == nil ? def : integer(forKey: key) }
-    func string(_ key: String, _ def: String) -> String { string(forKey: key) ?? def }
-    func data(_ key: String) -> Data? { data(forKey: key) }
     func set(_ key: String, _ v: Bool) { set(v, forKey: key) }
     func set(_ key: String, _ v: Int) { set(v, forKey: key) }
-    func set(_ key: String, _ v: String) { set(v, forKey: key) }
-    func set(_ key: String, _ v: Data) { set(v, forKey: key) }
 }
 
 nonisolated(unsafe) var useOsascript = false                                                  // set once at launch, read on the main thread
