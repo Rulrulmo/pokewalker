@@ -18,9 +18,9 @@ extension FB {
         }
         pic(key, cx, cy, behind: true) { lcdReady(cornered(scenePic(a, season, tb, grey))) }
         let water: [(Int, Int)] = a == .beach ? [(30, 23), (52, 27), (16, 29), (66, 22), (42, 31)] : a == .lake && season != .winter ? [(22, 29), (48, 33), (62, 27), (34, 36)] : a == .cave ? [(9, 41), (75, 36)] : []
-        for (k, (gx, gy)) in water.enumerated() where (Int(t * 2.5) + k * 3) % 7 == 0 { pic("route|glint", 2 * x + gx, 2 * y + gy, behind: true) { glintPic() } }   // water / crystal glints
+        for (k, (gx, gy)) in water.enumerated() where (Int(t * 2.5) + k * 3) % 7 == 0 { pic("route|glint", 2 * x + gx, 2 * y + gy, behind: true) { skyGlintPic() } }   // water / crystal glints
         if a == .beach { pic("route|foam|\(tb)|\(grey)", cx, 2 * y + 35 + Int((sin(t * 1.3) * 1.3).rounded()), behind: true) { foamPic(tb, grey) } }                // the surf coming and going
-        if tb == 3, !grey, a != .cave { for (k, (sx, sy)) in [(14, 6), (58, 4)].enumerated() where (Int(t * 1.5) + k) % 3 != 0 { pic("route|star", 2 * x + sx, 2 * y + sy, behind: true) { starPic() } } }
+        if tb == 3, !grey, a != .cave { for (k, (sx, sy)) in [(14, 6), (58, 4)].enumerated() where (Int(t * 1.5) + k) % 3 != 0 { pic("route|star", 2 * x + sx, 2 * y + sy, behind: true) { skyStarPic() } } }
         weatherFX(w, x + 1, y + 1, 40, 24, t, cave: a == .cave, behind: true)
         pic("route|frame", cx, cy, behind: true) { windowPic(84, 52) }
     }
@@ -173,8 +173,8 @@ private func cloudPic(_ k: Int, _ tb: Int, _ grey: Bool) -> Pic {
     p.canopy(k == 0 ? [(6, 6.5, 4), (12.5, 5, 5), (18.5, 6.5, 4)] : [(4.5, 5, 3), (8.5, 4, 3.6), (12, 5.2, 3)], [0, lo, lo, hi, hi], line: false, cut: k == 0 ? 9 : 7)
     return p
 }
-private func glintPic() -> Pic { Pic(["wWWw", "...."], ["w": argb(140, rgb(250, 254, 255)), "W": rgb(250, 254, 255)]) }
-private func starPic() -> Pic { Pic([".w..", "wWw.", ".w..", "...."], ["w": argb(170, rgb(220, 226, 255)), "W": rgb(255, 255, 240)]) }
+private func skyGlintPic() -> Pic { Pic(["wWWw", "...."], ["w": argb(140, rgb(250, 254, 255)), "W": rgb(250, 254, 255)]) }
+private func skyStarPic() -> Pic { Pic([".w..", "wWw.", ".w..", "...."], ["w": argb(170, rgb(220, 226, 255)), "W": rgb(255, 255, 240)]) }
 private func foamPic(_ tb: Int, _ grey: Bool) -> Pic {
     var p = Pic(w: 80, h: 4); let c = graded(rgb(250, 252, 255), tb, grey)
     for x in 0..<80 { let y = 1 + Int((sin(Double(x) * 0.31) * 0.9 + sin(Double(x) * 0.11)).rounded()); p.set(x, max(0, y), c); if x % 3 != 0 { p.set(x, min(3, y + 1), argb(140, c)) } }

@@ -49,7 +49,7 @@ struct MonModel: Equatable {
     var sel: Int?                                                      // the LCD's pick (함께 / 놓아주기 / 닫기, or 아니오 / 예): what ● does is red
 }
 /// 포켓몬 레이더: the four bushes as on the LCD, the one rustling marked.
-struct RadarModel: Equatable { var live: Int?; var cursor: Int; var chain: Int }
+struct RadarModel: Equatable { var live: Int?; var cursor: Int; var chain: Int; var season = Season.summer }
 /// 트레이너 카드: its three pages as tabs.
 struct CardModel: Equatable { var page: Int }
 /// A new move to learn: it, then the four known ones and 배우지 않는다.
@@ -493,7 +493,12 @@ extension SideView {
             NSRect(x: c.x - w / 2 + CGFloat(x) * px, y: c.y - h / 2 + CGFloat(y) * px, width: px, height: px).fill()
         } } }
     }
-    /// 포켓몬 레이더: tap the bush that rustles, where it is on the LCD.
+    /// A picture at sprite resolution (1 pt a pixel x K), unsmoothed, centred on c.
+    func pixelPic(_ img: NSImage, _ c: NSPoint) {
+        let w = img.size.width * K, h = img.size.height * K
+        img.draw(in: NSRect(x: c.x - w / 2, y: c.y - h / 2, width: w, height: h), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none.rawValue])
+    }
+    /// 포켓몬 레이더: tap the patch that rustles, where it is on the LCD.
     func drawRadar(_ m: RadarModel) {
         say(m.chain > 0 ? "연쇄 \(m.chain) · 흔들리는 풀숲을 골라요" : "흔들리는 풀숲을 골라요", x(X0 + 2), y(206), font(11, .medium), Ink.ink)
         let cw = (X1 - X0 - 5) / 2
@@ -501,8 +506,8 @@ extension SideView {
             let rc = r(X0 + CGFloat(k % 2) * (cw + 5), 220 + CGFloat(k / 2) * 51, cw, 46), live = m.live == k, path = rounded(rc, 10 * K)
             path.fill(with: live ? Ink.redTint : Ink.tile)
             if k == m.cursor { Ink.red.setStroke(); path.lineWidth = 1.5 * K; path.stroke() }
-            pixelArt(bush, greens, NSPoint(x: rc.midX, y: rc.midY), 2.5 * K)
-            if live { say("!", rc.maxX - x(14), rc.midY, font(18, .heavy), Ink.red, 0.5) }
+            pixelPic(grassImage(48, 36, m.season, live ? 1 : 0, rustle: live, flip: k == 1 || k == 2), NSPoint(x: rc.midX, y: rc.midY + x(2)))
+            if live { pixelPic(paneImage("w.bang") { bangPic }, NSPoint(x: rc.midX + x(30), y: rc.midY - x(10))) }
             hits.append((rc, 5000 + k))
         }
     }

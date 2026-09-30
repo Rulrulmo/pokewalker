@@ -24,17 +24,12 @@ extension WalkerView {
             fb.fill(0, 49, 96, 1, 2)
             fb.draw(foot, 2, 54)
             fb.text("Lv.\(me.level)", 11, 53, 2, small: true)
-            if let e = state.egg { fb.draw(eggArt, 42 + (e.left < 500 && Int(t * 4) % 2 == 0 ? 1 : 0), 52, eggPal) }   // wobbles when it's close
+            if let e = state.egg { fb.homeEgg(close: e.left < 500, t: t) }                        // rocks when it's close
             fb.text("\(state.today)", 94, 52, 3, right: true)
         case .radar(let b, let c, let since, let chain):
             let u = now.timeIntervalSince(since), live = (1.5...(1.5 + radarWindow(chain))).contains(u)
-            if chain > 0, u < 1.5 { fb.text("연쇄 \(chain)!", 0, 13, 3, center: true); if let n = chainNote { fb.text(n, 0, 25, 2, center: true, small: true) } }   // between the bush rows
-            for k in 0..<4 {
-                let x = 14 + (k % 2) * 56, y = 8 + (k / 2) * 28, shake = live && k == b ? (half == 0 ? -1 : 1) : 0
-                fb.draw(bush, x + shake, y, greens)
-                if live && k == b && Int(t * 6) % 2 == 0 { fb.draw(bang, x + 15, y - 6, redPal) }
-                if k == c { fb.text("▶", x - 2, y, 3, right: true) }
-            }
+            fb.radarFX(live: live ? b : nil, cursor: c, u: u, t: t, season: state.season)
+            if chain > 0, u < 1.5 { fb.text("연쇄 \(chain)!", 0, 22, 3, center: true); if let n = chainNote { fb.text(n, 0, 33, 2, center: true, small: true) } }   // between the grass rows
         case .battle(let b, _) where sideOn, .moves(let b, _) where sideOn, .party(let b, _) where sideOn, .bagBattle(let b, _) where sideOn, .forfeit(let b, _) where sideOn:
             stage(&fb, b, now, .idle, hud: false)                                                   // the side panel carries names, HP, menus
         case .beats where sideOn:
@@ -137,7 +132,7 @@ extension WalkerView {
             header(["트레이너 카드", "최근 7일", "알"][p])
             if p == 2 {
                 if let e = state.egg {
-                    fb.draw(eggArt, 40, 18, eggPal, scale: 2)
+                    fb.cardEgg(close: e.left < 500, t: t)
                     fb.text(e.left > 0 ? "앞으로 \(e.left)걸음" : "곧 태어난다!", 0, 52, 3, center: true)
                 } else { fb.text("갖고 있지 않다", 0, 30, 2, center: true) }
             } else if p == 0 {
@@ -191,26 +186,12 @@ extension WalkerView {
             } else { fb.text(detail && i == -1 ? "함께 걷는 중" : detail ? "● 메뉴" : "● 자세히", 94, 52, 2, right: true, small: true) }   // the grid's ● opens its page; the page's opens 함께 / 상자로 or 놓아주기
         case .hatch(let m, let since):
             let u = now.timeIntervalSince(since)
-            if u < 2.6 {                                                                                    // the egg rocks, harder and harder, then cracks
-                let k = u / 2.6, dx = Int(sin(u * (8 + 30 * k)) * (1 + 3 * k))
-                fb.draw(u > 2.0 ? eggCrack : eggArt, 38 + dx, 12, eggPal, scale: 3)
-                fb.text("어라...?", 0, 52, 3, center: true)
-            } else if u < 2.9 { for y in 0..<50 { for x in 0..<96 { fb.set(x, y, 0, rgb(255, 255, 255)) } } }
-            else {
-                fb.mon(m, half, 16, 1)
-                if m.shiny == true { for (k, (sx, sy)) in [(8, 6), (70, 10), (30, 2), (78, 34)].enumerated() where (Int(u * 4) + k) % 3 == 0 { fb.draw(spark, sx, sy, sparkPal) } }
-                fb.text(josa(monNames[m.dex], "이", "가") + " 태어났다!", 2, 52)
-            }
+            fb.hatchFX(m, u, bob: half)                                                                    // rocks, cracks, bursts; the Pokémon out of the light at 3 s
             fb.fill(0, 50, 96, 1, 2)
+            if u < 3.05 { fb.text("어라...?", 0, 52, 3, center: true) } else { fb.text(josa(monNames[m.dex], "이", "가") + " 태어났다!", 2, 52) }
         case .evolve(let from, let to, let since):
             let u = now.timeIntervalSince(since)
-            for y in 0..<50 { for x in 0..<96 { fb.set(x, y, 3, rgb(22, 26, 44)) } }                         // lights down
-            if u < 1.2 { fb.mon(from, half, 16, 1) }
-            else if u < 4.0 {                                                                                // flicker between the two shapes, faster and faster
-                let k = (u - 1.2) / 2.8, phase = Int(pow(k, 2) * 40) % 2
-                fb.mon(phase == 0 ? from : to, 0, 16, 1, tint: (0, rgb(255, 255, 255)))
-            } else if u < 4.4 { fb.fill(0, 0, 96, 50, 0); for y in 0..<50 { for x in 0..<96 { fb.set(x, y, 0, rgb(255, 255, 255)) } } }
-            else { fb.mon(to, half, 16, 1); for (k, (sx, sy)) in [(8, 6), (70, 10), (30, 2), (78, 34), (4, 30)].enumerated() where (Int(u * 4) + k) % 3 == 0 { fb.draw(spark, sx, sy, sparkPal) } }
+            fb.evolveFX(from, to, u, bob: half)                                                            // glows (1.2), the shapes take turns (4.0), white (4.4), the new form
             fb.fill(0, 50, 96, 1, 2)
             fb.text(u < 4.4 ? "어라...? " + josa(monNames[from.dex], "이", "가") + "...!" : josa(monNames[to.dex], "으로", "로") + " 진화했다!", 2, 52)
         case .say(let lines, let next, _):
@@ -321,7 +302,7 @@ extension WalkerView {
         switch sc {                                                                               // the rest of the walker's pages: what you press is here, the LCD shows it
         case .radar(let b, let c, let since, let chain):
             let u = Date().timeIntervalSince(since)
-            return PaneContent(radar: RadarModel(live: (1.5...(1.5 + radarWindow(chain))).contains(u) ? b : nil, cursor: c, chain: chain))
+            return PaneContent(radar: RadarModel(live: (1.5...(1.5 + radarWindow(chain))).contains(u) ? b : nil, cursor: c, chain: chain, season: state.season))
         case .card(let p): return PaneContent(card: CardModel(page: p))
         case .learn(let sel):
             var st = state
