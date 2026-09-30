@@ -52,10 +52,12 @@ func put<T>(_ s: String, _ field: inout T) {
         wide("PokeWalker") { name in
             var wc = WNDCLASSEXW(); wc.cbSize = UINT(MemoryLayout<WNDCLASSEXW>.size); wc.lpfnWndProc = wndProc
             wc.hInstance = GetModuleHandleW(nil); wc.hCursor = LoadCursorW(nil, UnsafePointer<WCHAR>(bitPattern: 32512)); wc.lpszClassName = name   // IDC_ARROW
-            _ = RegisterClassExW(&wc)
+            let atom = RegisterClassExW(&wc), classError = GetLastError()
             let sx = settings.int("win.x", Int.min), sy = settings.int("win.y", Int.min)
             hwnd = CreateWindowExW(DWORD(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW), name, name, DWORD(truncatingIfNeeded: WS_POPUP),
                                    sx == Int.min ? 0 : Int32(clamping: sx), sy == Int.min ? 0 : Int32(clamping: sy), 1, 1, nil, nil, GetModuleHandleW(nil), nil)
+            let error = GetLastError()
+            try? FileHandle.standardOutput.write(contentsOf: Data("card: class \(atom) (error \(classError)), window \(hwnd != nil) (error \(error))\n".utf8))   // for a redirect (the CI's smoke run); nowhere otherwise
             dpi = GetDpiForWindow(hwnd)
             var r = RECT(); _ = GetWindowRect(hwnd, &r)
             let s = size, w = work(r)

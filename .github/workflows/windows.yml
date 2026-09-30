@@ -56,6 +56,10 @@ jobs:
             [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
             [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
             [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, UIntPtr e);
+            [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr h);
+            [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr h, IntPtr dc);
+            [DllImport("gdi32.dll")] public static extern bool BitBlt(IntPtr d, int x, int y, int w, int h, IntPtr s, int sx, int sy, uint rop);
+            [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
             public struct RECT { public int L, T, R, B; }
           }
           "@
@@ -63,15 +67,17 @@ jobs:
           function Shot($name) {
             try {
               $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
-              [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size, [System.Drawing.CopyPixelOperation]::SourceCopy -bor [System.Drawing.CopyPixelOperation]::CaptureBlt)
+              $g = [System.Drawing.Graphics]::FromImage($bmp); $to = $g.GetHdc(); $from = [W]::GetDC([IntPtr]::Zero)
+              [W]::BitBlt($to, 0, 0, $b.Width, $b.Height, $from, $b.X, $b.Y, 0x40CC0020) | Out-Null           # SRCCOPY | CAPTUREBLT: layered windows too
+              [W]::ReleaseDC([IntPtr]::Zero, $from) | Out-Null; $g.ReleaseHdc($to); $g.Dispose()
               $bmp.Save("renders\smoke\$name.png")
             } catch { Write-Host "no screenshot: $_" }
           }
           function Click($x, $y, $down, $up) { [W]::SetCursorPos($x, $y) | Out-Null; [W]::mouse_event($down, 0, 0, 0, [UIntPtr]::Zero); Start-Sleep -Milliseconds 60; [W]::mouse_event($up, 0, 0, 0, [UIntPtr]::Zero) }
-          $p = Start-Process dist\PokeWalker\PokeWalker.exe -PassThru
+          $p = Start-Process dist\PokeWalker\PokeWalker.exe -PassThru -RedirectStandardOutput smoke.txt
           Start-Sleep 6
           if ($p.HasExited) { throw "the app quit on its own ($($p.ExitCode))" }
-          $h = [W]::FindWindow("PokeWalker", $null); $r = New-Object W+RECT; [W]::GetWindowRect($h, [ref]$r) | Out-Null
+          $h = [W]::FindWindow("PokeWalker", "PokeWalker"); $r = New-Object W+RECT; [W]::GetWindowRect($h, [ref]$r) | Out-Null
           $k = ($r.R - $r.L) / 216; Write-Host "card at $($r.L),$($r.T) $($r.R - $r.L) x $($r.B - $r.T) (x$k)"
           Shot "1_open"
           Click ([int]($r.L + 19 * $k)) ([int]($r.T + 176 * $k)) 2 4; Start-Sleep 2; Shot "2_menu_key"
@@ -81,7 +87,9 @@ jobs:
           if ($p.HasExited) { throw "the app quit after the clicks ($($p.ExitCode))" }
           Get-Content "$env:APPDATA\PokeWalker\settings.json" -ErrorAction SilentlyContinue
           Get-ChildItem "$env:APPDATA\PokeWalker" | Format-Table Name, Length
-          Stop-Process $p
+          [W]::PostMessage($h, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null; Start-Sleep 2              # WM_CLOSE: 종료 (saves)
+          if (!$p.HasExited) { Write-Host "still up after WM_CLOSE"; Stop-Process $p }
+          Get-Content smoke.txt
       - uses: actions/upload-artifact@v4
         with:
           name: PokeWalker-windows-x64
