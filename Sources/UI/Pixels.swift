@@ -241,19 +241,6 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
         for (dy, r) in t.enumerated() { for (dx, on) in r.enumerated() where on { set(x0 + dx, y + dy, shade) } }
         return w
     }
-    /// Rain streaks, drifting snow, fog bands over a w x h box (the course picture, the battle stage).
-    mutating func weatherFX(_ wx: Weather, _ x0: Int, _ y0: Int, _ w: Int, _ h: Int, _ t: Double, cave: Bool = false) {
-        let f = Int(t * 10)
-        for y in 0..<h { for x in 0..<w {
-            let (X, Y) = (x0 + x, y0 + y)
-            switch wx {
-            case .rain: if (x * 7 + (y - f * 2 + 1000) + x / 3 * 5) % 11 == 0, (x + y) % 3 != 0 { set(X, Y, 2, rgb(80, 130, 220)) }
-            case .snow: if (UInt32(truncatingIfNeeded: (x + (y + f / 3) / 4 % 2) &* 73_856_093) ^ UInt32(truncatingIfNeeded: (y - f / 2 + 10_000) &* 19_349_663)) % 41 == 0 { set(X, Y, 1, px[Y * 96 + X] == 0 && col[Y * 96 + X] == 0 && !sprites.contains { (-4..<36).contains(X - $0.x) && (-8..<32).contains(Y - $0.y) } ? rgb(150, 176, 214) : rgb(252, 252, 255)) }   // blue-grey on the bare screen, white on pictures   // hashed flakes, falling and swaying
-            case .fog: if (y + f / 6) % 6 == 0, (x + y * 3 + f / 3) % 3 != 0 { set(X, Y, 1, cave ? rgb(150, 144, 150) : rgb(206, 210, 218)) }
-            case .sunny: break
-            }
-        } }
-    }
     /// A box turned negative. The whole screen (a critical hit, a legend) flips the sprites with it; a smaller box (a highlight) covers them.
     mutating func invert(_ x: Int, _ y: Int, _ w: Int, _ h: Int) {
         flips.append([x, y, w, h])
