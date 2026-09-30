@@ -473,7 +473,10 @@ import AppKit
     func on(_ v: WalkerView, _ p: (Screen) -> Bool) -> Bool { p(v.screen) }
     var s0w = Walk(); s0w.watts = 100
     let v = WalkerView(state: s0w); v.persist = false; v.rng = Seeded(s: 14)
-    v.press(2); check(on(v) { if case .menu(0) = $0 { return true }; return false }, "home ▶ opens the menu")
+    v.press(1); v.press(2); let homeStays = on(v) { if case .home = $0 { return true }; return false } && v.emote?.kind == 1
+    v.press(4); let menuUp = on(v) { if case .menu(0) = $0 { return true }; return false } && v.compose(Date()).sprites.count == 1 && v.homeKey() == false; v.press(0)
+    check(homeStays && menuUp && on(v) { if case .menu(9) = $0 { return true }; return false }, "home: ● pats (♥), ▶ does nothing; the 메뉴 key opens the menu on the pane (the LCD stays home); ◀ goes round")
+    v.press(4); check(on(v) { if case .home = $0 { return true }; return false } && v.homeKey() == true, "… the same key again: home"); v.press(4)
     v.press(1); check(v.state.watts == 90 && on(v) { if case .radar = $0 { return true }; return false }, "radar costs 10W")
     v.screen = .radar(bush: 2, cursor: 0, since: Date().addingTimeInterval(-2), chain: 0)
     v.press(2); v.press(2); v.press(1)
@@ -700,8 +703,8 @@ import AppKit
     let size0 = SIZE; SIZE = 2
     check(PX == 2 && K == 1 && devSize == NSSize(width: 216, height: 199) && lcdRect == NSRect(x: 12, y: 27, width: 192, height: 128),
           "보통: a 216 x 199 card, the LCD 192 x 128 (2 pt a dot: whole pixels on a 1x screen)", "\(devSize) \(lcdRect)")
-    check(buttons.count == 4 && buttons.allSatisfy { $0.c.y == Layout.seam && $0.c.x - $0.r >= 0 && $0.c.x + $0.r <= Layout.w } && buttons[1].r > buttons[0].r && buttons.map(\.c.x) == buttons.map(\.c.x).sorted(),
-          "◀ ● ▶ ↩ on the band, ● the ball's own bigger button")
+    check(buttons.count == 5 && buttons.allSatisfy { $0.c.y == Layout.seam && $0.c.x - $0.r >= 0 && $0.c.x + $0.r <= Layout.w } && buttons[1].r > buttons[0].r && buttons.prefix(4).map(\.c.x) == buttons.prefix(4).map(\.c.x).sorted()
+          && buttons[4].c.x + buttons[3].c.x == Layout.w * K, "메뉴 ◀ ● ▶ ↩ on the band, ● the ball's own bigger button, 메뉴 across from ↩")
     let gw = WalkerView(state: Walk()); gw.persist = false; gw.statusOpen = false
     gw.refreshPane(Date(), force: true); let idleH = gw.frame.height
     gw.screen = .dex(25, filter: 0, detail: false); gw.refreshPane(Date(), force: true); let gridH = gw.frame.height

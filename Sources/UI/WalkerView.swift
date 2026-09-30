@@ -7,6 +7,7 @@ final class WalkerView: NSView {
     var lastInput = Date(), lastStep = Date.distantPast, lastSave = Date(), levelled = false
     var boxSort = 0                                                        // the 상자 grid's order: 번호순 / 레벨순 / V순 / 최근
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
+    var keyShown: Bool?? = .none                                           // the 메뉴 / 홈 key as last drawn (see homeKey)
     var fast: Timer?                                                       // the 30 fps frame timer while a fight or a show plays
     var usedItem = "몬스터볼"                                                // the potion / ball / revive the current beat names
     var towerRefs: [Int] = [], towerRun = false
@@ -59,6 +60,7 @@ final class WalkerView: NSView {
         if h != cardH { cardH = h; fitWindow() }
         let hb = sideOn ? c.battle : nil
         if hb != hud { hud = hb; setNeedsDisplay(lcdRect) }
+        if homeKey() != keyShown { keyShown = homeKey(); setNeedsDisplay(NSRect(x: 0, y: (Layout.seam - 16) * K, width: bounds.width, height: 32 * K)) }   // the 메뉴 / 홈 key's face
         let t = title(), key = t.title + "|" + t.meta + "|" + "\(t.chevron.map { $0 ? 1 : 0 } ?? 2)"
         if key != titleShown { titleShown = key; setNeedsDisplay(NSRect(x: 0, y: 0, width: bounds.width, height: Layout.top * K)) }
     }
@@ -164,7 +166,7 @@ final class WalkerView: NSView {
         clickCount = e.clickCount
         var buying: Bool { switch screen { case .shop(_, _, .some), .shopConfirm: true; default: false } }
         if let i = buttons.firstIndex(where: { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r + 2 * K }) {
-            if i == 1, e.clickCount > 1 { return }                                                  // ● twice fast: once (the 2nd would act on what the 1st opened)
+            if i == 1 || i == 4, e.clickCount > 1 { return }                                        // ● or 메뉴 twice fast: once (the 2nd would act on what the 1st opened)
             pressed = i; pressedAt = Date(); press(i)
             perform(#selector(tick(_:)), with: nil, afterDelay: 0.15, inModes: [.common])
         } else if chevronRect.contains(p), title().chevron != nil { toggleStatus() }
@@ -184,7 +186,7 @@ final class WalkerView: NSView {
             return
         }
         switch screen { case .shop, .shopConfirm: if e.isARepeat, [36, 49].contains(Int(e.keyCode)) { return }; default: break }   // a held return / space doesn't keep buying
-        if let i = [123: 0, 36: 1, 49: 1, 124: 2, 53: 3][Int(e.keyCode)] { press(i) } else { super.keyDown(with: e) }
+        if let i = [123: 0, 36: 1, 49: 1, 124: 2, 53: 3, 46: 4][Int(e.keyCode)] { press(i) } else { super.keyDown(with: e) }
     }
     override var acceptsFirstResponder: Bool { true }
     override func resetCursorRects() {
@@ -234,9 +236,10 @@ final class WalkerView: NSView {
                 continue
             }
             let c = NSBezierPath(ovalIn: r.insetBy(dx: k, dy: k)); c.fill(with: face); Ink.dark.setStroke(); c.lineWidth = 2 * k; c.stroke()
-            if i == 3 {                                                                            // ↩ — the back arrow
-                let img = NSImage(systemSymbolName: "arrow.uturn.backward", accessibilityDescription: "뒤로")?.withSymbolConfiguration(.init(pointSize: 8.5 * k, weight: .bold).applying(.init(paletteColors: [Ink.ink])))
-                if let img { let s = img.size; img.draw(in: NSRect(x: b.c.x - s.width / 2, y: b.c.y - s.height / 2, width: s.width, height: s.height), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil) }
+            if i >= 3 {                                                                            // ↩ the back arrow; 메뉴 on home, 홈 elsewhere (dim where it can't go)
+                let key = homeKey(), name = i == 3 ? "arrow.uturn.backward" : key == true ? "square.grid.2x2.fill" : "house.fill"
+                let img = NSImage(systemSymbolName: name, accessibilityDescription: i == 3 ? "뒤로" : key == true ? "메뉴" : "홈")?.withSymbolConfiguration(.init(pointSize: 8.5 * k, weight: .bold).applying(.init(paletteColors: [Ink.ink])))
+                if let img { let s = img.size; img.draw(in: NSRect(x: b.c.x - s.width / 2, y: b.c.y - s.height / 2, width: s.width, height: s.height), from: .zero, operation: .sourceOver, fraction: i == 4 && key == nil ? 0.3 : 1, respectFlipped: true, hints: nil) }
             } else { triangle(b.c.x + (i == 2 ? 0.6 : -0.6) * k, b.c.y, 4.2 * k, left: i == 0, Ink.ink) }
         }
     }

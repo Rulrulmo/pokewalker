@@ -168,8 +168,21 @@ extension WalkerView {
         lastInput = Date(); shown = nil; needsDisplay = true
     }
 
-    func press(_ k: Int) {                                    // 0 left, 1 enter, 2 right, 3 back (↩)
+    /// The 메뉴 / 홈 key: true = it opens the menu (home), false = it goes home, nil = not now (a fight, a show, an answer due).
+    func homeKey() -> Bool? {
+        switch screen {
+        case .home: true
+        case .menu, .card, .bag, .box, .dex, .shop, .shopConfirm, .tower: false
+        case .say(_, let next, _): switch next { case .home, .menu, .card, .bag, .box, .dex, .shop, .shopConfirm, .tower: false; default: nil }
+        default: nil
+        }
+    }
+    func press(_ k: Int) {                                    // 0 left, 1 enter, 2 right, 3 back (↩), 4 메뉴 / 홈
         let now = Date(); lastInput = now; defer { save(nil); shown = nil; needsDisplay = true }
+        if k == 4 {                                           // one key both ways: home opens the menu (on the pane; the LCD stays home), anywhere else it goes home
+            if let open = homeKey() { screen = open ? .menu(0) : .home }
+            return
+        }
         if k == 3 {                                           // ↩ 뒤로 (HGSS's B): one step up; where an answer is due only the cursor moves to the way out — nothing that can't be undone happens
             switch screen {
             case .home, .beats, .radar, .dowse, .evolve, .hatch: return                            // a turn plays out; radar / dowsing end by themselves (the W paid and the chain stay); shows aren't cancellable
@@ -194,11 +207,9 @@ extension WalkerView {
         }
         let n = menuItems.count
         switch screen {
-        case .home: screen = .menu(k == 0 ? n - 1 : 0)
+        case .home: if k == 1 { emote = (1, now.addingTimeInterval(2)) }                            // ● pats the companion (♥); the menu is the 메뉴 key's
         case .menu(let i):
-            if k == 0 { screen = i == 0 ? .home : .menu(i - 1) }
-            else if k == 2 { screen = i == n - 1 ? .home : .menu(i + 1) }
-            else { open(i, now) }
+            if k == 1 { open(i, now) } else { screen = .menu((i + (k == 0 ? n - 1 : 1)) % n) }       // ◀ ▶ go round the tiles
         case .radar(let b, let c, let since, let chain):
             if k != 1 { screen = .radar(bush: b, cursor: (c + (k == 0 ? 3 : 1)) % 4, since: since, chain: chain); return }
             let u = now.timeIntervalSince(since)

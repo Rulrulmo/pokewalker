@@ -13,7 +13,7 @@ extension WalkerView {
         }
         func header(_ title: String) { if fb.text(title, 2, 0) < 62 { fb.text("\(state.watts)W", 94, 1, 2, right: true, small: true) }; fb.fill(0, 12, 96, 1, 2) }   // long names win over the W
         switch screen {
-        case .home:
+        case .home, .menu:                                                                           // the menu is the pane's: the LCD stays home
             let f = now.timeIntervalSince(lastStep) < 3 ? half : Int(t) % 2        // steps coming in => walks twice as fast
             fb.mon(me, f, 32, 0)
             if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { let y = max(0, 48 - (80 - spriteTop(me.dex)) / 2 - 9); fb.draw(bubble, 38, y, ballPal); fb.draw(emotes[e.kind], 41, y + 2, redPal) }   // by its head
@@ -26,14 +26,6 @@ extension WalkerView {
             fb.text("Lv.\(me.level)", 11, 53, 2, small: true)
             if let e = state.egg { fb.draw(eggArt, 42 + (e.left < 500 && Int(t * 4) % 2 == 0 ? 1 : 0), 52, eggPal) }   // wobbles when it's close
             fb.text("\(state.today)", 94, 52, 3, right: true)
-        case .menu(let i):
-            fb.text("◀", 1, 26, 2); fb.text("▶", 95, 26, 2, right: true)
-            fb.text(menuItems[i], 0, 20, center: true)
-            let sub = [" 10W", " 3W", "상자로 보내기", "", "", "\(state.box.count)마리", "\(dexCount) / 493", "W로 사기", "\(state.bp ?? 0)BP로 교환", "\(state.bp ?? 0)BP"][i]
-            if !sub.isEmpty { fb.text(sub.trimmingCharacters(in: .whitespaces), 0, 34, 2, center: true) }
-            fb.text("\(state.watts)W", 94, 1, 2, right: true, small: true)
-            let x0 = 48 - (5 * menuItems.count - 2) / 2                                                 // page dots, centred
-            for k in 0..<menuItems.count { fb.fill(x0 + 5 * k, 58, 3, 3, k == i ? 3 : 1) }
         case .radar(let b, let c, let since, let chain):
             let u = now.timeIntervalSince(since), live = (1.5...(1.5 + radarWindow(chain))).contains(u)
             if chain > 0, u < 1.5 { fb.text("연쇄 \(chain)!", 0, 13, 3, center: true); if let n = chainNote { fb.text(n, 0, 25, 2, center: true, small: true) } }   // between the bush rows

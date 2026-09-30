@@ -10,8 +10,8 @@ import UserNotifications
 @MainActor var K: CGFloat { SIZE / 2 }                                                       // the card's scale: 1 / 1.5 / 2; Pokémon are 1 pt a pixel at 보통
 enum Layout { static let w: CGFloat = 216, top: CGFloat = 24, seam: CGFloat = 176, band: CGFloat = 8, pane: CGFloat = 189, idle: CGFloat = 199, r: CGFloat = 18 }   // card points: width, title row, band centre / height, the page's top, the idle height, corners
 @MainActor var lcdRect: NSRect { NSRect(x: (12 * K).rounded(), y: (27 * K).rounded(), width: 96 * PX, height: 64 * PX) }   // 96x64 dots, 192 x 128 pt at 보통, in a 3 pt bezel; whole points (crisp at 크게 on a 1x screen)
-@MainActor var buttons: [(c: NSPoint, r: CGFloat)] {                                          // ◀ ● ▶ ↩ on the band
-    [(64, 10), (108, 13), (152, 10), (197, 10)].map { (NSPoint(x: $0.0 * K, y: Layout.seam * K), $0.1 * K) }
+@MainActor var buttons: [(c: NSPoint, r: CGFloat)] {                                          // ◀ ● ▶ ↩ on the band, then 메뉴 / 홈 across from ↩
+    [(64, 10), (108, 13), (152, 10), (197, 10), (19, 10)].map { (NSPoint(x: $0.0 * K, y: Layout.seam * K), $0.1 * K) }
 }
 @MainActor var devSize: NSSize { NSSize(width: Layout.w * K, height: (Layout.idle * K).rounded()) }   // the idle card (a page makes it taller: WalkerView.cardH)
 @MainActor var chevronRect: NSRect { NSRect(x: (Layout.w - 30) * K, y: 0, width: 30 * K, height: Layout.top * K) }   // the title row's ⌄ / ⌃: the status sheet
