@@ -2,29 +2,31 @@ import AppKit
 // The course picture on the home screen and the ground a fight stands on: HGSS-style scenery at sprite resolution (1 px = half a dot),
 // made once per art / season / light / overcast (fb.pic keys), with small moving bits (clouds, glints, foam, the weather) over it.
 
-/// The game clock's light (as for evolutions): 0 day, 1 dawn 4-6, 2 dusk 17-20, 3 night 20-4.
 /// The home screen's course picture, in dots: its framed window (the art inside is 2 px a dot); the companion's walking sprite goes along its bottom.
 let courseBox = (x: 1, y: 14, w: 52, h: 34)
+/// The game clock's light (as for evolutions): 0 day, 1 dawn 4-6, 2 dusk 17-20, 3 night 20-4.
 func lightBand(_ hour: Double) -> Int { hour < 4 || hour >= 20 ? 3 : hour < 6 ? 1 : hour >= 17 ? 2 : 0 }
 
 extension FB {
-    /// The course picture, framed like a little window: 42 x 26 dots from (x, y). Sky, clouds drifting behind the land, the land, glints, the weather, the frame.
+    /// The course picture, framed like a little window: courseBox's size from (x, y) dots. Sky, clouds drifting behind the land, the land, glints, the weather, the frame.
     mutating func course(_ a: Art, _ x: Int, _ y: Int, weather w: Weather = .sunny, t: Double = 0, hour: Double = 12, season: Season = .summer) {
-        let tb = lightBand(hour), grey = w != .sunny, cx = 2 * x + 42, cy = 2 * y + 26, g = lcds[lcdStyle].color ? "" : "|g", key = "route|\(a)|\(season.rawValue)|\(tb)|\(grey)" + g
+        let W = 2 * courseBox.w, H = 2 * courseBox.h, tb = lightBand(hour), grey = w != .sunny, cx = 2 * x + W / 2, cy = 2 * y + H / 2
+        let g = lcds[lcdStyle].color ? "" : "|g", key = "route|\(a)|\(season.rawValue)|\(tb)|\(grey)" + g
         if a != .cave {
-            pic("route|sky|\(a)|\(tb)|\(grey)" + g, cx, cy, behind: true) { lcdReady(cornered(skyPic(84, 52, horizon: routeHorizon[a]!, tb, grey, sun: a == .forest ? nil : a == .mountain ? (73, 8) : a == .town ? (42, 8) : (64, 10)))) }
-            for (k, c) in clouds(grey, tb).enumerated() {                                             // drifting right, fading in at the left edge and out at the right
-                let lo = 2 * x + 2 + c.w / 2, span = 80 - c.w, u = (c.at + t * c.speed).truncatingRemainder(dividingBy: Double(span)), fade = min(1, u / 10, (Double(span) - u) / 10)
+            pic("route|sky|\(a)|\(tb)|\(grey)" + g, cx, cy, behind: true) { lcdReady(cornered(skyPic(W, H, horizon: routeHorizon[a]!, tb, grey, sun: a == .forest ? nil : a == .mountain ? (88, 9) : a == .town ? (40, 9) : (80, 10)))) }
+            for c in clouds(grey, tb) {                                                               // drifting right, fading in at the left edge and out at the right
+                let lo = 2 * x + 2 + c.w / 2, span = W - 4 - c.w, u = (c.at + t * c.speed).truncatingRemainder(dividingBy: Double(span)), fade = min(1, u / 10, (Double(span) - u) / 10)
                 pic("route|cloud|\(c.w)|\(tb)|\(grey)" + g, lo + Int(u), 2 * y + c.y, alpha: (max(0, fade) * 4).rounded() / 4, behind: true) { lcdReady(cloudPic(c.w == 24 ? 0 : 1, tb, grey)) }
             }
         }
         pic(key, cx, cy, behind: true) { lcdReady(cornered(scenePic(a, season, tb, grey))) }
-        let water: [(Int, Int)] = a == .beach ? [(30, 23), (52, 27), (16, 29), (66, 22), (42, 31)] : a == .lake && season != .winter ? [(22, 29), (48, 33), (62, 27), (34, 36)] : a == .cave ? [(9, 41), (75, 36)] : []
+        let water: [(Int, Int)] = a == .beach ? [(36, 31), (64, 35), (20, 38), (86, 33), (50, 41), (94, 39)] : a == .lake && season != .winter ? [(30, 34), (58, 39), (80, 31), (44, 43), (94, 36)]
+            : a == .cave ? [(8, 45), (95, 41)] : []
         for (k, (gx, gy)) in water.enumerated() where (Int(t * 2.5) + k * 3) % 7 == 0 { pic("route|glint", 2 * x + gx, 2 * y + gy, behind: true) { skyGlintPic() } }   // water / crystal glints
-        if a == .beach { pic("route|foam|\(tb)|\(grey)", cx, 2 * y + 35 + Int((sin(t * 1.3) * 1.3).rounded()), behind: true) { foamPic(tb, grey) } }                // the surf coming and going
-        if tb == 3, !grey, a != .cave { for (k, (sx, sy)) in [(14, 6), (58, 4)].enumerated() where (Int(t * 1.5) + k) % 3 != 0 { pic("route|star", 2 * x + sx, 2 * y + sy, behind: true) { skyStarPic() } } }
-        weatherFX(w, x + 1, y + 1, 40, 24, t, cave: a == .cave, behind: true)
-        pic("route|frame", cx, cy, behind: true) { windowPic(84, 52) }
+        if a == .beach { pic("route|foam|\(tb)|\(grey)", cx, 2 * y + beachShore - 1 + Int((sin(t * 1.3) * 1.3).rounded()), behind: true) { foamPic(W - 4, tb, grey) } }   // the surf coming and going
+        if tb == 3, !grey, a != .cave { for (k, (sx, sy)) in [(14, 6), (58, 4), (96, 5)].enumerated() where (Int(t * 1.5) + k) % 3 != 0 { pic("route|star", 2 * x + sx, 2 * y + sy, behind: true) { skyStarPic() } } }
+        weatherFX(w, x + 1, y + 1, courseBox.w - 2, courseBox.h - 2, t, cave: a == .cave, behind: true)
+        pic("route|frame", cx, cy, behind: true) { windowPic(W, H) }
     }
     /// Under a fight: an HGSS battle backdrop (the course's scenery pale on the horizon, the ground, a pad under each side; indoor = the Battle Tower's hall).
     /// With the old in-LCD HUD the stage is only y 14 ..< 50 (dots), so the backdrop is too. Pads: under the feet (at[s].y + 32), centred on at[s].x + 16.
@@ -52,14 +54,25 @@ private func cornered(_ p: Pic) -> Pic { var q = p; for (x, y) in [(0, 0), (p.w 
 }
 /// Self-test checks for this file's drawing (run by selftest()).
 @MainActor func routeChecks() -> [(Bool, String)] {
-    var fb = FB(); fb.course(.lake, 1, 22, weather: .rain, t: 3, hour: 22, season: .winter)
+    let (W, H) = (2 * courseBox.w, 2 * courseBox.h)
+    var fb = FB(); fb.course(.lake, courseBox.x, courseBox.y, weather: .rain, t: 3, hour: 22, season: .winter)
     let keys = fb.pics.map(\.key), scene = keys.first { $0.hasPrefix("route|lake|") }.flatMap { picStore[$0] }
+    var early = Set<String>(), later = Set<String>()                                              // the beach by night, clear and rainy: a minute, then the same an hour on
+    for f in 0..<480 { var b = FB(); b.course(.beach, courseBox.x, courseBox.y, weather: f % 2 == 0 ? .sunny : .rain, t: Double(f % 240) * 0.25 + (f < 240 ? 0 : 3600.3), hour: 22)
+        for p in b.pics { if f < 240 { early.insert(p.key) } else { later.insert(p.key) } } }
+    let busy = [Art.field, .forest, .mountain, .beach, .lake, .town, .cave].map { a -> Double in       // under the walker's feet: opaque, and calm (few colour changes along a row)
+        let p = scenePic(a, .summer, 0, false), band = (H - 13..<H - 6).flatMap { y in (4..<W - 4).map { (y, $0) } }
+        return band.allSatisfy { p.at($0.1, $0.0) >> 24 == 255 } ? Double(band.filter { p.at($0.1, $0.0) != p.at($0.1 - 1, $0.0) }.count) / Double(band.count) : 1
+    }
     var st = FB(); st.battleGround([.it: (60, 8), .me: (8, 32)], art: .field, hour: 12, season: .spring, weather: .sunny, indoor: false)
     let bg = st.pics.first.flatMap { picStore[$0.key] }, pad = bg?.at(152, 76) ?? 0, far = bg?.at(20, 100) ?? 0
     var hudFB = FB(); hudFB.battleGround([.it: (60, 14), .me: (8, 22)], art: .cave, hour: 12, season: .summer, weather: .fog, indoor: true)
     var a = FB(), b = FB(); a.weatherFX(.snow, 0, 0, 96, 64, 10); b.weatherFX(.snow, 0, 0, 96, 64, 10.5)
     return [(keys.first?.hasPrefix("route|sky|lake|3|true") == true && keys.last == "route|frame" && keys.contains { $0.hasPrefix("wx|rain") } && fb.pics.allSatisfy(\.behind), "the course: sky, land, rain and frame at sprite resolution, all under the sprites"),
-            (scene.map { $0.w == 84 && $0.h == 52 && $0.at(0, 0) == 0 && $0.at(40, 26) >> 24 == 255 } == true && fb.px.allSatisfy { $0 == 0 }, "the course picture is 42 x 26 dots of pictures (round corners), no dots"),
+            (scene.map { $0.w == W && $0.h == H && $0.at(0, 0) == 0 && $0.at(W / 2, H / 2) >> 24 == 255 } == true && fb.pics.last.map { $0.x == 2 * courseBox.x + W / 2 && $0.y == 2 * courseBox.y + H / 2 } == true
+                && fb.px.allSatisfy { $0 == 0 }, "the course picture fills courseBox (\(courseBox.w) x \(courseBox.h) dots) with pictures (round corners), no dots"),
+            (later.isSubset(of: early) && early.count < 40, "the course's picture keys come from a finite set, not the clock (\(early.count))"),
+            (busy.allSatisfy { $0 < 0.3 }, "every course has a calm walkway along the bottom for the walking sprite (\(busy.map { Int($0 * 100) }))"),
             (bg?.w == 192 && bg?.h == 128 && pad != far && pad >> 24 == 255, "the battle backdrop fills the stage, a pad under the foe's feet"),
             (hudFB.pics.first.map { $0.key.hasPrefix("stage|tower|28") && $0.y == 64 && picStore[$0.key]?.h == 72 } == true, "the old HUD layout: the tower hall only between the HUD and the message row"),
             (a.pics.count > 20 && a.pics.count == b.pics.count && a.pics.map(\.y) != b.pics.map(\.y) && Set((a.pics + b.pics).map(\.key)).count <= 3, "snow: a few flake pictures, moved by the clock")]
@@ -121,7 +134,8 @@ private func fogPic(_ w: Int, _ h: Int, _ cave: Bool) -> Pic {
 }
 
 // MARK: - the course picture
-private let routeHorizon: [Art: Int] = [.field: 24, .forest: 14, .mountain: 30, .beach: 20, .lake: 18, .town: 22, .cave: 0]
+private let routeHorizon: [Art: Int] = [.field: 30, .forest: 18, .mountain: 38, .beach: 28, .lake: 24, .town: 30, .cave: 0]
+private let beachShore = 44   // where the sea meets the sand (the surf runs along it)
 private func bayer4(_ x: Int, _ y: Int) -> Double { ([0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5][(y & 3) * 4 + (x & 3)] + 0.5) / 16 - 0.5 }
 private func lerpRGB(_ a: UInt32, _ b: UInt32, _ k: Double) -> UInt32 {
     func f(_ s: UInt32) -> UInt8 { let u = Double(a >> s & 255), v = Double(b >> s & 255); return UInt8(max(0, min(255, (u + (v - u) * k).rounded()))) }
@@ -155,18 +169,18 @@ private func skyPic(_ w: Int, _ h: Int, horizon hz: Int, _ tb: Int, _ grey: Bool
     var p = Pic(w: w, h: h); let c = skyBands(tb, grey), hz = max(8, hz)
     for y in 0..<h { for x in 0..<w { p.set(x, y, c[max(0, min(3, Int(Double(y) / Double(hz) * 4 + bayer4(x, y) * 0.6)))]) } }
     guard !grey, let at else { return p }
-    let (sx, sy, r): (Double, Double, Double) = [(at.0, at.1, 4.5), (18, Double(hz) - 3, 6), (62, Double(hz) - 2, 7), (at.0, at.1 - 1, 4)][tb]
+    let (sx, sy, r): (Double, Double, Double) = [(at.0, at.1, 4.5), (Double(w) * 0.2, Double(hz) - 3, 6), (Double(w) * 0.74, Double(hz) - 2, 7), (at.0, at.1 - 1, 4)][tb]
     let (core, rim) = [(rgb(255, 250, 214), rgb(255, 226, 120)), (rgb(255, 224, 190), rgb(252, 160, 130)), (rgb(255, 214, 140), rgb(250, 128, 72)), (rgb(248, 242, 208), rgb(214, 208, 176))][tb]
     for y in 0..<h { for x in 0..<w {
         let d = hypot(Double(x) + 0.5 - sx, Double(y) + 0.5 - sy)
         if tb == 3 { if d < r, hypot(Double(x) + 0.5 - sx - 2.2, Double(y) + 0.5 - sy + 1.2) > r - 1 { p.set(x, y, d > r - 1 ? rim : core) }; continue }   // a crescent
         if d < r { p.set(x, y, d > r - 1.2 ? rim : core) } else if d < r + 2.5, (x + y) % 2 == 0 || d < r + 1.2 { p.set(x, y, lerpRGB(p.at(x, y), core, 0.45)) }   // a dithered glow
     } }
-    if tb == 3 { for k in 0..<22 { let x = hashXY(k, 9) % w, y = hashXY(k, 10) % max(1, hz - 2); if hypot(Double(x) - sx, Double(y) - sy) > r + 3 { p.set(x, y, k % 3 == 0 ? rgb(255, 255, 230) : rgb(170, 184, 224)) } } }
+    if tb == 3 { for k in 0..<w * hz / 90 { let x = hashXY(k, 9) % w, y = hashXY(k, 10) % max(1, hz - 2); if hypot(Double(x) - sx, Double(y) - sy) > r + 3 { p.set(x, y, k % 3 == 0 ? rgb(255, 255, 230) : rgb(170, 184, 224)) } } }
     return p
 }
 private func clouds(_ grey: Bool, _ tb: Int) -> [(w: Int, y: Int, at: Double, speed: Double)] {
-    grey ? [(24, 8, 10, 1.6), (16, 15, 40, 1.1), (24, 11, 50, 1.3), (16, 7, 5, 0.9)] : tb == 3 ? [(24, 13, 20, 0.8)] : [(24, 8, 12, 1.4), (16, 14, 44, 1.0)]   // inside the frame
+    grey ? [(24, 8, 10, 1.6), (16, 16, 44, 1.1), (24, 12, 62, 1.3), (16, 6, 5, 0.9)] : tb == 3 ? [(24, 14, 20, 0.8)] : [(24, 8, 12, 1.4), (16, 16, 54, 1.0)]   // inside the frame
 }
 private func cloudPic(_ k: Int, _ tb: Int, _ grey: Bool) -> Pic {
     let (hi, lo): (UInt32, UInt32) = grey ? (tb == 3 ? (rgb(84, 88, 106), rgb(64, 68, 86)) : (rgb(228, 230, 236), rgb(180, 186, 200)))
@@ -177,9 +191,11 @@ private func cloudPic(_ k: Int, _ tb: Int, _ grey: Bool) -> Pic {
 }
 private func skyGlintPic() -> Pic { Pic(["wWWw", "...."], ["w": argb(140, rgb(250, 254, 255)), "W": rgb(250, 254, 255)]) }
 private func skyStarPic() -> Pic { Pic([".w..", "wWw.", ".w..", "...."], ["w": argb(170, rgb(220, 226, 255)), "W": rgb(255, 255, 240)]) }
-private func foamPic(_ tb: Int, _ grey: Bool) -> Pic {
-    var p = Pic(w: 80, h: 4); let c = graded(rgb(250, 252, 255), tb, grey)
-    for x in 0..<80 { let y = 1 + Int((sin(Double(x) * 0.31) * 0.9 + sin(Double(x) * 0.11)).rounded()); p.set(x, max(0, y), c); if x % 3 != 0 { p.set(x, min(3, y + 1), argb(140, c)) } }
+private func foamPic(_ w: Int, _ tb: Int, _ grey: Bool) -> Pic {
+    var p = Pic(w: w, h: 4); let c = graded(rgb(250, 252, 255), tb, grey)
+    for x in 0..<w where !(5...10).contains(x) {                                                     // clear of the palm's trunk
+        let y = 1 + Int((sin(Double(x) * 0.31) * 0.9 + sin(Double(x) * 0.11)).rounded()); p.set(x, max(0, y), c); if x % 3 != 0 { p.set(x, min(3, y + 1), argb(140, c)) }
+    }
     return p
 }
 /// The picture's frame: a dark outline with rounded corners and a light inner rim, like the DS windows.
@@ -318,19 +334,23 @@ private extension Pic {
 }
 
 /// The course's land (clear where the sky shows), far to near, in the season's colours, then the hour's light; lit windows and lamps stay bright at night.
+/// Along the bottom runs a calm walkway (a path, sand, a street, the cave floor) for the companion's walking sprite, its feet about row H - 10; props stand behind it.
 private func scenePic(_ a: Art, _ s: Season, _ tb: Int, _ grey: Bool) -> Pic {
-    var p = Pic(w: 84, h: 52), lights: [(Int, Int, UInt32)] = []
+    let W = 2 * courseBox.w, H = 2 * courseBox.h, walk = H - 17                                      // walk: the walkway's top edge
+    var p = Pic(w: W, h: H), lights: [(Int, Int, UInt32)] = []
     let sky = skyBands(tb, grey), gr = grassRamp(s), lv = leafRamp(s), winter = s == .winter, hz = routeHorizon[a]!
+    let verge = winter ? [gr[0], gr[3], gr[1]] : [lerpRGB(gr[0], rgb(20, 60, 36), 0.45), gr[2], gr[1]]   // the near grass (a snowbank): outline, tips, blades
     func far(_ c: UInt32, _ k: Double = 0.45) -> UInt32 { lerpRGB(c, tb == 3 ? rgb(170, 190, 220) : sky[3], k) }   // aerial haze on what's far
     func farRamp(_ r: [UInt32], _ k: Double = 0.35) -> [UInt32] { r.map { far($0, k) } }
+    func snowy(_ r: [UInt32], _ k: Double) -> [UInt32] { winter ? r.map { lerpRGB($0, snowShade, k) } : r }
     func tufts(_ y0: Int, _ y1: Int, _ c: UInt32, _ hi: UInt32, seed: Int) {                       // little "ʌ" grass marks in loose staggered rows
-        for (r, y) in stride(from: y0, to: y1, by: 5).enumerated() { for x in stride(from: (r % 2) * 5 + hashXY(r, 0, seed) % 3, to: 84, by: 10) where hashXY(x, y, seed) % 3 != 0 {
+        for (r, y) in stride(from: y0, to: y1, by: 5).enumerated() { for x in stride(from: (r % 2) * 5 + hashXY(r, 0, seed) % 3, to: W, by: 10) where hashXY(x, y, seed) % 3 != 0 {
             p.set(x, y, c); p.set(x - 1, y + 1, c); p.set(x + 1, y + 1, c); p.set(x, y + 1, hi)
         } }
     }
     func flowers(_ y0: Int, _ y1: Int, _ n: Int, seed: Int) {
         let cols = s == .spring ? [rgb(250, 150, 190), rgb(255, 255, 255), rgb(252, 220, 90)] : [rgb(238, 72, 64), rgb(252, 214, 64)]
-        for k in 0..<n { let x = 2 + hashXY(k, 1, seed) % 80, y = y0 + hashXY(k, 2, seed) % max(1, y1 - y0), c = cols[k % cols.count]
+        for k in 0..<n { let x = 2 + hashXY(k, 1, seed) % (W - 4), y = y0 + hashXY(k, 2, seed) % max(1, y1 - y0), c = cols[k % cols.count]
             p.set(x, y - 1, c); p.set(x - 1, y, c); p.set(x + 1, y, c); p.set(x, y + 1, c); p.set(x, y, rgb(252, 236, 120)) }
     }
     func tallGrass(_ x0: Int, _ y0: Int, _ cols: Int, _ rows: Int) {                               // HGSS tall grass: rows of pointed blades, outlined
@@ -338,110 +358,136 @@ private func scenePic(_ a: Art, _ s: Season, _ tb: Int, _ grey: Bool) -> Pic {
         let blade = Pic(["..o...o.", ".ohoo.ho", ".ollo.lo", "ollllolo", "olllmolm", "omlmmomm", "mmmmmmmm"], ["o": g[0], "m": g[1], "l": g[2], "h": g[3]])
         for r in 0..<rows { for c in 0..<cols - (r % 2) { p.paste(blade, x0 + c * 8 + (r % 2) * 4, y0 + r * 4) } }
     }
+    /// The walkway, from row y0 to the frame: a wavy top edge in shade (edge: false = none), the ground c (edge, shade, base, light) with a few pebbles,
+    /// the verge v (outline, tips, blades) growing up from the frame below the feet (nil = none).
+    func walkway(_ y0: Int, _ c: [UInt32], verge v: [UInt32]? = nil, edge: Bool = true, seed: Int) {
+        func pebble(_ x: Int, _ y: Int) -> Bool { hashXY(x / 2, y, seed) % 23 == 0 }                  // 2 px, lit on top
+        for x in 0..<W {
+            let top = y0 + (edge ? Int((0.6 * sin(Double(x) * 0.23 + Double(seed)) + 0.7 * sin(Double(x) * 0.07 + Double(2 * seed))).rounded()) : 0)
+            let vt = v == nil ? H : H - 4 - max(0, min(3, Int((1.3 + 1.1 * sin(Double(x) * 0.9 + Double(seed)) + 0.8 * sin(Double(x) * 0.31)).rounded())))
+            for y in top..<H {
+                var col = edge && y == top ? c[0] : edge && y == top + 1 ? c[1] : pebble(x, y) ? c[1] : pebble(x, y + 1) ? c[3] : c[2]
+                if let v, y >= vt - 1 { col = y == vt - 1 ? v[0] : y == vt ? v[1] : v[2] }
+                p.set(x, y, col)
+            }
+        }
+    }
+    func rock(_ x: Double, _ y: Double, _ r: Double, _ ramp: [UInt32] = rockRamp) { p.canopy([(x - r * 0.3, y - r * 0.5, r * 0.8), (x + r * 0.35, y - r * 0.35, r * 0.7)], ramp, cut: Int(y)) }
     switch a {
     case .field:
         p.ridge(hz + 8, rim: far(gr[3], 0.5), { x in hz - 4 - Int(2.5 * sin(Double(x) * 0.07 + 1) + 1.5 * sin(Double(x) * 0.23)) }) { _, _ in far(gr[1], 0.55) }   // far hills
-        for (x, r) in [(5.0, 4.2), (13, 3.4), (61, 3.6), (70, 4.4), (79, 3.4)] { p.tree(x, Double(hz + 3), r, farRamp(s == .spring && x == 13 ? leafRamp(s, blossom: true) : lv, 0.25)) }
-        p.ridge(52, rim: gr[3], { x in hz + 2 + (x < 20 || x > 58 ? 1 : 0) }) { x, y in y < hz + 7 ? gr[2] : (y + x / 16) % 6 == 0 ? gr[2] : gr[1] }
-        tufts(hz + 6, 52, gr[0], gr[3], seed: 1)
-        let path = [rgb(176, 142, 94), rgb(222, 194, 136), rgb(236, 214, 164)].map { winter ? lerpRGB($0, snowShade, 0.7) : $0 }
-        for y in hz + 3..<52 {
-            let k = Double(y - hz - 3), c = 44 - k * 0.42 + sin(k * 0.16) * 2.5, half = 1 + k * 0.3
-            for x in Int(c - half)...Int(c + half) { p.set(x, y, x == Int(c - half) || x == Int(c + half) ? path[0] : Double(x) < c - half * 0.3 ? path[2] : path[1]) }
+        for (x, r) in [(5.0, 4.2), (13, 3.4), (72, 3.6), (81, 4.4), (91, 3.4), (99, 4)] { p.tree(x, Double(hz + 3), r, farRamp(s == .spring && x == 13 ? leafRamp(s, blossom: true) : lv, 0.25)) }
+        p.ridge(H, rim: gr[3], { x in hz + 2 + (x < 24 || x > 66 ? 1 : 0) }) { x, y in y < hz + 7 ? gr[2] : (y + x / 16) % 6 == 0 ? gr[2] : gr[1] }
+        tufts(hz + 6, walk, gr[0], gr[3], seed: 1)
+        if s == .spring || s == .summer { flowers(hz + 8, walk - 2, s == .spring ? 16 : 7, seed: 3) }
+        tallGrass(66, walk - 15, 5, 3)
+        p.tree(12, Double(walk), 8.5, s == .spring ? leafRamp(s, blossom: true) : lv)
+        let path = snowy([rgb(176, 142, 94), rgb(204, 172, 118), rgb(222, 194, 136), rgb(238, 216, 166)], 0.8)
+        walkway(walk, path, verge: verge, seed: 2)
+        for y in hz + 3..<walk + 2 {                                                                 // a path winding in from the hills, opening onto the walkway
+            let k = Double(y - hz - 3), c = 58 - k * 0.9 + 5 * sin(k * 0.28), half = 1 + k * 0.22 + pow(max(0, k - 15), 2) * 0.45
+            for x in Int(c - half)...Int(c + half) { p.set(x, y, y < walk && (x == Int(c - half) || x == Int(c + half)) ? path[0] : Double(x) < c - half * 0.3 ? path[3] : path[2]) }
         }
-        if s == .spring || s == .summer { flowers(hz + 8, 50, s == .spring ? 14 : 6, seed: 3) }
-        tallGrass(52, 38, 4, 3)
-        p.tree(10, 50, 8.5, s == .spring ? leafRamp(s, blossom: true) : lv)
     case .forest:
-        for k in 0..<13 { let x = k * 7 + (k % 2) * 2 - 2, h = 18 + hashXY(k, 1) % 8; p.fir(x, hz + 16 - h, h, farRamp(firRamp(s), 0.4), snow: winter) }   // the far wood
-        p.ridge(52, rim: lerpRGB(gr[1], gr[0], 0.3), { _ in hz + 16 }) { x, y in lerpRGB((y + x / 12) % 5 == 0 ? gr[1] : gr[0], rgb(20, 60, 40), winter ? 0.15 : 0.35) }   // the shaded floor
-        for (x, h) in [(18, 22), (64, 26), (40, 18)] { p.fir(x, hz + 18 - h, h, firRamp(s), snow: winter) }
-        for (x, y, rx) in [(30.0, 40.0, 7.0), (58, 44, 9), (44, 49, 6)] { p.oval(x, y, rx, rx / 3.5) { _, _, d in d < 0.7 ? gr[2] : lerpRGB(gr[1], gr[2], 0.5) } }   // sun through the leaves
-        let trail = [rgb(120, 88, 56), rgb(170, 130, 86), rgb(196, 160, 110)].map { winter ? lerpRGB($0, snowShade, 0.7) : $0 }
-        for y in hz + 17..<52 { let k = Double(y - hz - 17), c = 42 - k * 0.3 + sin(k * 0.3) * 2, half = 1 + k * 0.28
-            for x in Int(c - half)...Int(c + half) { p.set(x, y, x == Int(c - half) || x == Int(c + half) ? trail[0] : Double(x) < c ? trail[2] : trail[1]) } }
-        tufts(hz + 19, 52, lerpRGB(gr[0], rgb(20, 50, 30), 0.4), gr[2], seed: 4)
-        p.tree(6, 48, 9, s == .autumn ? leafRamp(s, blossom: true) : lv); p.tree(78, 47, 8, lv)
+        for k in 0..<16 { let x = k * 7 + (k % 2) * 2 - 2, h = 18 + hashXY(k, 1) % 8; p.fir(x, hz + 16 - h, h, farRamp(firRamp(s), 0.4), snow: winter) }   // the far wood
+        p.ridge(H, rim: lerpRGB(gr[1], gr[0], 0.3), { _ in hz + 16 }) { x, y in lerpRGB((y + x / 12) % 5 == 0 ? gr[1] : gr[0], rgb(20, 60, 40), winter ? 0.15 : 0.35) }   // the shaded floor
+        for (x, h) in [(24, 24), (86, 28), (62, 20)] { p.fir(x, hz + 20 - h, h, firRamp(s), snow: winter) }
+        for (x, y, rx) in [(36.0, 43.0, 7.0), (74, 46, 9)] { p.oval(x, y, rx, rx / 3.5) { _, _, d in d < 0.7 ? gr[2] : lerpRGB(gr[1], gr[2], 0.5) } }   // sun through the leaves
+        tufts(hz + 19, walk, lerpRGB(gr[0], rgb(20, 50, 30), 0.4), gr[2], seed: 4)
         let cap = Pic([".rrr.", "rwrrr", "rrrwr", ".oso."], ["r": rgb(222, 58, 48), "w": rgb(250, 246, 236), "o": rgb(96, 60, 40), "s": rgb(238, 226, 206)])
-        if !winter { p.paste(cap, 26, 44); p.paste(cap, 58, 46) }
+        if !winter { p.paste(cap, 30, walk - 4); p.paste(cap, 70, walk - 4) }
+        p.tree(7, Double(walk), 9, s == .autumn ? leafRamp(s, blossom: true) : lv); p.tree(98, Double(walk - 1), 8, lv)
+        let trail = snowy([rgb(96, 68, 44), rgb(140, 104, 68), rgb(170, 132, 90), rgb(196, 162, 114)], 0.8)
+        walkway(walk, trail, verge: winter ? verge : [rgb(14, 44, 30), lerpRGB(gr[1], rgb(20, 60, 40), 0.3), lerpRGB(gr[0], rgb(20, 60, 40), 0.35)], seed: 4)
+        for y in hz + 17..<walk + 2 { let k = Double(y - hz - 17), c = 50 - k * 0.6 + 3 * sin(k * 0.35), half = 1 + k * 0.2 + pow(max(0, k - 13), 2) * 0.45
+            for x in Int(c - half)...Int(c + half) { p.set(x, y, y < walk && (x == Int(c - half) || x == Int(c + half)) ? trail[0] : Double(x) < c ? trail[3] : trail[2]) } }
     case .mountain:
-        p.peaks([(12, 12), (46, 8), (78, 13)], 38, farRamp(rockRamp, 0.5), snow: 4, seed: 2)                                          // the far range, pale
-        p.peaks([(28, 4), (64, 11)], 44, rockRamp, snow: winter ? 18 : 7, seed: 7)
-        p.ridge(52, rim: gr[3], { x in 33 + Int(2 * sin(Double(x) * 0.12 + 2)) }) { x, y in (x + y * 3) % 9 == 0 ? gr[2] : gr[1] }       // green foothills
-        let dirt = [rgb(118, 86, 58), rgb(170, 128, 86), rgb(206, 170, 118), rgb(226, 198, 148)].map { winter ? lerpRGB($0, snowShade, 0.75) : $0 }
-        p.ridge(52, { x in 39 + Int(sin(Double(x) * 0.2)) }) { x, y in y < 41 + Int(sin(Double(x) * 0.2)) ? dirt[1] : hashXY(x, y, 6) % 9 == 0 ? dirt[2] : dirt[3] }   // a ledge, then the path
-        p.ridge(42, rim: dirt[0], { x in 39 + Int(sin(Double(x) * 0.2)) }) { _, _ in dirt[1] }
-        for (x, y, r) in [(8.0, 50.0, 5.0), (74, 48, 4), (58, 51, 2.6)] { p.canopy([(x - r * 0.3, y - r * 0.5, r * 0.8), (x + r * 0.35, y - r * 0.35, r * 0.7)], rockRamp, cut: Int(y)) }
+        p.peaks([(14, 15), (58, 10), (98, 16)], 44, farRamp(rockRamp, 0.5), snow: 4, seed: 2)                                          // the far range, pale
+        p.peaks([(34, 5), (80, 13)], 48, rockRamp, snow: winter ? 18 : 7, seed: 7)
+        p.ridge(H, rim: gr[3], { x in 40 + Int(2 * sin(Double(x) * 0.12 + 2)) }) { x, y in (x + y * 3) % 9 == 0 ? gr[2] : gr[1] }       // green foothills
+        for (x, top, h) in [(6, 28, 11), (99, 30, 10)] { p.fir(x, top, h, firRamp(s), snow: winter) }
+        let dirt = snowy([rgb(118, 86, 58), rgb(170, 128, 86), rgb(206, 170, 118), rgb(226, 198, 148)], 0.75)
+        p.ridge(walk + 1, rim: lerpRGB(gr[0], dirt[0], 0.4), { x in walk - 5 + Int(sin(Double(x) * 0.2)) }) { x, y in   // a ledge down to the trail
+            let d = y - walk + 5 - Int(sin(Double(x) * 0.2)); return d == 1 ? dirt[2] : d > 1 + hashXY(x, 1, 6) % 3 && hashXY(x, 0, 6) % 7 == 0 ? dirt[0] : dirt[1] }
+        walkway(walk, [dirt[0], dirt[2], dirt[3], lerpRGB(dirt[3], rgb(255, 255, 255), 0.4)], seed: 6)
+        rock(8, Double(walk + 1), 5); rock(97, Double(walk), 4); rock(60, 45, 2.6)
     case .beach:
         let sea = (winter ? [rgb(58, 104, 168), rgb(76, 128, 190), rgb(100, 152, 206), rgb(160, 198, 228)] : [rgb(48, 120, 220), rgb(70, 150, 236), rgb(98, 178, 244), rgb(168, 220, 252)])
-        p.ridge(36, { _ in hz }) { x, y in hashXY(x / 3, y, 8) % 11 == 0 ? sea[3] : sea[min(2, (y - hz) / 5)] }
-        p.canopy([(70, 19.5, 4), (75, 19, 3)], farRamp(leafRamp(.summer), 0.3), cut: 20); p.ridge(21, { x in x >= 64 && x < 80 ? 20 : 99 }) { _, _ in far(rgb(236, 214, 156), 0.3) }   // an island far out
+        p.ridge(beachShore, { _ in hz }) { x, y in hashXY(x / 3, y, 8) % 11 == 0 ? sea[3] : sea[min(2, (y - hz) / 5)] }
+        p.canopy([(86, Double(hz) - 0.5, 4), (91, Double(hz) - 1, 3)], farRamp(leafRamp(.summer), 0.3), cut: hz); p.ridge(hz + 1, { x in x >= 80 && x < 97 ? hz : 99 }) { _, _ in far(rgb(236, 214, 156), 0.3) }   // an island far out
         let sand = [rgb(196, 166, 108), rgb(218, 190, 130), rgb(240, 220, 162), rgb(250, 238, 196)]
-        p.ridge(52, { _ in 36 }) { x, y in y < 39 ? sand[1] : hashXY(x, y, 9) % 7 == 0 ? sand[1] : (x + y) % 11 == 0 ? sand[3] : sand[2] }
-        for (x, y) in [(40, 44), (60, 48), (24, 49)] { p.set(x, y, rgb(248, 160, 160)); p.set(x + 1, y, rgb(252, 208, 200)) }
+        p.ridge(H, { _ in beachShore }) { x, y in y < beachShore + 3 ? sand[1] : hashXY(x, y, 9) % 9 == 0 ? sand[1] : (x + y) % 11 == 0 ? sand[3] : sand[2] }
+        walkway(walk, [sand[1], sand[1], sand[2], sand[3]], edge: false, seed: 9)                     // dry sand, smooth
+        for (x, y) in [(46, 48), (72, 47), (90, 63)] { p.set(x, y, rgb(248, 160, 160)); p.set(x + 1, y, rgb(252, 208, 200)) }
+        rock(97, Double(walk), 3.6)
         var palm = Set<Int>()                                                                        // a palm leaning in from the left
-        for k in 0..<30 { let f = Double(k) / 30, x = Int(8 + 9 * f * f), y = 51 - Int(f * 34)
+        for k in 0..<36 { let f = Double(k) / 36, x = Int(8 + 10 * f * f), y = walk + 2 - Int(f * 36)
             for dx in 0..<3 { p.set(x + dx, y, dx == 0 ? bark[3] : k % 3 == 0 ? bark[1] : bark[2]); palm.insert(pk(x + dx, y)) } }
         p.outline(palm, bark[0])
-        let fr = leafRamp(.summer).map { winter ? lerpRGB($0, snowShade, 0.25) : $0 }, crown = (18.0, 16.0)          // evergreen
-        for (ang, len) in [(-2.9, 13.0), (-2.2, 11.0), (-1.2, 9.0), (-0.4, 12.0), (0.25, 13.0)] {
+        let fr = leafRamp(.summer).map { winter ? lerpRGB($0, snowShade, 0.25) : $0 }, crown = (19.0, Double(walk - 34))   // evergreen
+        for (ang, len) in [(-2.9, 13.0), (-2.2, 11.0), (-1.2, 9.0), (-0.4, 12.0), (0.25, 14.0)] {
             var leaf = Set<Int>()
             for i in 0..<Int(len * 2) { let d = Double(i) / 2, x = crown.0 + cos(ang) * d, y = crown.1 + sin(ang) * d + d * d * 0.045
                 let px = Int(x), py = Int(y); p.set(px, py, fr[3]); p.set(px, py + 1, d < len * 0.7 ? fr[2] : fr[1]); leaf.insert(pk(px, py)); leaf.insert(pk(px, py + 1)) }
             p.outline(leaf, fr[0])
         }
-        p.canopy([(17, 18, 1.8), (20, 18.5, 1.8)], [bark[0], bark[1], bark[1], bark[2], bark[3]])
+        p.canopy([(crown.0 - 1, crown.1 + 2, 1.8), (crown.0 + 2, crown.1 + 2.5, 1.8)], [bark[0], bark[1], bark[1], bark[2], bark[3]])
     case .lake:
+        let shore = walk - 5
         p.ridge(hz + 6, rim: far(gr[3], 0.55), { x in hz - 3 - Int(3 * sin(Double(x) * 0.06 + 2)) }) { _, _ in far(gr[1], 0.6) }
-        for k in 0..<12 { let x = 3 + k * 7 + hashXY(k, 2) % 3; k % 3 == 1 ? p.fir(x, hz - 4, 9, farRamp(firRamp(s), 0.35), snow: winter) : p.tree(Double(x), Double(hz + 5), 3.2, farRamp(lv, 0.3)) }
+        for k in 0..<15 { let x = 3 + k * 7 + hashXY(k, 2) % 3; k % 3 == 1 ? p.fir(x, hz - 4, 9, farRamp(firRamp(s), 0.35), snow: winter) : p.tree(Double(x), Double(hz + 5), 3.2, farRamp(lv, 0.3)) }
         let ice = winter, water = ice ? [rgb(172, 204, 232), rgb(196, 222, 244), rgb(222, 238, 250), rgb(250, 252, 255)] : [rgb(52, 116, 204), rgb(74, 146, 226), rgb(118, 182, 240), rgb(176, 222, 250)]
-        p.ridge(42, { _ in hz + 5 }) { x, y in
+        p.ridge(shore, { _ in hz + 5 }) { x, y in
             let k = y - hz - 5
             if ice { return (x * 3 + y * 7) % 29 == 0 || (x - y * 2) % 31 == 0 ? water[0] : k < 4 ? water[2] : water[1] }
             if k < 5, hashXY(x / 4, 1) % 3 == 0, y % 2 == 0 { return lerpRGB(water[1], lv[1], 0.35) }                              // the far wood mirrored
             return hashXY(x / 3, y, 11) % 13 == 0 ? water[3] : k < 3 ? water[2] : water[k < 10 ? 1 : 0]
         }
-        if !ice { for (x, y) in [(58, 38), (70, 40)] { p.oval(Double(x), Double(y), 4, 1.6) { dx, _, d in d > 0.75 ? lv[1] : dx < -0.2 ? lv[3] : lv[2] } } }   // lily pads
-        p.ridge(52, rim: gr[3], { x in 42 - Int(1.5 * sin(Double(x) * 0.1)) }) { x, y in (x + y * 2) % 7 == 0 ? gr[2] : gr[1] }
-        tufts(45, 52, gr[0], gr[3], seed: 12)
-        for k in 0..<7 { let x = 3 + k * 2 + k % 2, top = 30 + hashXY(k, 4) % 6                                       // reeds, cattails on some
-            for y in top..<46 { p.set(x, y, winter ? rgb(150, 136, 104) : rgb(62, 118, 56)) }
+        if !ice { for (x, y) in [(70, 40), (84, 43)] { p.oval(Double(x), Double(y), 4, 1.6) { dx, _, d in d > 0.75 ? lv[1] : dx < -0.2 ? lv[3] : lv[2] } } }   // lily pads
+        p.ridge(H, rim: gr[3], { x in shore - Int(1.5 * sin(Double(x) * 0.1)) }) { x, y in (x + y * 2) % 7 == 0 ? gr[2] : gr[1] }
+        tufts(shore + 3, walk, gr[0], gr[3], seed: 12)
+        for k in 0..<8 { let x = 3 + k * 2 + k % 2, top = 31 + hashXY(k, 4) % 6                                       // reeds, cattails on some
+            for y in top..<shore + 3 { p.set(x, y, winter ? rgb(150, 136, 104) : rgb(62, 118, 56)) }
             if k % 2 == 0 { for y in top..<top + 3 { p.set(x, y, rgb(124, 80, 46)); p.set(x + 1, y, rgb(96, 60, 36)) } } }
-        p.canopy([(70, 47, 4.5), (75, 48, 3.5)], rockRamp, cut: 49)
+        walkway(walk, snowy([rgb(176, 142, 94), rgb(204, 172, 118), rgb(222, 194, 136), rgb(238, 216, 166)], 0.8), verge: verge, seed: 12)
+        rock(90, Double(walk + 1), 4.5); rock(97, Double(walk + 1), 3)
     case .town:
         p.ridge(hz + 4, rim: far(gr[3], 0.5), { x in hz - 2 - Int(2 * sin(Double(x) * 0.09)) }) { _, _ in far(gr[1], 0.55) }
-        for k in 0..<7 { p.tree(Double(k * 13 + 4), Double(hz + 4), 3.6, farRamp(lv, 0.3)) }
-        p.ridge(52, { _ in hz + 12 }) { x, y in (x / 2 + y) % 8 == 0 ? gr[2] : gr[1] }
+        for k in 0..<9 { p.tree(Double(k * 12 + 4), Double(hz + 4), 3.6, farRamp(lv, 0.3)) }
+        p.ridge(H, { _ in hz + 10 }) { x, y in (x / 2 + y) % 8 == 0 ? gr[2] : gr[1] }
         let red = [rgb(96, 30, 26), rgb(168, 52, 40), rgb(214, 80, 58), rgb(238, 120, 88)], blue = [rgb(28, 46, 96), rgb(54, 88, 170), rgb(80, 122, 214), rgb(120, 164, 238)]
-        let panes = p.house(6, 38, 28, 26, red, snow: winter) + p.house(50, 38, 28, 26, blue, snow: winter)
+        let panes = p.house(6, walk - 5, 28, 26, red, snow: winter) + p.house(70, walk - 5, 28, 26, blue, snow: winter)
         if tb == 3 || tb == 2 { lights += panes.map { ($0.0, $0.1, $0.1 % 2 == 0 ? rgb(255, 230, 130) : rgb(255, 208, 96)) } }
-        let pave = [rgb(150, 140, 128), rgb(206, 198, 182), rgb(226, 220, 206)].map { winter ? lerpRGB($0, snowShade, 0.6) : $0 }
-        for y in 43..<52 { for x in 0..<84 { p.set(x, y, y == 43 ? pave[0] : (x + (y / 3) * 5) % 10 == 0 || y % 3 == 1 ? pave[1] : pave[2]) } }   // a paved street
-        for x in stride(from: 1, to: 84, by: 4) where !(15...22).contains(x) && !(59...66).contains(x) {           // a white picket fence, open at the doors
-            for y in 37..<42 { p.set(x, y, rgb(250, 248, 240)); p.set(x + 1, y, rgb(214, 206, 196)) }; p.set(x, 36, rgb(120, 110, 104)); p.set(x + 1, 36, rgb(120, 110, 104))
-            p.set(x + 2, 38, rgb(236, 230, 220)); p.set(x + 3, 38, rgb(236, 230, 220)); p.set(x + 2, 40, rgb(214, 206, 196)); p.set(x + 3, 40, rgb(214, 206, 196)) }
-        if s == .spring || s == .summer { flowers(35, 37, 8, seed: 5) }
-        for y in 26..<43 { p.set(41, y, rgb(70, 74, 86)); p.set(42, y, rgb(120, 126, 140)) }                               // a street lamp
-        p.fill(39, 23, 6, 3, rgb(70, 74, 86)); p.fill(40, 24, 4, 1, rgb(252, 244, 200))
-        if tb == 3 { lights += [(40, 24, rgb(255, 250, 210)), (41, 24, rgb(255, 250, 210)), (42, 24, rgb(255, 250, 210)), (43, 24, rgb(255, 250, 210))] }
+        p.tree(44, Double(walk - 5), 5.5, lv)
+        if s == .spring || s == .summer { flowers(walk - 9, walk - 7, 10, seed: 5) }
+        for x in stride(from: 1, to: W, by: 4) where !(15...23).contains(x) && !(79...87).contains(x) {           // a white picket fence, open at the doors
+            for y in walk - 7..<walk - 2 { p.set(x, y, rgb(250, 248, 240)); p.set(x + 1, y, rgb(214, 206, 196)) }; p.set(x, walk - 8, rgb(120, 110, 104)); p.set(x + 1, walk - 8, rgb(120, 110, 104))
+            p.set(x + 2, walk - 6, rgb(236, 230, 220)); p.set(x + 3, walk - 6, rgb(236, 230, 220)); p.set(x + 2, walk - 4, rgb(214, 206, 196)); p.set(x + 3, walk - 4, rgb(214, 206, 196)) }
+        for y in walk - 22..<walk - 1 { p.set(57, y, rgb(70, 74, 86)); p.set(58, y, rgb(120, 126, 140)) }                   // a street lamp
+        p.fill(55, walk - 25, 6, 3, rgb(70, 74, 86)); p.fill(56, walk - 24, 4, 1, rgb(252, 244, 200))
+        if tb == 3 { lights += (56..<60).map { ($0, walk - 24, rgb(255, 250, 210)) } }
+        let pave = snowy([rgb(150, 140, 128), rgb(206, 198, 182), rgb(226, 220, 206), rgb(240, 236, 226)], 0.6)
+        for y in walk - 1..<H { for x in 0..<W {                                                          // the kerb, then a paved street
+            p.set(x, y, y == walk - 1 ? pave[0] : y == walk ? pave[3] : y == walk + 1 ? pave[0] : (x + ((y - walk - 2) / 4) * 6) % 12 == 0 || (y - walk - 2) % 4 == 3 ? pave[1] : pave[2]) } }
     case .cave:
         let wall = [rgb(40, 30, 30), rgb(78, 58, 50), rgb(108, 82, 66), rgb(138, 108, 84), rgb(166, 134, 104)]
-        p.ridge(52, { _ in 0 }) { _, _ in wall[1] }
-        for r in 0..<5 { for c in 0..<8 {                                                                 // the walls: rows of boulders, lit from the top left
+        p.ridge(H, { _ in 0 }) { _, _ in wall[1] }
+        for r in 0..<6 { for c in 0..<10 {                                                                // the walls: rows of boulders, lit from the top left
             let x = Double(c * 12 + (r % 2) * 6 + hashXY(c, r, 15) % 4), y = Double(r * 9 + 3 + hashXY(c, r, 16) % 3), s = 6 + Double(hashXY(c, r, 17) % 3)
             p.canopy([(x, y, s), (x + s * 0.7, y + 1.5, s * 0.75)], wall)
         } }
-        p.oval(42, 30, 17, 20) { _, _, d in d > 0.86 ? wall[1] : lerpRGB(rgb(20, 14, 18), wall[0], d * d) }                   // the passage on into the dark
+        p.oval(52, 34, 19, 22) { _, _, d in d > 0.86 ? wall[1] : lerpRGB(rgb(20, 14, 18), wall[0], d * d) }                   // the passage on into the dark
         let floor = [rgb(96, 72, 56), rgb(142, 110, 82), rgb(170, 138, 104), rgb(194, 164, 126)]
-        p.ridge(52, rim: floor[3], { x in 36 + Int(2 * cos(Double(x - 42) * 0.07)) }) { x, y in hashXY(x, y, 14) % 8 == 0 ? floor[1] : (x + y) % 9 == 0 ? floor[3] : floor[2] }
-        for (x, len) in [(6, 12), (15, 7), (27, 5), (58, 6), (69, 11), (78, 7)] {                                                // stalactites
+        p.ridge(H, rim: floor[3], { x in 42 + Int(2 * cos(Double(x - 52) * 0.06)) }) { x, y in hashXY(x, y, 14) % 8 == 0 ? floor[1] : (x + y) % 9 == 0 ? floor[3] : floor[2] }
+        for (x, len) in [(6, 12), (17, 7), (31, 5), (73, 6), (86, 12), (97, 7)] {                                                // stalactites
             var st = Set<Int>()
             for y in 0..<len { let half = Int(Double(len - y) / Double(len) * 3.2); for dx in -half...half { p.set(x + dx, y, dx < 0 ? wall[3] : dx == 0 ? wall[2] : wall[1]); st.insert(pk(x + dx, y)) } }
             p.outline(st, wall[0])
         }
-        for (x, y, r) in [(20.0, 46.0, 4.0), (64, 44, 5), (34, 50, 2.5)] { p.canopy([(x - r * 0.3, y - r * 0.5, r * 0.8), (x + r * 0.35, y - r * 0.4, r * 0.7)], [wall[0], wall[1], wall[2], wall[3], wall[4]], cut: Int(y)) }
+        walkway(walk, [floor[1], lerpRGB(floor[1], floor[2], 0.5), floor[3], rgb(214, 188, 150)], seed: 14)   // the trodden way
+        for (x, y, r) in [(16.0, Double(walk + 1), 4.0), (88, Double(walk), 5), (40, Double(walk - 3), 2.5)] { rock(x, y, r, [wall[0], wall[1], wall[2], wall[3], wall[4]]) }
         let gem = Pic(["...o...", "..olo..", ".oolmo.", "oolhlmo", "olhlmmo", "ollmmmo", ".oommo."], ["o": rgb(40, 50, 110), "m": rgb(86, 110, 210), "l": rgb(130, 170, 240), "h": rgb(220, 240, 255)])
-        p.paste(gem, 6, 38); p.paste(gem, 72, 33)
+        p.paste(gem, 5, 42); p.paste(gem, 92, 38)
     }
     p.px = p.px.map { a == .cave ? caveLight($0, tb) : graded($0, tb, grey) }
     for (x, y, c) in lights { p.set(x, y, c) }
