@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Regenerates Sources/Data/{Data,BattleData}.swift + Resources/{hgss,icons,frames}.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
+"""Regenerates Sources/Data/{Data,BattleData}.swift + Resources/{hgss,icons,frames,anims}.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
 
 Sources (cached in tools/.cache, not committed):
   - PokeAPI HGSS battle sprites, front + back, normal + shiny: same pixels, other palette, so pixel pairs give each species' normal -> shiny map.
   - PokeAPI Gen IV icons (the HGSS box / party icons, 32x32) for the 도감 and 상자 grids.
+  - PokeAPI HGSS animated fronts (APNG): each species' own entry animation.
   - Serebii's Pokéwalker course page: per course 6 Pokémon (groups A/B/C x 2) + 10 items, with min steps and chances.
   - PokeAPI CSVs: Korean names, Gen IV types (pokemon_types_past overrides the Fairy retcon).
 
@@ -11,8 +12,8 @@ The walker's own draw: for each of the 3 carried Pokémon, rarest first, "steps 
 next; the commonest is the fallback. Serebii prints the resulting band percentages; chance = the slot's % in the first band
 where it appears, which reproduces every printed row (e.g. A 70 -> B (1-.7)*75 = 22.5 -> C 7.5).
 """
-import csv, json, os, re, html, urllib.request, warnings
-from PIL import Image
+import csv, io, json, os, re, html, struct, urllib.request, warnings, zlib
+from PIL import Image, ImageChops
 warnings.filterwarnings('ignore', category=DeprecationWarning)   # Pillow 12: getdata
 
 CACHE = os.path.join(os.path.dirname(__file__), '.cache')
@@ -23,6 +24,7 @@ SRC = {
     **{f'hgss/b{s}{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/heartgold-soulsilver/back/{"shiny/" if s else ""}{i}.png'
        for i in range(1, 494) for s in ('', 's')},
     **{f'icons/{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/icons/{i}.png' for i in range(1, 494)},
+    **{f'anim/{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/heartgold-soulsilver/animated/{i}.png' for i in range(1, 494)},
     # PokeAPI's HGSS shiny 422/423 (West Sea) are copies of the normal files; Platinum's front pair is right (its back pair is a copy too)
     **{f'plat/{s}{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/platinum/{"shiny/" if s else ""}{i}.png'
        for i in (422, 423) for s in ('', 's')},
@@ -119,6 +121,91 @@ for f in FRAMES:
     for k in range(0, 6400, 2): fout.append(cell(px[k]) << 4 | cell(px[k + 1]))
 assert len(fout) == len(FRAMES) * 3245
 open('Resources/frames.bin', 'wb').write(fout)
+
+# --- anims.bin: the HGSS entry animations (PokeAPI's APNGs: what a species does as it appears in battle, on its summary, when tapped).
+# Each frame goes onto our grounded 80x80 frame: the rest frame (the last, long-held one) is matched against hgss.bin's front by opaque
+# mask, which carries the grounding shift. Every colour snaps to the species' normal slots (another rip: RGB a little off, a few more
+# colours), so shiny and the grey shades work as for the sprite; where two slots share a normal colour, the one the front has there.
+# Consecutive equal frames merge; the final hold (the APNG's loop pause) is cut to 100 ms. Per species, raw DEFLATE of:
+#   x, y (int16: the box's top-left in the 80x80 frame, may be < 0 or past 79), w (even), h, n (uint8), n x uint16 ms, n frames w x h at 4 bpp.
+# The file: 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none, the static sprite stays), then the blocks.
+def apng(path):
+    """The frames composited, [(RGBA, ms)]: Pillow clears a palette frame to index 0 (opaque black here), not to clear."""
+    b, i, ch = open(path, 'rb').read(), 8, []
+    while i < len(b):
+        n, = struct.unpack('>I', b[i:i + 4]); ch.append((b[i + 4:i + 8], b[i + 8:i + 8 + n])); i += 12 + n
+    head = {t: c for t, c in ch if t in (b'IHDR', b'PLTE', b'tRNS')}
+    def png(w, h, data):
+        c = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d))
+        return Image.open(io.BytesIO(b'\x89PNG\r\n\x1a\n' + c(b'IHDR', struct.pack('>II', w, h) + head[b'IHDR'][8:]) + b''.join(c(t, head[t]) for t in (b'PLTE', b'tRNS') if t in head)
+                                     + c(b'IDAT', data) + c(b'IEND', b''))).convert('RGBA')
+    fr = []
+    for t, c in ch:
+        if t == b'fcTL': fr.append([struct.unpack('>IIIIIHHBB', c)[1:], b''])
+        elif t == b'IDAT' and fr: fr[-1][1] += c                           # an IDAT before any fcTL is the default image, not a frame
+        elif t == b'fdAT': fr[-1][1] += c[4:]
+    canvas, out = Image.new('RGBA', struct.unpack('>II', head[b'IHDR'][:8])), []
+    for k, ((w, h, x, y, num, den, dop, bop), data) in enumerate(fr):
+        f, keep = png(w, h, data), canvas.copy()
+        if bop == 0: canvas.paste(f, (x, y))
+        else: canvas.alpha_composite(f, (x, y))
+        out.append((canvas.copy(), round(num * 1000 / (den or 100))))
+        if dop == 1 or dop == 2 and k == 0: canvas.paste((0, 0, 0, 0), (x, y, x + w, y + h))
+        elif dop == 2: canvas = keep
+    return out
+nib = lambda at, k: hout[at + k // 2] >> 4 if k % 2 == 0 else hout[at + k // 2] & 15
+blocks, poor, none = [], [], []
+for dex in range(1, N + 1):
+    o = (dex - 1) * 6490
+    try: frames = apng(get(f'anim/{dex}.png'))
+    except Exception: none.append(dex); blocks.append(b''); continue            # missing / broken: the static sprite stays
+    slot, front = [tuple(hout[o + i * 3:o + i * 3 + 3]) for i in range(15)], [nib(o + 90, k) for k in range(6400)]
+    # where the rest frame's canvas sits on our frame: the best mask overlap near where their boxes line up
+    smask = Image.frombytes('L', (80, 80), bytes(255 if i else 0 for i in front))
+    rest = frames[-1][0].getchannel('A').point(lambda a: 255 if a >= 128 else 0)
+    sb, rb, ns, nr = smask.getbbox(), rest.getbbox(), smask.histogram()[255], rest.histogram()[255]
+    def iou(x, y): i = ImageChops.multiply(smask, rest.crop((x, y, x + 80, y + 80))).histogram()[255]; return i / (ns + nr - i)
+    cand = {(ax + ex, ay + ey) for ax in {rb[0] - sb[0], rb[2] - sb[2]} for ay in {rb[1] - sb[1], rb[3] - sb[3]} for ex in range(-3, 4) for ey in range(-3, 4)}
+    score, dx, dy = max((iou(x, y), x, y) for x, y in cand)                   # canvas (x, y) = our frame's (x - dx, y - dy)
+    # colours: each of the rip's colours to the slot the front mostly has under it in the rest frame (if they line up), else to the
+    # nearest of the species' own normal colours
+    used = sorted((set(front) | {nib(o + 3290, k) for k in range(6400)}) - {0})                   # the slots the front and back use
+    of = {slot[i - 1]: [j for j in used if slot[j - 1] == slot[i - 1]] for i in used}   # a normal colour's slots
+    shared = {i for s in of.values() if len(s) > 1 for i in s}                # two slots, one normal colour (their shinies part)
+    cols = sorted({c[:3] for im, _ in frames for _, c in im.getcolors(1 << 16) if c[3] >= 128})
+    votes, rp, (W, H) = {}, frames[-1][0].load(), frames[-1][0].size
+    for k, i in enumerate(front):
+        X, Y = k % 80 + dx, k // 80 + dy
+        if i and 0 <= X < W and 0 <= Y < H and rp[X, Y][3] >= 128: v = votes.setdefault(rp[X, Y][:3], {}); v[i] = v.get(i, 0) + 1
+    to = {c: max(votes[c], key=votes[c].get) if score >= 0.9 and sum(votes.get(c, {}).values()) >= 3 else min(used, key=lambda i: dist(slot[i - 1], c)) for c in cols}
+    pal = Image.new('P', (1, 1)); pal.putpalette([v for c in cols + cols[:1] * (256 - len(cols)) for v in c])
+    lut = bytes(to[c] for c in cols + cols[:1] * (256 - len(cols)))
+    idx = [(Image.composite(Image.frombytes('L', im.size, im.convert('RGB').quantize(palette=pal, dither=Image.Dither.NONE).tobytes().translate(lut)),
+                            Image.new('L', im.size), im.getchannel('A').point(lambda a: 255 if a >= 128 else 0)), ms) for im, ms in frames]
+    bx = [m.getbbox() for m, _ in idx if m.getbbox()]
+    b0, b1, b3 = min(b[0] for b in bx), min(b[1] for b in bx), max(b[3] for b in bx)
+    w = max(b[2] for b in bx) - b0; w += w % 2; h = b3 - b1; x0, y0 = b0 - dx, b1 - dy
+    out = []
+    for m, ms in idx:
+        px = bytearray(m.crop((b0, b1, b0 + w, b3)).tobytes())
+        for k in range(len(px)) if shared else ():                              # a shared normal colour: the slot the front has there, if it's one of them
+            x, y = x0 + k % w, y0 + k // w
+            if px[k] in shared and 0 <= x < 80 and 0 <= y < 80 and front[y * 80 + x] in of[slot[px[k] - 1]]: px[k] = front[y * 80 + x]
+        if out and out[-1][0] == px: out[-1][1] += ms
+        else: out.append([px, ms])
+    out[-1][1] = min(out[-1][1], 100)
+    last = out[-1][0]; at = lambda k: last[(k // 80 - y0) * w + k % 80 - x0] if 0 <= k % 80 - x0 < w and 0 <= k // 80 - y0 < h else 0
+    same = sum(at(k) == i for k, i in enumerate(front) if i) / sum(1 for i in front if i)   # the rest frame against the front, index by index
+    if score < 0.95 or same < 0.9: poor.append((dex, round(score, 3), round(same, 3)))
+    assert w < 256 and h < 256 and len(out) < 256, (dex, w, h, len(out))
+    blk = struct.pack('<hhBBB', x0, y0, w, h, len(out)) + b''.join(struct.pack('<H', min(ms, 65535)) for _, ms in out)
+    for px, _ in out: blk += (int.from_bytes(bytes(px[0::2]).translate(bytes(i * 16 & 255 for i in range(256))), 'big') | int.from_bytes(bytes(px[1::2]), 'big')).to_bytes(len(px) // 2, 'big')
+    z = zlib.compressobj(9, zlib.DEFLATED, -15); blocks.append(z.compress(blk) + z.flush())
+off = [4 * (N + 1)]
+for b in blocks: off.append(off[-1] + len(b))
+aout = b''.join(struct.pack('<I', v) for v in off) + b''.join(blocks)
+open('Resources/anims.bin', 'wb').write(aout)
+print(f'anims.bin {len(aout) / 1e6:.2f} MB; no animation: {none}; rest frame off the front (dex, mask IoU, same index):', poor)
 
 # --- names / types
 ko, en_item, ko_item, types = {}, {}, {}, {}
