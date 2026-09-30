@@ -11,20 +11,27 @@ import WinSDK
     static let fit: CGFloat = 0.9                                                                 // ponytail: one factor for every script (Latin / digits come out ~20% narrower than SF's); P4: per script, against screenshots
     let dc: HDC = CreateCompatibleDC(nil)
     let files = ["Galmuri9.ttf", "Galmuri7.ttf"].compactMap { resource($0) }                     // kept alive while GDI may read them
-    var measuring: [FontSpec: HFONT] = [:], drawing: [FontSpec: HFONT] = [:]
+    var measuring: [FontSpec: HFONT] = [:], drawing: [FontSpec: HFONT] = [:], big: [FontSpec: HFONT] = [:]
+    struct MaskKey: Hashable { let s: String; let f: FontSpec; let scale: CGFloat; let qx: Int }
+    var masks: [MaskKey: TextMask] = [:]
     init() { for d in files { var n: DWORD = 0; _ = d.withUnsafeBytes { AddFontMemResourceEx(UnsafeMutableRawPointer(mutating: $0.baseAddress), DWORD($0.count), nil, &n) } } }
 
     /// f as a GDI font: for measuring (16x, smoothed), or for dots (its own size, unsmoothed; Galmuri at its pixel size, 9 at 10 px, 7 at 8 px).
     func gdi(_ f: FontSpec, dots: Bool) -> HFONT {
         if let h = (dots ? drawing : measuring)[f] { return h }
-        let (face, px): (String, CGFloat) = switch f.face { case .system: ("Malgun Gothic", f.size * WinFonts.fit); case .galmuri9: ("Galmuri9 Regular", 10); case .galmuri7: ("Galmuri7 Regular", 8) }
-        let weight: Int32 = switch f.weight { case .regular: 400; case .medium: 500; case .semibold: 600; case .bold: 700 }
-        let h: HFONT = face.withCString(encodedAs: UTF16.self) {
-            CreateFontW(-Int32((px * (dots ? 1 : WinFonts.over)).rounded()), 0, 0, 0, weight, 0, 0, 0, DWORD(DEFAULT_CHARSET), DWORD(OUT_TT_PRECIS), DWORD(CLIP_DEFAULT_PRECIS),
-                        DWORD(dots ? NONANTIALIASED_QUALITY : ANTIALIASED_QUALITY), DWORD(DEFAULT_PITCH), $0)
-        }
+        let h = create(f, px: dots ? nil : WinFonts.over, smooth: !dots)
         if dots { drawing[f] = h } else { measuring[f] = h }
         return h
+    }
+    /// f at `px` times its size (nil: Galmuri's own pixel size), greyscale-smoothed (never ClearType) or not.
+    func create(_ f: FontSpec, px k: CGFloat?, smooth: Bool) -> HFONT {
+        let (face, px): (String, CGFloat) = switch f.face { case .system: ("Malgun Gothic", f.size * WinFonts.fit); case .galmuri9: ("Galmuri9 Regular", 10); case .galmuri7: ("Galmuri7 Regular", 8) }
+        let weight: Int32 = switch f.weight { case .regular: 400; case .medium: 500; case .semibold: 600; case .bold: 700 }
+        let h: HFONT? = face.withCString(encodedAs: UTF16.self) {
+            CreateFontW(-Int32((px * (k ?? 1)).rounded()), 0, 0, 0, weight, 0, 0, 0, DWORD(DEFAULT_CHARSET), DWORD(OUT_TT_PRECIS), DWORD(CLIP_DEFAULT_PRECIS),
+                        DWORD(smooth ? ANTIALIASED_QUALITY : NONANTIALIASED_QUALITY), DWORD(DEFAULT_PITCH), $0)
+        }
+        return h!
     }
     /// The face GDI picked for f (a missing one falls back silently).
     func face(_ f: FontSpec) -> String {
@@ -57,6 +64,39 @@ import WinSDK
         let on = (0..<h).map { y in (0..<w).map { x in px[y * w + x] >> 8 & 255 > 127 } }
         SelectObject(dc, old); DeleteObject(bmp)
         return on
+    }
+}
+
+/// The canvas's text (Windows/SoftCanvas.swift): GDI draws s white on black at 4x its device size, greyscale-smoothed, and 4 x 4 pixels average down
+/// into one: its coverage, with the fractional sizes and the soft edges of the Mac's CoreText (GDI alone rounds sizes to whole pixels and hints hard).
+extension WinFonts: TextMasks {
+    func mask(_ s: String, _ f: FontSpec, scale: CGFloat, qx: Int) -> TextMask {
+        let key = MaskKey(s: s, f: f, scale: scale, qx: qx)
+        if let m = masks[key] { return m }
+        if masks.count > 2000 { masks.removeAll() }                                          // ponytail: drop all (the LCD's counts change), an LRU if it ever shows
+        var bf = f; bf.size *= scale                                                             // one font per device size
+        let font = big[bf] ?? { let h = create(bf, px: 4, smooth: true); big[bf] = h; return h }()
+        SelectObject(dc, font)
+        var tm = TEXTMETRICW(); _ = GetTextMetricsW(dc, &tm)
+        let u = Array(s.utf16), pad = 8; var sz = tagSIZE()
+        _ = GetTextExtentPoint32W(dc, u, Int32(u.count), &sz)
+        let oy = (pad + Int(tm.tmAscent) + 3) / 4, W = (Int(sz.cx) + 2 * pad + 3) / 4 + 1, H = oy + (Int(tm.tmDescent) + pad + 3) / 4, w4 = W * 4, h4 = H * 4
+        var bi = BITMAPINFO(); bi.bmiHeader.biSize = DWORD(MemoryLayout<BITMAPINFOHEADER>.size)
+        bi.bmiHeader.biWidth = LONG(w4); bi.bmiHeader.biHeight = -LONG(h4); bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32
+        var bits: UnsafeMutableRawPointer? = nil
+        guard let bmp = CreateDIBSection(dc, &bi, UINT(DIB_RGB_COLORS), &bits, nil, 0), let bits else { return TextMask(w: 0, h: 0, ox: 0, oy: 0, a: []) }
+        let old = SelectObject(dc, bmp)
+        SetBkMode(dc, TRANSPARENT); SetTextColor(dc, 0xFF_FFFF); SetTextAlign(dc, UINT(TA_BASELINE))
+        _ = TextOutW(dc, Int32(pad + qx), Int32(oy * 4), u, Int32(u.count)); GdiFlush()
+        let px = bits.assumingMemoryBound(to: UInt32.self)
+        var a = [UInt8](repeating: 0, count: W * H)
+        for y in 0..<H { for x in 0..<W {
+            var sum: UInt32 = 0
+            for j in 0..<4 { for i in 0..<4 { sum += px[(y * 4 + j) * w4 + x * 4 + i] >> 8 & 255 } }
+            a[y * W + x] = UInt8(sum / 16)
+        } }
+        SelectObject(dc, old); DeleteObject(bmp)
+        let m = TextMask(w: W, h: H, ox: pad / 4, oy: oy, a: a); masks[key] = m; return m
     }
 }
 #endif

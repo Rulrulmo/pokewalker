@@ -39,7 +39,13 @@ jobs:
           $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"                     # no toolchain on the PATH: the folder must start on its own
           & "$out\PokeWalker.exe"
       - run: .build\release\PokeWalker.exe --selftest
+      - name: Render (representative screens through the software canvas, to set beside the Mac's)
+        run: dist\PokeWalker\PokeWalker.exe --render renders
       - uses: actions/upload-artifact@v4
         with:
           name: PokeWalker-windows-x64
           path: dist/PokeWalker
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PokeWalker-renders
+          path: renders
