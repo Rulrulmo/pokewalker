@@ -23,7 +23,7 @@ struct Mon: Codable, Equatable {
     }
 }
 /// 이로치 odds. Gen IV is 1/8192, which at a few radar fights a day would never show up.
-let shinyOdds = 128
+let shinyOdds = 64
 
 
 // MARK: - the individual: ability slot, nature, IVs, EVs, known moves

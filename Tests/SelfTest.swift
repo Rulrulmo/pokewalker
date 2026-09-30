@@ -129,7 +129,8 @@ import AppKit
     w = Walk(); w.course = 34; var legends = 0
     for _ in 0..<5000 where w.legend(&r, chain: 0) != nil { legends += 1 }
     check((60...140).contains(legends), "legend course: ~2 % of radar finds", "\(legends)")
-    w.owned = [249, 250, 493]; check((0..<500).allSatisfy { _ in w.legend(&r, chain: 4) == nil }, "no legend once you have them all")
+    w.owned = [249, 250, 493]; var again = 0; for _ in 0..<5000 where w.legend(&r, chain: 0) != nil { again += 1 }
+    check((25...75).contains(again), "all of a course's legends caught: they still turn up, half as often (a shiny to hunt)", "\(again)")
     w = Walk(); check((0..<500).allSatisfy { _ in w.legend(&r, chain: 4) == nil }, "never on normal courses")
     w = Walk(); w.companion = Mon(dex: 290, level: 20, female: false); let nin = w.levelEvolution(at(10))!
     w.evolve(nin); check(w.companion.dex == 291 && w.caught.map(\.dex) == [292], "토중몬 -> 아이스크 leaves 껍질몬")
@@ -414,8 +415,8 @@ import AppKit
     check(Walk.chainGoesOn(0) == 0.85 && abs(Walk.chainGoesOn(3) - 0.61) < 1e-9 && Walk.chainGoesOn(10) == 0.35, "chain goes on 85 %, -8 points a link, floor 35 %")
     w = Walk(); check(w.chainReward(1) == nil && w.watts == 2 && w.chainReward(4) == nil && w.watts == 10, "each link pays 2n W")
     check(w.chainReward(5) == courses[0].items[0].item && w.items == [courses[0].items[0].item] && w.bestChain == 5, "link 5: the course's rarest item, best chain kept")
-    check(Walk.chainShinyOdds(0) == 128 && Walk.chainShinyOdds(3) == 51 && Walk.chainShinyOdds(5) == 36 && Walk.chainShinyOdds(10) == 21 && Walk.chainShinyOdds(30) == 21,
-          "이로치 1/128 -> 1/51 at 3 -> 1/36 at 5 -> 1/21 from 10 on")
+    check(Walk.chainShinyOdds(0) == 64 && Walk.chainShinyOdds(3) == 25 && Walk.chainShinyOdds(5) == 18 && Walk.chainShinyOdds(10) == 10 && Walk.chainShinyOdds(30) == 10,
+          "이로치 1/64 -> 1/25 at 3 -> 1/18 at 5 -> 1/10 from 10 on")
 
     // 7b radar chain, companion events, box
     w = Walk(); w.courseSteps = 2000

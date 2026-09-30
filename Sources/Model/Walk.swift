@@ -86,9 +86,11 @@ struct Walk: Codable, Equatable {
     }
     /// On a legend course the radar sometimes turns up one you don't have yet.
     func legend<R: RandomNumberGenerator>(_ r: inout R, chain: Int) -> Int? {
-        let left = here.legends.filter { !(owned ?? []).contains($0) }
-        guard !left.isEmpty, Double.random(in: 0..<1, using: &r) < legendOdds.base + legendOdds.perChain * Double(min(chain, 4)) else { return nil }
-        return left.randomElement(using: &r)
+        let all = here.legends, left = all.filter { !(owned ?? []).contains($0) }
+        guard !all.isEmpty else { return nil }
+        let odds = (legendOdds.base + legendOdds.perChain * Double(min(chain, 4))) * (left.isEmpty ? 0.5 : 1)   // all caught: they still turn up, half as often (a shiny, better IVs)
+        guard Double.random(in: 0..<1, using: &r) < odds else { return nil }
+        return (left.isEmpty ? all : left).randomElement(using: &r)                             // the ones not caught yet first
     }
 
     // MARK: radar chains
