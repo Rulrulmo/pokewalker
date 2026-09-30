@@ -2,14 +2,14 @@ import AppKit
 // The course picture on the home screen and the ground a fight stands on: HGSS-style scenery at sprite resolution (1 px = half a dot),
 // made once per art / season / light / overcast (fb.pic keys), with small moving bits (clouds, glints, foam, the weather) over it.
 
-/// The home screen's course picture, in dots: its framed window (the art inside is 2 px a dot); the companion's walking sprite goes along its bottom.
-let courseBox = (x: 1, y: 14, w: 52, h: 34)
+/// The home screen's course picture, in dots (the art is 2 px a dot): the photo in the notebook's polaroid; the companion's walking sprite goes along its bottom.
+let courseBox = (x: 5, y: 5, w: 52, h: 34)
 /// The game clock's light (as for evolutions): 0 day, 1 dawn 4-6, 2 dusk 17-20, 3 night 20-4.
 func lightBand(_ hour: Double) -> Int { hour < 4 || hour >= 20 ? 3 : hour < 6 ? 1 : hour >= 17 ? 2 : 0 }
 
 extension FB {
-    /// The course picture, framed like a little window: courseBox's size from (x, y) dots. Sky, clouds drifting behind the land, the land, glints, the weather, the frame.
-    mutating func course(_ a: Art, _ x: Int, _ y: Int, weather w: Weather = .sunny, t: Double = 0, hour: Double = 12, season: Season = .summer) {
+    /// The course picture, framed like a little window: courseBox's size from (x, y) dots. Sky, clouds drifting behind the land, the land, glints, the weather, the frame (framed: false = none: home's polaroid).
+    mutating func course(_ a: Art, _ x: Int, _ y: Int, weather w: Weather = .sunny, t: Double = 0, hour: Double = 12, season: Season = .summer, framed: Bool = true) {
         let W = 2 * courseBox.w, H = 2 * courseBox.h, tb = lightBand(hour), grey = w != .sunny, cx = 2 * x + W / 2, cy = 2 * y + H / 2
         let g = lcds[lcdStyle].color ? "" : "|g", key = "route|\(a)|\(season.rawValue)|\(tb)|\(grey)" + g
         if a != .cave {
@@ -26,7 +26,7 @@ extension FB {
         if a == .beach { pic("route|foam|\(tb)|\(grey)", cx, 2 * y + beachShore - 1 + Int((sin(t * 1.3) * 1.3).rounded()), behind: true) { foamPic(W - 4, tb, grey) } }   // the surf coming and going
         if tb == 3, !grey, a != .cave { for (k, (sx, sy)) in [(14, 6), (58, 4), (96, 5)].enumerated() where (Int(t * 1.5) + k) % 3 != 0 { pic("route|star", 2 * x + sx, 2 * y + sy, behind: true) { skyStarPic() } } }
         weatherFX(w, x + 1, y + 1, courseBox.w - 2, courseBox.h - 2, t, cave: a == .cave, behind: true)
-        pic("route|frame", cx, cy, behind: true) { windowPic(W, H) }
+        if framed { pic("route|frame", cx, cy, behind: true) { windowPic(W, H) } }
     }
     /// Under a fight: an HGSS battle backdrop (the course's scenery pale on the horizon, the ground, a pad under each side; indoor = the Battle Tower's hall).
     /// With the old in-LCD HUD the stage is only y 14 ..< 50 (dots), so the backdrop is too. Pads: under the feet (at[s].y + 32), centred on at[s].x + 16.
@@ -41,7 +41,7 @@ extension FB {
 /// A picture's corners cleared (the frame's are round).
 private func cornered(_ p: Pic) -> Pic { var q = p; for (x, y) in [(0, 0), (p.w - 1, 0), (0, p.h - 1), (p.w - 1, p.h - 1)] { q.set(x, y, 0) }; return q }
 /// On a grey LCD: 4 greys that land exactly on its shades, dithered only close to a step (mapped by brightness alone the scene bands and blurs).
-@MainActor private func lcdReady(_ p: Pic) -> Pic {
+@MainActor func lcdReady(_ p: Pic) -> Pic {
     guard !lcds[lcdStyle].color else { return p }
     var q = p
     for y in 0..<p.h { for x in 0..<p.w {
@@ -108,11 +108,11 @@ extension FB {
         }
     }
 }
-private func hashXY(_ x: Int, _ y: Int, _ s: Int = 0) -> Int {
+func hashXY(_ x: Int, _ y: Int, _ s: Int = 0) -> Int {
     var h = UInt32(truncatingIfNeeded: x &* 374_761_393 &+ y &* 668_265_263 &+ s &* 1_442_695_041)
     h = (h ^ h >> 13) &* 1_274_126_177; return Int((h ^ h >> 16) & 0xFFFF)
 }
-private func argb(_ a: UInt8, _ c: UInt32) -> UInt32 { UInt32(a) << 24 | c & 0xFF_FFFF }
+func argb(_ a: UInt8, _ c: UInt32) -> UInt32 { UInt32(a) << 24 | c & 0xFF_FFFF }
 /// A streak 2 x 8: a darker blue side (reads on the pale backdrops) and a light side (reads on the dark land).
 private func rainPic(_ v: Int) -> Pic {
     var p = Pic(w: 2, h: 8)
@@ -137,7 +137,7 @@ private func fogPic(_ w: Int, _ h: Int, _ cave: Bool) -> Pic {
 private let routeHorizon: [Art: Int] = [.field: 30, .forest: 18, .mountain: 38, .beach: 28, .lake: 24, .town: 30, .cave: 0]
 private let beachShore = 44   // where the sea meets the sand (the surf runs along it)
 private func bayer4(_ x: Int, _ y: Int) -> Double { ([0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5][(y & 3) * 4 + (x & 3)] + 0.5) / 16 - 0.5 }
-private func lerpRGB(_ a: UInt32, _ b: UInt32, _ k: Double) -> UInt32 {
+func lerpRGB(_ a: UInt32, _ b: UInt32, _ k: Double) -> UInt32 {
     func f(_ s: UInt32) -> UInt8 { let u = Double(a >> s & 255), v = Double(b >> s & 255); return UInt8(max(0, min(255, (u + (v - u) * k).rounded()))) }
     return rgb(f(16), f(8), f(0))
 }

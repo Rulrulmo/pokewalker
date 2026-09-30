@@ -92,7 +92,7 @@ func ringPic(_ r: Int) -> Pic {
 /// The HGSS egg's colours: 1 outline, 2 soft outline, 3...5 greens, 6...9 shell (shadow to shine).
 let eggColors: [Character: UInt32] = ["1": rgb(24, 24, 24), "2": rgb(90, 82, 65), "3": rgb(131, 180, 106), "4": rgb(156, 205, 131), "5": rgb(205, 230, 180),
                                       "6": rgb(213, 205, 164), "7": rgb(238, 230, 189), "8": rgb(255, 246, 222), "9": rgb(255, 255, 255)]
-/// The egg on the home screen's bottom row: the HGSS egg drawn small (12 x 15).
+/// The HGSS egg drawn small (12 x 15): home's egg sticker.
 let miniEgg = Pic(["....2222....", "..22999822..", ".1899999881.", ".1889998881.", "148888888881", "144888888871", "144448848871", "144488444871",
                    "184888844471", "188888854471", "178888885431", ".1668888631.", ".1666666631.", "..11666611..", "....1111...."], eggColors)
 /// The HGSS egg cut out of its frame (28 x 30), cracked in stages 0...3 (3: light through the cracks).
@@ -175,11 +175,6 @@ extension FB {
         if shade > 0 { pic("w.shade|\(shade)", x, y - 1, behind: true) { shadePic(shade) } }
         let a = angle * .pi / 180, r = Double(h) * scale / 2
         pic(key, x + Int((r * sin(a)).rounded()), y - Int((r * cos(a)).rounded()), scale: scale, angle: angle, make)
-    }
-    /// The home screen's egg (bottom row); close to hatching it rocks every so often.
-    mutating func homeEgg(close: Bool, t: Double) {
-        let tau = t.truncatingRemainder(dividingBy: 1.6)
-        egg("w.egg|mini", 91, 122, 15, angle: close && tau < 0.5 ? 16 * sin(tau / 0.25 * 2 * .pi) * (1 - tau / 0.5) : 0) { miniEgg }
     }
     /// The card's egg page: the HGSS egg, big; close to hatching it rocks gently now and then.
     mutating func cardEgg(close: Bool, t: Double) {
@@ -279,7 +274,7 @@ extension FB {
         let u = Double(f % 200) / 30, t = u + (f < 200 ? 0 : 3600.3)
         var h = FB(); h.hatchFX(egg, u, bob: 0); var e = FB(); e.evolveFX(a, b, u, bob: 0)
         var r = FB(); r.radarFX(feet: (96, 90), live: u > 1.5 ? u - 1.5 : nil, u: u)
-        var d = FB(); d.homeEgg(close: true, t: t); d.cardEgg(close: true, t: t)
+        var d = FB(); d.cardEgg(close: true, t: t)
         for p in h.pics + e.pics + r.pics + d.pics { if f < 200 { keys.insert(p.key) } else { later.insert(p.key) } }
         for p in h.pics + e.pics {                                                                  // the lowest opaque row of each picture, on screen
             guard let q = picStore[p.key] else { continue }

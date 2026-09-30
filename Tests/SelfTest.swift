@@ -484,7 +484,7 @@ import AppKit
     sv.lastStep = .distantPast; let x0 = sv.strollX; sv.strollAt = Date().addingTimeInterval(-0.2); sv.stroll(Date())
     let standKey = sv.compose(Date()).pics.first { $0.key.hasPrefix("walk|") }?.key
     check(walkSprite(25)?.size == 32 && turned && walkKey?.hasPrefix("walk|25|0|") == true && standKey?.hasPrefix("walk|25|2|") == true && sv.strollX == x0,
-          "home: the HGSS walking sprite goes along the course picture while steps come in, turns at the end, faces us when they stop")
+          "home: the HGSS walking sprite goes along the polaroid's photo while steps come in, turns at the end, faces us when they stop")
     v.press(1); check(v.state.watts == 90 && on(v) { if case .radar = $0 { return true }; return false }, "radar costs 10W")
     v.screen = .radar(bush: 2, cursor: 0, since: Date().addingTimeInterval(-2), chain: 0)
     v.press(2); v.press(2); v.press(1)
@@ -784,7 +784,7 @@ import AppKit
     pt.screen = .home; pt.statusOpen = false; pt.keyDown(with: tab)
     check(tabbed && pt.statusOpen, "Tab: a grid's next tab; on home, the status sheet")
     let stm = pv.statusModel(); check(stm.level == "Lv.5" && stm.numbers.count == 3 && stm.rows.count == 3 && stm.exp >= 0 && stm.exp <= 1, "the status sheet: level, EXP to next, today / W / total, egg / tower / dex")
-    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks() { check(ok, name) }   // the drawing files' own checks
+    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks() + notebookChecks() { check(ok, name) }   // the drawing files' own checks
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0
 }

@@ -179,6 +179,7 @@ extension WalkerView {
         if let sm = m.items.last?.submenu { sm.autoenablesItems = false; for i in sm.items { i.isEnabled = sizeFits(CGFloat(i.tag)) } }   // a size whose tallest page won't fit this screen
         sub("기기", shells.enumerated().map { ($1.dex > dexCount ? "\($1.name) — 도감 \($1.dex)" : !shellOpen($1) ? "\($1.name) — \($1.bp)BP" : $1.name, $0) }, theme, #selector(setTheme(_:)))
         sub("화면", lcds.enumerated().map { ($1.name, $0) }, lcdStyle, #selector(setLCD(_:)))
+        sub("수첩 배경", paperNames.enumerated().map { ($1, $0) }, paperStyle, #selector(setPaper(_:)))
         sub("화면 글씨", [("매끈하게", 1), ("도트", 0)], smoothText ? 1 : 0, #selector(setTextStyle(_:)))
         m.addItem(.separator())
         let nh = m.addItem(withTitle: "알림", action: nil, keyEquivalent: ""), nm = NSMenu()
@@ -273,4 +274,5 @@ extension WalkerView {
     @objc func setTheme(_ item: NSMenuItem) { guard shellOpen(shells[item.tag]) else { return }; theme = item.tag; UserDefaults.standard.set(theme, forKey: "shell"); needsDisplay = true }
     @objc func setTextStyle(_ item: NSMenuItem) { smoothText = item.tag == 1; UserDefaults.standard.set(smoothText, forKey: "smoothText"); shown = nil; needsDisplay = true }
     @objc func setLCD(_ item: NSMenuItem) { shown = nil; lcdStyle = item.tag; UserDefaults.standard.set(lcdStyle, forKey: "lcd"); needsDisplay = true }
+    @objc func setPaper(_ item: NSMenuItem) { shown = nil; paperStyle = item.tag; UserDefaults.standard.set(paperStyle, forKey: "paper"); needsDisplay = true }
 }
