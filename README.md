@@ -155,7 +155,7 @@ Mac엔 만보기가 없으니 **키 누름·마우스 클릭 1회 = 1걸음**. �
 | `Sources/App/main.swift` | 실행: `--selftest` 또는 메뉴 막대 앱 |
 | `Sources/Data/` | **생성됨** (`tools/gen.py`) — `Data.swift` 493종 이름·타입·성장 곡선·4세대 종족값·레벨업 기술·상성·진화·35코스·알 풀 / `BattleData.swift` 기술 467개·특성·성격·노력치·몸무게·성비 |
 | `Resources/` | **생성됨** `hgss.bin`(493종 × 앞·뒤 80×80, 4bpp + 종별 일반/이로치 15색 팔레트) · `icons.bin`(4세대 박스 아이콘 32×32) · `frames.bin`(HGSS 알 + 4세대 트레이너 15명, Showdown) · `anims.bin`(493종 HGSS 등장 애니메이션, 종별 raw deflate) / `fonts/` Galmuri9·Galmuri7 (이민서, SIL OFL 1.1 — `fonts/OFL.md`) |
-| `Tests/SelfTest.swift` | `PokeWalker --selftest` (311 checks) — 규칙·배틀(데미지 공식은 Bulbapedia 예시 수치로, 특성·기술 20여 개는 한 기술씩) · 데이터 · 무작위 배틀 300판 + 실제 뷰를 버튼·패널 클릭·키로 조작하는 흐름 검사(세이브는 건드리지 않음). 빌드할 때마다 돌고, 실패하면 빌드 실패 |
+| `Tests/SelfTest.swift` | `PokeWalker --selftest` (334 checks, 그림 파일마다 자체 검사 포함) — 규칙·배틀(데미지 공식은 Bulbapedia 예시 수치로, 특성·기술 20여 개는 한 기술씩) · 데이터 · 무작위 배틀 300판 + 실제 뷰를 버튼·패널 클릭·키로 조작하는 흐름 검사(세이브는 건드리지 않음). 빌드할 때마다 돌고, 실패하면 빌드 실패 |
 | `tools/gen.py` | `Sources/Data/`·`Resources/`를 원본(PokeAPI HGSS 스프라이트·CSV, Serebii)에서 재생성. Pillow 필요 |
 
 세이브: `~/Library/Application Support/PokeWalker/state.json` (+ `.bak`, 손상 시 `state.corrupt-*.json`). 창 위치·크기·색은 `defaults dev.khmin.pokewalker`.
