@@ -45,7 +45,9 @@ struct MonModel: Equatable {
     var nature, natureNote, ability, abilityNote: String; var up, down: Int?   // stat indices the nature raises / lowers (nil = neutral)
     var ivs, evs: [Int]; var hyper: [Int]; var v, evTotal: Int
     var confirm: Bool                                                  // 놓아줄까? is up: the buttons become 아니오 / 예
-    var place = 2                                                      // 0 the companion (nothing to do), 1 the walker's (함께 걷기 / 상자로 보내기), 2 the box's (함께 걷기 / 놓아주기)
+    var place = 2                                                      // 0 the companion (nothing to do), 1 the walker's (함께 걷기 / 상자로 보내기), 2 the box's (함께 걷기 / 워커로 / 놓아주기)
+    var fetch = false                                                  // the box's: 워커로 is open (the walker has room)
+    var evos: [String] = [], evoAction: String? = nil                  // how it evolves (a line a target); the companion's: what evolves it right now
     var sel: Int?                                                      // the LCD's pick (함께 / 놓아주기 / 닫기, or 아니오 / 예): what ● does is red
 }
 /// 포켓몬 레이더: the four bushes as on the LCD, the one rustling marked.
@@ -62,10 +64,15 @@ struct TowerModel: Equatable {
     struct Member: Equatable { var dex: Int; var name: String; var level: Int }
     var run: Bool; var streak, best, bp, fee: Int; var party: [Member]
 }
+/// 도구: everything carried — the walker's and the bag's, a row a kind; the picked one's use (nil = nothing to press) and a line about it.
+struct ItemsModel: Equatable {
+    struct Row: Equatable { var name: String; var count, onWalker: Int }
+    var rows: [Row]; var sel: Int; var walker, bag: Int; var action: String?; var hint: String
+}
 /// Whatever the pane shows; all nil = no page (the card's idle height).
 struct PaneContent: Equatable {
     var battle: SideModel?; var dex: DexModel?; var shop: ShopModel?; var menu: MenuModel?; var status: StatusModel?; var grid: GridModel?; var mon: MonModel?
-    var radar: RadarModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var items: [String]?
+    var radar: RadarModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var items: ItemsModel?
 }
 
 // MARK: - the look (card points x K)
@@ -171,7 +178,7 @@ final class SideView: NSView {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
     static let tallest: CGFloat = 472                                                              // 포켓몬's grid: the size menu keeps it on the screen
     static func height(_ c: PaneContent) -> CGFloat {
-        c.battle != nil ? 311 : c.grid?.items != nil ? 472 : c.grid != nil || c.mon != nil ? 422 : c.items != nil ? 330 : c.dex != nil ? 390 : c.shop != nil ? 406 : c.menu != nil ? 344
+        c.battle != nil ? 311 : c.grid?.items != nil ? 472 : c.grid != nil ? 422 : c.mon != nil ? 454 : c.items != nil ? 446 : c.dex != nil ? 390 : c.shop != nil ? 406 : c.menu != nil ? 344
             : c.radar != nil ? 327 : c.card != nil ? 230 : c.learn != nil ? 365 : c.tower != nil ? 353 : c.status != nil ? 354 : Layout.idle
     }
 
@@ -342,11 +349,20 @@ final class SideView: NSView {
 
     // MARK: 상자: one Pokémon — nature, ability, IVs and EVs, and 함께 / 놓아주기
     func drawMon(_ m: MonModel) {
-        let yy = monBody(m, 198)
-        // 함께 걷기 / 상자로 보내기 (the walker's) or 놓아주기 (the box's; 놓아줄까? → 아니오 / 예); the companion: nothing to do
-        let cw = (X1 - X0 - 5) / 2
-        if m.place == 0 { let rc = r(X0, yy, X1 - X0, 30); rounded(rc, 10 * K).fill(with: Ink.tile); say("함께 걷는 중", rc.midX, rc.midY, font(11, .bold), Ink.sub, 0.5); return }
-        let opts: [(String, Int)] = m.confirm ? [("아니오", 4402), ("예 · 놓아주기", 4403)] : [("함께 걷기", 4400), m.place == 1 ? ("상자로 보내기", 4404) : ("놓아주기", 4401)]
+        var yy = monBody(m, 198) + 4
+        Ink.line.setFill(); NSRect(x: x(X0 + 2), y: y(yy - 2), width: x(X1 - X0 - 4), height: max(0.5, 0.5 * K)).fill()   // 진화: how it evolves, a line a target
+        say("진화", x(X0 + 2), y(yy + 6), font(9, .medium), Ink.sub)
+        for (j, l) in m.evos.prefix(2).enumerated() { say(l, x(X0 + 34), y(yy + 6 + CGFloat(j) * 13), font(9, j == 0 ? .medium : .regular), l.hasPrefix("→") ? Ink.ink : Ink.sub, maxW: x(X1 - X0 - 36)) }
+        yy += 32
+        if m.place == 0 {                                                                          // the companion: what evolves it now, if anything; else nothing to do
+            let rc = r(X0, yy, X1 - X0, 30); rounded(rc, 10 * K).fill(with: m.evoAction == nil ? Ink.tile : Ink.red)
+            say(m.evoAction ?? "함께 걷는 중", rc.midX, rc.midY, font(11, .bold), m.evoAction == nil ? Ink.sub : .white, 0.5); if m.evoAction != nil { hits.append((rc, 4406)) }
+            return
+        }
+        // 함께 걷기 / 상자로 보내기 (the walker's) or 워커로 / 놓아주기 (the box's; 놓아줄까? → 아니오 / 예)
+        let opts: [(String, Int)] = m.confirm ? [("아니오", 4402), ("예 · 놓아주기", 4403)]
+            : m.place == 1 ? [("함께 걷기", 4400), ("상자로 보내기", 4404)] : [("함께 걷기", 4400)] + (m.fetch ? [("워커로", 4407)] : []) + [("놓아주기", 4401)]
+        let cw = (X1 - X0 - 5 * CGFloat(opts.count - 1)) / CGFloat(opts.count)
         for (i, (t, code)) in opts.enumerated() {
             let rc = r(X0 + CGFloat(i) * (cw + 5), yy, cw, 30), strong = m.sel == i                   // red = what ● does now (the LCD's pick); none while nothing is picked
             rounded(rc, 10 * K).fill(with: strong ? Ink.red : Ink.tile); say(t, rc.midX, rc.midY, font(11, .bold), strong ? .white : Ink.ink, 0.5); hits.append((rc, code))
@@ -547,14 +563,22 @@ extension SideView {
         rounded(go, 12 * K).fill(with: Ink.red); say(m.run ? "다음 상대" : "도전 · \(m.fee)W", go.midX, go.midY, font(13, .bold), .white, 0.5); hits.append((go, 5400))
         rounded(out, 12 * K).fill(with: Ink.tile); say("나가기", out.midX, out.midY, font(11, .bold), Ink.ink, 0.5); hits.append((out, 5401))
     }
-    /// The walker's 도구 (포켓몬's last chip).
-    func drawItems(_ items: [String]) {
-        say("워커의 도구 · 커넥트하면 가방으로 가요", x(X0 + 2), y(206), font(9, .medium), Ink.sub)
-        if items.isEmpty { say("없음", x(Layout.w / 2), y(250), font(10, .medium), Ink.sub, 0.5) }
-        for (i, it) in items.enumerated() {
-            let rc = r(X0, 216 + CGFloat(i) * 29, X1 - X0, 26); rounded(rc, 9 * K).fill(with: Ink.tile)
-            pixelArt(gem, gemPal, NSPoint(x: rc.minX + x(14), y: rc.midY), 2.5 * K); say(it, rc.minX + x(28), rc.midY, font(10, .bold), Ink.ink)
+    /// 도구: everything carried, a row a kind (six in view, the pick kept there; a click picks it), then what the pick does and its button.
+    func drawItems(_ m: ItemsModel) {
+        say("워커 \(m.walker)개 · 가방 \(m.bag)개", x(X0 + 2), y(206), font(9, .medium), Ink.sub)
+        if m.rows.isEmpty { say("없음", x(Layout.w / 2), y(260), font(10, .medium), Ink.sub, 0.5); return }
+        let top = max(0, min(m.sel - 2, m.rows.count - 6))
+        for (i, row) in m.rows.enumerated() where i >= top && i < top + 6 {
+            let rc = r(X0, 216 + CGFloat(i - top) * 29, X1 - X0, 26), on = i == m.sel, path = rounded(rc, 9 * K)
+            path.fill(with: on ? Ink.redTint : Ink.tile); if on { Ink.red.setStroke(); path.lineWidth = 1.5 * K; path.stroke() }
+            pixelArt(gem, gemPal, NSPoint(x: rc.minX + x(14), y: rc.midY), 2.5 * K); say(row.name, rc.minX + x(28), rc.midY, font(10, .bold), Ink.ink, maxW: rc.width - x(90))
+            var xr = rc.maxX - x(9) - say("×\(row.count)", rc.maxX - x(9), rc.midY, font(10, .semibold), Ink.ink, 1)
+            if row.onWalker > 0 { let t = "워커", f = font(7.5, .bold), w = width(t, f) + x(8); xr -= x(5); pill(NSRect(x: xr - w, y: rc.midY - x(5.5), width: w, height: x(11)), Ink.tint(Ink.blue, 0.16)); say(t, xr - w / 2, rc.midY, f, Ink.blue, 0.5) }
+            hits.append((rc, 5600 + i))
         }
+        say(m.hint, x(X0 + 2), y(398), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
+        let rc = r(X0, 408, X1 - X0, 30); rounded(rc, 10 * K).fill(with: m.action == nil ? Ink.tile : Ink.red)
+        say(m.action ?? "여기선 쓸 수 없어요", rc.midX, rc.midY, font(11, .bold), m.action == nil ? Ink.sub : .white, 0.5); if m.action != nil { hits.append((rc, 5700)) }
     }
 }
 extension NSBezierPath { func fill(with c: NSColor) { c.setFill(); fill() } }

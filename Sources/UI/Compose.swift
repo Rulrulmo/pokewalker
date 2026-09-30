@@ -153,10 +153,14 @@ extension WalkerView {
                 fb.text("\(top)", 94, 23, 1, right: true, small: true)
                 fb.text("합계 \(state.total)" + (state.bestChain.map { " · 최고 연쇄 \($0)" } ?? ""), 2, 14, 2, small: true)
             }
-        case .items:                                                                                 // the walker's 도구 (포켓몬's last chip)
+        case .items(let sel):                                                                        // 도구: the pick (the pane has the list and its use)
             header("도구")
-            if state.items.isEmpty { fb.text("없음", 0, 30, 2, center: true) }
-            for (k, it) in state.items.enumerated() { fb.draw(gem, 4, 18 + 12 * k, gemPal); fb.text(it, 12, 14 + 12 * k) }
+            let rows = state.inventory
+            guard let n = rows[safe: min(sel, rows.count - 1)] else { fb.text("없음", 0, 30, 2, center: true); break }
+            fb.draw(gem, 4, 20, gemPal); fb.text(n, 12, 16)
+            fb.text("×\(state.count(n))" + (state.items.contains(n) ? " · 워커 \(state.items.filter { $0 == n }.count)" : ""), 12, 28, 2, small: true)
+            fb.text(ItemKind.of(n).summary, 2, 40, 2, small: true)
+            fb.text("\(min(sel, rows.count - 1) + 1)/\(rows.count)", 94, 52, 1, right: true, small: true)
         case .dex(let d, let f, _):
             let list = dexList(f), owned = (state.owned ?? []).contains(d)
             guard list.contains(d) else { fb.text("도감", 2, 0); fb.fill(0, 12, 96, 1, 2); fb.text(f == 2 ? "모두 잡았다!" : "없음", 0, 30, 2, center: true); break }   // an empty tab
@@ -183,7 +187,7 @@ extension WalkerView {
             if genderRate[m.dex] >= 0 { fb.text(m.female ? "암컷" : "수컷", 94, 26, 2, right: true, small: true) }; vLabel(m, 36)   // genderless: nothing (the games show no symbol)
             if let a = act {
                 fb.fill(0, 50, 96, 14, 0); fb.fill(0, 50, 96, 1, 2)
-                let opts = confirm ? ["놓아줄까?", "아니오", "예"] : ["함께", i < -1 ? "상자로" : "놓아주기", "닫기"]
+                let opts = confirm ? ["놓아줄까?", "아니오", "예"] : boxActs(i)
                 var x = 1
                 for (k, o) in opts.enumerated() {
                     let w = fb.text(o, x + 1, 52, 3, small: true) + 2
@@ -257,7 +261,7 @@ extension WalkerView {
             return GridModel(tabs: ["번호순", "레벨순", "V순", "최근"], tab: boxSort,
                              cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3) },
                              first: p.first, sel: at.map { $0 - p.first }, page: p.page, pages: p.pages, empty: "상자가 비어 있다", bob: bob,
-                             party: party.map { .init(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level) }, partySel: i < 0 ? -1 - i : nil, items: state.items.count)
+                             party: party.map { .init(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level) }, partySel: i < 0 ? -1 - i : nil, items: state.items.count + state.bag.count)
         default: return nil
         }
     }
@@ -282,10 +286,12 @@ extension WalkerView {
             guard let j = boxOrder[safe: code - 10000] else { return }
             screen = .box(j, act: nil, confirm: false, detail: true)
         case (.box, 4500...4503): guard state.mon(-1 - (code - 4500)) != nil else { return }; screen = .box(-1 - (code - 4500), act: nil, confirm: false, detail: true)   // the row above: -1 the companion, then the walker's
-        case (.box, 4510): screen = .items
+        case (.box, 4510): screen = .items(0)
         case (.box(let i, _, _, _), 4100...4103): boxSort = code - 4100; screen = .box(i, act: nil, confirm: false)
         case (.box(let i, _, _, true), 4400) where i != -1: screen = .box(i, act: 0, confirm: false, detail: true); press(1)      // = ● 함께
         case (.box(let i, _, _, true), 4404) where i < -1: screen = .box(i, act: 1, confirm: false, detail: true); press(1)       // the walker's: 상자로 보내기
+        case (.box(let i, _, _, true), 4407) where i >= 0: guard let a = boxActs(i).firstIndex(of: "워커로") else { return }; screen = .box(i, act: a, confirm: false, detail: true); press(1)   // the box's: back onto the walker
+        case (.box(-1, _, _, true), 4406): if let e = companionEvolution() { startEvolving(e, Date()) }                              // the companion: a stone / 통신 진화 now
         case (.box(let i, _, _, true), 4401) where i >= 0: screen = .box(i, act: 0, confirm: true, detail: true)     // 놓아줄까? 아니오 first
         case (.box(let i, _, _, true), 4402): screen = .box(i, act: nil, confirm: false, detail: true)
         case (.box(let i, _, true, true), 4403): screen = .box(i, act: 1, confirm: true, detail: true); press(1)
@@ -299,7 +305,7 @@ extension WalkerView {
         if let d = dexModel() { return PaneContent(dex: d) }
         if let g = gridModel(now) { return PaneContent(grid: g) }
         if let m = monModel() { return PaneContent(mon: m) }
-        if case .items = { () -> Screen in if case .say(_, let n, _) = screen { return n }; return screen }() { return PaneContent(items: state.items) }
+        if case .items(let sel) = { () -> Screen in if case .say(_, let n, _) = screen { return n }; return screen }() { return PaneContent(items: itemsModel(sel)) }
         if let s = shopModel() { return PaneContent(shop: s) }
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }                       // a menu page's message (W가 부족하다, 커넥트): the list stays
         if case .menu(let i) = sc {
@@ -331,6 +337,8 @@ extension WalkerView {
         case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
         case (.card, 5200...5202): screen = .card(code - 5200)
         case (.learn, 5300...5304): screen = .learn(sel: code - 5300); press(1)
+        case (.items, 5600..<5700): screen = .items(code - 5600)
+        case (.items, 5700): press(1)
         case (.tower, 5400): press(1)
         case (.tower, 5401): press(3)
         default: return
@@ -340,7 +348,46 @@ extension WalkerView {
     func monModel() -> MonModel? {
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }
         guard case .box(let i, let act, let confirm, true) = sc, let m = state.mon(i) else { return nil }
-        var p = monPage(m, act: act, confirm: confirm); p.place = i == -1 ? 0 : i < -1 ? 1 : 2; return p
+        var p = monPage(m, act: act, confirm: confirm); p.place = i == -1 ? 0 : i < -1 ? 1 : 2
+        p.fetch = i >= 0 && state.caught.count < 3; p.sel = act.flatMap { $0 < boxActs(i).count - 1 ? $0 : nil }   // the LCD's pick = a button (닫기 has none)
+        let mine = evolutions.filter { $0.from == m.dex }, targets = mine.map(\.to).reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } }
+        p.evos = targets.map { to in "→ " + monNames[to] + " · " + mine.filter { $0.to == to }.map { e in evoText(e).replacingOccurrences(of: "커넥트(통신)", with: "커넥트").replacingOccurrences(of: " 소지", with: "") + (e.item.map { state.count($0) > 0 ? " (있음)" : " (없음)" } ?? "") }.joined(separator: " / ") }
+        if p.evos.count > 2 { p.evos = [p.evos[0], "외 \(p.evos.count - 1)갈래"] }
+        if p.evos.isEmpty { p.evos = ["더 진화하지 않아요"] }
+        else if i != -1, mine.contains(where: { $0.way == .trade || $0.way == .item }) { p.evos.append("통신·도구 진화는 동료일 때 (함께 걷기 후)") }
+        if i == -1, let e = companionEvolution() { p.evoAction = (e.way == .trade ? "통신 진화" : e.item! + " 쓰기") + " → " + monNames[e.to] }
+        return p
+    }
+    /// The ● menu on a Pokémon's page (the LCD's row; the pane's buttons are the same, less 닫기): what it can do from where it is.
+    func boxActs(_ i: Int) -> [String] { i < -1 ? ["함께", "상자로", "닫기"] : i >= 0 ? ["함께"] + (state.caught.count < 3 ? ["워커로"] : []) + ["놓아주기", "닫기"] : [] }
+    /// What would evolve the companion right now from its page: a stone in the bag, else a link trade (Connect's own evolution, without the sending).
+    func companionEvolution() -> Evo? { state.stoneEvolutions(Date()).first ?? state.tradeEvolution(Date()) }
+    /// 도구: every kind carried, the pick's use and a line about it.
+    func itemsModel(_ sel: Int) -> ItemsModel {
+        let names = state.inventory, s = min(sel, max(0, names.count - 1)), me = monNames[state.companion.dex]
+        let rows = names.map { n in ItemsModel.Row(name: n, count: state.count(n), onWalker: state.items.filter { $0 == n }.count) }
+        guard let n = names[safe: s] else { return ItemsModel(rows: [], sel: 0, walker: 0, bag: 0, action: nil, hint: "") }
+        let (action, note) = itemUse(n)
+        return ItemsModel(rows: rows, sel: s, walker: state.items.count, bag: state.bag.count, action: action, hint: ItemKind.of(n).summary + (note.isEmpty ? "" : " · " + note).replacingOccurrences(of: "{동료}", with: me))
+    }
+    /// What 도구's button does for item n (nil = nothing here), and a note ({동료} = the companion's name).
+    func itemUse(_ n: String) -> (String?, String) {
+        let c = state.companion
+        switch ItemKind.of(n) {
+        case .candy: return c.level < 100 ? ("{동료}에게 먹이기".replacingOccurrences(of: "{동료}", with: monNames[c.dex]), "지금 Lv.\(c.level)") : (nil, "이미 Lv.100")
+        case .vitamin(let k, _): return ("{동료}에게 먹이기".replacingOccurrences(of: "{동료}", with: monNames[c.dex]), "지금 \(c.evs?[k] ?? 0) · 합 \((c.evs ?? []).reduce(0, +))/510")
+        case .evReset: return ("{동료}에게 먹이기".replacingOccurrences(of: "{동료}", with: monNames[c.dex]), "지금 합 \((c.evs ?? []).reduce(0, +))")
+        case .berry: return ("{동료}에게 먹이기".replacingOccurrences(of: "{동료}", with: monNames[c.dex]), "")
+        case .sell(let p): return ("전부 팔기 +\((p * state.count(n)).formatted())W", "")
+        case .evolution:
+            if let e = state.stoneEvolutions(Date()).first(where: { $0.item == n }) { return ("\(monNames[e.to])(으)로 진화", "{동료}에게 써요") }
+            let uses = evolutions.filter { $0.item == n }.prefix(2).map { monNames[$0.from] + "→" + monNames[$0.to] + ($0.way == .trade ? " (커넥트)" : "") }
+            return (nil, uses.joined(separator: ", "))
+        case .bottleCap: return (nil, "우클릭 메뉴 › 가방에서 특훈")
+        case .ball: return (nil, "배틀에서 좋은 볼부터 알아서")
+        case .revive: return (nil, "쓰러지면 알아서")
+        case .heal, .battle: return (nil, "배틀에서 도구로")
+        }
     }
     /// A Pokémon in full, for its page.
     func monPage(_ m: Mon, act: Int? = nil, confirm: Bool = false) -> MonModel {

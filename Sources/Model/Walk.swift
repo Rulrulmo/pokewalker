@@ -232,6 +232,8 @@ struct Walk: Codable, Equatable {
     mutating func connect() { box += caught; bag += items; caught = []; items = [] }
     /// One of the walker's to the box (포켓몬's 상자로 보내기).
     mutating func store(_ i: Int) { box.append(caught.remove(at: i)) }
+    /// One of the box's back onto the walker (while it holds fewer than 3).
+    mutating func fetch(_ i: Int) { guard caught.count < 3, box.indices.contains(i) else { return }; caught.append(box.remove(at: i)) }
 
     mutating func setCourse<R: RandomNumberGenerator>(_ i: Int, _ r: inout R) {
         connect(); course = i; courseSteps = 0

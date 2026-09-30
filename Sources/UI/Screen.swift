@@ -19,7 +19,7 @@ indirect enum Screen {
     case learn(sel: Int)                                               // a new move for state.learn's first: forget one of 4 (sel 0-3), or not learn it (4)
     case tower                                                         // the Battle Tower lobby
     case beats(Battle, [Beat], since: Date, from: Battle)              // one exchange playing out; `from` = HP before it
-    case card(Int), items                                              // items = the walker's 도구 (from 포켓몬's last chip)
+    case card(Int), items(Int)                                         // 도구: everything carried (the walker's + the bag), the picked row (from 포켓몬's last chip)
     case say([String], next: Screen, since: Date)                      // any button or 3 s
     case evolve(from: Mon, to: Mon, since: Date)                       // already applied to the state; this is the show
     case dex(Int, filter: Int, detail: Bool)                           // the pick's dex number; filter = the grid's tab (전체 / 잡음 / 못 잡음 / 이 코스); detail = the entry page

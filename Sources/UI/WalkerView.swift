@@ -260,7 +260,7 @@ final class WalkerView: NSView {
         let when = "\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · \((state.weather ?? .sunny).name)"
         switch sc {
         case .dex: return ("도감", "잡음 \(dexCount) · 봤음 \(seenList.count)", nil)
-        case .box, .items: return ("포켓몬", "워커 \(state.caught.count) · 상자 \(state.box.count.formatted()) · 도구 \(state.items.count)", nil)
+        case .box, .items: return ("포켓몬", "워커 \(state.caught.count) · 상자 \(state.box.count.formatted()) · 도구 \(state.items.count + state.bag.count)", nil)
         case .menu: return ("메뉴", "", nil)
         case .shop(let bp, _, _), .shopConfirm(let bp, _, _): return (bp ? "BP 교환소" : "상점", "", nil)
         case .radar: return ("포켓 레이더", state.here.name, nil)

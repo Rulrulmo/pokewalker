@@ -310,7 +310,20 @@ extension WalkerView {
         case .say(_, let next, _): screen = next
         case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
             if k == 1 { if dexList(f).contains(n) { screen = .dex(n, filter: f, detail: !detail) } } else { gridStep(k == 0 ? -1 : 1, wrap: true) }
-        case .items: break
+        case .items(let sel):                                                                     // ◀ ▶ a row, ● its use
+            let n = state.inventory.count
+            guard n > 0 else { return }
+            if k != 1 { screen = .items((min(sel, n - 1) + (k == 0 ? n - 1 : 1)) % n); return }
+            let name = state.inventory[min(sel, n - 1)], me = monNames[state.companion.dex], back = { (s: Int) in Screen.items(min(s, max(0, self.state.inventory.count - 1))) }
+            switch ItemKind.of(name) {
+            case .candy: if state.feedCandy() { levelled = true; screen = .say([me + " Lv.\(state.companion.level)!"], next: back(sel), since: now) }   // an evolution shows back home
+            case .vitamin: screen = state.feedVitamin(name).map { .say([josa(me, "은", "는") + " " + josa(name, "을", "를"), "먹었다! 노력치 \($0)"], next: back(sel), since: now) } ?? .say([josa(name, "을", "를") + " 먹어도", "효과가 없을 것 같다"], next: back(sel), since: now)
+            case .evReset: screen = .say(state.resetEVs() ? [josa(me, "은", "는") + " 순백떡을 먹었다!", "노력치가 0이 되었다"] : ["노력치가 이미", "0이다"], next: back(sel), since: now)
+            case .berry: if state.feedBerry(name) { screen = .say([josa(me, "이", "가") + " " + josa(name, "을", "를"), "맛있게 먹었다!"], next: back(sel), since: now) }
+            case .sell: let w = state.sell(name); screen = .say([name + " 판매", "+\(w)W"], next: back(sel), since: now)
+            case .evolution: if let e = state.stoneEvolutions(now).first(where: { $0.item == name }) { startEvolving(e, now) }
+            default: break
+            }
         case .box(let i, let act, let confirm, let detail):                                     // i: -1 the companion, -2-j the walker's j-th, else box[i]
             if state.mon(i) == nil { screen = .box(-1, act: nil, confirm: false) }                // gone meanwhile: back to the companion
             else if confirm {                                                                     // "놓아줄까?" 아니오 / 예
@@ -320,13 +333,16 @@ extension WalkerView {
                     screen = .say([josa(name, "은", "는") + " 풀숲으로", "돌아갔다 (+\(w)W)"], next: .box(o.isEmpty ? -1 : o[min(p, o.count - 1)], act: nil, confirm: false, detail: detail && !o.isEmpty), since: now)
                 }
                 else { screen = .box(i, act: nil, confirm: false, detail: detail) }
-            } else if let a = act {                                                              // 함께 걷기 / 놓아주기 / 닫기 (the order: the grid's tabs)
-                if k != 1 { screen = .box(i, act: (a + (k == 0 ? 2 : 1)) % 3, confirm: false, detail: detail); return }
-                switch a {
-                case 0 where i != -1: if i < -1 { state.pair(-2 - i, onWalker: true) } else { state.pair(i) }; screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: now)
-                case 1 where i < -1: let name = monNames[state.caught[-2 - i].dex]; state.store(-2 - i)   // the walker's: into the box, picked there
+            } else if let a = act {                                                              // the ● menu: boxActs (함께 / 상자로 or 워커로 · 놓아주기 / 닫기)
+                let acts = boxActs(i)
+                if k != 1 { screen = .box(i, act: (a + (k == 0 ? acts.count - 1 : 1)) % max(1, acts.count), confirm: false, detail: detail); return }
+                switch acts[safe: a] {
+                case "함께"?: if i < -1 { state.pair(-2 - i, onWalker: true) } else { state.pair(i) }; screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: now)
+                case "상자로"?: let name = monNames[state.caught[-2 - i].dex]; state.store(-2 - i)   // the walker's: into the box, picked there
                     screen = .say([josa(name, "을", "를"), "상자로 보냈다"], next: .box(state.box.count - 1, act: nil, confirm: false), since: now)
-                case 1: screen = .box(i, act: 0, confirm: true, detail: detail)
+                case "워커로"?: let name = monNames[state.box[i].dex]; state.fetch(i)                  // the box's: onto the walker, picked there
+                    screen = .say([josa(name, "을", "를"), "워커로 데려왔다"], next: .box(-1 - state.caught.count, act: nil, confirm: false), since: now)
+                case "놓아주기"?: screen = .box(i, act: 0, confirm: true, detail: detail)
                 default: screen = .box(i, act: nil, confirm: false, detail: detail)
                 }
             } else if k == 1, detail, i == -1 { screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷고 있다"], next: screen, since: now) }

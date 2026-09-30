@@ -530,7 +530,7 @@ import AppKit
     let radar = Screen.radar(bush: 1, cursor: 0, since: Date(), chain: 4)
     check({ if case .radar(_, _, _, 4) = back(radar) { return true }; return false }(), "radar: ↩ does nothing (the 10W and the chain stay)")
     check({ if case .learn(4) = back(.learn(sel: 1)) { return true }; return false }(), "learn: ↩ onto 배우지 않는다")
-    check({ if case .menu(menuAt("트레이너 카드")) = back(.card(1)) { return true }; return false }() && { if case .box(-1, nil, false, false) = back(.items) { return true }; return false }()
+    check({ if case .menu(menuAt("트레이너 카드")) = back(.card(1)) { return true }; return false }() && { if case .box(-1, nil, false, false) = back(.items(0)) { return true }; return false }()
           && { if case .menu(menuAt("도감")) = back(.dex(1, filter: 0, detail: false)) { return true }; return false }() && { if case .dex(1, 0, false) = back(.dex(1, filter: 0, detail: true)) { return true }; return false }()
           && { if case .menu(menuAt("BP 교환소")) = back(.shop(bp: true, sel: 0, qty: nil)) { return true }; return false }(), "card / dex / shop list: ↩ to their menu page; the 도구 page: back to 포켓몬")
     bk.state.box = [Mon(dex: 16, level: 5, female: false)]
@@ -550,8 +550,8 @@ import AppKit
     check(midFight && !hider.inBattle, "inBattle covers a fight's messages (so hiding to the menu bar keeps the fight), not a shop's")
     check({ if case .evolve = back(.evolve(from: Mon(dex: 1, level: 16, female: false), to: Mon(dex: 2, level: 16, female: false), since: Date())) { return true }; return false }(), "an evolution isn't cut short by ↩")
     v.state.box = [Mon(dex: 16, level: 20, female: false)]; let wBefore = v.state.watts
-    v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(1); v.press(2); v.press(1); v.press(2); v.press(1)
-    check(v.state.box.isEmpty && v.state.watts == wBefore + 10, "box: ● its page, ● 놓아주기 예 releases for level / 2 W")
+    v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(1); v.press(2); v.press(2); v.press(1); v.press(2); v.press(1)   // 함께 → 워커로 → 놓아주기, 예
+    check(v.state.box.isEmpty && v.state.watts == wBefore + 10, "box: ● its page, ● 놓아주기 (after 워커로) 예 releases for level / 2 W")
     v.state.box = [Mon(dex: 1, level: 7, female: false)]; v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(1); v.press(1)
     check(v.state.companion.dex == 1 && v.state.box.first?.dex == 25, "box: ● its page, ● 함께 swaps the companion")
     v.screen = .menu(menuAt("도감")); v.press(1); check(on(v) { if case .dex = $0 { return true }; return false }, "menu 도감 opens the dex")
@@ -612,8 +612,8 @@ import AppKit
     gv.gridTap(4401); let asking = gv.paneContent(Date()).mon.map { $0.confirm && $0.sel == 0 } == true; gv.gridTap(4402)
     check(asking && gs { if case .box(2, nil, false, true) = $0 { return true }; return false } && gv.paneContent(Date()).mon?.sel == nil,
           "its page's 놓아주기 asks first, 아니오 picked (red = what ● does); 아니오 stays")
-    gv.screen = .box(0, act: 2, confirm: false, detail: true); gv.press(2); let wrapped = gs { if case .box(0, 0, false, true) = $0 { return true }; return false }
-    gv.press(2); gv.press(1); gv.press(2); gv.press(1)                                                  // 레벨순 [Lv.30, Lv.8, Lv.5]: the Lv.30 goes; next in the grid = the Lv.8 (box[1] now), not box[0]
+    gv.screen = .box(0, act: 3, confirm: false, detail: true); gv.press(2); let wrapped = gs { if case .box(0, 0, false, true) = $0 { return true }; return false }   // 닫기 → round to 함께
+    gv.press(2); gv.press(2); gv.press(1); gv.press(2); gv.press(1)                                                  // 레벨순 [Lv.30, Lv.8, Lv.5]: the Lv.30 goes; next in the grid = the Lv.8 (box[1] now), not box[0]
     check(wrapped && gv.state.box.map(\.level) == [5, 8] && gs { if case .say(_, .box(1, nil, false, true), _) = $0 { return true }; return false } && gv.paneContent(Date()).mon != nil,
           "놓아주기 예 on its page: the next in the grid's page comes up, through the message too")
     gv.state.box = [Mon(dex: 131, level: 8, female: false), Mon(dex: 332, level: 10, female: false)]
@@ -749,7 +749,7 @@ import AppKit
     pt.screen = .menu(menuAt("포켓몬")); pt.press(1); let g0 = pt.paneContent(Date()).grid
     check(pts { if case .box(-1, nil, false, false) = $0 { return true }; return false } && g0?.party.map(\.dex) == [25, 16] && g0?.partySel == 0 && g0?.items == 1
           && SideView.height(pt.paneContent(Date())) == SideView.tallest, "포켓몬: the companion (picked first) and the walker's in a row over the box, then the items' chip")
-    pt.gridTap(4510); let itemsUp = pt.paneContent(Date()).items == ["상처약"] && pts { if case .items = $0 { return true }; return false }; pt.press(3)
+    pt.gridTap(4510); let itemsUp = pt.paneContent(Date()).items?.rows.map(\.name) == ["상처약"] && pts { if case .items = $0 { return true }; return false }; pt.press(3)
     pt.gridTap(4501); let walkerPage = pt.paneContent(Date()).mon?.place == 1; pt.gridTap(4400)
     check(itemsUp && walkerPage && pt.state.companion.dex == 16 && pt.state.caught.first?.dex == 25, "… the items' chip opens the 도구 page; on one of the walker's, 함께 걷기 makes it the companion")
     pt.screen = .box(-1, act: nil, confirm: false, detail: true); pt.gridTap(4400); let idle = pt.state.companion.dex == 16 && pt.paneContent(Date()).mon?.place == 0
@@ -762,6 +762,20 @@ import AppKit
     pgv.state.box = [Mon(dex: 1, level: 5, female: false)]; pgv.screen = .box(0, act: 1, confirm: true, detail: true); pgv.press(1)
     check(pageOn && pageRound && pgv.state.box.isEmpty && { if case .say(_, .box(-1, nil, false, false), _) = pgv.screen { return true }; return false }(),
           "포켓몬: from the row above the pager still turns the box's pages (◀ round to the last); letting the last one go picks the companion")
+    // 도구: the walker's and the bag's together, and what each does from there; 워커로; how a Pokémon evolves, and the companion's evolving now
+    let iv = WalkerView(state: { var s = Walk(); s.items = ["상처약"]; s.bag = ["이상한사탕", "금구슬", "금속코트"]; s.companion = Mon(dex: 95, level: 20, female: false)
+                                 s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); iv.persist = false; iv.rng = Seeded(s: 91)
+    iv.screen = .items(0); let im = iv.paneContent(Date()).items
+    iv.pageTap(5600 + (im?.rows.firstIndex { $0.name == "이상한사탕" } ?? 0)); let candyAct = iv.paneContent(Date()).items?.action; iv.pageTap(5700)
+    check(im?.rows.map(\.name).sorted() == ["금구슬", "금속코트", "상처약", "이상한사탕"] && im?.rows.first { $0.name == "상처약" }?.onWalker == 1 && im?.walker == 1 && im?.bag == 3
+          && candyAct?.hasSuffix("먹이기") == true && iv.state.companion.level == 21 && iv.state.count("이상한사탕") == 0,
+          "도구: the walker's and the bag's in one list (워커 marked); a row's button uses it (이상한사탕: +1 level)")
+    iv.screen = .box(-1, act: nil, confirm: false, detail: true); let onix = iv.paneContent(Date()).mon
+    check(onix?.evos.first?.contains("강철톤") == true && onix?.evos.first?.contains("(있음)") == true && onix?.evoAction?.contains("통신 진화") == true, "a Pokémon's page: how it evolves (금속코트 in the bag: 있음); the companion's 통신 진화 button")
+    iv.gridTap(4406); check({ if case .evolve(_, let to, _) = iv.screen { return to.dex == 208 }; return false }(), "… the button evolves it (롱스톤 + 금속코트 → 강철톤), as Connect would")
+    iv.screen = .box(0, act: nil, confirm: false, detail: true); let fetchable = iv.paneContent(Date()).mon?.fetch == true; iv.gridTap(4407)
+    check(fetchable && iv.state.box.isEmpty && iv.state.caught.last?.dex == 16 && { if case .say(_, .box(-2, nil, false, false), _) = iv.screen { return true }; return false }(),
+          "the box's: 워커로 brings it back onto the walker (picked there)")
     pt.screen = .say(["W가 부족하다"], next: .menu(menuAt("포켓 레이더")), since: Date()); pt.menuTap(menuAt("트레이너 카드"))
     check(pts { if case .card(0) = $0 { return true }; return false }, "a click on a page still up under its message ends the message and counts")
     let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48)!
