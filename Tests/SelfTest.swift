@@ -626,8 +626,8 @@ import AppKit                                                                   
           && mm?.evTotal == 510 && mm?.v == 4 && mm?.abilityNote.isEmpty == false && mm?.ability == gv.state.box[2].abilityName,
           "a Pokémon's page: its nature (which stats, what it means), its ability and what it does, IVs as battles use them (특훈 = 31), EVs and their total")
     gv.state.box[2].nature = 0; check(gv.paneContent(Date()).mon.map { $0.up == nil && $0.natureNote.contains("영향을 주지 않는") } == true, "a neutral nature says it changes nothing")
-    let fitAll = natures.indices.allSatisfy { i in gv.state.box[2].nature = i; return gv.paneContent(Date()).mon.map { width($0.natureNote, font(9)) <= 162 * K } ?? false }; gv.state.box[2].nature = 0
-    check(fitAll, "every nature's note fits its line on the page")
+    let noteW = natures.indices.map { i in gv.state.box[2].nature = i; return gv.paneContent(Date()).mon.map { width($0.natureNote, font(9)) } ?? .infinity }; gv.state.box[2].nature = 0
+    check(noteW.allSatisfy { $0 <= 162 * K }, "every nature's note fits its line on the page", "widest \(noteW.max()!) of \(162 * K)")
     let od = [5, 12, 31, 57].map { abilityDescs[$0] ?? "" }
     check(od[0] == "일격필살 기술을 받지 않는다." && od[1] == "헤롱헤롱 상태가 되지 않는다." && od[2].contains("싱글 배틀에서는 효과가 없다") && od[3].contains("싱글"), "ability notes say what they do in Gen IV singles (not X/Y's later effects)")
     gv.gridTap(4401); let asking = gv.paneContent(Date()).mon.map { $0.confirm && $0.sel == 0 } == true; gv.gridTap(4402)

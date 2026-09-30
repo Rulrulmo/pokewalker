@@ -25,7 +25,8 @@ final class MemorySettings: Settings {
     settings = MemorySettings()                                                                   // before anything reads a setting (the look's globals)
     let f = WinFonts(); fonts = f                                                                 // before anything lays out text
     if CommandLine.arguments.contains("--selftest") {
-        print("fonts: " + [FontSpec(size: 12), FontSpec(size: 10, face: .galmuri9), FontSpec(size: 8, face: .galmuri7)].map(f.face).joined(separator: " · "))   // what GDI picked (a missing face falls back silently)
+        print("fonts: " + [FontSpec(size: 12), FontSpec(size: 10, face: .galmuri9), FontSpec(size: 8, face: .galmuri7)].map(f.face).joined(separator: " · ")   // what GDI picked (a missing face falls back silently)
+              + " · 가…하 at 9 pt \(f.width("가나다라마바사아자차카타파하", FontSpec(size: 9))) (the Mac 108.99) · 0…g \(f.width("0123456789 ABCDEFG abcdefg", FontSpec(size: 9))) (140.81)")
         exit(selftest() ? 0 : 1)
     }
     print("PokeWalker for Windows: the window comes in P3")
