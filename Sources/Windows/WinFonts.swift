@@ -17,7 +17,7 @@ import WinSDK
     struct FontKey: Hashable { let f: FontSpec; let hangul: Bool; let k: CGFloat?; let smooth: Bool }
     var cache: [FontKey: HFONT] = [:]
     struct MaskKey: Hashable { let s: String; let f: FontSpec; let scale: CGFloat; let qx: Int }
-    var masks: [MaskKey: TextMask] = [:]
+    var masks: [MaskKey: TextMask] = [:], metricCache: [FontSpec: (ascender: CGFloat, capHeight: CGFloat)] = [:]
     init() { for d in files { var n: DWORD = 0; _ = d.withUnsafeBytes { AddFontMemResourceEx(UnsafeMutableRawPointer(mutating: $0.baseAddress), DWORD($0.count), nil, &n) } } }
 
     /// f's GDI font for Hangul or the rest, at k times its size (nil: its own; Galmuri at its pixel size, 9 at 10 px, 7 at 8 px), greyscale-smoothed
@@ -54,11 +54,18 @@ import WinSDK
     func width(_ s: String, _ f: FontSpec) -> CGFloat {
         CGFloat(runs(s).reduce(0) { $0 + advance($1.s, font(f, hangul: $1.hangul, k: WinFonts.over, smooth: true)) }) / WinFonts.over
     }
-    /// The Mac's numbers (the Latin face's, which caps are centred by): the hhea ascender (otmMacAscent) and OS/2's cap height.
+    /// The Mac's numbers (NSFont.ascender / capHeight: hhea's ascender, OS/2's cap height), the Latin face's (caps are centred by it), read off
+    /// the font's own tables (OUTLINETEXTMETRIC's cap height isn't filled in).
     func metrics(_ f: FontSpec) -> (ascender: CGFloat, capHeight: CGFloat) {
-        SelectObject(dc, font(f, hangul: false, k: WinFonts.over, smooth: true)); var m = OUTLINETEXTMETRICW()
-        _ = GetOutlineTextMetricsW(dc, UINT(MemoryLayout<OUTLINETEXTMETRICW>.size), &m)
-        return (CGFloat(m.otmMacAscent) / WinFonts.over, CGFloat(m.otmsCapEmHeight) / WinFonts.over)
+        if let m = metricCache[f] { return m }
+        SelectObject(dc, font(f, hangul: false, k: WinFonts.over, smooth: true))
+        func int16(_ tag: String, _ at: Int) -> CGFloat {                                        // a big-endian 16-bit field of a table ('head', 'hhea', 'OS/2')
+            let t = tag.utf8.reversed().reduce(DWORD(0)) { $0 << 8 | DWORD($1) }; var b: [UInt8] = [0, 0]
+            guard GetFontData(dc, t, DWORD(at), &b, 2) == 2 else { return 0 }
+            return CGFloat(Int16(bitPattern: UInt16(b[0]) << 8 | UInt16(b[1])))
+        }
+        let em = int16("head", 18), m = em > 0 ? (int16("hhea", 4) / em * f.size, int16("OS/2", 88) / em * f.size) : (0, 0)
+        metricCache[f] = m; return m
     }
     /// White on black into a top-down 32-bit DIB, the baseline one row up from the bottom (as the Mac's CoreText draw).
     func dots(_ s: String, _ f: FontSpec, rows h: Int) -> [[Bool]] {

@@ -42,6 +42,7 @@ final class JSONSettings: Settings {
         if let i = args.firstIndex(of: "--render") { print("rendered \(renderShots(args.count > i + 1 ? args[i + 1] : "renders")) shots"); exit(0) }   // Windows/WinRender.swift
         print("fonts: " + [FontSpec(size: 12), FontSpec(size: 10, face: .galmuri9), FontSpec(size: 8, face: .galmuri7)].map(f.face).joined(separator: " · ")   // what GDI picked (a missing face falls back silently)
               + " · 가…하 at 9 pt \(f.width("가나다라마바사아자차카타파하", FontSpec(size: 9))) (the Mac 108.99) · 0…g \(f.width("0123456789 ABCDEFG abcdefg", FontSpec(size: 9))) (140.81)")
+        print("metrics (ascender, cap height) at 10 / 13 / 16 pt: " + ([10, 13, 16] as [CGFloat]).map { "\(f.metrics(FontSpec(size: $0)))" }.joined(separator: " · ") + " (the Mac's SF: 9.67 7.05 · 12.57 9.16 · 15.47 11.27)")
         print("store: \(Store.file.path) (Foundation's application support: \(FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.path ?? "-"))")
         exit(selftest() ? 0 : 1)
     }
