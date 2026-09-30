@@ -30,7 +30,8 @@ import WinSDK
             CreateFontW(-Int32((px * (k ?? 1)).rounded()), 0, 0, 0, f.weight == .bold ? 700 : 400, 0, 0, 0, DWORD(DEFAULT_CHARSET), DWORD(OUT_TT_PRECIS), DWORD(CLIP_DEFAULT_PRECIS),
                         DWORD(smooth ? ANTIALIASED_QUALITY : NONANTIALIASED_QUALITY), DWORD(DEFAULT_PITCH), $0)
         }
-        cache[key] = h!; return h!
+        guard let h else { return unsafeBitCast(GetStockObject(DEFAULT_GUI_FONT), to: HFONT.self) }   // out of GDI handles: the stock font (not cached: tried again)
+        cache[key] = h; return h
     }
     /// s cut where it goes in or out of Hangul (syllables, jamo).
     func runs(_ s: String) -> [(s: String, hangul: Bool)] {

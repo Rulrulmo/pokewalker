@@ -31,14 +31,15 @@ func put<T>(_ s: String, _ field: inout T) {
     var needAll = true, needLCD = false, posted = false
     var move: POINT? = nil                                                 // where the next present puts the window (nil: where it is)
     var anchorTop: Int32? = nil                                            // the card's top where the user put it (screen px): a tall page lifts it, the next short one drops it back
+    var dragFrom: POINT? = nil                                             // where a move loop began (nil: none going on)
     var pressed: Int? = nil, pressedAt = Date()
     var fast = false                                                       // the 30 fps frame timer is on
     var scrolled = 0                                                       // wheel delta not yet a row
     var downOn = 0, clicks = (time: 0, x: 0, y: 0, n: 0)                   // the page a click began on; the last click (for a double's count)
-    var steps: UInt32 = 0, keysDown = Set<UInt16>()                        // key downs + clicks since launch (Raw Input); keys held (their repeats aren't steps)
+    var steps: UInt32 = 0, keysDown: [UInt16: UInt64] = [:]                // key downs + clicks since launch (Raw Input); keys held: their last make (ms), repeats aren't steps
     let started = Date().timeIntervalSince1970                             // "boot": each launch re-baselines the counter
     var memDC: HDC? = CreateCompatibleDC(nil), dib: HBITMAP? = nil, bits: UnsafeMutableRawPointer? = nil, dibSize = (w: 0, h: 0)
-    var icon: HICON? = nil, tip = "", menuActions: [@MainActor () -> Void] = []
+    var icon: HICON? = nil, tip = "", menuActions: [@MainActor () -> Void] = [], trayDouble = false   // the tray's click was a double-click's 2nd
     var taskbarCreated: UINT = 0
 
     init(walker: Walker) { self.walker = walker; walker.host = self; page.walker = walker }
@@ -90,6 +91,13 @@ func put<T>(_ s: String, _ field: inout T) {
         move = POINT(x: min(max(x, w.left), w.right - s.w), y: min(max(top, w.top), w.bottom - s.h))
         needAll = true; post()
     }
+    /// Monitors or the work area changed (one unplugged, the taskbar moved): the card back on a screen at its scale; the top the window's if the
+    /// user's is no longer on the card's monitor.
+    func displayChanged() {
+        var r = RECT(); _ = GetWindowRect(hwnd, &r); dpi = GetDpiForWindow(hwnd)
+        if let a = anchorTop, MonitorFromPoint(POINT(x: r.left, y: a), DWORD(MONITOR_DEFAULTTONULL)) != MonitorFromRect(&r, DWORD(MONITOR_DEFAULTTONEAREST)) { anchorTop = r.top }
+        fit()
+    }
     func post() { if !posted, let hwnd { posted = true; _ = PostMessageW(hwnd, wmRender, 0, 0) } }
     /// Draw what changed into the buffer and lay it on the screen.
     func render() {
@@ -111,15 +119,16 @@ func put<T>(_ s: String, _ field: inout T) {
         if dibSize != (w, h) {
             var bi = BITMAPINFO(); bi.bmiHeader.biSize = DWORD(MemoryLayout<BITMAPINFOHEADER>.size)
             bi.bmiHeader.biWidth = LONG(w); bi.bmiHeader.biHeight = -LONG(h); bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32   // top-down BGRA
-            let old = dib; dib = CreateDIBSection(memDC, &bi, UINT(DIB_RGB_COLORS), &bits, nil, 0); _ = SelectObject(memDC, dib)
-            if let old { _ = DeleteObject(old) }
-            dibSize = (w, h)
+            var p: UnsafeMutableRawPointer? = nil
+            guard let d = CreateDIBSection(memDC, &bi, UINT(DIB_RGB_COLORS), &p, nil, 0) else { needLCD = true; return }   // out of GDI memory: the next frame tries again
+            _ = SelectObject(memDC, d); if let dib { _ = DeleteObject(dib) }                       // the old one unselected first
+            dib = d; bits = p; dibSize = (w, h)
         }
         guard let bits else { return }
         raster.px.withUnsafeBytes { bits.copyMemory(from: $0.baseAddress!, byteCount: $0.count) }
         var sz = tagSIZE(cx: LONG(w), cy: LONG(h)), src = POINT(x: 0, y: 0)
         var blend = BLENDFUNCTION(BlendOp: BYTE(AC_SRC_OVER), BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: BYTE(AC_SRC_ALPHA))
-        if var at = move { _ = UpdateLayeredWindow(hwnd, nil, &at, &sz, memDC, &src, 0, &blend, DWORD(ULW_ALPHA)); move = nil }
+        if var at = move { move = nil; _ = UpdateLayeredWindow(hwnd, nil, &at, &sz, memDC, &src, 0, &blend, DWORD(ULW_ALPHA)) }   // a WM_DPICHANGED inside sets its own
         else { _ = UpdateLayeredWindow(hwnd, nil, nil, &sz, memDC, &src, 0, &blend, DWORD(ULW_ALPHA)) }
     }
     /// Turns the IME off for the card: M stays M (not ㅡ) with a Korean keyboard (imm32, looked up: not every SDK module has it).
@@ -175,7 +184,7 @@ func put<T>(_ s: String, _ field: inout T) {
     /// Card <-> tray. Hiding parks it on the home screen so the events (which wait for home) keep coming.
     func toggleShown() {
         if Bool(IsWindowVisible(hwnd)) { if !walker.inBattle { walker.screen = .home }; _ = ShowWindow(hwnd, SW_HIDE) }
-        else { shown = nil; walker.refreshPane(Date(), force: true); needAll = true; render(); _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE) }   // back at today's page and height
+        else { shown = nil; walker.refreshPane(Date(), force: true); fit(); render(); _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE) }   // back at today's page and height, on a screen
         settings.set("hidden", !Bool(IsWindowVisible(hwnd)))
     }
     /// The tallest page (포켓몬 · 도구) at that size fits the monitor the card is on.
@@ -281,24 +290,19 @@ func put<T>(_ s: String, _ field: inout T) {
         guard let k = keys[vk] else { return false }
         return walker.key(k, shift: GetKeyState(VK_SHIFT) < 0, held: lp >> 30 & 1 == 1)
     }
-    /// A key down or a click anywhere (Raw Input): a step. A held key's repeats aren't.
+    /// A key down or a click anywhere (Raw Input): a step. A held key's repeats aren't (a make within 1 s of the key's last, no break between).
     func rawInput(_ lp: LPARAM) {
-        guard let h = HRAWINPUT(bitPattern: Int(lp)) else { return }
-        let head = UINT(MemoryLayout<RAWINPUTHEADER>.size)
-        var size: UINT = 0; _ = GetRawInputData(h, UINT(RID_INPUT), nil, &size, head)
-        guard size >= head, size <= 1024 else { return }
-        var buf = [UInt8](repeating: 0, count: Int(size))
-        guard GetRawInputData(h, UINT(RID_INPUT), &buf, &size, head) == size else { return }
-        buf.withUnsafeBytes { b in
-            let type = b.load(as: RAWINPUTHEADER.self).dwType
-            if type == DWORD(RIM_TYPEKEYBOARD) {
-                let k = b.load(fromByteOffset: Int(head), as: RAWKEYBOARD.self), id = k.VKey | (k.Flags & UInt16(RI_KEY_E0) != 0 ? 0x100 : 0)
-                if k.Flags & UInt16(RI_KEY_BREAK) != 0 { keysDown.remove(id) } else if keysDown.insert(id).inserted { steps &+= 1 }
-            } else if type == DWORD(RIM_TYPEMOUSE) {
-                let f = b.load(fromByteOffset: Int(head) + 4, as: UInt16.self)                   // RAWMOUSE.usButtonFlags
-                if f & UInt16(RI_MOUSE_LEFT_BUTTON_DOWN) != 0 { steps &+= 1 }
-                if f & UInt16(RI_MOUSE_RIGHT_BUTTON_DOWN) != 0 { steps &+= 1 }
-            }
+        var raw = RAWINPUT(), size = UINT(MemoryLayout<RAWINPUT>.size)                            // a keyboard's or a mouse's fits (no heap per mouse move)
+        guard let h = HRAWINPUT(bitPattern: Int(lp)), GetRawInputData(h, UINT(RID_INPUT), &raw, &size, UINT(MemoryLayout<RAWINPUTHEADER>.size)) != UINT.max else { return }
+        if raw.header.dwType == DWORD(RIM_TYPEKEYBOARD) {
+            let k = raw.data.keyboard, id = k.VKey | (k.Flags & UInt16(RI_KEY_E0) != 0 ? 0x100 : 0), now = GetTickCount64()
+            guard k.VKey != 0xFF else { return }                                                   // a fake key (the shift PS/2 sends around the grey arrows)
+            if k.Flags & UInt16(RI_KEY_BREAK) != 0 { keysDown[id] = nil }
+            else { if keysDown[id].map({ now - $0 > 1000 }) ?? true { steps &+= 1 }; keysDown[id] = now }   // a key-up lost (lock screen, UAC): its next press still counts
+        } else if raw.header.dwType == DWORD(RIM_TYPEMOUSE) {
+            let f = raw.data.mouse.usButtonFlags
+            if f & UInt16(RI_MOUSE_LEFT_BUTTON_DOWN) != 0 { steps &+= 1 }
+            if f & UInt16(RI_MOUSE_RIGHT_BUTTON_DOWN) != 0 { steps &+= 1 }
         }
     }
     /// Over a key, the chevron or one of the page's buttons: the hand (the LCD is to look at).
@@ -312,7 +316,7 @@ func put<T>(_ s: String, _ field: inout T) {
     func handle(_ msg: UINT, _ wp: WPARAM, _ lp: LPARAM) -> LRESULT? {
         switch msg {
         case UINT(WM_TIMER):
-            switch wp { case 1: tick(); case 2: frame(); default: _ = KillTimer(hwnd, wp); tick() }
+            switch wp { case 1: tick(); case 2: frame(); case 4: _ = KillTimer(hwnd, wp); if !windowHidden { toggleShown() }; default: _ = KillTimer(hwnd, wp); tick() }
             return 0
         case wmRender: render(); return 0
         case UINT(WM_LBUTTONDOWN):
@@ -327,7 +331,8 @@ func put<T>(_ s: String, _ field: inout T) {
             if id >= 1, id <= menuActions.count { menuActions[id - 1]() }
             return 0
         case UINT(WM_MOUSEWHEEL):
-            var at = POINT(x: Int32(lo(lp)), y: Int32(hi(lp))); _ = ScreenToClient(hwnd, &at)
+            var at = POINT(x: Int32(lo(lp)), y: Int32(hi(lp))), c = RECT(); _ = ScreenToClient(hwnd, &at); _ = GetClientRect(hwnd, &c)
+            guard Bool(PtInRect(&c, at)) else { return 0 }                                        // the card has the focus, the cursor is elsewhere
             wheel(Int(Int16(truncatingIfNeeded: wp >> 16)), at: CGPoint(x: CGFloat(at.x) / sc, y: CGFloat(at.y) / sc))
             return 0
         case UINT(WM_KEYDOWN): return keyDown(wp, lp) ? 0 : nil
@@ -337,17 +342,26 @@ func put<T>(_ s: String, _ field: inout T) {
             var at = POINT(); _ = GetCursorPos(&at); _ = ScreenToClient(hwnd, &at)
             _ = SetCursor(LoadCursorW(nil, UnsafePointer<WCHAR>(bitPattern: cursorHand(CGPoint(x: CGFloat(at.x) / sc, y: CGFloat(at.y) / sc)) ? 32649 : 32512)))   // IDC_HAND / IDC_ARROW
             return 1
-        case UINT(WM_EXITSIZEMOVE):                                                               // the user dragged it: that's the new place
-            var r = RECT(); _ = GetWindowRect(hwnd, &r); anchorTop = r.top
-            settings.set("win.x", Int(r.left)); settings.set("win.y", Int(r.top))
-            return 0
+        case UINT(WM_ENTERSIZEMOVE): var r = RECT(); _ = GetWindowRect(hwnd, &r); dragFrom = POINT(x: r.left, y: r.top); return 0
+        case UINT(WM_EXITSIZEMOVE):                                                               // the user dragged it: that's the new place (a click alone runs the loop too: the top stays)
+            var r = RECT(); _ = GetWindowRect(hwnd, &r)
+            if let d = dragFrom, d.x != r.left || d.y != r.top { anchorTop = r.top; settings.set("win.x", Int(r.left)); settings.set("win.y", Int(r.top)) }
+            dragFrom = nil; return 0
+        case UINT(WM_DISPLAYCHANGE): displayChanged(); return nil
+        case UINT(WM_SETTINGCHANGE): if wp == WPARAM(SPI_SETWORKAREA) { displayChanged() }; return nil
         case UINT(WM_DPICHANGED):                                                                 // onto another monitor: its scale, the place Windows suggests
             dpi = UInt32(wp & 0xFFFF)
-            if let r = UnsafePointer<RECT>(bitPattern: Int(lp))?.pointee { move = POINT(x: r.left, y: r.top); anchorTop = r.top }
+            if let r = UnsafePointer<RECT>(bitPattern: Int(lp))?.pointee { move = POINT(x: r.left, y: r.top); if dragFrom != nil { anchorTop = r.top } }   // the user's top kept unless dragging
             fit(); shown = nil
             return 0
-        case wmTray:
-            switch UINT(lp & 0xFFFF) { case UINT(WM_LBUTTONUP): toggleShown(); case UINT(WM_RBUTTONUP): showMenu(); default: break }
+        case wmTray:                                                                              // a click shows at once, hides after the double-click time: a double-click only shows
+            switch UINT(lp & 0xFFFF) {
+            case UINT(WM_LBUTTONDOWN): trayDouble = false
+            case UINT(WM_LBUTTONDBLCLK): trayDouble = true; _ = KillTimer(hwnd, 4)
+            case UINT(WM_LBUTTONUP) where !trayDouble: if windowHidden { toggleShown() } else { _ = SetTimer(hwnd, 4, GetDoubleClickTime(), nil) }
+            case UINT(WM_RBUTTONUP): showMenu()
+            default: break
+            }
             return 0
         case wmShow: if windowHidden { toggleShown() }; return 0                                  // launched again: a hidden card comes back
         case taskbarCreated: tray(DWORD(NIM_ADD)); return 0                                       // Explorer restarted: the icon again
