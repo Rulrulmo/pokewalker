@@ -13,20 +13,7 @@ extension WalkerView {
         }
         func header(_ title: String) { if fb.text(title, 2, 0) < 62 { fb.text("\(state.watts)W", 94, 1, 2, right: true, small: true) }; fb.fill(0, 12, 96, 1, 2) }   // long names win over the W
         switch screen {
-        case .home, .menu:                                                                           // the menu is the pane's: the LCD stays home
-            let f = now.timeIntervalSince(lastStep) < 3 ? half : Int(t) % 2        // steps coming in => breathes twice as fast
-            fb.sprite(me, 58, 16, bob: f, floor: 49, anim: animT("home", me.dex, now, start: false))   // right of the picture, behind the ground line: a flyer's wings dip under it
-            if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { let y = max(0, 48 - (80 - spriteTop(me.dex)) / 2 - 9); fb.draw(bubble, 54, y, ballPal); fb.draw(emotes[e.kind], 57, y + 2, redPal) }   // by its head, clear of the course picture
-            fb.course(state.here.art, courseBox.x, courseBox.y, weather: state.weather ?? .sunny, t: t, hour: state.hour, season: state.season)
-            walker(&fb, me, now)                                                                      // and it, small, walking the course
-            let ww = fb.text("\(state.watts)W", 1, 1, 2, small: true)                                 // W, then the walker's Pokémon and items on the same row
-            for i in 0..<state.caught.count { fb.draw(ball, ww + 4 + 8 * i, 3, ballPal) }
-            for i in 0..<state.items.count { fb.draw(gem, ww + 29 + 4 * i, 5, gemPal) }
-            fb.fill(0, 49, 96, 1, 2)
-            fb.draw(foot, 2, 54)
-            fb.text("Lv.\(me.level)", 11, 53, 2, small: true)
-            if let e = state.egg { fb.homeEgg(close: e.left < 500, t: t) }                        // rocks when it's close
-            fb.text("\(state.today)", 94, 52, 3, right: true)
+        case .home, .menu: home(&fb, now)                                                            // the notebook page (Notebook.swift); the menu is the pane's: the LCD stays home
         case .radar(_, _, let since, let chain):                                                    // which patch and the cursor are the pane's; here, the companion waiting in the grass
             let u = now.timeIntervalSince(since), window = radarWindow(chain), live = (1.5...(1.5 + window)).contains(u)
             let box = (x: 22, y: 12, w: courseBox.w, h: courseBox.h)                                   // the course picture, the companion standing in it
