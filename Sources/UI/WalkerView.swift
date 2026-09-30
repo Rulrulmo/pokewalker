@@ -7,6 +7,7 @@ final class WalkerView: NSView {
     var lastInput = Date(), lastStep = Date.distantPast, lastSave = Date(), levelled = false
     var boxSort = 0                                                        // the 상자 grid's order: 번호순 / 레벨순 / V순 / 최근
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
+    var fast: Timer?                                                       // the 30 fps frame timer while a fight or a show plays
     var usedItem = "몬스터볼"                                                // the potion / ball / revive the current beat names
     var towerRefs: [Int] = [], towerRun = false
     var sideOn = false                                                     // the pane carries the battle's text (the app; not --selftest): the LCD shows the stage only
@@ -138,6 +139,16 @@ final class WalkerView: NSView {
         }
         if now.timeIntervalSince(lastSave) > 60 { save(nil) }
         updateStatus()
+        frame(nil)
+        let busy: Bool = { switch screen { case .beats, .hatch, .evolve, .radar, .dowse: true; default: false } }()   // fights and shows play at 30 fps, the rest at the tick's 10
+        if busy != (fast != nil) {
+            fast?.invalidate(); fast = nil
+            if busy { let t = Timer(timeInterval: 1.0 / 30, target: self, selector: #selector(frame(_:)), userInfo: nil, repeats: true); t.tolerance = 0.005; RunLoop.main.add(t, forMode: .common); fast = t }
+        }
+    }
+    /// The pane and the screen, redrawn if the frame changed (the tick's, and 30 a second while something plays).
+    @objc func frame(_ sender: Any?) {
+        let now = Date()
         if window?.isVisible == true { refreshPane(now) }
         guard window?.isVisible ?? true else { return }                                         // hidden in the menu bar: rules keep running, nothing to draw
         let fb = compose(now)
