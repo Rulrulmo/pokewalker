@@ -80,8 +80,6 @@ func pointerPic(down: Bool) -> Pic {
 let bangPic = Pic(["..ooooooooo..", ".owwwwwwwwwo.", "owwwwrrrwwwwo", "owwwrrrrdwwwo", "owwwrrrrdwwwo", "owwwwrrdwwwwo", "owwwwrrdwwwwo", "owwwwwrwwwwwo",
                    "owwwwwwwwwwwo", "owwwwrrdwwwwo", "owwwwrrdwwwwo", "ogwwwwwwwwwgo", ".ogggggggggo.", "..oooowwooo..", ".....owo.....", ".....oo......"],
                   ["o": rgb(40, 40, 48), "w": rgb(255, 255, 255), "g": rgb(208, 212, 222), "r": rgb(236, 52, 40), "d": rgb(176, 28, 24)])
-/// A blade torn off, flying.
-func leafPic(_ season: Season) -> Pic { let g = grassPals[season.rawValue]; return Pic(["....oo.", "..oLLlo", ".oLLlo.", "oLlo...", "oo....."], ["o": g[0], "L": g[4], "l": g[3]]) }
 /// The Poké Radar's pulse: a ring of radius r (px), light edged.
 func ringPic(_ r: Int) -> Pic {
     var p = Pic(w: 2 * r + 1, h: 2 * r + 1)
@@ -161,40 +159,16 @@ func grassKey(_ w: Int, _ h: Int, _ season: Season, _ f: Int, rustle: Bool, flip
 
 // MARK: - the shows
 extension FB {
-    /// A tall-grass patch standing on (x, y) half-dots (its foot's centre), swaying (f 0...5); `live` = seconds it's been rustling: thrown about, leaves flying, a "!" popping up.
-    mutating func grass(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ season: Season, sway f: Int, flip: Bool = false, live: Double? = nil, behind: Bool = false) {   // behind: under the sprites
-        pic("w.shade|\(w - 6)", x, y - 1, behind: true) { shadePic(w - 6) }
-        guard let u = live else { pic(grassKey(w, h, season, f, rustle: false, flip: flip), x, y - h / 2, behind: behind) { grassPic(w, h, season, f, flip: flip) }; return }
-        let r = Int(u * 14) % 4
-        pic(grassKey(w, h, season, r, rustle: true, flip: flip), x, y - h / 2) { grassPic(w, h, season, r, rustle: true, flip: flip) }
-        for i in 0..<7 where u >= Double(i) * 0.1 {                                                    // leaves thrown up and off in turn, round and round
-            let tau = ((u - Double(i) * 0.1) / 0.7).truncatingRemainder(dividingBy: 1), dir = i % 2 == 0 ? 1.0 : -1.0, spread = 0.5 + hash01(i + 9)
-            let lx = Double(x) + dir * (4 + 26 * tau * spread), ly = Double(y - h + 6) - 30 * tau + 34 * tau * tau
-            pic("w.leaf|\(season.rawValue)", Int(lx), Int(ly), alpha: tau < 0.75 ? 1 : (1 - tau) / 0.25, angle: dir * tau * 540) { leafPic(season) }
-        }
-        let pop = u < 0.12 ? u / 0.12 * 1.35 : u < 0.24 ? 1.35 - (u - 0.12) / 0.12 * 0.35 : 1                // "!": pops up, settles, then bobs
-        pic("w.bang", x + w / 2 - 2, y - h + 6 - Int(7 * pop) - (u > 0.24 && Int(u * 4) % 2 == 0 ? 1 : 0), scale: pop) { bangPic }
-    }
-    /// 포켓 레이더 on the LCD (the pane has the four patches to pick): the companion standing in the tall grass, the Radar's pulse spreading from it;
-    /// live = seconds since something turned up: the grass round it stirs and "!" pops over its head.
-    mutating func radarFX(_ me: Mon, live: Double?, u: Double, t: Double, season: Season) {
-        for k in 0..<5 { grass(14 + 41 * k, 88, 48, 36, season, sway: (Int(t * 5) + k * 2) % 6, flip: k % 2 == 1, behind: true) }   // the back row, behind it
+    /// 포켓 레이더 on the LCD, over the course picture (the pane has the four patches to pick): the Radar's pulse spreading from the companion
+    /// standing at feet (half-dots); live = seconds since something turned up: "!" pops over its head.
+    mutating func radarFX(feet: (x: Int, y: Int), live: Double?, u: Double) {
         for i in 0..<2 {                                                                               // two rings spreading from it
             let k = (u - 0.35 * Double(i)) / 0.9
-            if (0..<1).contains(k) { let r = 3 + Int(k * 30); pic("w.ring|\(r)", 96, 80, alpha: 1 - k) { ringPic(r * 4) } }
-        }
-        sprite(me, 32, 22, bob: live == nil ? Int(t * 2) % 2 : 0)                                    // its feet at (48, 54): down in the grass
-        for k in 0..<4 {                                                                               // the front row, over its legs; round it, stirring once something's there
-            let x = 34 + 41 * k, near = k == 1 || k == 2
-            if let v = live, near {
-                let r = Int(v * 14) % 4
-                pic("w.shade|42", x, 123, behind: true) { shadePic(42) }
-                pic(grassKey(48, 36, season, r, rustle: true, flip: k == 2), x, 124 - 18) { grassPic(48, 36, season, r, rustle: true, flip: k == 2) }
-            } else { grass(x, 124, 48, 36, season, sway: (Int(t * 5) + k * 3) % 6, flip: k % 2 == 0) }
+            if (0..<1).contains(k) { let r = 3 + Int(k * 24); pic("w.ring|\(r)", feet.x, feet.y - 12, alpha: 1 - k) { ringPic(r * 4) } }
         }
         guard let v = live else { return }
-        let head = 108 - (80 - spriteTop(me.dex)), pop = v < 0.12 ? v / 0.12 * 1.35 : v < 0.24 ? 1.35 - (v - 0.12) / 0.12 * 0.35 : 1   // "!": pops up, settles, then bobs
-        pic("w.bang", 116, max(12, head - 4) - Int(6 * pop) - (v > 0.24 && Int(v * 4) % 2 == 0 ? 1 : 0), scale: pop) { bangPic }
+        let pop = v < 0.12 ? v / 0.12 * 1.35 : v < 0.24 ? 1.35 - (v - 0.12) / 0.12 * 0.35 : 1          // "!": pops up, settles, then bobs
+        pic("w.bang", feet.x + 10, feet.y - 36 - Int(6 * pop) - (v > 0.24 && Int(v * 4) % 2 == 0 ? 1 : 0), scale: pop) { bangPic }
     }
     /// An egg picture standing on (x, y) half-dots, h px tall, rocking about its foot by `angle`.
     mutating func egg(_ key: String, _ x: Int, _ y: Int, _ h: Int, scale: Double = 1, angle: Double = 0, shade: Int = 0, _ make: () -> Pic) {
@@ -304,7 +278,7 @@ extension FB {
     for f in 0..<400 {                                                                                // 30 fps through each show, then the same again an hour on
         let u = Double(f % 200) / 30, t = u + (f < 200 ? 0 : 3600.3)
         var h = FB(); h.hatchFX(egg, u, bob: 0); var e = FB(); e.evolveFX(a, b, u, bob: 0)
-        var r = FB(); r.radarFX(Mon(dex: 25, level: 5, female: false), live: u > 1.5 ? u - 1.5 : nil, u: u, t: t, season: Season(rawValue: f % 4)!)
+        var r = FB(); r.radarFX(feet: (96, 90), live: u > 1.5 ? u - 1.5 : nil, u: u)
         var d = FB(); d.homeEgg(close: true, t: t); d.cardEgg(close: true, t: t)
         for p in h.pics + e.pics + r.pics + d.pics { if f < 200 { keys.insert(p.key) } else { later.insert(p.key) } }
         for p in h.pics + e.pics {                                                                  // the lowest opaque row of each picture, on screen

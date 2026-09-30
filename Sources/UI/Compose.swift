@@ -29,10 +29,13 @@ extension WalkerView {
             fb.text("\(state.today)", 94, 52, 3, right: true)
         case .radar(_, _, let since, let chain):                                                    // which patch and the cursor are the pane's; here, the companion waiting in the grass
             let u = now.timeIntervalSince(since), window = radarWindow(chain), live = (1.5...(1.5 + window)).contains(u)
-            fb.radarFX(me, live: live ? u - 1.5 : nil, u: u, t: t, season: state.season)
-            if live { hpBar(&fb, 8, 59, 80, Int(((1.5 + window - u) * 1000).rounded()), Int(window * 1000)) }   // the time left to pick one
+            let box = (x: 22, y: 12, w: courseBox.w, h: courseBox.h)                                   // the course picture, the companion standing in it
+            fb.course(state.here.art, box.x, box.y, weather: state.weather ?? .sunny, t: t, hour: state.hour, season: state.season)
+            let feet = walker(&fb, me, now, box: box, at: 2 * box.x + box.w)
+            fb.radarFX(feet: feet, live: live ? u - 1.5 : nil, u: u)
+            if live { hpBar(&fb, box.x, 52, box.w, Int(((1.5 + window - u) * 1000).rounded()), Int(window * 1000)) }   // the time left to pick one
             if chain > 0 { fb.text(u < 1.5 ? "연쇄 \(chain)!" : "연쇄 \(chain)", 2, 1, 3, small: u >= 1.5) }
-            if chain > 0, u < 1.5, let n = chainNote { fb.text(n, 2, 11, 2, small: true) }
+            if chain > 0, u < 1.5, let n = chainNote { fb.text(n, 0, 51, 2, center: true, small: true) }   // under the picture, where the time bar goes next
         case .battle(let b, _) where sideOn, .moves(let b, _) where sideOn, .party(let b, _) where sideOn, .bagBattle(let b, _) where sideOn, .forfeit(let b, _) where sideOn:
             stage(&fb, b, now, .idle, hud: false)                                                   // the side panel carries names, HP, menus
         case .beats where sideOn:

@@ -146,7 +146,7 @@ final class WalkerView: NSView {
         if now.timeIntervalSince(lastSave) > 60 { save(nil) }
         updateStatus()
         frame(nil)
-        let busy: Bool = { switch screen { case .beats, .hatch, .evolve, .radar: true; case .home, .menu: strolling(now); default: false } }() || animating   // fights, shows and animations play at 30 fps, the rest at the tick's 10
+        let busy: Bool = { switch screen { case .beats, .hatch, .evolve, .radar: true; default: false } }() || animating   // fights, shows and animations play at 30 fps; the rest (the walking sprite too: HGSS steps it every 0.15 s) at the tick's 10
         if busy != (fast != nil) {
             fast?.invalidate(); fast = nil
             if busy { let t = Timer(timeInterval: 1.0 / 30, target: self, selector: #selector(frame(_:)), userInfo: nil, repeats: true); t.tolerance = 0.005; RunLoop.main.add(t, forMode: .common); fast = t }

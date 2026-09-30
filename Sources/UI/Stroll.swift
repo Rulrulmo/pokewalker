@@ -33,7 +33,7 @@ struct WalkSprite {
 }
 
 extension WalkerView {
-    /// Steps are coming in: it's walking (and the screen draws at 30 fps).
+    /// Steps are coming in: it's walking (drawn at the tick's 10 fps: typing is walking, so it mustn't cost much).
     func strolling(_ now: Date) -> Bool { now.timeIntervalSince(lastStep) < 1.2 }
     /// Where it may go: its middle, in half-dots, inside the picture's window.
     var strollRange: ClosedRange<Double> { Double(2 * courseBox.x + 16)...Double(2 * (courseBox.x + courseBox.w) - 16) }
@@ -50,13 +50,16 @@ extension WalkerView {
             if Bool.random() { strollRight.toggle() }
         }
     }
-    /// The walking sprite on the picture's path: its steps while it walks (quicker with the pace), facing us when it stands.
-    func walker(_ fb: inout FB, _ m: Mon, _ now: Date) {
-        guard let w = walkSprite(m.dex) else { return }
-        let t = now.timeIntervalSinceReferenceDate, moving = strolling(now) && !animating, dir = moving ? (strollRight ? 1 : 0) : 2
+    /// The walking sprite on the path of a course picture at `box` (home's, or 포켓 레이더's): its steps while it walks (quicker with the pace), facing us
+    /// when it stands; at = its middle (half-dots) when it isn't home's stroll (then it stands). Returns its feet (half-dots).
+    @discardableResult func walker(_ fb: inout FB, _ m: Mon, _ now: Date, box: (x: Int, y: Int, w: Int, h: Int) = courseBox, at: Int? = nil) -> (x: Int, y: Int) {
+        let feet = (x: at ?? Int(strollX.rounded()), y: 2 * (box.y + box.h) - 7)
+        guard let w = walkSprite(m.dex) else { return feet }
+        let t = now.timeIntervalSinceReferenceDate, moving = at == nil && strolling(now) && !animating, dir = moving ? (strollRight ? 1 : 0) : 2
         let frame = moving ? Int(t * min(12, 6 + stepRate / 2)) % 4 : Int(t / 0.6) % 2 == 0 ? 0 : 1 // HGSS's step cycle; standing, a slow shuffle
-        let scale = w.size > 32 ? 0.5 : 1.0, feet = 2 * (courseBox.y + courseBox.h) - 7, shiny = m.shiny == true
-        fb.pic("walk|\(m.dex)|\(dir)|\(frame)|\(shiny)", Int(strollX.rounded()), feet - Int(Double(w.size) * scale / 2), scale: scale, behind: true,
-               clip: [2 * courseBox.x + 3, 2 * courseBox.y + 3, 2 * courseBox.w - 6, 2 * courseBox.h - 6]) { w.pic(dir, frame, shiny: shiny) }
+        let scale = w.size > 32 ? 0.5 : 1.0, shiny = m.shiny == true
+        fb.pic("walk|\(m.dex)|\(dir)|\(frame)|\(shiny)", feet.x, feet.y - Int(Double(w.size) * scale / 2), scale: scale, behind: true,
+               clip: [2 * box.x + 3, 2 * box.y + 3, 2 * box.w - 6, 2 * box.h - 6]) { w.pic(dir, frame, shiny: shiny) }
+        return feet
     }
 }
