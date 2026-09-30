@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 // Home as a sticker travel journal: a notebook page (six papers, each by the hour's light), the course picture as a taped polaroid with the walker in it,
 // the companion as a die-cut sticker (its white rim follows its HGSS animation), the walker's catches and the egg as small stickers, a desk calendar for the season.
 // No numbers: those are the 상태 sheet's. All pictures at sprite resolution from a finite set of keys; a frame only places them.
@@ -12,7 +12,7 @@ let stickerFeet = (x: 148, y: 114)                                              
 /// Whose sticker rims are in the picture store: a new companion lets the old one's go (dozens of animation frames each).
 @MainActor var rimDex = 0
 
-extension WalkerView {
+extension Walker {
     /// Home (and under the menu, which is the pane's): the page, the polaroid and the walker in it, the tape, the calendar, the stickers, the companion, its emote.
     func home(_ fb: inout FB, _ now: Date) {
         let t = now.timeIntervalSinceReferenceDate, me = state.companion, tb = lightBand(state.hour), night = tb == 3, grey = !lcds[lcdStyle].color, tone = "\(night)" + (grey ? "|g" : "")
@@ -33,7 +33,7 @@ extension WalkerView {
             let k = min(3, state.caught.count), tau = t.truncatingRemainder(dividingBy: 1.6), ang = e.left < 500 && tau < 0.5 ? 12 * sin(tau / 0.25 * 2 * .pi) * (1 - tau / 0.5) : 0
             fb.pic("nb|egg|" + tone, 20 + 30 * k + Int((11 * sin(ang * .pi / 180)).rounded()), 123 - hop(k) - Int((11 * cos(ang * .pi / 180)).rounded()), angle: ang, behind: true) { lcdReady(sticker(miniEgg, night: night)) }   // about its foot
         }
-        if rimDex != me.dex { rimDex = me.dex; picStore = picStore.filter { !$0.key.hasPrefix("nb|me|") }; picImages = picImages.filter { !$0.key.hasPrefix("nb|me|") } }
+        if rimDex != me.dex { rimDex = me.dex; dropPics("nb|me|") }
         let a = animT("home", me.dex, now, start: false), f = a.flatMap { anim(me.dex)?.frame(at: $0) }, an = f.flatMap { _ in anim(me.dex) }
         let bob = now.timeIntervalSince(lastStep) < 3 ? Int(t * 2) % 2 : Int(t) % 2                // steps coming in => breathes twice as fast
         if let f, let an {                                                                       // the rim round this frame of its animation
@@ -196,7 +196,7 @@ func calendarPic(_ s: Season) -> Pic {
 }
 
 // MARK: - the emote
-/// A speech bubble with ♪ ♥ or ! (WalkerView.emote's kinds), its tail down to the right, toward the head.
+/// A speech bubble with ♪ ♥ or ! (Walker.emote's kinds), its tail down to the right, toward the head.
 func bubblePic(_ kind: Int) -> Pic {
     var p = Pic(["..oooooooooooo..", ".owwwwwwwwwwwwo.", "owwwwwwwwwwwwwwo", "owwwwwwwwwwwwwwo", "owwwwwwwwwwwwwwo", "owwwwwwwwwwwwwwo", "owwwwwwwwwwwwwwo",
                  "owwwwwwwwwwwwwwo", "owwwwwwwwwwwwwgo", ".oggwwwwwwwwggo.", "..oooooowwoooo..", "........owwo....", ".........owo....", "..........oo...."],
@@ -219,7 +219,7 @@ func bubblePic(_ kind: Int) -> Pic {
     } }
     c.append((pages, "수첩 배경: every paper x time of day renders, colour and grey (opaque, patterned, dark by night)"))
     var s = Walk(); s.owned = [25]; s.caught = [Mon(dex: 16, level: 5, female: false), Mon(dex: 41, level: 5, female: false), Mon(dex: 60, level: 5, female: false)]; s.egg = Egg(dex: 175, left: 300)
-    let v = WalkerView(state: s); v.persist = false; v.screen = .home
+    let v = Walker(state: s); v.persist = false; v.screen = .home
     let t0 = Date(timeIntervalSinceReferenceDate: 800_000_000)
     var early = Set<String>(), later = Set<String>()
     for f in 0..<900 {                                                                            // 90 s walking and standing, a pat, an emote; then the same an hour on

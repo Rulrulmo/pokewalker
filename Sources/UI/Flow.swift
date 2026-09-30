@@ -1,7 +1,7 @@
-import AppKit
-// What the buttons and taps do on each screen, and how a fight ends.
+import Foundation
+// What the buttons and taps do on each screen, how a fight ends, and the menu's actions.
 
-extension WalkerView {
+extension Walker {
     /// End of a fight. Wild: EXP goes to the companion; caught or beaten => maybe the grass rustles again (a chain). Tower: BP and the next trainer.
     func after(_ b: Battle, _ end: Beat, _ now: Date) -> Screen {
         if end == .lost, let r = state.useRevive() {                                              // a revive in the bag: back up, the fight goes on
@@ -40,14 +40,14 @@ extension WalkerView {
     /// A fight begins: its foes play their entry animations afresh, and the last fight's per-species effect masks are let go (they're rebuilt on demand).
     func freshFight() {
         animOn = nil
-        picStore = picStore.filter { !$0.key.hasPrefix("fx|mask|") }; picImages = picImages.filter { !$0.key.hasPrefix("fx|mask|") }
+        dropPics("fx|mask|")
     }
     func radarWindow(_ chain: Int) -> Double { max(0.8, 2.0 - 0.25 * Double(chain)) }
     func notify(_ kind: String, _ title: String, _ body: String) {
         guard persist, notifyOn(kind) else { return }
-        host.notify(title, body)
+        host?.notify(title, body)
     }
-    @objc func save(_ sender: Any?) { guard persist else { return }; Store.save(state); lastSave = Date() }
+    func save() { guard persist else { return }; Store.save(state); lastSave = Date() }
     /// The next move waiting in state.learning: straight in with a free slot, else the forget-one screen.
     func nextLearn(_ now: Date) {
         while let (ref, id) = state.nextToLearn() {
@@ -62,6 +62,8 @@ extension WalkerView {
     }
     /// The 상점's (bp false) or BP 교환소's rows.
     func wares(_ bp: Bool) -> [Walk.Ware] { state.wares(bp: bp, shells: shells.filter { $0.bp > 0 }.map { (name: $0.name, bp: $0.bp) }) }
+    /// A shell the 기기 menu offers: the dex reached, and a BP one bought.
+    func shellOpen(_ s: Shell) -> Bool { s.dex <= dexCount && (s.bp == 0 || (state.bought ?? []).contains(s.name)) }
     /// Buys q of the row; a line to say, then back to the list.
     func buyWare(_ w: Walk.Ware, _ q: Int, bp: Bool, sel: Int, _ now: Date) {
         let back = Screen.shop(bp: bp, sel: sel, qty: nil), cost = "(-\(w.price * q)\(bp ? "BP" : "W"))"
@@ -75,12 +77,12 @@ extension WalkerView {
             screen = .say(["기기 색", s + " 획득!"], next: back, since: now)
         case nil: screen = .say([bp ? "BP가 부족하다" : "W가 부족하다"], next: back, since: now); return
         }
-        save(nil)
+        save()
     }
     /// ↑ ↓ keys and the panel's buttons: in the list a row up / down, in how-many ±n (clamped, not wrapping); `nil` = as many as can be bought.
     func shopStep(_ d: Int?) {
         guard case .shop(let bp, let sel, let qty) = screen else { return }
-        lastInput = Date(); shown = nil; needsDisplay = true
+        lastInput = Date(); host?.redraw(.all)
         let ws = wares(bp); guard let w = ws[safe: sel] else { return }
         let most = state.canBuy(w, bp: bp)
         if let q = qty { screen = .shop(bp: bp, sel: sel, qty: d.map { max(1, min(max(1, most), q + $0)) } ?? max(1, most)) }
@@ -90,7 +92,7 @@ extension WalkerView {
     func shopRow(_ d: Int) {
         let bp: Bool, sel: Int
         switch screen { case .shop(let b, let s, _), .shopConfirm(let b, let s, _): bp = b; sel = s; default: return }
-        lastInput = Date(); shown = nil; needsDisplay = true
+        lastInput = Date(); host?.redraw(.all)
         screen = .shop(bp: bp, sel: max(0, min(wares(bp).count - 1, sel + d)), qty: nil)
     }
     /// A click on the shop panel: 2100 + k = row k (and how-many, if it can be bought), 2000-2004 = −10 −1 +1 +10 max, 2005 = buy, 2006 / 2007 = 예 / 아니오.
@@ -103,7 +105,7 @@ extension WalkerView {
             return
         }
         guard case .shop(let bp, _, let qty) = screen else { return }
-        lastInput = Date(); shown = nil; needsDisplay = true
+        lastInput = Date(); host?.redraw(.all)
         if code >= 2100 {
             let k = code - 2100; guard let w = wares(bp)[safe: k] else { return }
             screen = .shop(bp: bp, sel: k, qty: state.canBuy(w, bp: bp) > 0 ? 1 : nil); return
@@ -121,7 +123,7 @@ extension WalkerView {
             return u.flatMap { b.usable($0) ? (i, $0) : nil }
         }
     }
-    func startEvolving(_ e: Evo, _ now: Date) { let from = state.companion; state.evolve(e); screen = .evolve(from: from, to: state.companion, since: now); save(nil) }
+    func startEvolving(_ e: Evo, _ now: Date) { let from = state.companion; state.evolve(e); screen = .evolve(from: from, to: state.companion, since: now); save() }
     var seenList: [Int] { Array(Set((state.seen ?? []) + (state.owned ?? []))).sorted() }
     /// The 도감 grid's list for a tab: 전체 (1-493) / 잡음 / 못 잡음 (seen, not caught) / 이 코스 (what walks here, legends too).
     func dexList(_ f: Int) -> [Int] {
@@ -163,9 +165,14 @@ extension WalkerView {
             if let next { screen = .box(next, act: nil, confirm: false, detail: detail) }            // up from the box's top row: the companion
         default: return
         }
-        lastInput = Date(); shown = nil; needsDisplay = true
+        lastInput = Date(); host?.redraw(.all)
     }
 
+    /// A fight is on (its screens, a turn playing, or a message on the way back to one).
+    var inBattle: Bool {
+        func fight(_ s: Screen) -> Bool { switch s { case .battle, .moves, .party, .bagBattle, .forfeit, .beats: true; case .say(_, let n, _): fight(n); default: false } }
+        return fight(screen)
+    }
     /// The 메뉴 / 홈 key: true = it opens the menu (home), false = it goes home, nil = not now (a fight, a show, an answer due).
     func homeKey() -> Bool? {
         switch screen {
@@ -176,7 +183,7 @@ extension WalkerView {
         }
     }
     func press(_ k: Int) {                                    // 0 left, 1 enter, 2 right, 3 back (↩), 4 메뉴 / 홈
-        let now = Date(); lastInput = now; defer { save(nil); shown = nil; needsDisplay = true }
+        let now = Date(); lastInput = now; defer { save(); host?.redraw(.all) }
         if k == 4 {                                           // one key both ways: home opens the menu (on the pane; the LCD stays home), anywhere else it goes home
             if let open = homeKey() { screen = open ? .menu(0) : .home }
             return
@@ -362,4 +369,46 @@ extension WalkerView {
     /// A click on the LCD: it's the screen to look at — the pane's page and the keys are what you press. Only a message goes on (as ● would).
     /// Returns false where the click drags the device instead.
     func touch(_ x: Int, _ y: Int) -> Bool { if case .say = screen { press(1); return true }; return false }
+
+    // MARK: the menu's actions (the platform builds the menu: Menu.swift on the Mac)
+    func setCourse(_ i: Int) { state.setCourse(i, &rng); screen = .say(["커넥트 완료", state.here.name], next: .home, since: Date()); save() }
+    func useCandy() {
+        guard state.feedCandy() else { return }
+        levelled = true; screen = .home; save()                                                 // the home screen shows the level-up (or an evolution)
+    }
+    func useVitamin(_ v: String) {
+        let name = monNames[state.companion.dex]
+        if let e = state.feedVitamin(v) { screen = .say([josa(name, "은", "는") + " " + josa(v, "을", "를"), "먹었다!", "노력치 \(e)"], next: .home, since: Date()); save() }
+        else { screen = .say([josa(v, "을", "를") + " 먹어도", "효과가 없을 것 같다"], next: .home, since: Date()) }
+    }
+    func useReset() {
+        let name = monNames[state.companion.dex]
+        if state.resetEVs() { screen = .say([josa(name, "은", "는") + " 순백떡을", "먹었다!", "노력치가 0이 되었다"], next: .home, since: Date()); save() }
+        else { screen = .say(["노력치가 이미", "0이다"], next: .home, since: Date()) }
+    }
+    /// 대단한 특훈: one stat (은색병뚜껑), nil = all (금색병뚜껑).
+    func useCap(_ stat: Int?) {
+        let name = monNames[state.companion.dex]
+        guard state.hyperTrain(stat) else { screen = .say(["특훈할 수 없다"], next: .home, since: Date()); return }
+        let what = stat.map { ["HP", "공격", "방어", "특공", "특방", "스피드"][$0] } ?? "모든 능력"
+        screen = .say(["대단한 특훈!", josa(name, "의", "의") + " " + what, "최고가 되었다! (\(state.companion.perfectIVs)V)"], next: .home, since: Date()); save()
+    }
+    func useBerry(_ b: String) {
+        guard state.feedBerry(b) else { return }
+        screen = .say([josa(monNames[state.companion.dex], "이", "가") + " " + josa(b, "을", "를"), "맛있게 먹었다!"], next: .home, since: Date()); save()
+    }
+    func sellOne(_ n: String) { let w = state.sell(n); screen = .say([n + " 판매", "+\(w)W"], next: .home, since: Date()); save() }
+    func sellAll() {
+        let w = state.inventory.reduce(0) { $0 + state.sell($1) }
+        screen = .say(["전부 팔았다", "+\(w)W"], next: .home, since: Date()); save()
+    }
+    func useStone(_ i: Int) { let s = state.stoneEvolutions(Date()); guard s.indices.contains(i) else { return }; startEvolving(s[i], Date()) }
+    /// Walk with another: tag < 0 = the walker's -1 - tag, else box[tag].
+    func pair(_ tag: Int) {
+        if tag < 0 { guard state.caught.indices.contains(-1 - tag) else { return }; state.pair(-1 - tag, onWalker: true) }
+        else { guard state.box.indices.contains(tag) else { return }; state.pair(tag) }
+        screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: Date()); save()
+    }
+    /// 중복 놓아주기, once the platform has asked: the box's spare ones of that species go.
+    func releaseDupes(_ dex: Int) { let r = state.releaseDuplicates(of: dex); screen = .say(["\(r.count)마리를 놓아줬다", "+\(r.watts)W"], next: .home, since: Date()); save() }
 }

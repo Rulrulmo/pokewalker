@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 // What a move looks like on the stage: its effect over the fighters, and how they move while it plays.
 // Effects are pictures at sprite resolution (fb.pic): a shape in a type's tones at a small frame number, drawn once per key; the motion is per frame.
 
@@ -208,7 +208,7 @@ enum FXShot { case stream, orb, volley, rings, bolt }
 let fxShot: [String: FXShot] = ["normal": .stream, "fire": .stream, "water": .stream, "electric": .bolt, "grass": .volley, "ice": .stream, "fighting": .orb, "poison": .volley,
                                 "ground": .volley, "flying": .volley, "psychic": .rings, "bug": .rings, "rock": .volley, "ghost": .orb, "dragon": .stream, "dark": .rings, "steel": .stream]
 
-extension WalkerView {
+extension Walker {
     /// The beat after this one in the playing turn (its first match; 0-length retypes skipped): does the move land, or only charge?
     func upcoming(_ beat: Beat) -> Beat? {
         guard case .beats(_, let bs, _, _) = screen, let i = bs.firstIndex(of: beat) else { return nil }
@@ -505,7 +505,7 @@ extension WalkerView {
 @MainActor func moveChecks() -> [(Bool, String)] {
     var out: [(Bool, String)] = []
     var r = Seeded(s: 21)
-    let v = WalkerView(state: Walk()); v.persist = false
+    let v = Walker(state: Walk()); v.persist = false
     var b = Battle(wild: Mon.wild(4, level: 20, &r), companion: Mon.wild(25, level: 20, &r))
     let before = b, hit = Beat.hit(.it, move: 53, damage: b.theirs[0].hp / 2, effect: 1, crit: false); b.apply(hit)
     let hp = [0, 0.2, 5].map { v.drained(b, before, hit, $0).theirs[0].hp }

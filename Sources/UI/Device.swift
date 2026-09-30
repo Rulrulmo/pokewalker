@@ -12,7 +12,7 @@ enum Layout { static let w: CGFloat = 216, top: CGFloat = 24, seam: CGFloat = 17
 @MainActor var buttons: [(c: NSPoint, r: CGFloat)] {                                          // ◀ ● ▶ ↩ on the band, then 메뉴 / 홈 across from ↩
     [(64, 10), (108, 13), (152, 10), (197, 10), (19, 10)].map { (NSPoint(x: $0.0 * K, y: Layout.seam * K), $0.1 * K) }
 }
-@MainActor var devSize: NSSize { NSSize(width: Layout.w * K, height: (Layout.idle * K).rounded()) }   // the idle card (a page makes it taller: WalkerView.cardH)
+@MainActor var devSize: NSSize { NSSize(width: Layout.w * K, height: (Layout.idle * K).rounded()) }   // the idle card (a page makes it taller: Walker.cardH)
 @MainActor var chevronRect: NSRect { NSRect(x: (Layout.w - 30) * K, y: 0, width: 30 * K, height: Layout.top * K) }   // the title row's ⌄ / ⌃: the status sheet
 
 struct Shell { let name: String; let top: NSColor; var band = NSColor(red: 34 / 255, green: 37 / 255, blue: 45 / 255, alpha: 1); var dex = 0; var bp = 0 }   // bp > 0: bought at the BP exchange   // top half, band; the bottom is always white. dex = Pokédex count to unlock

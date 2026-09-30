@@ -80,6 +80,8 @@ struct PicRun: Equatable { var key: String; var x, y: Int; var scale = 1.0, alph
 /// the store is never emptied, so a frame's FB can be redrawn any time.
 @MainActor var picStore: [String: Pic] = [:]
 @MainActor var picImages: [String: NSImage] = [:]
+/// Lets go of the pictures whose keys start with prefix, and their images (a fight's effect masks, an old companion's rims).
+@MainActor func dropPics(_ prefix: String) { picStore = picStore.filter { !$0.key.hasPrefix(prefix) }; picImages = picImages.filter { !$0.key.hasPrefix(prefix) } }
 /// A picture as the LCD shows it: its colours, or on a grey screen 4 shades by brightness (as the sprites); inverted = a full-screen flash.
 @MainActor func picImage(_ r: PicRun, _ l: LCD) -> (NSImage, Pic)? {
     guard let p = picStore[r.key] else { return nil }

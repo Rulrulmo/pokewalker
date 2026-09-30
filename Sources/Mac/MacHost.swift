@@ -1,6 +1,6 @@
 import AppKit
 import UserNotifications
-// The Mac's side of Core/Platform.swift: settings in UserDefaults, banners, the step counter.
+// The Mac's side of Core/Platform.swift: settings in UserDefaults; the walker's host is its view, WalkerView (its redraws: UI/WalkerView.swift), with the banners and the step counter here.
 
 extension UserDefaults: Settings {
     func bool(_ key: String, _ def: Bool) -> Bool { object(forKey: key) == nil ? def : bool(forKey: key) }
@@ -17,7 +17,7 @@ nonisolated(unsafe) var useOsascript = false                                    
 final class NotifyDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ c: UNUserNotificationCenter, willPresent n: UNNotification) async -> UNNotificationPresentationOptions { [.banner, .list] }
 }
-final class MacHost: Host {
+extension WalkerView: Host {
     func notify(_ title: String, _ body: String) {
         if useOsascript {                                                                        // shows as "스크립트 편집기" in Notification Center
             func q(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\"" }

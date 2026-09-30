@@ -3,11 +3,11 @@ import UserNotifications
 // Launch: --selftest, or the menu-bar app with its floating device.
 
 // MARK: - app
-settings = UserDefaults.standard; host = MacHost()                                             // before anything reads a setting (the look's globals) or counts steps
+settings = UserDefaults.standard                                                               // before anything reads a setting (the look's globals)
 if CommandLine.arguments.contains("--selftest") { exit(selftest() ? 0 : 1) }
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-let view = WalkerView(state: Store.load())
+let walker = Walker(state: Store.load()), view = WalkerView(walker: walker)                  // the view is the walker's host
 /// Opening the app again (Finder, Spotlight, Launchpad) brings a hidden walker back: macOS may hide the menu-bar icon (too many icons, the notch, 메뉴 막대 settings).
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -39,10 +39,10 @@ if let b = statusItem?.button {
     b.target = view; b.action = #selector(WalkerView.statusClick(_:)); b.sendAction(on: [.leftMouseUp, .rightMouseUp])
     b.toolTip = "PokeWalker — 클릭: 보이기/숨기기 · 우클릭: 메뉴"
 }
-view.state.dex()
-view.levelled = view.state.sync(counter: host.counter(), boot: host.boot(), at: Date())   // steps typed while the app was quit (same login) count
-view.save(nil)
-view.refreshPane(Date(), force: true)                          // the page it opens on (the status sheet, if it was left open): no jump after it shows
+walker.state.dex()
+walker.levelled = walker.state.sync(counter: view.counter(), boot: view.boot(), at: Date())   // steps typed while the app was quit (same login) count
+walker.save()
+walker.refreshPane(Date(), force: true)                          // the page it opens on (the status sheet, if it was left open): no jump after it shows
 let size = view.frame.size
 let panel = Panel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
 panel.level = .floating
@@ -62,7 +62,7 @@ do {                                                                            
     view.anchorTop = top.y
 }
 panel.orderFrontRegardless(); settings.set("hidden", false)                                    // a launch always shows it: a hidden walker whose menu-bar icon is hidden too could never come back
-view.sideOn = true
+walker.sideOn = true
 panel.makeFirstResponder(view)
 
 let timer = Timer(timeInterval: 0.1, target: view, selector: #selector(WalkerView.tick(_:)), userInfo: nil, repeats: true)

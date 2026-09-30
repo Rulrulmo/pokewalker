@@ -1,79 +1,5 @@
 import AppKit
-// The pane's pages: the card's white bottom under the band — battle, 도감 (grid / entry), 상자 (grid / one Pokémon), 상점, 메뉴, 상태.
-
-// MARK: - models
-/// The battle: names, HP, types for the LCD's HP boxes; the message and the choices for the page.
-struct SideModel: Equatable {
-    struct Card: Equatable { var name: String; var level, hp, max: Int; var out: Bool; var status: String? = nil; var types: [String] = []; var owned = false }   // types / owned: shown for theirs
-    struct MoveBtn: Equatable { var name, type: String; var power: Int; var effect: Double; var pp = 0, maxPP = 0 }
-    enum Mode: Equatable { case none, menu([String], Int), moves([MoveBtn], Int), party([Card], Int), items([String], Int), ask(Bool) }   // ask: 아니오 / 예 (true = 예 highlighted)
-    var foe: Card; var mine: Card; var message: String; var mode: Mode
-}
-/// 상점 / BP 교환소: the list, and how many.
-struct ShopModel: Equatable {
-    struct Row: Equatable { var name, note, price: String; var owned: Int; var can: Bool; var once: Bool }
-    var title: String; var rows: [Row]; var sel: Int; var qty: Int?; var most: Int; var total: String
-    var hint: String                                                   // the bottom row when nothing is being counted: a message, or why not
-    var ask: Bool?                                                     // a once-only row's 정말? (true = 예 highlighted)
-}
-/// The status sheet (the title row's ⌄): the companion, today, then the rest.
-struct StatusModel: Equatable {
-    struct Row: Equatable { var key, value: String }
-    var dex: Int; var name, sex, level, toNext, nature: String; var female: Bool; var v: Int; var exp: CGFloat; var numbers: [Row]; var rows: [Row]
-}
-/// 메뉴: the LCD's pages as tiles, the one on the LCD picked.
-struct MenuModel: Equatable {
-    struct Row: Equatable { var name, note: String }
-    var rows: [Row]; var sel: Int
-}
-/// The 도감 entry (the LCD shows its number, name and types): base stats, where to meet it, how it evolves.
-struct DexModel: Equatable {
-    var num: Int; var status: Int                                      // 0 not met, 1 seen, 2 caught
-    var stats: [Int]; var found: [String]; var evos: [String]          // up to 3 places, 2 evolutions: a line each
-}
-/// The 도감 / 포켓몬 grid: tabs, a page of box icons (the pick bobbing), the pager; 포켓몬's has the companion and the walker's in a row above.
-struct GridModel: Equatable {
-    static let perPage = 30, columns = 6                               // 6 x 5
-    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false; var level = 0 }   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box
-    var tabs: [String]; var tab: Int
-    var cells: [Cell]; var first: Int; var sel: Int?                   // this page's cells; first = cells[0]'s place in the whole list; sel = the pick's cell
-    var page, pages: Int; var empty: String; var bob: Bool
-    var party: [Cell] = []; var partySel: Int? = nil; var items: Int? = nil   // 포켓몬: the companion + the walker's in a row over the box, then the items chip (nil = no row: 도감)
-}
-/// One Pokémon of the box, in full: nature and ability with what they do, IVs and EVs as hexagons.
-struct MonModel: Equatable {
-    var nature, natureNote, ability, abilityNote: String; var up, down: Int?   // stat indices the nature raises / lowers (nil = neutral)
-    var ivs, evs: [Int]; var hyper: [Int]; var v, evTotal: Int
-    var confirm: Bool                                                  // 놓아줄까? is up: the buttons become 아니오 / 예
-    var place = 2                                                      // 0 the companion (nothing to do), 1 the walker's (함께 걷기 / 상자로 보내기), 2 the box's (함께 걷기 / 워커로 / 놓아주기)
-    var fetch = false                                                  // the box's: 워커로 is open (the walker has room)
-    var evos: [String] = [], evoAction: String? = nil                  // how it evolves (a line a target); the companion's: what evolves it right now
-    var sel: Int?                                                      // the LCD's pick (함께 / 놓아주기 / 닫기, or 아니오 / 예): what ● does is red
-}
-/// 포켓몬 레이더: the four bushes as on the LCD, the one rustling marked.
-struct RadarModel: Equatable { var live: Int?; var cursor: Int; var chain: Int; var season = Season.summer }
-/// 트레이너 카드: its three pages as tabs.
-struct CardModel: Equatable { var page: Int }
-/// A new move to learn: it, then the four known ones and 배우지 않는다.
-struct LearnModel: Equatable {
-    struct Move: Equatable { var name, type: String; var power, pp: Int }
-    var who: String; var new: Move; var known: [Move]; var sel: Int
-}
-/// 배틀 타워's lobby: the run, the party, the button.
-struct TowerModel: Equatable {
-    struct Member: Equatable { var dex: Int; var name: String; var level: Int }
-    var run: Bool; var streak, best, bp, fee: Int; var party: [Member]
-}
-/// 도구: everything carried — the walker's and the bag's, a row a kind; the picked one's use (nil = nothing to press) and a line about it.
-struct ItemsModel: Equatable {
-    struct Row: Equatable { var name: String; var count, onWalker: Int }
-    var rows: [Row]; var sel: Int; var walker, bag: Int; var action: String?; var hint: String
-}
-/// Whatever the pane shows; all nil = no page (the card's idle height).
-struct PaneContent: Equatable {
-    var battle: SideModel?; var dex: DexModel?; var shop: ShopModel?; var menu: MenuModel?; var status: StatusModel?; var grid: GridModel?; var mon: MonModel?
-    var radar: RadarModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var items: ItemsModel?
-}
+// The pane's pages: the card's white bottom under the band — battle, 도감 (grid / entry), 상자 (grid / one Pokémon), 상점, 메뉴, 상태 (their models: Core/Pane.swift).
 
 // MARK: - the look (card points x K)
 enum Ink {
@@ -131,7 +57,7 @@ func bar(_ x0: CGFloat, _ x1: CGFloat, _ cy: CGFloat, _ frac: CGFloat, _ c: NSCo
 
 // MARK: - the page view
 final class SideView: NSView {
-    var content = PaneContent()
+    var content: PaneContent { walker?.pane ?? PaneContent() }             // the walker's page (Walker.refreshPane redraws it on a change)
     var model: SideModel? { content.battle }
     var dex: DexModel? { content.dex }
     var shop: ShopModel? { content.shop }
@@ -147,12 +73,12 @@ final class SideView: NSView {
         return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.card != nil, c.learn != nil, c.tower != nil, c.items != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
     }
     var hits: [(NSRect, Int)] = []                                         // clickable: battle index, 2000+ shop, 3000+ menu, 4000+ grid / box controls, 5000+ other pages, 10000+ grid cells
-    weak var walker: WalkerView?
+    weak var walker: Walker?
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
     override var needsPanelToBecomeKey: Bool { true }                                           // a click here makes the body key: the keys keep working
-    override func menu(for event: NSEvent) -> NSMenu? { walker?.menu(for: event) }             // ctrl-click opens the walker's menu, like a right-click
+    override func menu(for event: NSEvent) -> NSMenu? { superview?.menu(for: event) }          // ctrl-click opens the walker's menu, like a right-click
     override func mouseDown(with e: NSEvent) {
         let p = convert(e.locationInWindow, from: nil)
         guard let k = hits.first(where: { $0.0.contains(p) })?.1 else { window?.performDrag(with: e); return }   // not on a button: drag the whole body
@@ -169,18 +95,11 @@ final class SideView: NSView {
         while abs(scrolled) >= notch { step(scrolled > 0 ? -1 : 1); scrolled -= scrolled > 0 ? notch : -notch }
     }
     override func resetCursorRects() { for (r, _) in hits { addCursorRect(r, cursor: .pointingHand) } }
-    func show(_ c: PaneContent) { guard c != content else { return }; content = c; needsDisplay = true }
 
     /// Card coordinates → this view (it starts at the pane's top, card y 189).
     func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> NSRect { NSRect(x: x * K, y: (y - Layout.pane) * K, width: w * K, height: h * K) }
     func y(_ v: CGFloat) -> CGFloat { (v - Layout.pane) * K }
     func x(_ v: CGFloat) -> CGFloat { v * K }
-    /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
-    static let tallest: CGFloat = 472                                                              // 포켓몬's grid: the size menu keeps it on the screen
-    static func height(_ c: PaneContent) -> CGFloat {
-        c.battle != nil ? 311 : c.grid?.items != nil ? 472 : c.grid != nil ? 422 : c.mon != nil ? 454 : c.items != nil ? 446 : c.dex != nil ? 390 : c.shop != nil ? 406 : c.menu != nil ? 344
-            : c.radar != nil ? 327 : c.card != nil ? 230 : c.learn != nil ? 365 : c.tower != nil ? 353 : c.status != nil ? 354 : Layout.idle
-    }
 
     override func draw(_ dirty: NSRect) {
         hits = []; defer { window?.invalidateCursorRects(for: self) }

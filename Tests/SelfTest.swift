@@ -221,7 +221,7 @@ import AppKit
     var lb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: Mon(dex: 25, level: 5, female: false)); lb.mine[0].hp = 10
     let lmax = lb.mine[0].maxHP; lb.apply(.gained(exp: 5000, level: nil, foe: 16, to: 0))
     check(lb.mine[0].mon.level > 5 && lb.mine[0].hp == 10 + lb.mine[0].maxHP - lmax && lb.mine[0].mon.known != nil, "a level-up mid-fight raises current HP by the same amount (and freezes the moveset)")
-    let fv = WalkerView(state: { var s = Walk(); s.bag = ["기력의조각"]; return s }()); fv.persist = false; fv.rng = Seeded(s: 11)
+    let fv = Walker(state: { var s = Walk(); s.bag = ["기력의조각"]; return s }()); fv.persist = false; fv.rng = Seeded(s: 11)
     var fainted = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); fainted.mine[0].hp = 0; fainted.mine[0].down = true; fainted.over = true
     if case .beats(let nb, let rbeats, _, let from) = fv.after(fainted, .lost, Date()), case .heal(.me, let h, _)? = rbeats.first {
         check(nb.mine[0].hp == h && h == pika50.stats[0] / 2 && from.mine[0].hp == 0 && !nb.over && !nb.mine[0].down, "a revive leaves the fight at the revived HP (not 0)")
@@ -366,7 +366,7 @@ import AppKit
     var lw = Walk(); lw.companion = Mon(dex: 25, level: next.0 - 1, female: false); lw.companion.known = [84, 45, 39, 86].filter { $0 != next.1 }.prefix(4).map { $0 }
     lw.walk(expTable[growthRate[25]][next.0] - lw.companion.points, at: Date())
     check(lw.companion.level == next.0 && lw.companion.uid != nil && Array((lw.learning ?? []).prefix(2)) == [lw.companion.uid!, next.1], "a level-up by walking queues the new move", "\(lw.learning ?? [])")
-    let lv = WalkerView(state: lw); lv.persist = false; lv.rng = Seeded(s: 12); lv.nextLearn(Date())
+    let lv = Walker(state: lw); lv.persist = false; lv.rng = Seeded(s: 12); lv.nextLearn(Date())
     if case .learn = lv.screen { lv.press(1); check(lv.state.companion.known?[0] == next.1 && lv.state.companion.moves.count == 4, "forget move 1 for the new one") } else { check(false, "4 moves known: the forget-one screen") }
     let before4 = lv.state.companion.known; lv.state.learning = [lv.state.id(-1)!, 85]; lv.screen = .learn(sel: 4); lv.press(1)
     check(lv.state.companion.known == before4 && lv.state.learning == [], "배우지 않는다 keeps the four")
@@ -376,12 +376,12 @@ import AppKit
     bw.queueMoves(1, from: next.0 - 1); bw.box.remove(at: 0)
     check(bw.nextToLearn()?.ref == 0 && bw.nextToLearn()?.move == next.1, "a queued move follows its Pokémon when the box shifts")
     bw.box.removeAll(); check(bw.nextToLearn() == nil && bw.learning == [], "released: its queued moves are dropped")
-    let bv = WalkerView(state: { var s = Walk(); s.bag = ["마비치료제", "상처약"]; return s }()); bv.persist = false; bv.rng = Seeded(s: 13)
+    let bv = Walker(state: { var s = Walk(); s.bag = ["마비치료제", "상처약"]; return s }()); bv.persist = false; bv.rng = Seeded(s: 13)
     var bb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); bb.mine[0].status = .paralysis
     check(bv.battleItems(bb).map(\.name) == ["마비치료제"], "full HP: only the cure is offered")
     bv.screen = .bagBattle(bb, sel: 0); bv.press(1)
     if case .beats(let after, let bs, _, _) = bv.screen { check(after.mine[0].status == nil && bv.state.bag == ["상처약"] && bs.first == .note(.me, text: "마비치료제를 사용했다!"), "using a cure in battle takes it from the bag") } else { check(false, "using a cure in battle") }
-    let ov = WalkerView(state: { var s = Walk(); s.owned = [94]; return s }()); ov.persist = false; ov.rng = Seeded(s: 15)
+    let ov = Walker(state: { var s = Walk(); s.owned = [94]; return s }()); ov.persist = false; ov.rng = Seeded(s: 15)
     ov.screen = .battle(Battle(wild: Mon(dex: 94, level: 30, female: false), companion: pika50), sel: 0); let om = ov.sideModel(Date())
     ov.screen = .battle(Battle(party: [pika50], trainer: "x", foes: [Mon(dex: 6, level: 30, female: false)]), sel: 0); let tm = ov.sideModel(Date())
     check(om?.foe.types == ["ghost", "poison"] && om?.foe.owned == true && tm?.foe.types == ["fire", "flying"] && tm?.foe.owned == false && om?.mine.types == [],
@@ -487,15 +487,15 @@ import AppKit
     let td = textDots("포켓 레이더"); check(td.joined().contains(true) && td.count == 11, "Korean text renders to 11-row dots", td.map { String($0.map { $0 ? "#" : "." }) }.joined(separator: "\n"))
     check(josa("피카츄", "을", "를") == "피카츄를" && josa("꼬렛", "을", "를") == "꼬렛을", "josa")
 
-    // 9 UI flows: the real view, driven through press() / touch() / tick()
-    func on(_ v: WalkerView, _ p: (Screen) -> Bool) -> Bool { p(v.screen) }
+    // 9 UI flows: the walker, driven through press() / touch() / tick()
+    func on(_ v: Walker, _ p: (Screen) -> Bool) -> Bool { p(v.screen) }
     var s0w = Walk(); s0w.watts = 100
-    let v = WalkerView(state: s0w); v.persist = false; v.rng = Seeded(s: 14)
+    let v = Walker(state: s0w); v.persist = false; v.rng = Seeded(s: 14)
     v.press(1); v.press(2); let homeStays = on(v) { if case .home = $0 { return true }; return false } && v.emote?.kind == 1
     v.press(4); let menuUp = on(v) { if case .menu(menuAt("포켓 레이더")) = $0 { return true }; return false } && v.compose(Date()).sprites.count == 1 && v.homeKey() == false; v.press(0)
     check(homeStays && menuUp && on(v) { if case .menu(menuAt("배틀 타워")) = $0 { return true }; return false }, "home: ● pats (♥), ▶ does nothing; the 메뉴 key opens the menu on the pane (the LCD stays home); ◀ goes round")
     v.press(4); check(on(v) { if case .home = $0 { return true }; return false } && v.homeKey() == true, "… the same key again: home"); v.press(4)
-    let sv = WalkerView(state: Walk()); sv.persist = false; sv.screen = .home
+    let sv = Walker(state: Walk()); sv.persist = false; sv.screen = .home
     sv.strollX = sv.strollRange.upperBound - 0.5; sv.strollRight = true; sv.lastStep = Date(); sv.strollAt = Date().addingTimeInterval(-0.2); sv.stroll(Date())
     let turned = sv.strollX == sv.strollRange.upperBound && !sv.strollRight, walkKey = sv.compose(Date()).pics.first { $0.key.hasPrefix("walk|") }?.key
     sv.lastStep = .distantPast; let x0 = sv.strollX; sv.strollAt = Date().addingTimeInterval(-0.2); sv.stroll(Date())
@@ -510,7 +510,7 @@ import AppKit
     if case .battle = v.screen { v.sidePick(3) }                                                      // the pane's 도망
     check(on(v) { if case .beats(_, let bs, _, _) = $0 { return bs == [.ran] || bs.first == .note(.me, text: "도망칠 수 없었다!") }; return false }, "tapping 도망 tries to run (Gen IV odds)")
     let caughtB = Battle(wild: Mon(dex: 16, level: 3, female: false), companion: v.state.companion, chain: 1)
-    v.screen = .beats(caughtB, [.thrown(shakes: 3), .caught], since: Date().addingTimeInterval(-30), from: caughtB); v.tick(nil)
+    v.screen = .beats(caughtB, [.thrown(shakes: 3), .caught], since: Date().addingTimeInterval(-30), from: caughtB); v.tick(Date())
     let chained = on(v) { if case .radar(_, _, _, 2) = $0 { return true }; return false }, ended = on(v) { if case .say = $0 { return true }; return false }
     check((chained || ended) && v.state.caught.last?.dex == 16, "a catch keeps it, then the chain goes on or quietly ends")
     var hpB = Battle(wild: Mon(dex: 143, level: 30, female: false), companion: Mon(dex: 25, level: 30, female: false))
@@ -518,18 +518,18 @@ import AppKit
     v.screen = .moves(hpB, sel: 0); v.press(1)
     if case .beats(let after, _, _, let before) = v.screen {
         check(after.theirs[0].hp < before.theirs[0].hp || after.mine[0].hp < before.mine[0].hp, "the battle kept after a turn is the one AFTER it (HP stays down next turn)")
-        v.screen = .beats(after, [.appear], since: Date().addingTimeInterval(-30), from: after); v.tick(nil)
+        v.screen = .beats(after, [.appear], since: Date().addingTimeInterval(-30), from: after); v.tick(Date())
         if case .battle(let next, _) = v.screen { check(next.theirs[0].hp == after.theirs[0].hp && next.mine[0].hp == after.mine[0].hp, "next turn's menu shows the same HP") }
     } else { check(false, "the battle kept after a turn is the one AFTER it (HP stays down next turn)") }
     var mr = Battle(party: [Mon(dex: 25, level: 30, female: false), Mon(dex: 143, level: 30, female: false)], trainer: "x", foes: [Mon(dex: 16, level: 30, female: false)])
     mr.mine[0].hp = 0; mr.mine[0].down = true; mr.mustReplace = true
-    v.screen = .beats(mr, [.fainted(.me)], since: Date().addingTimeInterval(-30), from: mr); v.tick(nil)
+    v.screen = .beats(mr, [.fainted(.me)], since: Date().addingTimeInterval(-30), from: mr); v.tick(Date())
     let picking = on(v) { if case .party(_, 1) = $0 { return true }; return false }; v.press(3)
     let stuck = on(v) { if case .party = $0 { return true }; return false }; v.press(1)
     check(picking && stuck && on(v) { if case .beats(let nb, let bs, _, _) = $0 { return bs.first == .sendOut(.me, 1) && nb.me == 1 }; return false }, "ours fainted: pick who's next (↩ can't skip it)")
     v.screen = .menu(menuAt("포켓 레이더")); v.press(3); check(on(v) { if case .home = $0 { return true }; return false }, "↩ on a menu page: home")
     // ↩ 뒤로: one step up; where an answer is due only the cursor moves; nothing that can't be undone
-    let bk = WalkerView(state: { var s = Walk(); s.watts = 500; s.bp = 40; return s }()); bk.persist = false; bk.rng = Seeded(s: 51)
+    let bk = Walker(state: { var s = Walk(); s.watts = 500; s.bp = 40; return s }()); bk.persist = false; bk.rng = Seeded(s: 51)
     func back(_ sc: Screen) -> Screen { bk.screen = sc; bk.press(3); return bk.screen }
     let wild = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: Mon(dex: 25, level: 20, female: false))
     let tw = Battle(party: [Mon(dex: 25, level: 20, female: false)], trainer: "x", foes: [Mon(dex: 16, level: 5, female: false)])
@@ -560,10 +560,10 @@ import AppKit
     bk.sideOn = false; bk.screen = .forfeit(tw, yes: false); let lcdTap = bk.touch(55, 56); bk.sidePick(0)
     check(!lcdTap && bk.state.towerStreak == 5 && isBattle(bk.screen, "기권"), "the LCD answers nothing even without the pane; the pane's 아니오 is 아니오")
     bk.screen = .battle(wild, sel: 0)
-    let battleMenuItems = bk.buildMenu().items
+    let battleMenuItems = WalkerView(walker: bk).buildMenu().items
     check(battleMenuItems.contains { $0.title.hasPrefix("⚔ 배틀 중") } && battleMenuItems.first { $0.title.hasPrefix("코스") }?.submenu?.items.allSatisfy { $0.action == nil } == true,
           "mid-battle the menu's jump-away actions wait (no one-click escape)")
-    let hider = WalkerView(state: Walk()); hider.persist = false; hider.screen = .say(["PP가 없다"], next: .moves(wild, sel: 0), since: Date())
+    let hider = Walker(state: Walk()); hider.persist = false; hider.screen = .say(["PP가 없다"], next: .moves(wild, sel: 0), since: Date())
     let midFight = hider.inBattle; hider.screen = .say(["샀다"], next: .shop(bp: false, sel: 0, qty: nil), since: Date())
     check(midFight && !hider.inBattle, "inBattle covers a fight's messages (so hiding to the menu bar keeps the fight), not a shop's")
     check({ if case .evolve = back(.evolve(from: Mon(dex: 1, level: 16, female: false), to: Mon(dex: 2, level: 16, female: false), since: Date())) { return true }; return false }(), "an evolution isn't cut short by ↩")
@@ -578,7 +578,7 @@ import AppKit
     v.screen = .say(["어라?"], next: .menu(menuAt("커넥트")), since: Date()); check(v.touch(10, 10) && on(v) { if case .menu(menuAt("커넥트")) = $0 { return true }; return false }, "… only a message goes on with a click on the LCD")
 
     // the 도감 / 상자 grids on the pane
-    let gv = WalkerView(state: { var s = Walk(); s.owned = [1, 4, 25]; s.seen = [1, 4, 7, 25, 94]
+    let gv = Walker(state: { var s = Walk(); s.owned = [1, 4, 25]; s.seen = [1, 4, 7, 25, 94]
         s.box = [Mon(dex: 16, level: 30, female: false), Mon(dex: 1, level: 5, female: false), Mon(dex: 16, level: 8, female: false, shiny: true)]; return s }())
     gv.persist = false; gv.rng = Seeded(s: 71)
     func gs(_ p: (Screen) -> Bool) -> Bool { p(gv.screen) }
@@ -640,16 +640,16 @@ import AppKit
     check(gv.state.box.map(\.dex) == [19, 25] && gv.boxOrder.first == 1, "함께: the old companion goes to the box's end, first on 최근")
 
     v.state.box = (1...120).map { Mon(dex: $0 * 4 % 493 + 1, level: 5, female: false, shiny: $0 % 17 == 0 ? true : nil) }
-    let walkMenu = v.buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu
+    let walkMenu = WalkerView(walker: v).buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu
     v.state.box += (0..<40).map { Mon(dex: 29, level: 1 + $0 % 25, female: $0 % 2 == 0) }
-    let nido = v.buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title.hasPrefix("니드런♀") }?.submenu
+    let nido = WalkerView(walker: v).buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title.hasPrefix("니드런♀") }?.submenu
     check((nido?.items.count ?? 99) <= 12 && nido?.items.contains { $0.title.hasPrefix("그 밖") } == true && nido?.items.last?.title.hasPrefix("중복 놓아주기") == true,
           "40 니드런♀: ≤ 12 rows, the rest under 그 밖, and 중복 놓아주기", "\(nido?.items.count ?? -1)")
         check((walkMenu?.items.count ?? 99) <= 26 && walkMenu?.items.contains { $0.title.hasPrefix("★ 이로치") } == true, "big box: 함께 걷기 stays short (recent, shinies, dex ranges)", "\(walkMenu?.items.count ?? -1)")
 
     // 7e 3V: radar chains, the menu's marks, 중복 놓아주기 by V
-    let cv = WalkerView(state: Walk()); cv.persist = false; cv.rng = Seeded(s: 31); cv.state.watts = 100
-    let lc = courses.firstIndex { !$0.legends.isEmpty }!, lv2 = WalkerView(state: { var s = Walk(); s.course = lc; return s }()); lv2.persist = false
+    let cv = Walker(state: Walk()); cv.persist = false; cv.rng = Seeded(s: 31); cv.state.watts = 100
+    let lc = courses.firstIndex { !$0.legends.isEmpty }!, lv2 = Walker(state: { var s = Walk(); s.course = lc; return s }()); lv2.persist = false
     var legendV: [Int] = []
     for k in 0..<400 where legendV.count < 3 {                                                     // a legend at chain 0: 3V from being a legend, not from the chain
         lv2.rng = Seeded(s: UInt64(k)); lv2.screen = .radar(bush: 0, cursor: 0, since: Date().addingTimeInterval(-2), chain: 0); lv2.press(1)
@@ -665,20 +665,20 @@ import AppKit
     dw.box.remove(at: 2); check(dw.duplicates(of: 16) == [0, 3], "no 3V: the 2V is the one kept over higher levels", "\(dw.duplicates(of: 16))")
     var ow = Walk(); ow.box = [Mon(dex: 16, level: 60, female: false), withIVs(16, [30, 30, 30, 30, 30, 30], level: 5)]
     check(ow.duplicates(of: 16) == [1], "same V: the higher level stays (an old Lv.60 isn't traded for a fresh catch's IV total)")
-    let mv = WalkerView(state: { var s = Walk(); s.box = [v3, v1]; s.companion = withIVs(25, [31, 31, 31, 31, 0, 0]); return s }()); mv.persist = false
-    let walkItems = mv.buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items ?? []
+    let mv = Walker(state: { var s = Walk(); s.box = [v3, v1]; s.companion = withIVs(25, [31, 31, 31, 31, 0, 0]); return s }()); mv.persist = false
+    let walkItems = WalkerView(walker: mv).buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items ?? []
     let pidgey = walkItems.first { $0.title.hasPrefix("구구") }, rowsIn = pidgey?.submenu?.items ?? []
     let r3 = rowsIn.first { $0.title.contains("3V") }, r1 = rowsIn.first { $0.title.contains("1V") }
     let gold = r3?.attributedTitle.map { $0.attribute(.foregroundColor, at: ($0.string as NSString).range(of: "3V").location, effectiveRange: nil) as? NSColor } ?? nil
     check(r3 != nil && gold == WalkerView.vColor && r1 != nil && r1?.attributedTitle == nil && pidgey?.title.contains("최고 3V") == true && walkItems.first?.title.hasSuffix("4V") == true,
           "menu: 1V / 2V plain, 3V+ in gold, the species row flags its best, the companion shows its V", "\(walkItems.first?.title ?? "") \(rowsIn.map(\.title))")
-    check(mv.statLines({ var m = v1; m.hyper = [2]; return m }())[1].contains("방어 5→31") && mv.statLines(v3)[1].hasPrefix("개체값 · 3V"), "the numbers stay; a 특훈 IV reads 5→31")
-    let bigV = WalkerView(state: { var s = Walk(); s.box = (1...14).map { Mon(dex: $0, level: 5, female: false) } + [withIVs(20, [31, 31, 31, 31, 0, 0])]; s.bag = []; return s }()); bigV.persist = false
-    let bigItems = bigV.buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items ?? []
+    check(statLines({ var m = v1; m.hyper = [2]; return m }())[1].contains("방어 5→31") && statLines(v3)[1].hasPrefix("개체값 · 3V"), "the numbers stay; a 특훈 IV reads 5→31")
+    let bigV = Walker(state: { var s = Walk(); s.box = (1...14).map { Mon(dex: $0, level: 5, female: false) } + [withIVs(20, [31, 31, 31, 31, 0, 0])]; s.bag = []; return s }()); bigV.persist = false
+    let bigItems = WalkerView(walker: bigV).buildMenu().items.first { $0.title.hasPrefix("함께 걷기") }?.submenu?.items ?? []
     check(bigItems.contains { $0.title == "3V 이상 · 1" && $0.attributedTitle != nil } && bigItems.contains { $0.title.hasPrefix("No.001–050") && $0.title.hasSuffix("최고 4V") },
           "big box: a 3V 이상 list, and the dex range flags its best", "\(bigItems.map(\.title))")
     // 7f the shops: in the walker's menu, several at once
-    check(!bigV.buildMenu().items.contains { $0.title.hasPrefix("상점") || $0.title.hasPrefix("BP 교환소") || $0.title.hasPrefix("교환소") }, "the shops left the right-click menu")
+    check(!WalkerView(walker: bigV).buildMenu().items.contains { $0.title.hasPrefix("상점") || $0.title.hasPrefix("BP 교환소") || $0.title.hasPrefix("교환소") }, "the shops left the right-click menu")
     var sw = Walk(); sw.watts = 5000; sw.bp = 200; sw.companion = Mon(dex: 133, level: 20, female: false)             // 이브이: it has evolution items to sell
     let wW = sw.wares(bp: false, shells: []), wB = sw.wares(bp: true, shells: [(name: "배틀 골드", bp: 40)])
     check(wW.count == Walk.shop.count + sw.evolutionItems().count + 1 && wW.last?.kind == .legend(0) && wW.contains { $0.kind == .item("불꽃의돌") && $0.price == Walk.evoItemPrice }
@@ -690,7 +690,7 @@ import AppKit
           "3 순백떡 at once: -600W; more than the money covers: nothing happens")
     check(sw.purchase(wB[Walk.bpShop.count], 1, bp: true) == .shell("배틀 골드") && sw.bp == 160 && sw.canBuy(wB[Walk.bpShop.count], bp: true) == 0 && sw.purchase(wB[Walk.bpShop.count], 1, bp: true) == nil,
           "once-only (a device colour): bought once, then 보유")
-    let shopV = WalkerView(state: { var s = Walk(); s.watts = 1000; s.bp = 30; return s }()); shopV.persist = false; shopV.rng = Seeded(s: 41)
+    let shopV = Walker(state: { var s = Walk(); s.watts = 1000; s.bp = 30; return s }()); shopV.persist = false; shopV.rng = Seeded(s: 41)
     shopV.screen = .menu(menuAt("배틀 타워")); shopV.press(1); let tower = on(shopV) { if case .tower = $0 { return true }; return false }
     shopV.screen = .menu(menuAt("상점")); shopV.press(1)
     let opened = on(shopV) { if case .shop(false, 0, nil) = $0 { return true }; return false }
@@ -710,19 +710,19 @@ import AppKit
     shopV.shopTap(2005); check(shopV.state.count("은색병뚜껑") == 1 && shopV.state.bp == 5, "the panel's 구매 buys it")
     check(shopV.shopModel()?.hint.contains("받았다") == true && shopV.shopModel()?.qty == nil, "the panel stays up through the shop's message (shown in its box)")
     // a legend: how many, then 정말? (아니오 first), and never by a double-click or a held key
-    let lg = WalkerView(state: { var s = Walk(); s.watts = 9999; return s }()); lg.persist = false; lg.rng = Seeded(s: 42)
+    let lg = Walker(state: { var s = Walk(); s.watts = 9999; return s }()); lg.persist = false; lg.rng = Seeded(s: 42)
     lg.screen = .shop(bp: false, sel: 0, qty: nil); lg.press(0); lg.press(1); lg.press(1)                                  // ◀ wraps to 칠색조, ● how many, ●
     let asked = on(lg) { if case .shopConfirm(false, _, false) = $0 { return true }; return false }
     lg.press(1); check(asked && lg.state.watts == 9999 && on(lg) { if case .shop(false, _, nil) = $0 { return true }; return false }, "칠색조: ◀ ● ● asks, and ● on 아니오 buys nothing")
     lg.press(1); lg.press(1); lg.press(2); lg.press(1)
     check(lg.state.watts == 0 && lg.state.legendBought(250), "… and ▶ 예 ● brings it")
-    let dc = WalkerView(state: { var s = Walk(); s.watts = 1000; return s }()); dc.persist = false; dc.rng = Seeded(s: 43)
+    let dc = Walker(state: { var s = Walk(); s.watts = 1000; return s }()); dc.persist = false; dc.rng = Seeded(s: 43)
     dc.screen = .shop(bp: false, sel: 0, qty: nil); let shopLCD = dc.touch(48, 20); dc.shopTap(2100)
     let rowTap = on(dc) { if case .shop(false, 0, 1?) = $0 { return true }; return false }
     check(!shopLCD && rowTap && dc.state.watts == 1000, "a row on the pane opens how-many (the LCD never buys)")
     let heldReturn = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\r", charactersIgnoringModifiers: "\r", isARepeat: true, keyCode: 36)!
-    dc.keyDown(with: heldReturn); check(dc.state.watts == 1000, "a held return doesn't buy")
-    dc.clickCount = 1; dc.shopStep(10); dc.shopRow(1); check(on(dc) { if case .shop(false, 1, nil) = $0 { return true }; return false }, "scrolling the panel moves a row and leaves how-many (never the amount)")
+    let dcv = WalkerView(walker: dc); dcv.keyDown(with: heldReturn); check(dc.state.watts == 1000, "a held return doesn't buy")
+    dcv.clickCount = 1; dc.shopStep(10); dc.shopRow(1); check(on(dc) { if case .shop(false, 1, nil) = $0 { return true }; return false }, "scrolling the panel moves a row and leaves how-many (never the amount)")
     dc.screen = .shop(bp: false, sel: 0, qty: nil); check(dc.shopModel()?.hint.contains("●") == true, "the panel says what ● does")
     dc.screen = .shop(bp: false, sel: dc.wares(false).count - 1, qty: nil); check(dc.shopModel()?.hint == "W가 부족해요 · 9,999W 필요", "the panel says why a row can't be bought", "\(dc.shopModel()?.hint ?? "")")
     // 7g the Poké Ball card: the LCD 2 pt a dot at 보통, the keys on the band, the page under it growing down per screen
@@ -731,15 +731,15 @@ import AppKit
           "보통: a 216 x 199 card, the LCD 192 x 128 (2 pt a dot: whole pixels on a 1x screen)", "\(devSize) \(lcdRect)")
     check(buttons.count == 5 && buttons.allSatisfy { $0.c.y == Layout.seam && $0.c.x - $0.r >= 0 && $0.c.x + $0.r <= Layout.w } && buttons[1].r > buttons[0].r && buttons.prefix(4).map(\.c.x) == buttons.prefix(4).map(\.c.x).sorted()
           && buttons[4].c.x + buttons[3].c.x == Layout.w * K, "메뉴 ◀ ● ▶ ↩ on the band, ● the ball's own bigger button, 메뉴 across from ↩")
-    let gw = WalkerView(state: Walk()); gw.persist = false; gw.statusOpen = false
-    gw.refreshPane(Date(), force: true); let idleH = gw.frame.height
-    gw.screen = .dex(25, filter: 0, detail: false); gw.refreshPane(Date(), force: true); let gridH = gw.frame.height
-    gw.screen = .battle(wild, sel: 0); gw.refreshPane(Date(), force: true); let fightH = gw.frame.height, hudUp = gw.hud == nil
-    gw.screen = .home; gw.statusOpen = true; gw.refreshPane(Date(), force: true)
+    let gk = Walker(state: Walk()), gw = WalkerView(walker: gk); gk.persist = false; gk.statusOpen = false
+    gk.refreshPane(Date(), force: true); let idleH = gw.frame.height
+    gk.screen = .dex(25, filter: 0, detail: false); gk.refreshPane(Date(), force: true); let gridH = gw.frame.height
+    gk.screen = .battle(wild, sel: 0); gk.refreshPane(Date(), force: true); let fightH = gw.frame.height, hudUp = gk.hud == nil
+    gk.screen = .home; gk.statusOpen = true; gk.refreshPane(Date(), force: true)
     check(idleH == 199 && gridH == 422 && fightH == 311 && gw.frame.height == 354 && gw.frame.width == 216 && gw.page.frame.minY == Layout.pane && hudUp,
           "the card grows down to the page: idle 199, battle 311, a grid 422, the status sheet 354 (the page under the band)", "\(idleH) \(gridH) \(fightH) \(gw.frame)")
     SIZE = 3; check(PX == 3 && 422 * K < 850, "크게: 3 pt a dot, its tallest page still under a 13-inch screen's height"); SIZE = size0
-    let pv = WalkerView(state: { var s = Walk(); s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); pv.persist = false; pv.rng = Seeded(s: 61)
+    let pv = Walker(state: { var s = Walk(); s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); pv.persist = false; pv.rng = Seeded(s: 61)
     func kind(_ sc: Screen) -> String {
         pv.screen = sc; let c = pv.paneContent(Date())
         return c.battle != nil ? "battle" : c.dex != nil ? "dex" : c.grid != nil ? "grid" : c.mon != nil ? "mon" : c.shop != nil ? "shop" : c.menu.map { "menu\($0.sel)" } ?? (c.status != nil ? "status" : "none")
@@ -756,7 +756,7 @@ import AppKit
     pv.screen = .menu(menuAt("포켓 레이더")); pv.menuTap(menuAt("포켓몬"))
     check({ if case .box = pv.screen { return true }; return false }(), "메뉴: a click on a tile opens it")
     // the walker's other pages: one click does what ● would
-    let pt = WalkerView(state: { var s = Walk(); s.watts = 500; s.caught = [Mon(dex: 16, level: 5, female: false)]; s.items = ["상처약"]; return s }()); pt.persist = false; pt.rng = Seeded(s: 83)
+    let pt = Walker(state: { var s = Walk(); s.watts = 500; s.caught = [Mon(dex: 16, level: 5, female: false)]; s.items = ["상처약"]; return s }()); pt.persist = false; pt.rng = Seeded(s: 83)
     func pts(_ p: (Screen) -> Bool) -> Bool { p(pt.screen) }
     pt.screen = .radar(bush: 2, cursor: 0, since: Date().addingTimeInterval(-2), chain: 0)
     let rm = pt.paneContent(Date()).radar; pt.pageTap(5002)
@@ -766,7 +766,7 @@ import AppKit
     check(lobby?.party.count == 2 && lobby?.fee == Walk.towerFee && pt.state.watts == 500 - Walk.towerFee && pts { if case .beats = $0 { return true }; return false }, "배틀 타워: the party, and 도전 pays and starts")
     pt.screen = .menu(menuAt("포켓몬")); pt.press(1); let g0 = pt.paneContent(Date()).grid
     check(pts { if case .box(-1, nil, false, false) = $0 { return true }; return false } && g0?.party.map(\.dex) == [25, 16] && g0?.partySel == 0 && g0?.items == 1
-          && SideView.height(pt.paneContent(Date())) == SideView.tallest, "포켓몬: the companion (picked first) and the walker's in a row over the box, then the items' chip")
+          && pt.paneContent(Date()).height == PaneContent.tallest, "포켓몬: the companion (picked first) and the walker's in a row over the box, then the items' chip")
     pt.gridTap(4510); let itemsUp = pt.paneContent(Date()).items?.rows.map(\.name) == ["상처약"] && pts { if case .items = $0 { return true }; return false }; pt.press(3)
     pt.gridTap(4501); let walkerPage = pt.paneContent(Date()).mon?.place == 1; pt.gridTap(4400)
     check(itemsUp && walkerPage && pt.state.companion.dex == 16 && pt.state.caught.first?.dex == 25, "… the items' chip opens the 도구 page; on one of the walker's, 함께 걷기 makes it the companion")
@@ -774,14 +774,14 @@ import AppKit
     pt.screen = .box(-2, act: nil, confirm: false, detail: true); pt.gridTap(4404)
     check(idle && pt.state.caught.isEmpty && pt.state.box.last?.dex == 25 && pts { if case .say(_, .box(0, nil, false, false), _) = $0 { return true }; return false },
           "… the companion's own page has nothing to do; 상자로 보내기 moves one of the walker's into the box, picked there")
-    let pgv = WalkerView(state: { var s = Walk(); s.box = (1...31).map { Mon(dex: $0, level: 5, female: false) }; return s }()); pgv.persist = false
+    let pgv = Walker(state: { var s = Walk(); s.box = (1...31).map { Mon(dex: $0, level: 5, female: false) }; return s }()); pgv.persist = false
     pgv.screen = .box(-1, act: nil, confirm: false); pgv.gridTap(4201); let pageOn = pgv.paneContent(Date()).grid?.page == 2
     pgv.screen = .box(-1, act: nil, confirm: false); pgv.gridTap(4200); let pageRound = pgv.paneContent(Date()).grid?.page == 2
     pgv.state.box = [Mon(dex: 1, level: 5, female: false)]; pgv.screen = .box(0, act: 1, confirm: true, detail: true); pgv.press(1)
     check(pageOn && pageRound && pgv.state.box.isEmpty && { if case .say(_, .box(-1, nil, false, false), _) = pgv.screen { return true }; return false }(),
           "포켓몬: from the row above the pager still turns the box's pages (◀ round to the last); letting the last one go picks the companion")
     // 도구: the walker's and the bag's together, and what each does from there; 워커로; how a Pokémon evolves, and the companion's evolving now
-    let iv = WalkerView(state: { var s = Walk(); s.items = ["상처약"]; s.bag = ["이상한사탕", "금구슬", "금속코트"]; s.companion = Mon(dex: 95, level: 20, female: false)
+    let iv = Walker(state: { var s = Walk(); s.items = ["상처약"]; s.bag = ["이상한사탕", "금구슬", "금속코트"]; s.companion = Mon(dex: 95, level: 20, female: false)
                                  s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); iv.persist = false; iv.rng = Seeded(s: 91)
     iv.screen = .items(0); let im = iv.paneContent(Date()).items
     iv.pageTap(5600 + (im?.rows.firstIndex { $0.name == "이상한사탕" } ?? 0)); let candyAct = iv.paneContent(Date()).items?.action; iv.pageTap(5700)
@@ -797,8 +797,8 @@ import AppKit
     pt.screen = .say(["W가 부족하다"], next: .menu(menuAt("포켓 레이더")), since: Date()); pt.menuTap(menuAt("트레이너 카드"))
     check(pts { if case .card(0) = $0 { return true }; return false }, "a click on a page still up under its message ends the message and counts")
     let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48)!
-    pt.screen = .dex(1, filter: 0, detail: false); pt.keyDown(with: tab); let tabbed = pts { if case .dex(_, 1, false) = $0 { return true }; return false }
-    pt.screen = .home; pt.statusOpen = false; pt.keyDown(with: tab)
+    let ptv = WalkerView(walker: pt); pt.screen = .dex(1, filter: 0, detail: false); ptv.keyDown(with: tab); let tabbed = pts { if case .dex(_, 1, false) = $0 { return true }; return false }
+    pt.screen = .home; pt.statusOpen = false; ptv.keyDown(with: tab)
     check(tabbed && pt.statusOpen, "Tab: a grid's next tab; on home, the status sheet")
     let stm = pv.statusModel(); check(stm.level == "Lv.5" && stm.numbers.count == 3 && stm.rows.count == 3 && stm.exp >= 0 && stm.exp <= 1, "the status sheet: level, EXP to next, today / W / total, egg / tower / dex")
     for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks() + notebookChecks() { check(ok, name) }   // the drawing files' own checks

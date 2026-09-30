@@ -1,7 +1,7 @@
-import AppKit
+import Foundation
 // The battle stage: replaying beats, poses, HUD, messages, and the side panel's model.
 
-extension WalkerView {
+extension Walker {
     /// Where a playing turn is right now: HP as of this moment, names before this beat's damage lands; pending = a side whose KO'd fighter
     /// hasn't had its faint yet (it stays on the stage through the recoil, drain, U-turn … beats in between).
     func beatState(_ now: Date) -> (hp: Battle, names: Battle, beat: Beat, u: Double, from: Battle, pending: Set<Side>)? {

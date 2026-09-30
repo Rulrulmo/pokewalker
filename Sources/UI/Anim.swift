@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 // The HGSS entry animations (tools/gen.py anims.bin): what each species does as it appears, played in place of its sprite, then the sprite again.
 
 /// 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none), then per species a raw-DEFLATE block: x, y (int16), w, h, n (uint8),
@@ -42,7 +42,7 @@ struct Anim {
 /// The run's animation, when it shows one of its frames (nil = the static sprite).
 @MainActor func playing(_ r: SpriteRun) -> Anim? { r.frame.flatMap { f in anim(r.dex).flatMap { f < $0.ms.count && !r.back ? $0 : nil } } }
 
-extension WalkerView {
+extension Walker {
     /// Seconds into the animation of the Pokémon shown as `who` (home's companion, a page's); nil = none on (the static sprite).
     /// start: another one on screen starts its own (the pages: opening one, ◀ ▶); home's waits for a pat or a perk.
     func animT(_ who: String, _ dex: Int, _ now: Date, start: Bool = true) -> Double? {
@@ -76,7 +76,7 @@ extension WalkerView {
         return Double(same) / Double(max(1, all)) > 0.95
     }, "each animation ends on the static sprite's pose and colours"))
     if let a = pk { c.append((a.frame(at: 0) == 0 && a.frame(at: a.length - 0.001) == a.ms.count - 1 && a.frame(at: a.length) == nil && a.frame(at: -0.1) == nil, "an animation's frame by time: none before it starts or once it's over")) }
-    let v = WalkerView(state: { var s = Walk(); s.owned = [6, 25]; return s }()); v.persist = false; v.screen = .home
+    let v = Walker(state: { var s = Walk(); s.owned = [6, 25]; return s }()); v.persist = false; v.screen = .home
     let now = Date(), idle = v.compose(now).sprites.first?.frame == nil
     v.press(1); let t0 = v.animOn?.since ?? now
     let on = v.compose(t0.addingTimeInterval(0.05)).sprites.first?.frame != nil && v.animating, off = v.compose(t0.addingTimeInterval(10)).sprites.first?.frame == nil
@@ -84,8 +84,9 @@ extension WalkerView {
     v.screen = .dex(25, filter: 0, detail: false); let d0 = v.compose(now).sprites.first?.frame
     v.screen = .dex(6, filter: 0, detail: false); let d1 = v.compose(now.addingTimeInterval(5)).sprites.first?.frame   // ▶: the next one plays from its start
     c.append((d0 == 0 && d1 == 0 && v.compose(now.addingTimeInterval(20)).sprites.first?.frame == nil, "도감: the shown Pokémon plays once when it changes"))
-    v.screen = .dex(25, filter: 0, detail: true); v.tick(nil); let fast = v.fast != nil
-    v.animOn = ("dex", 25, .distantPast); v.tick(nil)
-    c.append((fast && v.fast == nil, "an animation plays at 30 fps, then back to the tick's 10"))
+    let mac = WalkerView(walker: v)                                                            // the frame timer is the Mac view's
+    v.screen = .dex(25, filter: 0, detail: true); mac.tick(nil); let fast = mac.fast != nil
+    v.animOn = ("dex", 25, .distantPast); mac.tick(nil)
+    c.append((fast && mac.fast == nil, "an animation plays at 30 fps, then back to the tick's 10"))
     return c
 }

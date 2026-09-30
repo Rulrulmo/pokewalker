@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 // Home: the companion's HGSS walking sprite goes along the course picture while steps come in (the faster they come, the faster),
 // turning at the ends; when they stop it turns to face us.
 
@@ -30,7 +30,7 @@ struct WalkSprite {
     walkCache[dex] = w; return w
 }
 
-extension WalkerView {
+extension Walker {
     /// Steps are coming in: it's walking (drawn at the tick's 10 fps: typing is walking, so it mustn't cost much).
     func strolling(_ now: Date) -> Bool { now.timeIntervalSince(lastStep) < 1.2 }
     /// Where it may go: its middle, in half-dots, inside the picture's window.

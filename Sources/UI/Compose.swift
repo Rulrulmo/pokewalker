@@ -1,7 +1,7 @@
-import AppKit
+import Foundation
 // Drawing each screen into the frame buffer; the Pokédex panel's model.
 
-extension WalkerView {
+extension Walker {
     func compose(_ now: Date) -> FB {
         var fb = FB()
         let t = now.timeIntervalSinceReferenceDate, half = Int(t * 2) % 2, me = state.companion
@@ -262,7 +262,7 @@ extension WalkerView {
     }
     func gridTap(_ code: Int) {
         throughSay()
-        lastInput = Date(); shown = nil; needsDisplay = true
+        lastInput = Date(); host?.redraw(.all)
         switch (screen, code) {
         case (.dex(_, let f, _), 10000...):
             guard let n = dexList(f)[safe: code - 10000] else { return }
@@ -319,7 +319,7 @@ extension WalkerView {
     /// A click on a walker page that isn't a grid: 5000 + k a radar bush, 5200 + p a card page, 5300 + k a move to forget (4 = don't),
     /// 5400 / 5401 the tower's 도전 / 나가기. One click does it, as ● would.
     func pageTap(_ code: Int) {
-        throughSay(); lastInput = Date(); shown = nil; needsDisplay = true
+        throughSay(); lastInput = Date(); host?.redraw(.all)
         switch (screen, code) {
         case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
         case (.card, 5200...5202): screen = .card(code - 5200)
@@ -400,7 +400,7 @@ extension WalkerView {
     func menuTap(_ i: Int) {
         throughSay()
         guard case .menu = screen, menuItems.indices.contains(i) else { return }
-        lastInput = Date(); shown = nil; needsDisplay = true
+        lastInput = Date(); host?.redraw(.all)
         screen = .menu(i); press(1)
     }
     /// What the side panel shows on a shop screen; nil elsewhere.
@@ -425,3 +425,17 @@ extension WalkerView {
                          total: "\(spend.formatted())\(unit)", hint: hint, ask: ask)
     }
 }
+
+// MARK: - a Pokémon in words (the status sheet, the menu)
+func sexMark(_ m: Mon) -> String { genderRate[m.dex] < 0 ? "" : m.female ? " ♀" : " ♂" }
+func movesLine(_ m: Mon) -> String { "기술: " + m.moves.map { moveTable[$0]!.name }.joined(separator: " · ") }
+/// 능력치 / 개체값 / 노력치, one line each (HP 공격 방어 특공 특방 스피드).
+func statLines(_ m: Mon) -> [String] {
+    let names = ["HP", "공격", "방어", "특공", "특방", "스피드"]
+    func row(_ v: [Int]) -> String { zip(names, v).map { "\($0) \($1)" }.joined(separator: " · ") }
+    let ev = m.evs ?? Array(repeating: 0, count: 6), iv = m.ivs ?? Array(repeating: 15, count: 6)
+    let ivRow = names.indices.map { k in names[k] + " " + (m.hyper?.contains(k) == true ? "\(iv[k])→31" : "\(iv[k])") }.joined(separator: " · ")   // 특훈: its own IV → 31
+    return ["능력치  " + row(m.stats), "개체값\(vMark(m))  " + ivRow + (m.ivs == nil ? " (예전 포켓몬)" : ""), "노력치  " + row(ev) + " · 합 \(ev.reduce(0, +))/510"]
+}
+/// " · 3V" (31s, 특훈 included), or nothing at 0V.
+func vMark(_ m: Mon) -> String { m.perfectIVs > 0 ? " · \(m.perfectIVs)V" : "" }
