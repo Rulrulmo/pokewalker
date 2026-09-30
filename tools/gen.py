@@ -32,7 +32,7 @@ SRC = {
                                               'pokemon_stats', 'pokemon', 'moves', 'move_names', 'pokemon_moves', 'type_efficacy', 'type_efficacy_past',
                                               'version_groups', 'move_changelog', 'pokemon_stats_past',
                                               'move_meta', 'move_meta_stat_changes', 'move_meta_ailments', 'move_flag_map', 'abilities', 'ability_names',
-                                              'pokemon_abilities', 'pokemon_abilities_past', 'natures', 'nature_names']},
+                                              'pokemon_abilities', 'pokemon_abilities_past', 'natures', 'nature_names', 'ability_flavor_text']},
 }
 N = 493  # HGSS national dex
 
@@ -364,6 +364,17 @@ with open('Sources/Data/Data.swift', 'w') as f:
         g.write('let abilitySlots: [[Int]] = [[], ' + ', '.join('[' + ', '.join(map(str, ab[d])) + ']' for d in range(1, N + 1)) + ']\n')
         an = {int(r['ability_id']): r['name'] for r in csv.DictReader(open(get('ability_names.csv'))) if r['local_language_id'] == '3'}
         g.write('let abilityNames: [Int: String] = [' + ', '.join(f'{i}: {s(an[i])}' for i in range(1, 124)) + ']\n')
+        # what each does, in Korean: the earliest Korean flavour text (X/Y; line breaks are the games' layout)
+        fl = {}
+        for r in csv.DictReader(open(get('ability_flavor_text.csv'))):
+            a, vg = int(r['ability_id']), int(r['version_group_id'])
+            if r['language_id'] == '3' and a <= 123 and (a not in fl or vg < fl[a][0]): fl[a] = (vg, ' '.join(r['flavor_text'].split()))
+        assert len(fl) == 123, sorted(set(range(1, 124)) - set(fl))
+        # where the X/Y text describes a later generation's effect, what it does here (Gen IV, singles only); 6: a line break had split 폭발할
+        fl.update({a: (0, t) for a, t in {1: '배틀에서는 효과가 없다.', 5: '일격필살 기술을 받지 않는다.', 6: '누구도 폭발할 수 없게 된다.', 12: '헤롱헤롱 상태가 되지 않는다.',
+                                          31: '전기 기술을 끌어모은다. 싱글 배틀에서는 효과가 없다.', 114: '물 기술을 끌어모은다. 싱글 배틀에서는 효과가 없다.',
+                                          57: '마이너스와 함께 싸우면 특수공격이 오른다. 싱글 배틀에서는 효과가 없다.', 58: '플러스와 함께 싸우면 특수공격이 오른다. 싱글 배틀에서는 효과가 없다.'}.items()})
+        g.write('let abilityDescs: [Int: String] = [' + ', '.join(f'{i}: {s(fl[i][1])}' for i in range(1, 124)) + ']\n')
         nat = list(csv.DictReader(open(get('natures.csv'))))
         nko = {r['nature_id']: r['name'] for r in csv.DictReader(open(get('nature_names.csv'))) if r['local_language_id'] == '3'}
         g.write('let natures: [(name: String, up: Int, down: Int)] = [' + ', '.join(f'({s(nko[r["id"]])}, {int(r["increased_stat_id"]) - 1}, {int(r["decreased_stat_id"]) - 1})' for r in sorted(nat, key=lambda r: int(r['game_index']))) + ']   // stat index 1-5, up == down = neutral\n')

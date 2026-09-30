@@ -32,7 +32,9 @@ if let b = statusItem?.button {
 view.state.dex()
 view.levelled = view.state.sync(counter: WalkerView.counter(), boot: WalkerView.boot(), at: Date())      // steps typed while the app was quit (same login) count
 view.save(nil)
-let panel = Panel(contentRect: NSRect(origin: .zero, size: devSize), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+view.refreshPane(Date(), force: true)                          // the page it opens on (the status sheet, if it was left open): no jump after it shows
+let size = view.frame.size
+let panel = Panel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
 panel.level = .floating
 panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 panel.hidesOnDeactivate = false
@@ -40,13 +42,14 @@ panel.becomesKeyOnlyIfNeeded = true
 panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
 panel.contentView = view
 if !panel.setFrameUsingName("pokewalker", force: true), let s = NSScreen.screens.first {          // force: the saved size too (an old 288x288 device), so its screen is found right
-    panel.setFrame(NSRect(x: s.visibleFrame.maxX - devSize.width - 24, y: s.visibleFrame.minY + 24, width: devSize.width, height: devSize.height), display: false)
+    panel.setFrame(NSRect(x: s.visibleFrame.maxX - size.width - 24, y: s.visibleFrame.minY + 24, width: size.width, height: size.height), display: false)
 }
 panel.setFrameAutosaveName("pokewalker")
 do {                                                                                              // grow from the saved top-left, kept on the screen it was on
     let old = panel.frame, top = NSPoint(x: old.minX, y: old.maxY)
     let screen = NSScreen.screens.first { $0.frame.contains(NSPoint(x: top.x, y: top.y - 1)) } ?? panel.screen
-    panel.setFrame(WalkerView.onScreen(NSRect(x: top.x, y: top.y - devSize.height, width: devSize.width, height: devSize.height), in: screen?.visibleFrame), display: false)
+    panel.setFrame(WalkerView.onScreen(NSRect(x: top.x, y: top.y - size.height, width: size.width, height: size.height), in: screen?.visibleFrame), display: false)
+    view.anchorTop = top.y
 }
 if !UserDefaults.standard.bool(forKey: "hidden") { panel.orderFrontRegardless() }
 view.sideOn = true

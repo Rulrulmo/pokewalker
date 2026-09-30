@@ -45,9 +45,7 @@ extension WalkerView {
         if let said { msg = said; mode = .none }
         let foe = b.theirs[b.it], mine = b.mine[b.me]
         var theirs = card(foe, out: true); theirs.types = foe.typeList; theirs.owned = (state.owned ?? []).contains(foe.mon.dex)
-        return SideModel(foe: theirs, foeBalls: b.trainer == nil ? [] : b.theirs.map(\.alive),
-                         mine: card(mine, out: true), myBalls: b.mine.count > 1 ? b.mine.map(\.alive) : [],
-                         trainer: b.trainer, message: msg, mode: mode)
+        return SideModel(foe: theirs, mine: card(mine, out: true), message: msg, mode: mode)
     }
     func card(_ f: Fighter, out: Bool) -> SideModel.Card { .init(name: monNames[f.mon.dex], level: f.mon.level, hp: f.hp, max: f.maxHP, out: out, status: f.status?.badge) }
     func sidePick(_ k: Int) {                                                                   // a click on the side panel = selecting that row, then ●
@@ -111,14 +109,14 @@ extension WalkerView {
     /// The DS layout: theirs front-on at the top right, ours from behind at the bottom left, each on a pad.
     func stage(_ fb: inout FB, _ b: Battle, _ now: Date, _ p: Pose, hud: Bool = true, pending: Set<Side> = []) {
         let t = now.timeIntervalSinceReferenceDate, f = Int(t * 2) % 2
-        let at: [Side: (x: Int, y: Int)] = [.it: (58, hud ? 14 : 4), .me: (8, hud ? 22 : 32)]   // 32x32-dot sprite boxes, ours flush with the bottom; the HUD pushes them down
+        let at: [Side: (x: Int, y: Int)] = [.it: (60, hud ? 14 : 8), .me: (8, hud ? 22 : 32)]   // where each stands (feet at y + 32, centre x + 16; sprites are 40 dots): theirs clear of the HP box, ours flush with the bottom
         let pad: (UInt32, UInt32) = switch state.season {                                                         // the pad they stand on, by season
         case .spring: (rgb(150, 206, 120), rgb(196, 230, 160)); case .summer: (rgb(130, 190, 96), rgb(176, 216, 136))
         case .autumn: (rgb(200, 150, 80), rgb(226, 190, 120)); case .winter: (rgb(200, 212, 228), rgb(236, 242, 250))
         }
-        for (s, rx, ry) in [(Side.it, 17.0, 3.0), (.me, 20.0, 4.0)] {
+        for (s, rx, ry) in [(Side.it, 20.0, 3.4), (.me, 22.0, 4.0)] {
             let cx = at[s]!.x + 16, cy = at[s]!.y + 31                                                      // under the feet (every frame stands on its box's bottom)
-            for y in cy - 4...cy + 4 { for x in cx - 21...cx + 21 { let ex = Double(x - cx) / rx, ey = Double(y - cy) / ry; if ex * ex + ey * ey < 1 { fb.set(x, y, 1, ex * ex + ey * ey > 0.7 ? pad.0 : pad.1) } } }
+            for y in cy - 4...cy + 4 { for x in cx - 23...cx + 23 { let ex = Double(x - cx) / rx, ey = Double(y - cy) / ry; if ex * ex + ey * ey < 1 { fb.set(x, y, 1, ex * ex + ey * ey > 0.7 ? pad.0 : pad.1) } } }
         }
         defer { fb.weatherFX(state.weather ?? .sunny, 0, hud ? 12 : 0, 96, hud ? 38 : 64, t) }                         // over the fighters, under the HUD
         let foe = b.theirs[b.it].mon, mine = b.mine[b.me].mon
@@ -136,7 +134,7 @@ extension WalkerView {
             fb.sprite(s == .me ? mine : foe, a.x + v.dx, a.y + v.dy, back: s == .me, bob: s == .me ? f - 1 : f, flash: v.flash, floor: alive ? 64 : a.y + 32)   // ours bobs down: its cut-off back never lifts
         }
         if case .idle = p, foe.shiny == true, shown[.it]!.on {                                      // sparkles around it, from its head down
-            let top = at[.it]!.y + spriteTop(foe.dex) * 2 / 5, h = at[.it]!.y + 32 - top
+            let top = at[.it]!.y + 32 - (80 - spriteTop(foe.dex)) / 2, h = at[.it]!.y + 32 - top          // a sprite pixel is half a dot
             for (k, (sx, sy)) in [(-2, 2), (26, h / 4), (12, -3), (28, h * 3 / 4)].enumerated() where (Int(t * 4) + k) % 3 == 0 { fb.draw(spark, at[.it]!.x + sx, max(0, top + sy), sparkPal) }
         }
         if let (bx, by, tilt, burst, stars) = thrown {

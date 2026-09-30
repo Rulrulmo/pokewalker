@@ -21,7 +21,7 @@ func spritePixel(_ dex: Int, back: Bool, _ x: Int, _ y: Int, shiny: Bool) -> UIn
     let t: Int = (0..<80).first(where: { y in (0..<80).contains { spritePixel(dex, back: back, $0, y, shiny: false) != 0 } }) ?? 79
     spriteTops[dex * 2 + (back ? 1 : 0)] = t; return t
 }
-/// A sprite laid over the dots at 1 pt per pixel (x 1.5 / x 2 on the bigger sizes): its 80x80 box is 32x32 dots at (x, y); `floor` = the dot row it sinks behind.
+/// A sprite laid over the dots at 1 pt per pixel (x 1.5 / x 2 on the bigger sizes): its 80x80 frame (40x40 dots) stands on (x + 16, y + 32); `floor` = the dot row it sinks behind.
 struct SpriteRun: Equatable { var dex: Int; var shiny, back: Bool; var x, y, bob: Int; var tint: UInt32?, tintShade: UInt8; var floor: Int; var inverted = false }
 @MainActor var spriteCache: [String: NSImage] = [:]
 /// The sprite as the LCD shows it: its colours, or on a grey screen 4 shades by brightness (white = the blank screen, like the walker's own art); a tint = a silhouette.
@@ -58,10 +58,10 @@ func iconPixel(_ dex: Int, _ x: Int, _ y: Int) -> UInt32 {
     return i > 0 ? rgb(iconData[o + (i - 1) * 3], iconData[o + (i - 1) * 3 + 1], iconData[o + (i - 1) * 3 + 2]) : 0
 }
 @MainActor var iconCache: [Int: NSImage] = [:]                                            // at most 493 x 2 small images
-/// A species' box icon in colour, or (shadow) as a dark silhouette: seen, not caught.
+/// A species' box icon in colour, or (shadow) as a pale silhouette: seen, not caught.
 @MainActor func iconImage(_ dex: Int, shadow: Bool = false) -> NSImage {
     if let i = iconCache[dex * 2 + (shadow ? 1 : 0)] { return i }
-    let px = (0..<1024).map { k -> UInt32 in let c = iconPixel(dex, k % 32, k / 32); return c == 0 ? 0 : shadow ? rgb(54, 58, 70) : c }
+    let px = (0..<1024).map { k -> UInt32 in let c = iconPixel(dex, k % 32, k / 32); return c == 0 ? 0 : shadow ? rgb(196, 200, 208) : c }
     let i = image(px, 32); iconCache[dex * 2 + (shadow ? 1 : 0)] = i; return i
 }
 func dim(_ c: UInt32, _ k: Double) -> UInt32 { rgb(UInt8(Double(c >> 16 & 255) * k), UInt8(Double(c >> 8 & 255) * k), UInt8(Double(c & 255) * k)) }
@@ -139,7 +139,7 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
     mutating func draw(_ a: [[UInt8?]], _ x: Int, _ y: Int, _ pal: [UInt32]? = nil, scale k: Int = 1) {
         for (dy, r) in a.enumerated() { for (dx, s) in r.enumerated() { if let s { for i in 0..<k * k { set(x + dx * k + i % k, y + dy * k + i / k, s, pal?[Int(s)] ?? 0) } } } }
     }
-    /// A Pokémon in the old 64x48 box: its 32x32 sprite centred across, standing on the box's bottom. f = 1 bobs it a pixel.
+    /// A Pokémon in the old 64x48 box: its sprite centred across, standing on the box's bottom. f = 1 bobs it a pixel.
     mutating func mon(_ m: Mon, _ f: Int, _ x: Int, _ y: Int, flash: Bool = false, tint: (UInt8, UInt32)? = nil) {   // flash = red silhouette (the ball's beam); tint = any silhouette
         sprite(m, x + 16, y + 16, bob: f, flash: flash, tint: tint)
     }
@@ -168,7 +168,7 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
             let (X, Y) = (x0 + x, y0 + y)
             switch wx {
             case .rain: if (x * 7 + (y - f * 2 + 1000) + x / 3 * 5) % 11 == 0, (x + y) % 3 != 0 { set(X, Y, 2, rgb(80, 130, 220)) }
-            case .snow: if (UInt32(truncatingIfNeeded: (x + (y + f / 3) / 4 % 2) &* 73_856_093) ^ UInt32(truncatingIfNeeded: (y - f / 2 + 10_000) &* 19_349_663)) % 41 == 0 { set(X, Y, 1, px[Y * 96 + X] == 0 && col[Y * 96 + X] == 0 && !sprites.contains { (0..<32).contains(X - $0.x) && (0..<32).contains(Y - $0.y) } ? rgb(150, 176, 214) : rgb(252, 252, 255)) }   // blue-grey on the bare screen, white on pictures   // hashed flakes, falling and swaying
+            case .snow: if (UInt32(truncatingIfNeeded: (x + (y + f / 3) / 4 % 2) &* 73_856_093) ^ UInt32(truncatingIfNeeded: (y - f / 2 + 10_000) &* 19_349_663)) % 41 == 0 { set(X, Y, 1, px[Y * 96 + X] == 0 && col[Y * 96 + X] == 0 && !sprites.contains { (-4..<36).contains(X - $0.x) && (-8..<32).contains(Y - $0.y) } ? rgb(150, 176, 214) : rgb(252, 252, 255)) }   // blue-grey on the bare screen, white on pictures   // hashed flakes, falling and swaying
             case .fog: if (y + f / 6) % 6 == 0, (x + y * 3 + f / 3) % 3 != 0 { set(X, Y, 1, cave ? rgb(150, 144, 150) : rgb(206, 210, 218)) }
             case .sunny: break
             }

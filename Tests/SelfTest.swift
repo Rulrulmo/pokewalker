@@ -524,8 +524,9 @@ import AppKit
           && { if case .menu(6) = back(.dex(1, filter: 0, detail: false)) { return true }; return false }() && { if case .dex(1, 0, false) = back(.dex(1, filter: 0, detail: true)) { return true }; return false }() && { if case .dowse = back(.dowse(cursor: 0, prize: 2, tries: 2, hint: nil)) { return true }; return false }()
           && { if case .menu(8) = back(.shop(bp: true, sel: 0, qty: nil)) { return true }; return false }(), "card / bag / dex / shop list: ↩ to their menu page; dowsing: ↩ does nothing (the 3W round stays)")
     bk.state.box = [Mon(dex: 16, level: 5, female: false)]
-    check({ if case .menu(5) = back(.box(0, act: nil, confirm: false)) { return true }; return false }() && { if case .box(0, nil, false) = back(.box(0, act: 1, confirm: true)) { return true }; return false }() && bk.state.box.count == 1,
-          "box: ↩ from 놓아줄까? back to the list (= 아니오), from the list to the menu")
+    check({ if case .menu(5) = back(.box(0, act: nil, confirm: false)) { return true }; return false }() && { if case .box(0, nil, false, false) = back(.box(0, act: 1, confirm: true)) { return true }; return false }() && bk.state.box.count == 1
+          && { if case .box(0, nil, false, true) = back(.box(0, act: 1, confirm: true, detail: true)) { return true }; return false }() && { if case .box(0, nil, false, false) = back(.box(0, act: nil, confirm: false, detail: true)) { return true }; return false }(),
+          "box: ↩ from 놓아줄까? back (= 아니오), from a Pokémon's page to the grid, from the grid to the menu")
     bk.sideOn = true; bk.state.towerStreak = 5; bk.towerRun = true; bk.screen = .forfeit(tw, yes: false)
     check(!bk.touch(80, 56) && bk.state.towerStreak == 5, "with the side panel, an LCD tap in a fight answers nothing (it drags)")
     bk.sideOn = false; bk.screen = .forfeit(tw, yes: false); bk.clickCount = 1; _ = bk.touch(55, 56)
@@ -539,10 +540,10 @@ import AppKit
     check(midFight && !hider.inBattle, "inBattle covers a fight's messages (so hiding to the menu bar keeps the fight), not a shop's")
     check({ if case .evolve = back(.evolve(from: Mon(dex: 1, level: 16, female: false), to: Mon(dex: 2, level: 16, female: false), since: Date())) { return true }; return false }(), "an evolution isn't cut short by ↩")
     v.state.box = [Mon(dex: 16, level: 20, female: false)]; let wBefore = v.state.watts
-    v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(2); v.press(1); v.press(2); v.press(1)
-    check(v.state.box.isEmpty && v.state.watts == wBefore + 10, "box: ● 놓아주기 예 releases for level / 2 W")
-    v.state.box = [Mon(dex: 1, level: 7, female: false)]; v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(1)
-    check(v.state.companion.dex == 1 && v.state.box.first?.dex == 25, "box: ● 함께 swaps the companion")
+    v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(1); v.press(2); v.press(1); v.press(2); v.press(1)
+    check(v.state.box.isEmpty && v.state.watts == wBefore + 10, "box: ● its page, ● 놓아주기 예 releases for level / 2 W")
+    v.state.box = [Mon(dex: 1, level: 7, female: false)]; v.screen = .box(0, act: nil, confirm: false); v.press(1); v.press(1); v.press(1)
+    check(v.state.companion.dex == 1 && v.state.box.first?.dex == 25, "box: ● its page, ● 함께 swaps the companion")
     v.screen = .menu(6); v.press(1); check(on(v) { if case .dex = $0 { return true }; return false }, "menu 도감 opens the dex")
     _ = v.touch(80, 30); _ = v.touch(10, 30); _ = v.touch(48, 30); check(on(v) { if case .dex(_, _, true) = $0 { return true }; return false }, "dex taps: ▶ ◀, then ● opens the entry page")
 
@@ -574,18 +575,32 @@ import AppKit
     check(gv.paneContent(Date()).grid.map { $0.cells.isEmpty && $0.sel == nil && $0.empty == "모두 잡았다!" } == true && gv.compose(Date()).runs.contains { $0.s == "모두 잡았다!" }, "an empty tab says so, on the pane and the LCD")
     gv.press(1); check(gs { if case .dex(_, 2, false) = $0 { return true }; return false } && gv.paneContent(Date()).dex == nil, "● on an empty tab: no entry page for a pick that isn't on it")
     gv.screen = .menu(5); gv.press(1)
-    check(gv.boxOrder == [1, 0, 2] && gs { if case .box(1, nil, false) = $0 { return true }; return false }, "상자 opens on the grid's first, 번호순 (then the higher level)")
-    gv.gridTap(4101); check(gv.boxOrder == [0, 2, 1] && gs { if case .box(1, nil, false) = $0 { return true }; return false }, "레벨순 tab: the order changes, the pick stays")
-    gv.press(2); check(gs { if case .box(0, nil, false) = $0 { return true }; return false }, "▶ follows the grid's order, wrapping")
+    check(gv.boxOrder == [1, 0, 2] && gs { if case .box(1, nil, false, false) = $0 { return true }; return false }, "상자 opens on the grid's first, 번호순 (then the higher level)")
+    gv.gridTap(4101); check(gv.boxOrder == [0, 2, 1] && gs { if case .box(1, nil, false, false) = $0 { return true }; return false }, "레벨순 tab: the order changes, the pick stays")
+    gv.press(2); check(gs { if case .box(0, nil, false, false) = $0 { return true }; return false }, "▶ follows the grid's order, wrapping")
     gv.boxSort = 3; check(gv.boxOrder == [2, 1, 0], "최근: the last to arrive first"); gv.boxSort = 1
     gv.boxSort = 2; gv.state.box[1].ivs = [31, 31, 31, 0, 0, 0]; check(gv.boxOrder.first == 1 && gv.paneContent(Date()).grid?.cells.first?.v3 == true, "V순: 3V first, marked"); gv.state.box[1].ivs = nil; gv.boxSort = 1
-    gv.gridTap(10001); let boxPicked = gs { if case .box(2, nil, false) = $0 { return true }; return false }; gv.gridTap(10001); gv.gridTap(10001)
-    check(boxPicked && gs { if case .box(2, 0, false) = $0 { return true }; return false } && gv.paneContent(Date()).grid?.cells[1].shiny == true,
-          "a cell picks, the picked one again opens 함께 / 놓아주기 / 닫기 and keeps it open (a double-click can't shut it; ★ = 이로치)")
-    gv.screen = .box(0, act: 2, confirm: false); gv.press(2); let wrapped = gs { if case .box(0, 0, false) = $0 { return true }; return false }
+    let shinyCell = gv.paneContent(Date()).grid?.cells[1].shiny == true
+    gv.gridTap(10001); let boxPicked = gs { if case .box(2, nil, false, false) = $0 { return true }; return false }; gv.gridTap(10001); gv.gridTap(10001)
+    check(boxPicked && shinyCell && gs { if case .box(2, nil, false, true) = $0 { return true }; return false } && gv.paneContent(Date()).mon != nil,
+          "a cell picks, the picked one again opens its page, and stays there (★ = 이로치)")
+    gv.state.box[2].nature = 3; gv.state.box[2].ivs = [31, 20, 31, 0, 12, 31]; gv.state.box[2].evs = [252, 0, 6, 0, 0, 252]; gv.state.box[2].hyper = [3]
+    let mm = gv.paneContent(Date()).mon
+    check(mm?.nature == natures[3].name && mm?.up == natures[3].up && mm?.down == natures[3].down && mm?.natureNote.contains("10% 높고") == true && mm?.ivs == [31, 20, 31, 31, 12, 31]
+          && mm?.evTotal == 510 && mm?.v == 4 && mm?.abilityNote.isEmpty == false && mm?.ability == gv.state.box[2].abilityName,
+          "a Pokémon's page: its nature (which stats, what it means), its ability and what it does, IVs as battles use them (특훈 = 31), EVs and their total")
+    gv.state.box[2].nature = 0; check(gv.paneContent(Date()).mon.map { $0.up == nil && $0.natureNote.contains("영향을 주지 않는") } == true, "a neutral nature says it changes nothing")
+    let fitAll = natures.indices.allSatisfy { i in gv.state.box[2].nature = i; return gv.paneContent(Date()).mon.map { width($0.natureNote, font(9)) <= 162 * K } ?? false }; gv.state.box[2].nature = 0
+    check(fitAll, "every nature's note fits its line on the page")
+    let od = [5, 12, 31, 57].map { abilityDescs[$0] ?? "" }
+    check(od[0] == "일격필살 기술을 받지 않는다." && od[1] == "헤롱헤롱 상태가 되지 않는다." && od[2].contains("싱글 배틀에서는 효과가 없다") && od[3].contains("싱글"), "ability notes say what they do in Gen IV singles (not X/Y's later effects)")
+    gv.gridTap(4401); let asking = gv.paneContent(Date()).mon.map { $0.confirm && $0.sel == 0 } == true; gv.gridTap(4402)
+    check(asking && gs { if case .box(2, nil, false, true) = $0 { return true }; return false } && gv.paneContent(Date()).mon?.sel == nil,
+          "its page's 놓아주기 asks first, 아니오 picked (red = what ● does); 아니오 stays")
+    gv.screen = .box(0, act: 2, confirm: false, detail: true); gv.press(2); let wrapped = gs { if case .box(0, 0, false, true) = $0 { return true }; return false }
     gv.press(2); gv.press(1); gv.press(2); gv.press(1)                                                  // 레벨순 [Lv.30, Lv.8, Lv.5]: the Lv.30 goes; next in the grid = the Lv.8 (box[1] now), not box[0]
-    check(wrapped && gv.state.box.map(\.level) == [5, 8] && gs { if case .say(_, .box(1, nil, false), _) = $0 { return true }; return false } && gv.paneContent(Date()).grid != nil,
-          "놓아주기 예: the next in the grid is picked, the grid stays up through the message")
+    check(wrapped && gv.state.box.map(\.level) == [5, 8] && gs { if case .say(_, .box(1, nil, false, true), _) = $0 { return true }; return false } && gv.paneContent(Date()).mon != nil,
+          "놓아주기 예 on its page: the next in the grid's page comes up, through the message too")
     gv.state.box = [Mon(dex: 131, level: 8, female: false), Mon(dex: 332, level: 10, female: false)]
     check(gv.state.box[0].points > gv.state.box[1].points && gv.boxOrder == [1, 0], "레벨순 is by level (a slow-growing Lv.8 has more EXP than a Lv.10)")
     gv.state.box = [Mon(dex: 16, level: 5, female: false), Mon(dex: 19, level: 5, female: false)]; gv.state.pair(0); gv.boxSort = 3
@@ -657,7 +672,7 @@ import AppKit
     check(ten && most && back, "how many: +10 (↑), 최대, and ↩ back to the list")
     shopV.screen = .shop(bp: true, sel: 0, qty: nil); shopV.shopTap(2100 + Walk.bpShop.firstIndex { $0.item == "은색병뚜껑" }!)
     let sm = shopV.shopModel()
-    check(sm?.title == "BP 교환소" && sm?.qty == 1 && sm?.most == 1 && sm?.total == "25BP" && sm?.after == "5BP" && sm?.rows[sm!.sel].note.contains("특훈") == true,
+    check(sm?.title == "BP 교환소" && sm?.qty == 1 && sm?.most == 1 && sm?.total == "25BP" && sm?.rows[sm!.sel].note.contains("특훈") == true,
           "the shop panel: a row click picks it (how many 1), with what it does and the total", "\(String(describing: sm))")
     shopV.shopTap(2005); check(shopV.state.count("은색병뚜껑") == 1 && shopV.state.bp == 5, "the panel's 구매 buys it")
     check(shopV.shopModel()?.hint.contains("받았다") == true && shopV.shopModel()?.qty == nil, "the panel stays up through the shop's message (shown in its box)")
@@ -677,22 +692,29 @@ import AppKit
     dc.clickCount = 1; dc.shopStep(10); dc.shopRow(1); check(on(dc) { if case .shop(false, 1, nil) = $0 { return true }; return false }, "scrolling the panel moves a row and leaves how-many (never the amount)")
     dc.screen = .shop(bp: false, sel: 0, qty: nil); check(!dc.touch(48, 63) && dc.shopModel()?.hint.contains("●") == true, "the LCD's bottom dot row isn't a hidden 6th row; the panel says what ● does")
     dc.screen = .shop(bp: false, sel: dc.wares(false).count - 1, qty: nil); check(dc.shopModel()?.hint == "W가 부족해요 · 9,999W 필요", "the panel says why a row can't be bought", "\(dc.shopModel()?.hint ?? "")")
-    // 7g one body: the ball (LCD 3 pt a dot at 보통) on the left, the pane (page + ◀ ● ▶ ↩) on the right
+    // 7g the Poké Ball card: the LCD 2 pt a dot at 보통, the keys on the band, the page under it growing down per screen
     let size0 = SIZE; SIZE = 2
-    let ballBox = NSRect(x: ballOrigin.x, y: ballOrigin.y, width: dev.w * PX, height: dev.h * PX)
-    check(PX == 2.5 && devSize == NSSize(width: 584, height: 376) && lcdRect.size == NSSize(width: 240, height: 160) && ballBox.maxX < paneRect.minX && ballBox.contains(lcdRect),
-          "보통: a 584 x 376 body, the LCD 240 x 160 (2.5 pt a dot, 1.25x the old) inside the ball, the pane beside it", "\(devSize) \(lcdRect)")
-    check(buttons.count == 4 && buttons.allSatisfy { deckRect.insetBy(dx: $0.r - 0.01, dy: $0.r - 0.01).contains($0.c) } && deckRect.height >= 50 * paneUnit && pageRect.maxY <= deckRect.minY,
-          "the four buttons sit on the pane's deck, under the page")
-    SIZE = 3; check(PX == 3.75 && devSize.height < 850, "크게: 3.75 pt a dot, still under a 13-inch screen's height", "\(devSize)"); SIZE = size0
+    check(PX == 2 && K == 1 && devSize == NSSize(width: 216, height: 199) && lcdRect == NSRect(x: 12, y: 27, width: 192, height: 128),
+          "보통: a 216 x 199 card, the LCD 192 x 128 (2 pt a dot: whole pixels on a 1x screen)", "\(devSize) \(lcdRect)")
+    check(buttons.count == 4 && buttons.allSatisfy { $0.c.y == Layout.seam && $0.c.x - $0.r >= 0 && $0.c.x + $0.r <= Layout.w } && buttons[1].r > buttons[0].r && buttons.map(\.c.x) == buttons.map(\.c.x).sorted(),
+          "◀ ● ▶ ↩ on the band, ● the ball's own bigger button")
+    let gw = WalkerView(state: Walk()); gw.persist = false; gw.statusOpen = false
+    gw.refreshPane(Date(), force: true); let idleH = gw.frame.height
+    gw.screen = .dex(25, filter: 0, detail: false); gw.refreshPane(Date(), force: true); let gridH = gw.frame.height
+    gw.screen = .battle(wild, sel: 0); gw.refreshPane(Date(), force: true); let fightH = gw.frame.height, hudUp = gw.hud == nil
+    gw.screen = .home; gw.statusOpen = true; gw.refreshPane(Date(), force: true)
+    check(idleH == 199 && gridH == 422 && fightH == 311 && gw.frame.height == 354 && gw.frame.width == 216 && gw.page.frame.minY == Layout.pane && hudUp,
+          "the card grows down to the page: idle 199, battle 311, a grid 422, the status sheet 354 (the page under the band)", "\(idleH) \(gridH) \(fightH) \(gw.frame)")
+    SIZE = 3; check(PX == 3 && 422 * K < 850, "크게: 3 pt a dot, its tallest page still under a 13-inch screen's height"); SIZE = size0
     let pv = WalkerView(state: { var s = Walk(); s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); pv.persist = false; pv.rng = Seeded(s: 61)
     func kind(_ sc: Screen) -> String {
         pv.screen = sc; let c = pv.paneContent(Date())
-        return c.battle != nil ? "battle" : c.dex != nil ? "dex" : c.grid != nil ? "grid" : c.shop != nil ? "shop" : c.menu.map { "menu\($0.sel)" } ?? (c.status != nil ? "status" : "none")
+        return c.battle != nil ? "battle" : c.dex != nil ? "dex" : c.grid != nil ? "grid" : c.mon != nil ? "mon" : c.shop != nil ? "shop" : c.menu.map { "menu\($0.sel)" } ?? (c.status != nil ? "status" : "none")
     }
-    check(kind(.home) == "status" && kind(.menu(3)) == "menu3" && kind(.battle(wild, sel: 0)) == "battle" && kind(.shop(bp: false, sel: 0, qty: nil)) == "shop" && kind(.dex(1, filter: 0, detail: true)) == "dex"
+    pv.statusOpen = false; let shut = kind(.home); pv.statusOpen = true
+    check(shut == "none" && kind(.home) == "status" && kind(.box(0, act: nil, confirm: false, detail: true)) == "mon" && kind(.menu(3)) == "menu3" && kind(.battle(wild, sel: 0)) == "battle" && kind(.shop(bp: false, sel: 0, qty: nil)) == "shop" && kind(.dex(1, filter: 0, detail: true)) == "dex"
           && kind(.dex(1, filter: 0, detail: false)) == "grid" && kind(.box(0, act: nil, confirm: false)) == "grid",
-          "the pane: 상태 on 홈 (and screens without their own page), 메뉴 list on the menu, the battle / 상점 pages, 도감 / 상자 grids, the dex entry")
+          "the pane: nothing on 홈 until ⌄ opens the status sheet, 메뉴 tiles on the menu, the battle / 상점 pages, 도감 / 상자 grids, the dex entry, a box Pokémon's page")
     check(kind(.say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date())) == "battle" && kind(.say(["W가 부족하다"], next: .menu(0), since: Date())) == "menu0"
           && pv.paneContent(Date()).menu != nil, "a fight's / a menu page's message keeps its page up")
     pv.screen = .say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date()); check(pv.sideModel(Date())?.message == "기술의 남은 PP가 없다!", "… with the message in the battle page's box")
@@ -700,7 +722,7 @@ import AppKit
     check(grown == NSRect(x: 1976, y: 0, width: 584, height: 376), "an old device at the bottom-right corner grows into the screen, not onto the next one", "\(grown)")
     pv.screen = .menu(0); pv.menuTap(5); let picked = { if case .menu(5) = pv.screen { return true }; return false }(); pv.menuTap(5)
     check(picked && { if case .box = pv.screen { return true }; return false }(), "메뉴 page: a click picks the page, a click on the picked one opens it")
-    let stm = pv.statusModel(); check(stm.level == "Lv.5" && stm.rows.count == 4 && stm.exp >= 0 && stm.exp <= 1, "the 상태 page: level, EXP to next, egg / tower / totals / dex")
+    let stm = pv.statusModel(); check(stm.level == "Lv.5" && stm.numbers.count == 3 && stm.rows.count == 3 && stm.exp >= 0 && stm.exp <= 1, "the status sheet: level, EXP to next, today / W / total, egg / tower / dex")
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0
 }

@@ -1,62 +1,123 @@
 import AppKit
-// The pane's pages (right of the ball): battle (HGSS touch screen), 도감, 상점, 메뉴, 상태.
+// The pane's pages: the card's white bottom under the band — battle, 도감 (grid / entry), 상자 (grid / one Pokémon), 상점, 메뉴, 상태.
 
-// MARK: - the battle page: names, HP, messages and big buttons on the pane, so the 96x64 screen keeps the stage
+// MARK: - models
+/// The battle: names, HP, types for the LCD's HP boxes; the message and the choices for the page.
 struct SideModel: Equatable {
     struct Card: Equatable { var name: String; var level, hp, max: Int; var out: Bool; var status: String? = nil; var types: [String] = []; var owned = false }   // types / owned: shown for theirs
     struct MoveBtn: Equatable { var name, type: String; var power: Int; var effect: Double; var pp = 0, maxPP = 0 }
     enum Mode: Equatable { case none, menu([String], Int), moves([MoveBtn], Int), party([Card], Int), items([String], Int), ask(Bool) }   // ask: 아니오 / 예 (true = 예 highlighted)
-    var foe: Card; var foeBalls: [Bool]; var mine: Card; var myBalls: [Bool]; var trainer: String?; var message: String; var mode: Mode
+    var foe: Card; var mine: Card; var message: String; var mode: Mode
 }
-/// The 상점 / BP 교환소 page on the side panel: the list with what each does, and the how-many controls.
+/// 상점 / BP 교환소: the list, and how many.
 struct ShopModel: Equatable {
     struct Row: Equatable { var name, note, price: String; var owned: Int; var can: Bool; var once: Bool }
-    var title, money: String; var rows: [Row]; var sel: Int; var qty: Int?; var most: Int; var total, after: String
-    var hint: String                                                   // the bottom box when nothing is being counted: a message, or why not
+    var title: String; var rows: [Row]; var sel: Int; var qty: Int?; var most: Int; var total: String
+    var hint: String                                                   // the bottom row when nothing is being counted: a message, or why not
     var ask: Bool?                                                     // a once-only row's 정말? (true = 예 highlighted)
 }
-/// The 홈 page (and the pane on screens without a page of their own): where, the companion, today, then the rest.
+/// The status sheet (the title row's ⌄): the companion, today, then the rest.
 struct StatusModel: Equatable {
     struct Row: Equatable { var key, value: String }
-    var place, when, name, level, toNext, nature, today, watts: String; var v: Int; var exp: CGFloat; var rows: [Row]
+    var dex: Int; var name, sex, level, toNext, nature: String; var female: Bool; var v: Int; var exp: CGFloat; var numbers: [Row]; var rows: [Row]
 }
-/// The 메뉴 page: the LCD's pages as a list, the one on the LCD highlighted.
+/// 메뉴: the LCD's pages as tiles, the one on the LCD picked.
 struct MenuModel: Equatable {
     struct Row: Equatable { var name, note: String }
-    var money: String; var rows: [Row]; var sel: Int
+    var rows: [Row]; var sel: Int
 }
-/// The Pokédex page on the side panel.
+/// The 도감 entry (the LCD shows its number, name and types): base stats, where to meet it, how it evolves.
 struct DexModel: Equatable {
-    var num: Int; var name: String; var status: Int                    // 0 not met, 1 seen, 2 caught
-    var shiny: Bool; var types: [String]; var stats: [Int]
-    var found: [String]; var evos: [String]                            // where to meet it; what it becomes and how
-    var owned, seen: Int
+    var num: Int; var status: Int                                      // 0 not met, 1 seen, 2 caught
+    var stats: [Int]; var found: [String]; var evos: [String]          // up to 3 places, 2 evolutions: a line each
 }
-/// The 도감 / 상자 grid page: tabs, a page of box icons (the pick bobbing), the page number.
+/// The 도감 / 상자 grid: tabs, a page of box icons (the pick bobbing), the pager.
 struct GridModel: Equatable {
-    static let perPage = 30                                            // 5 x 6
-    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false }   // look: 0 not met (???), 1 seen (a shadow), 2 caught / in the box
-    var box: Bool; var title, count: String; var tabs: [String]; var tab: Int
+    static let perPage = 30, columns = 6                               // 6 x 5
+    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false }   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box
+    var tabs: [String]; var tab: Int
     var cells: [Cell]; var first: Int; var sel: Int?                   // this page's cells; first = cells[0]'s place in the whole list; sel = the pick's cell
-    var page, pages: Int; var hint, empty: String; var bob: Bool
+    var page, pages: Int; var empty: String; var bob: Bool
 }
-let typeColor: [String: NSColor] = (["normal": (168, 168, 120), "fire": (240, 128, 48), "water": (104, 144, 240), "grass": (120, 200, 80), "electric": (238, 196, 40),
-    "ice": (120, 200, 200), "fighting": (192, 48, 40), "poison": (160, 64, 160), "ground": (210, 176, 90), "flying": (150, 130, 230), "psychic": (248, 88, 136),
-    "bug": (160, 176, 32), "rock": (184, 160, 56), "ghost": (112, 88, 152), "dragon": (112, 56, 248), "dark": (112, 88, 72), "steel": (160, 160, 190)] as [String: (CGFloat, CGFloat, CGFloat)])
-    .mapValues { NSColor(red: CGFloat($0.0) / 255, green: CGFloat($0.1) / 255, blue: CGFloat($0.2) / 255, alpha: 1) }
+/// One Pokémon of the box, in full: nature and ability with what they do, IVs and EVs as hexagons.
+struct MonModel: Equatable {
+    var nature, natureNote, ability, abilityNote: String; var up, down: Int?   // stat indices the nature raises / lowers (nil = neutral)
+    var ivs, evs: [Int]; var hyper: [Int]; var v, evTotal: Int
+    var confirm: Bool                                                  // 놓아줄까? is up: the buttons become 아니오 / 예
+    var sel: Int?                                                      // the LCD's pick (함께 / 놓아주기 / 닫기, or 아니오 / 예): what ● does is red
+}
+/// Whatever the pane shows; all nil = no page (the card's idle height).
+struct PaneContent: Equatable { var battle: SideModel?; var dex: DexModel?; var shop: ShopModel?; var menu: MenuModel?; var status: StatusModel?; var grid: GridModel?; var mon: MonModel? }
 
+// MARK: - the look (card points x K)
+enum Ink {
+    static func c(_ r: Int, _ g: Int, _ b: Int, _ a: CGFloat = 1) -> NSColor { NSColor(red: CGFloat(r) / 255, green: CGFloat(g) / 255, blue: CGFloat(b) / 255, alpha: a) }
+    static let red = c(214, 46, 42), redTint = c(252, 228, 226), onRed = c(250, 212, 208), dark = c(34, 37, 45)
+    static let tile = c(242, 243, 246), board = c(246, 247, 249), line = c(230, 232, 237), ink = c(28, 32, 42), sub = c(112, 118, 130), faint = c(160, 165, 176)
+    static let blue = c(58, 132, 236), green = c(52, 178, 88), yellow = c(240, 176, 32), pink = c(226, 80, 120), gold = c(222, 150, 20)
+    static func tint(_ col: NSColor, _ k: CGFloat) -> NSColor { col.blended(withFraction: 1 - k, of: .white) ?? col }
+    static func hp(_ f: CGFloat) -> NSColor { f > 0.5 ? green : f > 0.2 ? yellow : c(230, 70, 60) }
+}
+let typeColor: [String: NSColor] = (["normal": (168, 167, 122), "fire": (238, 129, 48), "water": (99, 144, 240), "grass": (122, 199, 76), "electric": (247, 208, 44),
+    "ice": (150, 217, 214), "fighting": (194, 46, 40), "poison": (163, 62, 161), "ground": (226, 191, 101), "flying": (169, 143, 243), "psychic": (249, 85, 135),
+    "bug": (166, 185, 26), "rock": (182, 161, 54), "ghost": (115, 87, 151), "dragon": (111, 53, 252), "dark": (112, 87, 70), "steel": (183, 183, 206)] as [String: (Int, Int, Int)])
+    .mapValues { Ink.c($0.0, $0.1, $0.2) }
+@MainActor func font(_ size: CGFloat, _ w: NSFont.Weight = .regular) -> NSFont { .systemFont(ofSize: size * K, weight: w) }
+/// Text centred on the row `cy` (by its caps, one baseline for Hangul and digits); align 0 = starts at x, 0.5 = centred on x, 1 = ends at x.
+@MainActor @discardableResult func say(_ s: String, _ x: CGFloat, _ cy: CGFloat, _ f: NSFont, _ c: NSColor, _ align: CGFloat = 0, maxW: CGFloat? = nil) -> CGFloat {
+    var s = s
+    if let maxW { while s.count > 1, width(s, f) > maxW { s = String(s.dropLast(2)) + "…" } }
+    let w = width(s, f)
+    (s as NSString).draw(at: NSPoint(x: x - w * align, y: cy - f.ascender + f.capHeight / 2), withAttributes: [.font: f, .foregroundColor: c])
+    return w
+}
+func width(_ s: String, _ f: NSFont) -> CGFloat { (s as NSString).size(withAttributes: [.font: f]).width }
+func pill(_ r: NSRect, _ c: NSColor) { NSBezierPath(roundedRect: r, xRadius: min(r.height, r.width) / 2, yRadius: min(r.height, r.width) / 2).fill(with: c) }
+func rounded(_ r: NSRect, _ rad: CGFloat) -> NSBezierPath { NSBezierPath(roundedRect: r, xRadius: rad, yRadius: rad) }
+/// The HGSS caught mark: a small Poké Ball of radius r.
+func miniBall(_ c: NSPoint, _ r: CGFloat) {
+    NSBezierPath(ovalIn: NSRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)).fill(with: Ink.dark)
+    let ri = r * 0.8, inner = NSRect(x: c.x - ri, y: c.y - ri, width: 2 * ri, height: 2 * ri)
+    NSGraphicsContext.saveGraphicsState(); NSBezierPath(ovalIn: inner).addClip()
+    Ink.red.setFill(); NSRect(x: inner.minX, y: inner.minY, width: inner.width, height: ri).fill()
+    NSColor.white.setFill(); NSRect(x: inner.minX, y: c.y, width: inner.width, height: ri).fill()
+    Ink.dark.setFill(); NSRect(x: inner.minX, y: c.y - r * 0.1, width: inner.width, height: r * 0.2).fill()
+    NSGraphicsContext.restoreGraphicsState()
+    NSBezierPath(ovalIn: NSRect(x: c.x - r * 0.42, y: c.y - r * 0.42, width: r * 0.84, height: r * 0.84)).fill(with: Ink.dark)
+    NSBezierPath(ovalIn: NSRect(x: c.x - r * 0.26, y: c.y - r * 0.26, width: r * 0.52, height: r * 0.52)).fill(with: .white)
+}
+/// ◀ / ▶ as a small filled triangle centred on (cx, cy).
+func triangle(_ cx: CGFloat, _ cy: CGFloat, _ s: CGFloat, left: Bool, _ c: NSColor) {
+    let p = NSBezierPath(), d: CGFloat = left ? 1 : -1
+    p.move(to: NSPoint(x: cx + d * s * 0.55, y: cy - s)); p.line(to: NSPoint(x: cx - d * s * 0.75, y: cy)); p.line(to: NSPoint(x: cx + d * s * 0.55, y: cy + s)); p.close(); p.fill(with: c)
+}
+/// A type badge ending at `right` (or starting at `left`); returns its width.
+@MainActor @discardableResult func typePill(_ t: String, _ x: CGFloat, _ cy: CGFloat, h: CGFloat, size: CGFloat, right: Bool = false, grey: Bool = false) -> CGFloat {
+    let s = typeKo[t] ?? t, f = font(size, .bold), w = width(s, f) + 9 * K, x0 = right ? x - w : x
+    pill(NSRect(x: x0, y: cy - h / 2, width: w, height: h), grey ? Ink.c(196, 198, 204) : typeColor[t] ?? .gray)
+    say(s, x0 + w / 2, cy, f, .white, 0.5); return w
+}
+/// A 4-10 pt bar on a track.
+func bar(_ x0: CGFloat, _ x1: CGFloat, _ cy: CGFloat, _ frac: CGFloat, _ c: NSColor, h: CGFloat, track: NSColor = Ink.line) {
+    pill(NSRect(x: x0, y: cy - h / 2, width: x1 - x0, height: h), track)
+    if frac > 0 { pill(NSRect(x: x0, y: cy - h / 2, width: max(h, (x1 - x0) * min(1, frac)), height: h), c) }
+}
+
+// MARK: - the page view
 final class SideView: NSView {
-    var model: SideModel?
-    var dex: DexModel?
-    var shop: ShopModel?
-    var status: StatusModel?                                               // the 홈 page (and everywhere without a page of its own)
-    var menuPage: MenuModel?
-    var grid: GridModel?                                                   // 도감 / 상자
+    var content = PaneContent()
+    var model: SideModel? { content.battle }
+    var dex: DexModel? { content.dex }
+    var shop: ShopModel? { content.shop }
+    var status: StatusModel? { content.status }
+    var menuPage: MenuModel? { content.menu }
+    var grid: GridModel? { content.grid }
     var scrolled: CGFloat = 0                                              // trackpad scroll not yet turned into a row step
-    var downOn = 0                                                         // the page a click began on: a double-click's 2nd click on another page is dropped
-    var pageKind: Int { model != nil ? 1 : dex != nil ? 2 : grid != nil ? 3 : shop != nil ? 4 : menuPage != nil ? 5 : 0 }
     var shopTop = 0, shopTitle = ""                                        // the list's first visible row: moves only when the pick leaves the window
-    var hits: [(NSRect, Int)] = []                                         // clickable: battle index, 2000+ shop, 3000+ menu, 4000+ grid / entry controls, 10000+ grid cells
+    var itemTop = 0                                                        // the same for the battle's item list
+    var downOn = 0                                                         // the page a click began on: a double-click's 2nd click on another page is dropped
+    var pageKind: Int { model != nil ? 1 : dex != nil ? 2 : grid != nil ? 3 : shop != nil ? 4 : menuPage != nil ? 5 : content.mon != nil ? 6 : 0 }
+    var hits: [(NSRect, Int)] = []                                         // clickable: battle index, 2000+ shop, 3000+ menu, 4000+ grid / box controls, 10000+ grid cells
     weak var walker: WalkerView?
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -66,7 +127,7 @@ final class SideView: NSView {
     override func mouseDown(with e: NSEvent) {
         let p = convert(e.locationInWindow, from: nil)
         guard let k = hits.first(where: { $0.0.contains(p) })?.1 else { window?.performDrag(with: e); return }   // not on a button: drag the whole body
-        if e.clickCount == 1 { downOn = pageKind } else if model != nil || shop?.ask != nil || pageKind != downOn { return }   // a double-click's 2nd click on the page the 1st one opened (a move, 예, a grid cell under 메뉴's row): ignore it
+        if e.clickCount == 1 { downOn = pageKind } else if model != nil || shop?.ask != nil || content.mon != nil || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened (a move, 예, 함께 under 아니오, a cell under 메뉴's tile): ignored
         if k >= 4000 { walker?.gridTap(k) } else if k >= 3000 { walker?.menuTap(k - 3000) } else if k >= 2000 { walker?.shopTap(k) } else { walker?.sidePick(k) }
     }
     override func scrollWheel(with e: NSEvent) {                                                 // the shop list: a row per notch (or 6 pt of trackpad); a grid: a page (24 pt)
@@ -79,401 +140,298 @@ final class SideView: NSView {
         while abs(scrolled) >= notch { step(scrolled > 0 ? -1 : 1); scrolled -= scrolled > 0 ? notch : -notch }
     }
     override func resetCursorRects() { for (r, _) in hits { addCursorRect(r, cursor: .pointingHand) } }
-    /// The pages' layout unit (paneUnit, in step with the ball). Plain UI in the system font — sharp at any scale; the pixel look stays on the LCD.
-    static func unit(_ backing: CGFloat = 0) -> CGFloat { paneUnit }
-    var u0: CGFloat { paneUnit }
-    var body: NSFont { .systemFont(ofSize: 7.5 * u0, weight: .medium) }
-    var small: NSFont { .systemFont(ofSize: 6 * u0, weight: .regular) }
-    var big: NSFont { .systemFont(ofSize: 10.5 * u0, weight: .bold) }
-    static let ink = NSColor(red: 0.10, green: 0.11, blue: 0.16, alpha: 1), dim = NSColor(red: 0.42, green: 0.45, blue: 0.52, alpha: 1)
-    func width(_ str: String, _ f: NSFont) -> CGFloat { (str as NSString).size(withAttributes: [.font: f]).width }
-    /// Plain text with its top-left at (x, y); `right` aligns its end there instead.
-    func text(_ str: String, _ x: CGFloat, _ y: CGFloat, _ f: NSFont, _ c: NSColor, shadow: NSColor? = nil, right: CGFloat? = nil, maxW: CGFloat? = nil) {
-        var str = str
-        if let maxW { while str.count > 1, width(str, f) > maxW { str = String(str.dropLast(2)) + "…" } }
-        let x0 = right.map { $0 - width(str, f) } ?? x, g = max(1, f.pointSize / 14)
-        if let shadow { (str as NSString).draw(at: NSPoint(x: x0, y: y + g), withAttributes: [.font: f, .foregroundColor: shadow]) }
-        (str as NSString).draw(at: NSPoint(x: x0, y: y), withAttributes: [.font: f, .foregroundColor: c])
+    func show(_ c: PaneContent) { guard c != content else { return }; content = c; needsDisplay = true }
+
+    /// Card coordinates → this view (it starts at the pane's top, card y 189).
+    func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> NSRect { NSRect(x: x * K, y: (y - Layout.pane) * K, width: w * K, height: h * K) }
+    func y(_ v: CGFloat) -> CGFloat { (v - Layout.pane) * K }
+    func x(_ v: CGFloat) -> CGFloat { v * K }
+    /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
+    static func height(_ c: PaneContent) -> CGFloat {
+        c.battle != nil ? 311 : c.grid != nil || c.mon != nil ? 422 : c.dex != nil ? 390 : c.shop != nil ? 406 : c.menu != nil ? 379 : c.status != nil ? 354 : Layout.idle
     }
-    /// Text centred in `r` by its ink, not its line box (the pixel font's leading made labels ride high).
-    func label(_ str: String, in r: NSRect, _ f: NSFont, _ c: NSColor, shadow: NSColor? = nil, alignLeft: CGFloat? = nil, alignRight: CGFloat? = nil) {
-        let line = CTLineCreateWithAttributedString(NSAttributedString(string: str, attributes: [.font: f]))
-        let ink = CTLineGetImageBounds(line, nil), w = width(str, f)
-        let y = r.midY - f.ascender + ink.origin.y + ink.height / 2
-        let x = alignLeft.map { r.minX + $0 } ?? alignRight.map { r.maxX - $0 - w } ?? r.midX - w / 2
-        text(str, x, y, f, c, shadow: shadow)
-    }
-    func round(_ r: NSRect, _ rad: CGFloat) -> NSBezierPath { NSBezierPath(roundedRect: r, xRadius: rad, yRadius: rad) }
-    func hpColor(_ f: CGFloat) -> NSColor { f > 0.5 ? NSColor(red: 0.30, green: 0.82, blue: 0.40, alpha: 1) : f > 0.2 ? NSColor(red: 0.98, green: 0.78, blue: 0.16, alpha: 1) : NSColor(red: 0.95, green: 0.28, blue: 0.24, alpha: 1) }
 
     override func draw(_ dirty: NSRect) {
-        hits = []; defer { window?.invalidateCursorRects(for: self) }                            // every page, the 상태 page too (it has none)
-        if let d = dex { drawDex(d); return }
-        if let g = grid { drawGrid(g); return }
-        if let s = shop { drawShop(s); return }
-        if let m = menuPage { drawMenu(m); return }
-        if let s = status { drawStatus(s); return }
-        guard let m = model else { return }
-        let u = paneUnit, W = bounds.width, H = bounds.height, ink = SideView.ink, dim = SideView.dim, paper = NSColor(white: 0.98, alpha: 1)
-        /// "HP" tag + bar, the HGSS way: dark track, the colour on top with a little shine.
-        func bar(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ hp: Int, _ max: Int) {
-            let f = max > 0 ? CGFloat(hp) / CGFloat(max) : 0, tag = NSRect(x: x, y: y, width: 15 * u, height: 7 * u)
-            round(tag, 2 * u).fill(with: ink); label("HP", in: tag, small, NSColor(red: 1, green: 0.78, blue: 0.2, alpha: 1))
-            let tr = NSRect(x: tag.maxX - u, y: y, width: w - 14 * u, height: 7 * u)
-            round(tr, 2 * u).fill(with: ink)
-            let inner = tr.insetBy(dx: 1.5 * u, dy: 1.5 * u), fw = hp > 0 ? Swift.max(u, inner.width * f) : 0
-            NSColor(white: 0.30, alpha: 1).setFill(); inner.fill()
-            hpColor(f).setFill(); NSRect(x: inner.minX, y: inner.minY, width: fw, height: inner.height).fill()
-            NSColor(white: 1, alpha: 0.35).setFill(); NSRect(x: inner.minX, y: inner.minY, width: fw, height: inner.height / 3).fill()
+        hits = []; defer { window?.invalidateCursorRects(for: self) }
+        if let d = dex { drawDex(d) } else if let g = grid { drawGrid(g) } else if let m = content.mon { drawMon(m) } else if let s = shop { drawShop(s) }
+        else if let m = menuPage { drawMenu(m) } else if let s = status { drawStatus(s) } else if let m = model { drawBattle(m) }
+    }
+    let X0: CGFloat = 9, X1: CGFloat = 207                                                         // the content column (card points): the bezel's edges
+
+    // MARK: battle: the message, then the choices (HP lives on the LCD)
+    func drawBattle(_ m: SideModel) {
+        let top: CGFloat = 198, w = X1 - X0
+        func button(_ rc: NSRect, _ label: String, _ fill: NSColor, _ fg: NSColor, _ idx: Int, _ size: CGFloat = 11) {
+            rounded(rc, 10 * K).fill(with: fill); say(label, rc.midX, rc.midY, font(size, .bold), fg, 0.5); hits.append((rc, idx))
         }
-        func box(_ r: NSRect) { round(r.offsetBy(dx: 0, dy: u), 4 * u).fill(with: NSColor(white: 0, alpha: 0.35)); let p = round(r, 4 * u); p.fill(with: paper); ink.setStroke(); p.lineWidth = u; p.stroke() }
-        func teamDots(_ bs: [Bool], _ r: NSRect) { for (i, a) in bs.enumerated() { round(NSRect(x: r.minX + CGFloat(i) * 7 * u, y: r.minY, width: 5 * u, height: 5 * u), 2.5 * u).fill(with: a ? NSColor(red: 0.9, green: 0.22, blue: 0.2, alpha: 1) : NSColor(white: 0.7, alpha: 1)) } }
-        func statusPill(_ st: String?, _ right: CGFloat, _ y: CGFloat) {                      // 독 / 마비 / 잠듦 …, ending at `right`
-            guard let st else { return }
-            let c: NSColor = switch st { case "독", "맹독": NSColor(red: 0.62, green: 0.30, blue: 0.66, alpha: 1); case "화상": NSColor(red: 0.90, green: 0.45, blue: 0.20, alpha: 1)
-                case "마비": NSColor(red: 0.86, green: 0.70, blue: 0.10, alpha: 1); case "얼음": NSColor(red: 0.35, green: 0.70, blue: 0.85, alpha: 1); default: NSColor(white: 0.5, alpha: 1) }
-            let r = NSRect(x: right - width(st, small) - 6 * u, y: y, width: width(st, small) + 6 * u, height: 7.5 * u)
-            round(r, 3.5 * u).fill(with: c); label(st, in: r, small, .white)
-        }
-        /// The HGSS "caught" mark: a small Poké Ball, `d` across, top-left at (x, y).
-        func caughtBall(_ x: CGFloat, _ y: CGFloat, _ d: CGFloat) {
-            let r = NSRect(x: x, y: y, width: d, height: d), o = NSBezierPath(ovalIn: r)
-            NSColor.white.setFill(); o.fill()
-            NSGraphicsContext.saveGraphicsState(); o.addClip(); NSColor(red: 0.90, green: 0.22, blue: 0.20, alpha: 1).setFill(); NSRect(x: x, y: y, width: d, height: d / 2).fill(); NSGraphicsContext.restoreGraphicsState()
-            ink.setFill(); NSRect(x: x, y: y + d / 2 - d * 0.07, width: d, height: d * 0.14).fill()
-            ink.setStroke(); o.lineWidth = d * 0.1; o.stroke()
-            let c = NSBezierPath(ovalIn: NSRect(x: x + d * 0.34, y: y + d * 0.34, width: d * 0.32, height: d * 0.32)); NSColor.white.setFill(); c.fill(); c.lineWidth = d * 0.09; c.stroke()
-        }
-        // their box: name (+ the caught mark), Lv, (a trainer's team), bar, their types
-        let fr = NSRect(x: 6 * u, y: 6 * u, width: W - 12 * u, height: 36 * u)
-        box(fr)
-        label(m.foe.name, in: NSRect(x: fr.minX, y: fr.minY + 2 * u, width: fr.width, height: 10 * u), body, ink, alignLeft: 5 * u)
-        if m.foe.owned { caughtBall(fr.minX + 5 * u + width(m.foe.name, body) + 2.5 * u, fr.minY + 3.5 * u, 7 * u) }
-        label("Lv\(m.foe.level)", in: NSRect(x: fr.minX, y: fr.minY + 2 * u, width: fr.width, height: 10 * u), small, dim, alignRight: 5 * u)
-        let pillRight = fr.maxX - 5 * u - width("Lv\(m.foe.level)", small) - 3 * u
-        statusPill(m.foe.status, pillRight, fr.minY + 3.5 * u)
-        let dotsRight = pillRight - (m.foe.status.map { width($0, small) + 6 * u + 3 * u } ?? 0)       // a trainer's team: left of the status pill, never under it
-        if !m.foeBalls.isEmpty { teamDots(m.foeBalls, NSRect(x: dotsRight - CGFloat(m.foeBalls.count) * 7 * u + 2 * u, y: fr.minY + 4.5 * u, width: 0, height: 0)) }
-        bar(fr.minX + 5 * u, fr.minY + 15 * u, fr.width - 10 * u, m.foe.hp, m.foe.max)
-        var tx = fr.minX + 5 * u                                                                  // type badges, in their colours
-        for t in m.foe.types {
-            let tk = typeKo[t] ?? t, r = NSRect(x: tx, y: fr.minY + 25.5 * u, width: width(tk, small) + 8 * u, height: 7.5 * u)
-            round(r, 3.5 * u).fill(with: typeColor[t] ?? .gray); label(tk, in: r, small, .white, shadow: NSColor(white: 0, alpha: 0.35)); tx = r.maxX + 2 * u
-        }
-        // ours: + HP numbers (and the team)
-        let mr = NSRect(x: 6 * u, y: 46 * u, width: W - 12 * u, height: 36 * u)
-        box(mr)
-        label(m.mine.name, in: NSRect(x: mr.minX, y: mr.minY + 2 * u, width: mr.width, height: 10 * u), body, ink, alignLeft: 5 * u)
-        label("Lv\(m.mine.level)", in: NSRect(x: mr.minX, y: mr.minY + 2 * u, width: mr.width, height: 10 * u), small, dim, alignRight: 5 * u)
-        statusPill(m.mine.status, mr.maxX - 5 * u - width("Lv\(m.mine.level)", small) - 3 * u, mr.minY + 3.5 * u)
-        bar(mr.minX + 5 * u, mr.minY + 15 * u, mr.width - 10 * u, m.mine.hp, m.mine.max)
-        label("\(m.mine.hp) / \(m.mine.max)", in: NSRect(x: mr.minX, y: mr.minY + 24 * u, width: mr.width, height: 9 * u), body, ink, alignRight: 5 * u)
-        if !m.myBalls.isEmpty { teamDots(m.myBalls, NSRect(x: mr.minX + 5 * u, y: mr.minY + 26 * u, width: 0, height: 0)) }
-        // message: the DS dialogue box, double frame
-        let msg = NSRect(x: 6 * u, y: 87 * u, width: W - 12 * u, height: 30 * u)
-        round(msg, 3 * u).fill(with: ink); round(msg.insetBy(dx: u, dy: u), 2.5 * u).fill(with: NSColor(red: 0.62, green: 0.70, blue: 0.86, alpha: 1)); round(msg.insetBy(dx: 2 * u, dy: 2 * u), 2 * u).fill(with: paper)
-        var lines: [String] = [], cur = ""                                                        // wrap by hand so each line goes through the pixel-snapped text()
-        for ch in m.message { if width(cur + String(ch), body) > msg.width - 10 * u { lines.append(cur); cur = "" }; cur.append(ch) }
-        lines.append(cur)
-        for (j, l) in lines.prefix(2).enumerated() { text(l.trimmingCharacters(in: .whitespaces), msg.minX + 5 * u, msg.minY + 4 * u + CGFloat(j) * 11 * u, body, ink) }
-        // buttons
-        func button(_ r: NSRect, _ c: NSColor, _ on: Bool, _ idx: Int) {
-            round(r.offsetBy(dx: 0, dy: 1.5 * u), 4 * u).fill(with: c.blended(withFraction: 0.55, of: .black)!)                       // the lip
-            let p = round(r, 4 * u)
-            NSGraphicsContext.saveGraphicsState(); p.addClip()
-            NSGradient(starting: c.blended(withFraction: 0.18, of: .white)!, ending: c)!.draw(in: r, angle: -90)
-            NSColor(white: 1, alpha: 0.28).setFill(); NSRect(x: r.minX, y: r.minY, width: r.width, height: 2 * u).fill()
-            NSGraphicsContext.restoreGraphicsState()
-            (on ? NSColor.white : c.blended(withFraction: 0.6, of: .black)!).setStroke(); p.lineWidth = on ? 2 * u : u; p.stroke()
-            hits.append((r, idx))
-        }
-        let shadow = NSColor(white: 0, alpha: 0.45), top = 122 * u, bottom = H - 7 * u
-        let colors: [String: NSColor] = ["공격": NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1), "볼": NSColor(red: 0.95, green: 0.72, blue: 0.14, alpha: 1),
-                                         "도구": NSColor(red: 0.28, green: 0.70, blue: 0.36, alpha: 1), "교체": NSColor(red: 0.28, green: 0.70, blue: 0.36, alpha: 1),
-                                         "도망": NSColor(red: 0.24, green: 0.50, blue: 0.90, alpha: 1), "기권": NSColor(red: 0.50, green: 0.52, blue: 0.58, alpha: 1)]
         switch m.mode {
-        case .none: break
-        case .menu(let opts, let sel):                                                            // big FIGHT, three below
-            let bigR = NSRect(x: 6 * u, y: top, width: W - 12 * u, height: 26 * u)
-            button(bigR, colors[opts[0]] ?? .red, sel == 0, 0); label(opts[0], in: bigR, big, .white, shadow: shadow)
-            let bw = (W - 12 * u - 6 * u) / 3, y2 = bigR.maxY + 5 * u
+        case .none:                                                                               // a turn playing: the message, up to three lines
+            var lines: [String] = [], cur = "", f = font(11, .medium)
+            for ch in m.message { if width(cur + String(ch), f) > x(w - 4) { lines.append(cur); cur = "" }; cur.append(ch) }
+            lines.append(cur); if lines.count > 3 { f = font(10, .medium) }
+            for (j, l) in lines.prefix(4).enumerated() { say(l.trimmingCharacters(in: .whitespaces), x(X0 + 2), y(top + 8 + CGFloat(j) * 17), f, Ink.ink) }
+            return
+        default: say(m.message, x(X0 + 2), y(top + 8), font(11, .medium), Ink.ink, maxW: x(w - 4))
+        }
+        let y0 = top + 23
+        switch m.mode {
+        case .menu(let opts, let sel):                                                            // big 공격, three below; the pick is red
+            let tints: [String: NSColor] = ["볼": Ink.yellow, "도구": Ink.green, "교체": Ink.blue, "도망": Ink.blue, "기권": Ink.faint]
+            button(r(X0, y0, w, 38), opts[0], sel == 0 ? Ink.red : Ink.redTint, sel == 0 ? .white : Ink.red, 0, 13)
+            let cw = (w - 10) / 3
             for i in 1..<opts.count {
-                let r = NSRect(x: 6 * u + CGFloat(i - 1) * (bw + 3 * u), y: y2, width: bw, height: bottom - y2)
-                button(r, colors[opts[i]] ?? .gray, sel == i, i); label(opts[i], in: r, body, .white, shadow: shadow)
+                let rc = r(X0 + CGFloat(i - 1) * (cw + 5), y0 + 44, cw, 36)
+                button(rc, opts[i], sel == i ? Ink.red : Ink.tint(tints[opts[i]] ?? Ink.faint, 0.2), sel == i ? .white : Ink.ink, i)
             }
-        case .moves(let ms, let sel):                                                             // four type-coloured plates
-            let gw = (W - 12 * u - 4 * u) / 2, gh = (bottom - top - 4 * u) / 2
+        case .moves(let ms, let sel):                                                             // 2 x 2 in their type's tint, the pick ringed
+            let cw = (w - 5) / 2
             for (i, mv) in ms.enumerated() {
-                let r = NSRect(x: 6 * u + CGFloat(i % 2) * (gw + 4 * u), y: top + CGFloat(i / 2) * (gh + 4 * u), width: gw, height: gh), c = typeColor[mv.type] ?? .gray
-                button(r, c, i == sel, i)
-                label(mv.name, in: NSRect(x: r.minX, y: r.minY + 1.5 * u, width: r.width, height: r.height * 0.52), body, .white, shadow: shadow)
-                let tk = typeKo[mv.type] ?? mv.type, badge = NSRect(x: r.minX + 3 * u, y: r.maxY - 9.5 * u, width: width(tk, small) + 6 * u, height: 7.5 * u)
-                round(badge, 3.5 * u).fill(with: NSColor(white: 0, alpha: 0.3)); label(tk, in: badge, small, .white)
-                let e = (mv.effect == 0 ? "× " : mv.effect > 1 ? "▲ " : mv.effect < 1 ? "▼ " : "") + "PP \(mv.pp)/\(mv.maxPP)"
-                label(e, in: NSRect(x: r.minX, y: badge.minY, width: r.width, height: badge.height), small,
-                      mv.effect > 1 ? NSColor(red: 1, green: 0.95, blue: 0.5, alpha: 1) : .white, shadow: shadow, alignRight: 3 * u)
+                let rc = r(X0 + CGFloat(i % 2) * (cw + 5), y0 + CGFloat(i / 2) * 43, cw, 38), dead = mv.effect == 0 || mv.pp == 0, c = typeColor[mv.type] ?? .gray
+                let p = rounded(rc, 10 * K); p.fill(with: dead ? Ink.tile : Ink.tint(c, 0.2))
+                if i == sel { Ink.red.setStroke(); p.lineWidth = 2 * K; p.stroke() }
+                say(mv.name, rc.minX + x(9), rc.minY + x(12), font(11, .bold), dead ? Ink.faint : Ink.ink, maxW: rc.width - x(14))
+                typePill(mv.type, rc.minX + x(8), rc.minY + x(27), h: x(11), size: 7.5, grey: dead)
+                let e = mv.effect == 0 ? "효과 없음" : (mv.effect > 1 ? "▲ " : mv.effect < 1 ? "▼ " : "") + "PP \(mv.pp)/\(mv.maxPP)"
+                say(e, rc.maxX - x(8), rc.minY + x(27.5), font(8, .semibold), mv.effect > 1 ? Ink.red : Ink.sub, 1)
+                hits.append((rc, i))
             }
-        case .party(let ps, let sel):
-            let rh = (bottom - top - 2 * 3 * u) / 3
+        case .party(let ps, let sel):                                                             // three rows: name, HP
             for (i, p) in ps.enumerated() {
-                let r = NSRect(x: 6 * u, y: top + CGFloat(i) * (rh + 3 * u), width: W - 12 * u, height: rh)
-                button(r, p.hp > 0 ? NSColor(red: 0.28, green: 0.56, blue: 0.80, alpha: 1) : NSColor(white: 0.45, alpha: 1), i == sel, i)
-                let row = NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height - 4 * u)
-                label((p.out ? "▶ " : "") + p.name + "  Lv\(p.level)" + (p.status.map { "  " + $0 } ?? ""), in: row, small, .white, shadow: shadow, alignLeft: 4 * u)
-                label("\(p.hp)/\(p.max)", in: row, small, .white, shadow: shadow, alignRight: 4 * u)
-                let br = NSRect(x: r.minX + 4 * u, y: r.maxY - 4.5 * u, width: r.width - 8 * u, height: 2 * u), f = p.max > 0 ? CGFloat(p.hp) / CGFloat(p.max) : 0
-                ink.setFill(); br.fill(); hpColor(f).setFill(); NSRect(x: br.minX, y: br.minY, width: br.width * f, height: br.height).fill()
+                let rc = r(X0, y0 + CGFloat(i) * 27.5, w, 25), path = rounded(rc, 9 * K), f = p.max > 0 ? CGFloat(p.hp) / CGFloat(p.max) : 0
+                path.fill(with: i == sel ? Ink.redTint : Ink.tile); if i == sel { Ink.red.setStroke(); path.lineWidth = 1.5 * K; path.stroke() }
+                let nx = say((p.out ? "▶ " : "") + p.name, rc.minX + x(9), rc.minY + x(9.5), font(10, .bold), p.hp > 0 ? Ink.ink : Ink.faint)
+                let lx = rc.minX + x(9) + nx + x(4) + say("Lv\(p.level)", rc.minX + x(13) + nx, rc.minY + x(10), font(8, .semibold), Ink.sub)
+                if let st = p.status { let sw = width(st, font(7.5, .bold)) + x(8); pill(NSRect(x: lx + x(4), y: rc.minY + x(4.5), width: sw, height: x(11)), Ink.faint); say(st, lx + x(4) + sw / 2, rc.minY + x(10), font(7.5, .bold), .white, 0.5) }
+                say("\(p.hp)/\(p.max)", rc.maxX - x(9), rc.minY + x(9.5), font(9, .semibold), Ink.ink, 1)
+                bar(rc.minX + x(9), rc.maxX - x(9), rc.minY + x(19), f, Ink.hp(f), h: x(3))
+                hits.append((rc, i))
             }
-        case .items(let names, let sel):                                                          // up to 5 rows, the pick kept in view
-            let n = 5, rh = (bottom - top - CGFloat(n - 1) * 3 * u) / CGFloat(n), first = max(0, min(sel - 2, names.count - n))
-            for (i, name) in names.enumerated() where i >= first && i < first + n {
-                let r = NSRect(x: 6 * u, y: top + CGFloat(i - first) * (rh + 3 * u), width: W - 12 * u, height: rh)
-                button(r, NSColor(red: 0.28, green: 0.70, blue: 0.36, alpha: 1), i == sel, i); label(name, in: r, small, .white, shadow: shadow, alignLeft: 4 * u)
+        case .items(let names, let sel):                                                          // three rows, the pick kept in view
+            if sel < itemTop { itemTop = sel } else if sel >= itemTop + 3 { itemTop = sel - 2 }
+            itemTop = max(0, min(itemTop, names.count - 3))
+            for (i, n) in names.enumerated() where i >= itemTop && i < itemTop + 3 {
+                let rc = r(X0, y0 + CGFloat(i - itemTop) * 27.5, w, 25), path = rounded(rc, 9 * K)
+                path.fill(with: i == sel ? Ink.redTint : Ink.tile); if i == sel { Ink.red.setStroke(); path.lineWidth = 1.5 * K; path.stroke() }
+                let parts = n.components(separatedBy: " ×")
+                say(parts[0], rc.minX + x(9), rc.midY, font(10, .bold), Ink.ink); if parts.count > 1 { say("×" + parts[1], rc.maxX - x(9), rc.midY, font(9, .semibold), Ink.sub, 1) }
+                hits.append((rc, i))
             }
-        case .ask(let yes):                                                                       // 아니오 / 예, side by side
-            let half = (W - 12 * u - 4 * u) / 2
-            for (i, (t, c)) in [("아니오", NSColor(red: 0.42, green: 0.47, blue: 0.58, alpha: 1)), ("예", NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1))].enumerated() {
-                let r = NSRect(x: 6 * u + CGFloat(i) * (half + 4 * u), y: top, width: half, height: bottom - top)
-                button(r, c, (i == 1) == yes, i); label(t, in: r, big, .white, shadow: shadow)
-            }
-        }
-        window?.invalidateCursorRects(for: self)
-    }
-}
-extension SideView {
-    /// What the pane shows now (redrawn only when it changes).
-    func show(_ m: SideModel?, dex d: DexModel?, shop sh: ShopModel?, menu mn: MenuModel?, status st: StatusModel?, grid g: GridModel? = nil) {
-        guard model != m || dex != d || shop != sh || menuPage != mn || status != st || grid != g else { return }
-        model = m; dex = d; shop = sh; menuPage = mn; status = st; grid = g; needsDisplay = true
-    }
-    func paperBox(_ r: NSRect) {
-        let u = u0; round(r.offsetBy(dx: 0, dy: u), 4 * u).fill(with: NSColor(white: 0, alpha: 0.35))
-        let p = round(r, 4 * u); p.fill(with: NSColor(white: 0.98, alpha: 1)); SideView.ink.setStroke(); p.lineWidth = u; p.stroke()
-    }
-    /// 홈: where we are, the companion (Lv, EXP to next, V, nature), today's steps and W, then egg / tower / totals / dex.
-    func drawStatus(_ s: StatusModel) {
-        let u = u0, W = bounds.width, ink = SideView.ink, dim = SideView.dim, gold = NSColor(red: 1, green: 0.85, blue: 0.35, alpha: 1)
-        let head = NSRect(x: 0, y: 4 * u, width: W, height: 12 * u)
-        label(s.place, in: head, body, .white, alignLeft: 8 * u); label(s.when, in: head, small, gold, alignRight: 8 * u)
-        let card = NSRect(x: 6 * u, y: 19 * u, width: W - 12 * u, height: 48 * u); paperBox(card)
-        let row = NSRect(x: card.minX, y: card.minY + 2 * u, width: card.width, height: 11 * u)
-        label(s.name, in: row, body, ink, alignLeft: 5 * u); label(s.level, in: row, small, dim, alignRight: 5 * u)
-        if s.v > 0 {                                                                               // nV: amber from 3V, like the menu
-            let t = "\(s.v)V", w = width(t, small) + 7 * u
-            let r = NSRect(x: card.maxX - 5 * u - width(s.level, small) - 3 * u - w, y: row.minY + 2 * u, width: w, height: 7.5 * u)
-            round(r, 3.5 * u).fill(with: s.v >= 3 ? NSColor(red: 0.95, green: 0.66, blue: 0.16, alpha: 1) : NSColor(red: 0.42, green: 0.47, blue: 0.58, alpha: 1)); label(t, in: r, small, .white)
-        }
-        let tag = NSRect(x: card.minX + 5 * u, y: card.minY + 16 * u, width: 17 * u, height: 6.5 * u)
-        round(tag, 2 * u).fill(with: ink); label("EXP", in: tag, .systemFont(ofSize: 4.8 * u, weight: .bold), NSColor(red: 0.45, green: 0.78, blue: 1, alpha: 1))
-        let tr = NSRect(x: tag.maxX - u, y: tag.minY, width: card.maxX - 5 * u - tag.maxX + u, height: 6.5 * u)
-        round(tr, 2 * u).fill(with: ink)
-        let inner = tr.insetBy(dx: 1.5 * u, dy: 1.5 * u)
-        NSColor(white: 0.30, alpha: 1).setFill(); inner.fill()
-        NSColor(red: 0.25, green: 0.62, blue: 0.98, alpha: 1).setFill(); NSRect(x: inner.minX, y: inner.minY, width: inner.width * max(0, min(1, s.exp)), height: inner.height).fill()
-        let r2 = NSRect(x: card.minX, y: card.minY + 24.5 * u, width: card.width, height: 9 * u)
-        label("다음 레벨까지", in: r2, small, dim, alignLeft: 5 * u); label(s.toNext, in: r2, small, ink, alignRight: 5 * u)
-        label(s.nature, in: NSRect(x: card.minX, y: card.minY + 35 * u, width: card.width, height: 9 * u), small, dim, alignLeft: 5 * u)
-        let tw = (W - 12 * u - 4 * u) / 2
-        for (i, (k, v)) in [("오늘 걸음", s.today), ("와트", s.watts)].enumerated() {
-            let r = NSRect(x: 6 * u + CGFloat(i) * (tw + 4 * u), y: 72 * u, width: tw, height: 32 * u); paperBox(r)
-            label(k, in: NSRect(x: r.minX, y: r.minY + 2.5 * u, width: r.width, height: 9 * u), small, dim, alignLeft: 5 * u)
-            label(v, in: NSRect(x: r.minX, y: r.minY + 13 * u, width: r.width, height: 15 * u), big, ink, alignRight: 5 * u)
-        }
-        let box = NSRect(x: 6 * u, y: 109 * u, width: W - 12 * u, height: CGFloat(s.rows.count) * 17 * u + 4 * u); paperBox(box)
-        for (j, rw) in s.rows.enumerated() {
-            let r = NSRect(x: box.minX, y: box.minY + 2 * u + CGFloat(j) * 17 * u, width: box.width, height: 17 * u)
-            if j > 0 { NSColor(white: 0, alpha: 0.08).setFill(); NSRect(x: r.minX + 4 * u, y: r.minY, width: r.width - 8 * u, height: 1).fill() }
-            label(rw.key, in: r, small, dim, alignLeft: 5 * u); label(rw.value, in: r, body, ink, alignRight: 5 * u)
+            if names.count > 3 { say("\(sel + 1) / \(names.count)", x(X1 - 2), y(top + 8), font(8, .semibold), Ink.sub, 1) }
+        case .ask(let yes):                                                                       // 아니오 / 예, the pick red
+            let cw = (w - 5) / 2
+            for (i, t) in ["아니오", "예"].enumerated() { let on = (i == 1) == yes; button(r(X0 + CGFloat(i) * (cw + 5), y0, cw, 40), t, on ? Ink.red : Ink.tile, on ? .white : Ink.ink, i, 13) }
+        case .none: break
         }
     }
-    /// 메뉴: the LCD's pages as a list, the one on the LCD highlighted; a click picks it, a click on the picked one opens it.
-    func drawMenu(_ m: MenuModel) {
-        let u = u0, W = bounds.width, H = bounds.height, ink = SideView.ink, dim = SideView.dim
-        let head = NSRect(x: 0, y: 4 * u, width: W, height: 12 * u)
-        label("메뉴", in: head, body, .white, alignLeft: 8 * u); label(m.money, in: head, body, NSColor(red: 1, green: 0.85, blue: 0.35, alpha: 1), alignRight: 8 * u)
-        let list = NSRect(x: 6 * u, y: 19 * u, width: W - 12 * u, height: H - 19 * u - 6 * u)
-        let lp = round(list, 4 * u); lp.fill(with: NSColor(white: 0.98, alpha: 1)); ink.setStroke(); lp.lineWidth = u; lp.stroke()
-        let rh = (list.height - 4 * u) / CGFloat(max(1, m.rows.count))
-        for (i, rw) in m.rows.enumerated() {
-            let r = NSRect(x: list.minX + 2 * u, y: list.minY + 2 * u + CGFloat(i) * rh, width: list.width - 4 * u, height: rh), on = i == m.sel
-            if on { round(r, 3 * u).fill(with: NSColor(red: 0.30, green: 0.56, blue: 0.86, alpha: 1)) }
-            else if i > 0, i != m.sel + 1 { NSColor(white: 0, alpha: 0.07).setFill(); NSRect(x: r.minX + 3 * u, y: r.minY, width: r.width - 6 * u, height: 1).fill() }
-            label("\(i + 1)", in: NSRect(x: r.minX, y: r.minY, width: 10.5 * u, height: r.height), small, on ? NSColor(white: 1, alpha: 0.8) : dim, alignRight: 0)
-            label(rw.name, in: r, body, on ? .white : ink, alignLeft: 13 * u)
-            label(rw.note, in: r, small, on ? NSColor(white: 1, alpha: 0.85) : dim, alignRight: 4 * u)
-            hits.append((r, 3000 + i))
-        }
-        window?.invalidateCursorRects(for: self)
-    }
-    /// The shop page: the HGSS blue, a list (name, what it does, price, how many carried), then how many and 구매.
-    func drawShop(_ s: ShopModel) {
-        let u = paneUnit, W = bounds.width, H = bounds.height, ink = SideView.ink, dim = SideView.dim, paper = NSColor(white: 0.98, alpha: 1)
-        let head = NSRect(x: 0, y: 4 * u, width: W, height: 12 * u)
-        label(s.title, in: head, body, .white, alignLeft: 8 * u); label(s.money, in: head, body, NSColor(red: 1, green: 0.85, blue: 0.35, alpha: 1), alignRight: 8 * u)
-        // the list: 6 rows, the pick kept in view
-        let listR = NSRect(x: 6 * u, y: 19 * u, width: W - 12 * u, height: 6 * 17 * u + 4 * u), rows = 6
-        round(listR, 4 * u).fill(with: paper); ink.setStroke(); let lp = round(listR, 4 * u); lp.lineWidth = u; lp.stroke()
-        if s.title != shopTitle { shopTitle = s.title; shopTop = max(0, s.sel - 2) }             // a stable window: a click never scrolls the row under the pointer away
-        if s.sel < shopTop { shopTop = s.sel } else if s.sel >= shopTop + rows { shopTop = s.sel - rows + 1 }
-        shopTop = max(0, min(shopTop, s.rows.count - rows)); let first = shopTop
-        for (i, r) in s.rows.enumerated() where i >= first && i < first + rows {
-            let rr = NSRect(x: listR.minX + 2 * u, y: listR.minY + 2 * u + CGFloat(i - first) * 17 * u, width: listR.width - 4 * u, height: 17 * u)
-            if i == s.sel { round(rr, 3 * u).fill(with: NSColor(red: 0.30, green: 0.56, blue: 0.86, alpha: 1)) }
-            let fg = i == s.sel ? NSColor.white : r.can ? ink : dim, fg2 = i == s.sel ? NSColor(white: 1, alpha: 0.85) : dim
-            label(r.name, in: NSRect(x: rr.minX, y: rr.minY + 1 * u, width: rr.width, height: 9 * u), body, fg, alignLeft: 3 * u)
-            label(r.price, in: NSRect(x: rr.minX, y: rr.minY + 1 * u, width: rr.width, height: 9 * u), small, fg, alignRight: 3 * u)
-            label(r.note, in: NSRect(x: rr.minX, y: rr.minY + 9.5 * u, width: rr.width, height: 7 * u), small, fg2, alignLeft: 3 * u)
-            if !r.once { label("보유 \(r.owned)", in: NSRect(x: rr.minX, y: rr.minY + 9.5 * u, width: rr.width, height: 7 * u), small, fg2, alignRight: 3 * u) }
-            hits.append((rr, 2100 + i))
-        }
-        if s.rows.count > rows {                                                                    // where in the list: a thin bar on the right
-            let track = NSRect(x: listR.maxX - 2 * u, y: listR.minY + 3 * u, width: 1.2 * u, height: listR.height - 6 * u)
-            NSColor(white: 0, alpha: 0.12).setFill(); track.fill()
-            let h = track.height * CGFloat(rows) / CGFloat(s.rows.count), y = track.minY + (track.height - h) * CGFloat(first) / CGFloat(s.rows.count - rows)
-            NSColor(white: 0, alpha: 0.35).setFill(); NSRect(x: track.minX, y: y, width: track.width, height: h).fill()
-        }
-        // how many, then 구매
-        let box = NSRect(x: 6 * u, y: listR.maxY + 4 * u, width: W - 12 * u, height: H - listR.maxY - 11 * u)
-        round(box, 4 * u).fill(with: paper); ink.setStroke(); let bp = round(box, 4 * u); bp.lineWidth = u; bp.stroke()
-        func button(_ r: NSRect, _ t: String, _ c: NSColor, _ code: Int, _ on: Bool = true) {
-            round(r, 3 * u).fill(with: on ? c : NSColor(white: 0.8, alpha: 1)); label(t, in: r, small, .white); if on { hits.append((r, code)) }
-        }
-        if let yes = s.ask, let r = s.rows[safe: s.sel] {                                          // 정말? for a once-only row
-            label("\(r.name) · \(s.total)", in: NSRect(x: box.minX, y: box.minY + 4 * u, width: box.width, height: 9 * u), body, ink)
-            label("정말 살까요? 한 번만 살 수 있어요 (남음 \(s.after))", in: NSRect(x: box.minX, y: box.minY + 14 * u, width: box.width, height: 8 * u), small, dim)
-            let half = (box.width - 13 * u) / 2, by = box.minY + 25 * u, h = box.maxY - by - 4 * u
-            for (k, (t, c, code)) in [("아니오", NSColor(red: 0.42, green: 0.47, blue: 0.58, alpha: 1), 2007), ("예", NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1), 2006)].enumerated() {
-                let br = NSRect(x: box.minX + 5 * u + CGFloat(k) * (half + 3 * u), y: by, width: half, height: h)
-                button(br, t, c, code)
-                if (k == 1) == yes { NSColor.white.setStroke(); let o = round(br.insetBy(dx: u, dy: u), 3 * u); o.lineWidth = u; o.stroke() }
-            }
-            window?.invalidateCursorRects(for: self); return
-        }
-        guard let q = s.qty else { label(s.hint, in: box, small, dim); window?.invalidateCursorRects(for: self); return }
-        let bw = (box.width - 10 * u - 4 * 2 * u - 22 * u) / 4, by = box.minY + 4 * u, grey = NSColor(red: 0.42, green: 0.47, blue: 0.58, alpha: 1)
-        var x = box.minX + 5 * u
-        for (t, code, on) in [("−10", 2000, q > 1), ("−1", 2001, q > 1)] { button(NSRect(x: x, y: by, width: bw, height: 10 * u), t, grey, code, on); x += bw + 2 * u }
-        label("× \(q)", in: NSRect(x: x, y: by, width: 22 * u, height: 10 * u), body, ink); x += 22 * u + 2 * u
-        for (t, code, on) in [("+1", 2002, q < s.most), ("+10", 2003, q < s.most)] { button(NSRect(x: x, y: by, width: bw, height: 10 * u), t, grey, code, on); x += bw + 2 * u }
-        label("\(s.total) → 남음 \(s.after)", in: NSRect(x: box.minX, y: by + 12 * u, width: box.width, height: 8 * u), small, dim, alignLeft: 5 * u)
-        button(NSRect(x: box.maxX - 5 * u - 20 * u, y: by + 12 * u, width: 20 * u, height: 8 * u), "최대 \(s.most)", grey, 2004, q < s.most)
-        let buy = NSRect(x: box.minX + 5 * u, y: by + 22 * u, width: box.width - 10 * u, height: box.maxY - by - 26 * u)
-        button(buy, "구매", NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1), 2005)
-        window?.invalidateCursorRects(for: self)
-    }
-    /// A handheld's body inside the pane's navy, off the deck: the dex's red (with its blue lens) or the box's blue; its title and count on top.
-    func handheld(box: Bool, _ title: String, _ count: String) {
-        let u = paneUnit, W = bounds.width
-        let r = NSRect(x: 2 * u, y: 2 * u, width: W - 4 * u, height: bounds.height - 5 * u), path = round(r, 8 * u)
-        NSGraphicsContext.saveGraphicsState(); path.addClip()
-        (box ? NSGradient(starting: NSColor(red: 0.32, green: 0.60, blue: 0.76, alpha: 1), ending: NSColor(red: 0.16, green: 0.36, blue: 0.54, alpha: 1))!
-             : NSGradient(starting: NSColor(red: 0.90, green: 0.24, blue: 0.22, alpha: 1), ending: NSColor(red: 0.66, green: 0.12, blue: 0.13, alpha: 1))!).draw(in: r, angle: -90)
-        NSGraphicsContext.restoreGraphicsState()
-        SideView.ink.setStroke(); path.lineWidth = 1.2; path.stroke()
-        if !box {
-            round(NSRect(x: 6 * u, y: 5 * u, width: 10 * u, height: 10 * u), 5 * u).fill(with: .white)                  // the blue lens
-            round(NSRect(x: 7.5 * u, y: 6.5 * u, width: 7 * u, height: 7 * u), 3.5 * u).fill(with: NSColor(red: 0.30, green: 0.62, blue: 0.95, alpha: 1))
-        }
-        let head = NSRect(x: 0, y: 4 * u, width: W, height: 12 * u)
-        label(title, in: head, body, .white, alignLeft: box ? 8 * u : 19 * u)
-        label(count, in: head, small, NSColor(white: 1, alpha: 0.9), alignRight: 7 * u)
-    }
-    /// The 도감 / 상자 grid: tabs, 5 x 6 box icons a page at 1 pt a pixel (x 1.5 / x 2 on the bigger sizes; the pick bobs), the page below.
+
+    // MARK: 도감 / 상자 grid
     func drawGrid(_ g: GridModel) {
-        let u = paneUnit, W = bounds.width, ink = SideView.ink, dim = SideView.dim, scale = window?.backingScaleFactor ?? 2
-        let accent = g.box ? NSColor(red: 0.18, green: 0.40, blue: 0.60, alpha: 1) : NSColor(red: 0.80, green: 0.20, blue: 0.18, alpha: 1)
-        handheld(box: g.box, g.title, g.count)
-        var x = 6 * u
-        for (t, name) in g.tabs.enumerated() {
-            let r = NSRect(x: x, y: 18 * u, width: width(name, small) + 9 * u, height: 9 * u), on = t == g.tab
-            round(r, 4.5 * u).fill(with: on ? .white : NSColor(white: 0, alpha: 0.22)); label(name, in: r, small, on ? accent : NSColor(white: 1, alpha: 0.88))
-            hits.append((r, 4100 + t)); x = r.maxX + 3 * u
-        }
-        let panel = NSRect(x: 5 * u, y: 29 * u, width: W - 10 * u, height: 6 * 23 * u + 2 * u), cw = (panel.width - 2 * u) / 5, ch = 23 * u
-        let pp = round(panel, 4 * u); pp.fill(with: NSColor(white: 0.98, alpha: 1)); ink.setStroke(); pp.lineWidth = u; pp.stroke()
-        if g.cells.isEmpty { label(g.empty, in: panel, body, dim) }
-        let s = PX / 2.5, side = 32 * s, snap = { (v: CGFloat) in (v * scale).rounded() / scale }, num = NSFont.monospacedDigitSystemFont(ofSize: 4.6 * u, weight: .medium)
+        let top: CGFloat = 198, scale = window?.backingScaleFactor ?? 2
+        tabs(g.tabs, g.tab, top)
+        let board = r(X0, top + 28, X1 - X0, 5 * 33)
+        rounded(board, 11 * K).fill(with: Ink.board)
+        if g.cells.isEmpty { say(g.empty, board.midX, board.midY, font(10, .medium), Ink.sub, 0.5) }
+        let side = 32 * K, snap = { (v: CGFloat) in (v * scale).rounded() / scale }
         NSGraphicsContext.current?.imageInterpolation = .none
         for (k, c) in g.cells.enumerated() {
-            let cell = NSRect(x: panel.minX + u + CGFloat(k % 5) * cw, y: panel.minY + u + CGFloat(k / 5) * ch, width: cw, height: ch).insetBy(dx: 0.5 * u, dy: 0.5 * u)
-            if k == g.sel {
-                let p = round(cell, 3 * u); p.fill(with: NSColor(red: 1, green: 0.95, blue: 0.76, alpha: 1))
-                NSColor(red: 0.94, green: 0.70, blue: 0.12, alpha: 1).setStroke(); p.lineWidth = 1.2 * u; p.stroke()
-            }
-            if c.look == 0 { round(cell.insetBy(dx: u, dy: u), 3 * u).fill(with: NSColor(white: 0, alpha: 0.06)); label("???", in: cell, small, NSColor(white: 0.62, alpha: 1)) }
+            let cell = r(X0 + CGFloat(k % GridModel.columns) * 33, top + 28 + CGFloat(k / GridModel.columns) * 33, 33, 33)
+            if k == g.sel { let p = rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K); p.fill(with: Ink.redTint); Ink.red.setStroke(); p.lineWidth = 1.5 * K; p.stroke() }
+            if c.look == 0 { say(String(format: "%03d", c.dex), cell.midX, cell.midY, font(8, .medium), Ink.faint, 0.5) }
             else {
-                let lift = k == g.sel && g.bob ? s : 0                                                    // the pick hops a pixel, twice a second
-                iconImage(c.dex, shadow: c.look == 1).draw(in: NSRect(x: snap(cell.midX - side / 2), y: snap(cell.maxY - side - lift), width: side, height: side),
+                let lift = k == g.sel && g.bob ? K : 0                                                    // the pick hops a pixel, twice a second
+                iconImage(c.dex, shadow: c.look == 1).draw(in: NSRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side),
                                                              from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none.rawValue])
             }
-            if !g.box { text(String(format: "%03d", c.dex), cell.minX + 1.5 * u, cell.minY + 0.3 * u, num, dim) }
-            if c.shiny { text("★", 0, cell.minY + 0.3 * u, num, NSColor(red: 0.93, green: 0.64, blue: 0.08, alpha: 1), right: cell.maxX - 1.5 * u) }
+            if c.shiny { say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
             if c.v3 {                                                                                   // 3V and up: the amber diamond, as on the LCD
-                let d = NSBezierPath(), cx = cell.minX + 4 * u, cy = cell.maxY - 4 * u, r = 2.2 * u
-                d.move(to: NSPoint(x: cx, y: cy - r)); d.line(to: NSPoint(x: cx + r, y: cy)); d.line(to: NSPoint(x: cx, y: cy + r)); d.line(to: NSPoint(x: cx - r, y: cy)); d.close()
-                d.fill(with: NSColor(red: 0.96, green: 0.70, blue: 0.16, alpha: 1)); NSColor(red: 0.63, green: 0.39, blue: 0.04, alpha: 1).setStroke(); d.lineWidth = 0.4 * u; d.stroke()
+                let d = NSBezierPath(), cx = cell.minX + x(6), cy = cell.maxY - x(6), rr = 2.4 * K
+                d.move(to: NSPoint(x: cx, y: cy - rr)); d.line(to: NSPoint(x: cx + rr, y: cy)); d.line(to: NSPoint(x: cx, y: cy + rr)); d.line(to: NSPoint(x: cx - rr, y: cy)); d.close()
+                d.fill(with: Ink.c(245, 178, 40)); Ink.c(160, 100, 10).setStroke(); d.lineWidth = 0.5 * K; d.stroke()
             }
             hits.append((cell, 10000 + g.first + k))
         }
-        let foot = NSRect(x: 5 * u, y: panel.maxY + 2 * u, width: W - 10 * u, height: 10 * u)
-        label(g.hint, in: foot, small, NSColor(white: 1, alpha: 0.8), alignLeft: 2 * u)
-        let pw = 12 * u, lw = max(26 * u, width("\(g.page) / \(g.pages)", small) + 4 * u)                // a 3-digit page count (a big box) widens it
-        let next = NSRect(x: foot.maxX - pw, y: foot.minY, width: pw, height: foot.height), pageR = NSRect(x: next.minX - lw, y: foot.minY, width: lw, height: foot.height)
-        let prev = NSRect(x: pageR.minX - pw, y: foot.minY, width: pw, height: foot.height)
-        label("\(g.page) / \(g.pages)", in: pageR, small, .white)
-        for (r, t, code, on) in [(prev, "◀", 4200, g.page > 1), (next, "▶", 4201, g.page < g.pages)] {
-            round(r.insetBy(dx: u, dy: 0.5 * u), 3 * u).fill(with: NSColor(white: on ? 1 : 0.6, alpha: on ? 0.95 : 0.35)); label(t, in: r, small, on ? accent : NSColor(white: 1, alpha: 0.6))
-            if on { hits.append((r, code)) }
-        }
-        window?.invalidateCursorRects(for: self)
+        pager("\(g.page) / \(g.pages)", top + 198, prev: g.page > 1, next: g.page < g.pages)
     }
-    /// The Pokédex entry page: a red handheld-dex body, a white entry card (types, base stats), where to find it, how it evolves; ◀ 목록 ▶ below.
+    /// A pill track of tabs, the picked one solid red.
+    func tabs(_ labels: [String], _ sel: Int, _ top: CGFloat) {
+        let track = r(X0, top, X1 - X0, 22), sw = track.width / CGFloat(labels.count)
+        pill(track, Ink.tile)
+        for (i, s) in labels.enumerated() {
+            let cell = NSRect(x: track.minX + CGFloat(i) * sw, y: track.minY, width: sw, height: track.height)
+            if i == sel { pill(cell.insetBy(dx: 2 * K, dy: 2 * K), Ink.red) }
+            say(s, cell.midX, cell.midY, font(10, i == sel ? .bold : .medium), i == sel ? .white : Ink.sub, 0.5)
+            hits.append((cell, 4100 + i))
+        }
+    }
+    /// ◀ n / m ▶, centred.
+    func pager(_ label: String, _ top: CGFloat, prev: Bool, next: Bool) {
+        let f = font(10, .semibold), cy = y(top + 9), tw = width(label, f)
+        say(label, x(Layout.w / 2), cy, f, Ink.ink, 0.5)
+        for (dx, left, on, code) in [(-tw / 2 - x(16), true, prev, 4200), (tw / 2 + x(16), false, next, 4201)] {
+            let c = NSRect(x: x(Layout.w / 2) + dx - x(9), y: cy - x(9), width: x(18), height: x(18))
+            NSBezierPath(ovalIn: c).fill(with: Ink.tile); triangle(c.midX + (left ? -0.5 : 0.5) * K, c.midY, 3 * K, left: left, on ? Ink.sub : Ink.line)
+            if on { hits.append((c, code)) }
+        }
+    }
+
+    // MARK: 도감 entry: base stats, where, evolutions
     func drawDex(_ d: DexModel) {
-        let u = paneUnit, W = bounds.width, ink = SideView.ink, dim = SideView.dim, red = NSColor(red: 0.80, green: 0.20, blue: 0.18, alpha: 1)
-        handheld(box: false, "도감", "잡음 \(d.owned) · 봤음 \(d.seen)")
-        func panel(_ r: NSRect) { let p = round(r, 4 * u); p.fill(with: NSColor(white: 0.98, alpha: 1)); ink.setStroke(); p.lineWidth = u; p.stroke() }
-        // entry card
-        let card = NSRect(x: 5 * u, y: 19 * u, width: W - 10 * u, height: 76 * u)
-        panel(card)
-        let title = NSRect(x: card.minX, y: card.minY + 2 * u, width: card.width, height: 11 * u)
-        label(String(format: "No.%03d  ", d.num) + d.name, in: title, body, d.status > 0 ? ink : dim, alignLeft: 5 * u)
-        if d.status > 0 {
-            let tag = d.status == 2 ? (d.shiny ? "★ 이로치" : "잡음") : "봤음", tw = width(tag, small) + 8 * u
-            let tr = NSRect(x: card.maxX - 5 * u - tw, y: title.minY + 1.5 * u, width: tw, height: 8 * u)
-            round(tr, 4 * u).fill(with: d.status == 2 ? NSColor(red: 0.90, green: 0.26, blue: 0.24, alpha: 1) : dim); label(tag, in: tr, small, .white)
-            var x = card.minX + 5 * u
-            for ty in d.types {
-                let str = typeKo[ty] ?? ty, r = NSRect(x: x, y: card.minY + 15 * u, width: width(str, small) + 9 * u, height: 8.5 * u)
-                round(r, 2.5 * u).fill(with: typeColor[ty] ?? .gray); label(str, in: r, small, .white); x += r.width + 3 * u
-            }
-            for (j, (name, v)) in zip(["HP", "공격", "방어", "특공", "특방", "스피드"], d.stats).enumerated() {
-                let row = NSRect(x: card.minX, y: card.minY + 26 * u + CGFloat(j) * 8 * u, width: card.width, height: 8 * u)
-                label(name, in: row, small, dim, alignLeft: 5 * u)
-                label("\(v)", in: row, small, ink, alignRight: 5 * u)
-                let bx = card.minX + 29 * u, bw = card.width - 29 * u - 20 * u, br = NSRect(x: bx, y: row.midY - 1.75 * u, width: bw, height: 3.5 * u)
-                round(br, 1.75 * u).fill(with: NSColor(white: 0.88, alpha: 1))
-                let c = v >= 100 ? NSColor(red: 0.28, green: 0.72, blue: 0.40, alpha: 1) : v >= 60 ? NSColor(red: 0.95, green: 0.70, blue: 0.20, alpha: 1) : NSColor(red: 0.90, green: 0.36, blue: 0.30, alpha: 1)
-                round(NSRect(x: bx, y: br.minY, width: bw * CGFloat(min(v, 180)) / 180, height: br.height), 1.75 * u).fill(with: c)
-            }
-        } else { label("아직 만나지 못했다", in: card, body, dim) }
-        // where + evolutions
-        let info = NSRect(x: 5 * u, y: 99 * u, width: W - 10 * u, height: 66 * u)
-        panel(info)
-        if d.status > 0 {
-            func line(_ str: String, _ j: CGFloat, _ c: NSColor, _ f: NSFont) { label(str, in: NSRect(x: info.minX, y: info.minY + 2 * u + j * 8.5 * u, width: info.width - 5 * u, height: 8.5 * u), f, c, alignLeft: 5 * u) }
-            line("만나는 곳", 0, red, small)
-            for (j, str) in (d.found.isEmpty ? ["알 수 없음"] : d.found).enumerated() { line("· " + fit(str, info.width - 14 * u), CGFloat(1 + j), ink, small) }
-            line("진화", 4, red, small)
-            for (j, str) in (d.evos.isEmpty ? ["더 이상 진화하지 않는다"] : d.evos).enumerated() { line(fit(str, info.width - 10 * u), CGFloat(5 + j), d.evos.isEmpty ? dim : ink, small) }
+        var yy: CGFloat = 198
+        guard d.status > 0 else { say("아직 만나지 못했다", x(Layout.w / 2), y(yy + 60), font(10, .medium), Ink.sub, 0.5); return }
+        for (name, v) in zip(["HP", "공격", "방어", "특공", "특방", "스피드"], d.stats) {
+            say(name, x(X0 + 2), y(yy + 8), font(9, .medium), Ink.sub)
+            say("\(v)", x(X0 + 58), y(yy + 8), font(10, .semibold), Ink.ink, 1)
+            bar(x(X0 + 66), x(X1 - 2), y(yy + 8), CGFloat(v) / 150, v >= 100 ? Ink.green : Ink.yellow, h: x(5), track: Ink.tile)
+            yy += 16
         }
-        // ◀ the one before · back to the grid · the next ▶ (on the grid's tab)
-        let bw = (W - 10 * u - 6 * u) / 4
-        for (k, (t, code)) in [("◀", 4300), ("목록", 4301), ("▶", 4302)].enumerated() {
-            let r = NSRect(x: 5 * u + (k == 0 ? 0 : k == 1 ? bw + 3 * u : 3 * bw + 6 * u), y: 169 * u, width: k == 1 ? 2 * bw : bw, height: 12 * u)
-            round(r, 3 * u).fill(with: NSColor(white: 1, alpha: 0.95)); label(t, in: r, small, red); hits.append((r, code))
+        yy += 4; Ink.line.setFill(); NSRect(x: x(X0 + 2), y: y(yy), width: x(X1 - X0 - 4), height: max(0.5, 0.5 * K)).fill(); yy += 4
+        for (label, vals, n) in [("만나는 곳", d.found.isEmpty ? ["알 수 없음"] : d.found, 3), ("진화", d.evos.isEmpty ? ["더 이상 진화하지 않는다"] : d.evos, 2)] {   // a line each
+            say(label, x(X0 + 2), y(yy + 10), font(9, .medium), Ink.sub)
+            for (j, v) in vals.prefix(n).enumerated() { say(v, x(X0 + 58), y(yy + 10 + CGFloat(j) * 14), font(10, .medium), Ink.ink, maxW: x(X1 - X0 - 60)) }
+            yy += CGFloat(n) * 14 + 6
         }
-        window?.invalidateCursorRects(for: self)
     }
-    func fit(_ str: String, _ w: CGFloat) -> String { var x = str; while x.count > 1, width(x, small) > w { x = String(x.dropLast(2)) + "…" }; return x }
+
+    // MARK: 상자: one Pokémon — nature, ability, IVs and EVs, and 함께 / 놓아주기
+    func drawMon(_ m: MonModel) {
+        var yy: CGFloat = 198
+        let statNames = ["HP", "공격", "방어", "특공", "특방", "스피드"]
+        // 성격: name, the stats it moves, what that means
+        say("성격", x(X0 + 2), y(yy + 7), font(9, .medium), Ink.sub)
+        say(m.nature, x(X0 + 34), y(yy + 7), font(11, .bold), Ink.ink)
+        var px = x(X1 - 2)
+        let chips: [(String, NSColor)] = m.up.map { u in [(statNames[m.down!] + " ↓", Ink.blue), (statNames[u] + " ↑", Ink.red)] } ?? [("변화 없음", Ink.faint)]
+        for (t, c) in chips { let f = font(8, .bold), w = width(t, f) + x(10); pill(NSRect(x: px - w, y: y(yy + 7) - x(6), width: w, height: x(12)), Ink.tint(c, 0.16)); say(t, px - w / 2, y(yy + 7), f, c, 0.5); px -= w + x(4) }
+        say(m.natureNote, x(X0 + 34), y(yy + 20), font(9, .regular), Ink.sub, maxW: x(X1 - X0 - 36))
+        yy += 30; Ink.line.setFill(); NSRect(x: x(X0 + 2), y: y(yy), width: x(X1 - X0 - 4), height: max(0.5, 0.5 * K)).fill(); yy += 6
+        // 특성: name, then its description (two lines at most)
+        say("특성", x(X0 + 2), y(yy + 7), font(9, .medium), Ink.sub)
+        say(m.ability, x(X0 + 34), y(yy + 7), font(11, .bold), Ink.ink)
+        var lines: [String] = [], cur = "", f = font(9)
+        for word in m.abilityNote.split(separator: " ") { let t = cur.isEmpty ? String(word) : cur + " " + word; if width(t, f) > x(X1 - X0 - 36), !cur.isEmpty { lines.append(cur); cur = String(word) } else { cur = t } }
+        lines.append(cur)
+        for (j, l) in lines.prefix(2).enumerated() { say(l, x(X0 + 34), y(yy + 20 + CGFloat(j) * 12), f, Ink.sub, maxW: x(X1 - X0 - 36)) }
+        yy += 40; Ink.line.setFill(); NSRect(x: x(X0 + 2), y: y(yy), width: x(X1 - X0 - 4), height: max(0.5, 0.5 * K)).fill(); yy += 4
+        // IVs and EVs: two hexagons, the nature's stats in red / blue
+        let half = (X1 - X0) / 2
+        hexagon(title: "개체값", note: m.v > 0 ? "\(m.v)V" : "", values: m.ivs, max: 31, center: NSPoint(x: x(X0 + half / 2), y: y(yy + 57)), color: Ink.blue, up: m.up, down: m.down, gold: m.hyper, top: y(yy + 6))
+        hexagon(title: "노력치", note: "합 \(m.evTotal)", values: m.evs, max: 252, center: NSPoint(x: x(X0 + half * 1.5), y: y(yy + 57)), color: Ink.c(236, 120, 40), up: m.up, down: m.down, gold: [], top: y(yy + 6))
+        yy += 104
+        // 함께 걷기 / 놓아주기 (놓아줄까? → 아니오 / 예)
+        let cw = (X1 - X0 - 5) / 2
+        let opts: [(String, Int)] = m.confirm ? [("아니오", 4402), ("예 · 놓아주기", 4403)] : [("함께 걷기", 4400), ("놓아주기", 4401)]
+        for (i, (t, code)) in opts.enumerated() {
+            let rc = r(X0 + CGFloat(i) * (cw + 5), yy, cw, 30), strong = m.sel == i                   // red = what ● does now (the LCD's pick); none while nothing is picked
+            rounded(rc, 10 * K).fill(with: strong ? Ink.red : Ink.tile); say(t, rc.midX, rc.midY, font(11, .bold), strong ? .white : Ink.ink, 0.5); hits.append((rc, code))
+        }
+    }
+    /// A six-sided chart: HP on top, then 공격 · 방어 · 스피드 · 특방 · 특공 clockwise (the games' order); rings at thirds.
+    func hexagon(title: String, note: String, values: [Int], max: CGFloat, center c: NSPoint, color: NSColor, up: Int?, down: Int?, gold: [Int], top: CGFloat) {
+        let order = [0, 1, 2, 5, 4, 3], names = ["HP", "공격", "방어", "특공", "특방", "스피드"], R = 24 * K
+        say(title, c.x - x(2), top, font(9, .bold), Ink.ink, 1); say(note, c.x + x(2), top, font(9, .semibold), note.hasSuffix("V") ? Ink.gold : Ink.sub)
+        func pt(_ i: Int, _ f: CGFloat) -> NSPoint { let a = -CGFloat.pi / 2 + CGFloat(i) * .pi / 3; return NSPoint(x: c.x + cos(a) * R * f, y: c.y + sin(a) * R * f) }
+        for ring in [1.0, 2.0 / 3, 1.0 / 3] as [CGFloat] {
+            let p = NSBezierPath(); p.move(to: pt(0, ring)); for i in 1..<6 { p.line(to: pt(i, ring)) }; p.close()
+            if ring == 1 { p.fill(with: Ink.board) }; Ink.line.setStroke(); p.lineWidth = 0.7 * K; p.stroke()
+        }
+        for i in 0..<6 { let p = NSBezierPath(); p.move(to: c); p.line(to: pt(i, 1)); Ink.line.setStroke(); p.lineWidth = 0.5 * K; p.stroke() }
+        let poly = NSBezierPath()
+        for (i, s) in order.enumerated() { let q = pt(i, Swift.max(0.02, CGFloat(values[s]) / max)); if i == 0 { poly.move(to: q) } else { poly.line(to: q) } }
+        poly.close(); poly.fill(with: color.withAlphaComponent(0.32)); color.setStroke(); poly.lineWidth = 1.2 * K; poly.stroke()
+        for (i, s) in order.enumerated() {                                                     // name over value, outside the corner
+            let a = -CGFloat.pi / 2 + CGFloat(i) * .pi / 3, lx = c.x + cos(a) * (R + x(15)), ly = c.y + sin(a) * (R + x(10)) + (i == 0 ? -x(3) : i == 3 ? x(3) : 0)
+            let nc = s == up ? Ink.red : s == down ? Ink.blue : Ink.sub
+            say(names[s], lx, ly - x(4.5), font(7.5, .medium), nc, 0.5)
+            say("\(values[s])", lx, ly + x(4.5), font(8.5, .bold), gold.contains(s) ? Ink.gold : Ink.ink, 0.5)
+        }
+    }
+
+    // MARK: 상점: rows, then how many
+    func drawShop(_ s: ShopModel) {
+        let top: CGFloat = 196, rows = 6, rh: CGFloat = 27
+        if s.title != shopTitle { shopTitle = s.title; shopTop = max(0, s.sel - 2) }             // a stable window: a click never scrolls the row under the pointer away
+        if s.sel < shopTop { shopTop = s.sel } else if s.sel >= shopTop + rows { shopTop = s.sel - rows + 1 }
+        shopTop = max(0, min(shopTop, s.rows.count - rows)); let first = shopTop
+        for (i, row) in s.rows.enumerated() where i >= first && i < first + rows {
+            let yy = top + CGFloat(i - first) * rh, rc = r(X0, yy + 1, X1 - X0, rh - 2), on = i == s.sel
+            if on { rounded(rc, 8 * K).fill(with: Ink.redTint) } else if i > first, i != s.sel + 1 { Ink.line.setFill(); NSRect(x: x(X0 + 8), y: y(yy), width: x(X1 - X0 - 16), height: max(0.5, 0.5 * K)).fill() }
+            let fg = row.can ? Ink.ink : Ink.faint
+            say(row.price, x(X1 - 8), y(yy + 9.5), font(10, .semibold), on ? Ink.red : fg, 1)
+            say(row.name, x(X0 + 8), y(yy + 9.5), font(10, .bold), fg, maxW: x(X1 - X0 - 20) - width(row.price, font(10, .semibold)))
+            let own = row.once ? "" : "보유 \(row.owned)"
+            say(own, x(X1 - 8), y(yy + 20), font(8, .medium), Ink.sub, 1)
+            say(row.note, x(X0 + 8), y(yy + 20), font(8, .medium), Ink.sub, maxW: x(X1 - X0 - 24) - width(own, font(8, .medium)))
+            hits.append((rc, 2100 + i))
+        }
+        if s.rows.count > rows {                                                                   // where in the list: a thin bar on the right
+            let track = r(X1 - 1.5, top + 4, 1.2, CGFloat(rows) * rh - 8)
+            Ink.line.setFill(); track.fill()
+            let h = track.height * CGFloat(rows) / CGFloat(s.rows.count), yy = track.minY + (track.height - h) * CGFloat(first) / CGFloat(s.rows.count - rows)
+            Ink.faint.setFill(); NSRect(x: track.minX, y: yy, width: track.width, height: h).fill()
+        }
+        let by = top + CGFloat(rows) * rh + 8
+        if let yes = s.ask {                                                                       // 정말? for a once-only row
+            let cw = (X1 - X0 - 5) / 2
+            for (i, (t, code)) in [("아니오", 2007), ("예 · \(s.total)", 2006)].enumerated() {
+                let rc = r(X0 + CGFloat(i) * (cw + 5), by, cw, 30), on = (i == 1) == yes
+                pill(rc, on ? Ink.red : Ink.tile); say(t, rc.midX, rc.midY, font(11, .bold), on ? .white : Ink.ink, 0.5); hits.append((rc, code))
+            }
+            return
+        }
+        guard let q = s.qty else {
+            let rc = r(X0, by, X1 - X0, 30); pill(rc, Ink.tile); say(s.hint, rc.midX, rc.midY, font(9, .medium), Ink.sub, 0.5, maxW: rc.width - x(16)); return
+        }
+        let step = r(X0, by, 94, 30); pill(step, Ink.tile)
+        for (cx, plus, on, code) in [(X0 + 16, false, q > 1, 2001), (X0 + 78, true, q < s.most, 2002)] {
+            let c = on ? Ink.ink : Ink.line, hr = NSRect(x: x(cx - 13), y: step.minY, width: x(26), height: step.height)
+            c.setFill(); NSRect(x: x(cx - 4), y: step.midY - 0.8 * K, width: x(8), height: 1.6 * K).fill()
+            if plus { NSRect(x: x(cx) - 0.8 * K, y: step.midY - x(4), width: 1.6 * K, height: x(8)).fill() }
+            if on { hits.append((hr, code)) }
+        }
+        say("\(q)개", step.midX, step.midY, font(11, .bold), Ink.ink, 0.5)
+        let buy = r(X0 + 100, by, X1 - X0 - 100, 30); pill(buy, Ink.red); say("\(s.total) 사기", buy.midX, buy.midY, font(11, .bold), .white, 0.5, maxW: buy.width - x(12)); hits.append((buy, 2005))
+    }
+
+    // MARK: 메뉴: 2 x 5 tiles, the one on the LCD red
+    func drawMenu(_ m: MenuModel) {
+        let rh: CGFloat = 31, gap: CGFloat = 4, cw = (X1 - X0 - gap) / 2
+        for (i, row) in m.rows.enumerated() {
+            let rc = r(X0 + CGFloat(i % 2) * (cw + gap), 198 + CGFloat(i / 2) * (rh + gap), cw, rh), on = i == m.sel
+            rounded(rc, 9 * K).fill(with: on ? Ink.red : Ink.tile)
+            say(row.name, rc.minX + x(9), rc.minY + x(10.5), font(10, .bold), on ? .white : Ink.ink, maxW: rc.width - x(14))
+            say(row.note, rc.minX + x(9), rc.minY + x(22), font(8, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(14))
+            hits.append((rc, 3000 + i))
+        }
+    }
+
+    // MARK: 상태: the companion, three numbers, the rest
+    func drawStatus(_ s: StatusModel) {
+        var yy: CGFloat = 200
+        let scale = window?.backingScaleFactor ?? 2, snap = { (v: CGFloat) in (v * scale).rounded() / scale }
+        NSGraphicsContext.current?.imageInterpolation = .none
+        iconImage(s.dex).draw(in: NSRect(x: snap(x(X0 - 1)), y: snap(y(yy)), width: 32 * K, height: 32 * K), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none.rawValue])
+        let tx = X0 + 36
+        var w = say(s.name, x(tx), y(yy + 8), font(11, .bold), Ink.ink)
+        if !s.sex.isEmpty { w += x(2) + say(s.sex, x(tx) + w + x(2), y(yy + 8.5), font(10, .bold), s.female ? Ink.pink : Ink.blue) }
+        w += x(5) + say(s.level, x(tx) + w + x(5), y(yy + 8.5), font(10, .semibold), Ink.sub)
+        if s.v > 0 { let t = "\(s.v)V", f = font(7.5, .bold), vw = width(t, f) + x(8); pill(NSRect(x: x(tx) + w + x(5), y: y(yy + 8.5) - x(5.5), width: vw, height: x(11)), s.v >= 3 ? Ink.c(242, 168, 40) : Ink.faint); say(t, x(tx) + w + x(5) + vw / 2, y(yy + 8.5), f, .white, 0.5); w += x(5) + vw }
+        say(s.nature, x(X1 - 2), y(yy + 8.5), font(9, .medium), Ink.sub, 1, maxW: x(X1 - 2) - (x(tx) + w + x(8)))   // never over the name / Lv / V
+        bar(x(tx), x(X1 - 2), y(yy + 19.5), s.exp, Ink.blue, h: x(5))
+        say("다음 레벨까지", x(tx), y(yy + 29), font(8, .medium), Ink.sub)
+        say(s.toNext, x(X1 - 2), y(yy + 29), font(9, .semibold), Ink.ink, 1)
+        yy += 40; Ink.line.setFill(); NSRect(x: x(X0 + 2), y: y(yy), width: x(X1 - X0 - 4), height: max(0.5, 0.5 * K)).fill(); yy += 6
+        let cw = (X1 - X0) / CGFloat(max(1, s.numbers.count))
+        for (i, n) in s.numbers.enumerated() {
+            let cx = X0 + CGFloat(i) * cw + cw / 2
+            say(n.key, x(cx), y(yy + 7), font(8, .medium), Ink.sub, 0.5); say(n.value, x(cx), y(yy + 21), font(13, .bold), Ink.ink, 0.5, maxW: x(cw - 4))
+            if i > 0 { Ink.line.setFill(); NSRect(x: x(X0 + CGFloat(i) * cw), y: y(yy + 2), width: max(0.5, 0.5 * K), height: x(26)).fill() }
+        }
+        yy += 36; Ink.line.setFill(); NSRect(x: x(X0 + 2), y: y(yy), width: x(X1 - X0 - 4), height: max(0.5, 0.5 * K)).fill(); yy += 6
+        for row in s.rows {
+            say(row.key, x(X0 + 2), y(yy + 10), font(9, .medium), Ink.sub)
+            say(row.value, x(X1 - 2), y(yy + 10), font(10, .medium), Ink.ink, 1)
+            yy += 20
+        }
+    }
 }
 extension NSBezierPath { func fill(with c: NSColor) { c.setFill(); fill() } }

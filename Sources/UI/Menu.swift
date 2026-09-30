@@ -176,6 +176,7 @@ extension WalkerView {
         }
         m.addItem(.separator())
         sub("크기", [("보통", 2), ("크게", 3), ("아주 크게", 4)], Int(SIZE), #selector(setSize(_:)))
+        if let sm = m.items.last?.submenu { sm.autoenablesItems = false; for i in sm.items { i.isEnabled = sizeFits(CGFloat(i.tag)) } }   // a size whose tallest page won't fit this screen
         sub("기기", shells.enumerated().map { ($1.dex > dexCount ? "\($1.name) — 도감 \($1.dex)" : !shellOpen($1) ? "\($1.name) — \($1.bp)BP" : $1.name, $0) }, theme, #selector(setTheme(_:)))
         sub("화면", lcds.enumerated().map { ($1.name, $0) }, lcdStyle, #selector(setLCD(_:)))
         sub("화면 글씨", [("매끈하게", 1), ("도트", 0)], smoothText ? 1 : 0, #selector(setTextStyle(_:)))
@@ -207,7 +208,7 @@ extension WalkerView {
     /// Walker <-> menu bar. Hiding parks it on the home screen so the events (which wait for home) keep coming.
     @objc func toggleShown(_ sender: Any?) {
         guard let w = window else { return }
-        if w.isVisible { if !inBattle { screen = .home }; w.orderOut(nil) } else { shown = nil; w.orderFrontRegardless() }   // a fight just waits while hidden
+        if w.isVisible { if !inBattle { screen = .home }; w.orderOut(nil) } else { shown = nil; refreshPane(Date(), force: true); w.orderFrontRegardless() }   // a fight just waits while hidden; back at today's page and height
         UserDefaults.standard.set(!w.isVisible, forKey: "hidden")
     }
     func updateStatus() {
@@ -256,12 +257,12 @@ extension WalkerView {
         else { guard state.box.indices.contains(i.tag) else { return }; state.pair(i.tag) }
         screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: Date()); save(nil)
     }
-    @objc func setSize(_ item: NSMenuItem) {                     // keeps the top-right corner
-        guard let w = window else { return }
-        var f = w.frame, top = NSPoint(x: f.maxX, y: f.maxY)
+    /// The tallest page (the 도감 / 상자 grids) at that size fits the screen the card is on.
+    func sizeFits(_ size: CGFloat) -> Bool { 422 * size / 2 <= (window?.screen ?? NSScreen.main)?.visibleFrame.height ?? .infinity }
+    @objc func setSize(_ item: NSMenuItem) {                     // keeps the top-left corner, as the card grows down
+        guard sizeFits(CGFloat(item.tag)) else { NSSound.beep(); return }
         SIZE = CGFloat(item.tag); UserDefaults.standard.set(item.tag, forKey: "px")
-        f.size = devSize; f.origin = NSPoint(x: top.x - f.width, y: top.y - f.height)
-        w.setFrame(WalkerView.onScreen(f, in: (w.screen ?? NSScreen.main)?.visibleFrame), display: true); setFrameSize(devSize); layoutPage(); window?.invalidateCursorRects(for: self); shown = nil; needsDisplay = true
+        fitWindow(); shown = nil; needsDisplay = true
     }
     /// A frame pulled back inside a screen's visible area (the body is wide: a spot near an edge must not push it off).
     static func onScreen(_ f: NSRect, in s: NSRect?) -> NSRect {

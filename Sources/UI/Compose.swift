@@ -16,7 +16,7 @@ extension WalkerView {
         case .home:
             let f = now.timeIntervalSince(lastStep) < 3 ? half : Int(t) % 2        // steps coming in => walks twice as fast
             fb.mon(me, f, 32, 0)
-            if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { let y = max(0, 16 + spriteTop(me.dex) * 2 / 5 - 9); fb.draw(bubble, 41, y, ballPal); fb.draw(emotes[e.kind], 44, y + 2, redPal) }   // by its head
+            if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { let y = max(0, 48 - (80 - spriteTop(me.dex)) / 2 - 9); fb.draw(bubble, 38, y, ballPal); fb.draw(emotes[e.kind], 41, y + 2, redPal) }   // by its head
             fb.course(state.here.art, 1, 22, weather: state.weather ?? .sunny, t: t, hour: state.hour, season: state.season)
             fb.text("\(state.watts)W", 1, 1, 2, small: true)
             for i in 0..<state.caught.count { fb.draw(ball, 1 + 8 * i, 13, ballPal) }
@@ -194,7 +194,7 @@ extension WalkerView {
             fb.text(monTypes[d].map { typeKo[$0] ?? $0 }.joined(separator: "·"), 94, 16, 2, right: true, small: true)
             fb.text(owned ? "잡음" : "봤음", 94, 42, 2, right: true, small: true)
             fb.text("\((list.firstIndex(of: d) ?? 0) + 1)/\(list.count)", 94, 52, 1, right: true, small: true)
-        case .box(let i, let act, let confirm):
+        case .box(let i, let act, let confirm, let detail):
             guard let m = state.box[safe: i] else { header("상자"); fb.text("상자가 비어 있다", 0, 30, 2, center: true); break }
             header((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)")
             fb.mon(m, half, 0, 2)
@@ -209,7 +209,7 @@ extension WalkerView {
                     if confirm ? k - 1 == a : k == a { fb.invert(x, 52, w, 11) }
                     x += w + 1
                 }
-            } else { fb.text("● 메뉴", 94, 52, 2, right: true, small: true) }
+            } else { fb.text(detail ? "● 메뉴" : "● 자세히", 94, 52, 2, right: true, small: true) }   // the grid's ● opens its page; the page's opens 함께 / 놓아주기
         case .hatch(let m, let since):
             let u = now.timeIntervalSince(since)
             if u < 2.6 {                                                                                    // the egg rocks, harder and harder, then cracks
@@ -234,8 +234,12 @@ extension WalkerView {
             else { fb.mon(to, half, 16, 1); for (k, (sx, sy)) in [(8, 6), (70, 10), (30, 2), (78, 34), (4, 30)].enumerated() where (Int(u * 4) + k) % 3 == 0 { fb.draw(spark, sx, sy, sparkPal) } }
             fb.fill(0, 50, 96, 1, 2)
             fb.text(u < 4.4 ? "어라...? " + josa(monNames[from.dex], "이", "가") + "...!" : josa(monNames[to.dex], "으로", "로") + " 진화했다!", 2, 52)
-        case .say(let lines, _, _):
-            for (k, l) in lines.enumerated() { fb.text(l, 0, 32 - lines.count * 7 + 14 * k, center: true) }
+        case .say(let lines, let next, _):
+            switch next {                                                                             // a fight's own message is on the pane: the LCD keeps the stage
+            case .battle(let b, _) where sideOn, .moves(let b, _) where sideOn, .party(let b, _) where sideOn, .bagBattle(let b, _) where sideOn, .forfeit(let b, _) where sideOn:
+                stage(&fb, b, now, .idle, hud: false)
+            default: for (k, l) in lines.enumerated() { fb.text(l, 0, 32 - lines.count * 7 + 14 * k, center: true) }
+            }
         }
         return fb
     }
@@ -269,8 +273,7 @@ extension WalkerView {
             evos = mine.map(\.to).reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } }.map { to in "→ " + monNames[to] + " · " + mine.filter { $0.to == to }.map(evoText).joined(separator: " / ") }
             if evos.count > 2 { let n = evos.count - 1; evos = [evos[0], "외 \(n)갈래"] }
         }
-        return DexModel(num: d, name: st > 0 ? monNames[d] : "???", status: st, shiny: (state.shinyOwned ?? []).contains(d), types: st > 0 ? monTypes[d] : [],
-                        stats: st > 0 ? baseStats[d] : [], found: found, evos: evos, owned: owned.count, seen: seen.count)
+        return DexModel(num: d, status: st, stats: st > 0 ? baseStats[d] : [], found: found, evos: evos)
     }
     /// The 도감 / 상자 grid page (and through their messages: 놓아주기's); nil elsewhere.
     func gridModel(_ now: Date) -> GridModel? {
@@ -280,19 +283,19 @@ extension WalkerView {
         switch sc {
         case .dex(let d, let f, false):
             let l = dexList(f), owned = Set(state.owned ?? []), seen = Set(seenList), shiny = Set(state.shinyOwned ?? []), i = l.firstIndex(of: d), p = page(l.count, i ?? 0)
-            return GridModel(box: false, title: "도감", count: "잡음 \(owned.count) · 봤음 \(seen.count)", tabs: ["전체", "잡음", "못 잡음", "이 코스"], tab: f,
+            return GridModel(tabs: ["전체", "잡음", "못 잡음", "이 코스"], tab: f,
                              cells: l[p.first..<min(l.count, p.first + per)].map { .init(dex: $0, look: owned.contains($0) ? 2 : seen.contains($0) ? 1 : 0, shiny: shiny.contains($0)) },
-                             first: p.first, sel: i.map { $0 - p.first }, page: p.page, pages: p.pages, hint: "다시 클릭 · 자세히", empty: f == 2 ? "모두 잡았다!" : "아직 없다", bob: bob)
-        case .box(let i, _, _):
+                             first: p.first, sel: i.map { $0 - p.first }, page: p.page, pages: p.pages, empty: f == 2 ? "모두 잡았다!" : "아직 없다", bob: bob)
+        case .box(let i, _, _, false):
             let o = boxOrder, b = state.box, at = o.firstIndex(of: i), p = page(o.count, at ?? 0)
-            return GridModel(box: true, title: "상자", count: "\(b.count.formatted())마리", tabs: ["번호순", "레벨순", "V순", "최근"], tab: boxSort,
+            return GridModel(tabs: ["번호순", "레벨순", "V순", "최근"], tab: boxSort,
                              cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3) },
-                             first: p.first, sel: at.map { $0 - p.first }, page: p.page, pages: p.pages, hint: "다시 클릭 · 메뉴", empty: "상자가 비어 있다", bob: bob)
+                             first: p.first, sel: at.map { $0 - p.first }, page: p.page, pages: p.pages, empty: "상자가 비어 있다", bob: bob)
         default: return nil
         }
     }
-    /// A click on a grid page: 10000 + k = the list's k-th (picks it; the picked one again = the entry page / the ● menu), 4100 + t = a tab,
-    /// 4200 / 4201 = a page back / on; the entry page's 4300 ◀ / 4301 목록 / 4302 ▶.
+    /// A click on a grid page: 10000 + k = the list's k-th (picks it; the picked one again = its page), 4100 + t = a tab, 4200 / 4201 = a page back / on;
+    /// a box Pokémon's page: 4400 함께 걷기, 4401 놓아주기 → 4402 아니오 / 4403 예.
     func gridTap(_ code: Int) {
         if case .say(_, let next, _) = screen { switch next { case .dex, .box: screen = next; default: return } }   // a click during 놓아주기's line = on to the grid
         lastInput = Date(); shown = nil; needsDisplay = true
@@ -302,29 +305,41 @@ extension WalkerView {
             screen = .dex(n, filter: f, detail: n == d)
         case (.dex(let d, _, _), 4100...4103):
             let f = code - 4100, l = dexList(f); screen = .dex(l.contains(d) ? d : l.first ?? d, filter: f, detail: false)   // the pick stays if it's on the new tab
-        case (.dex(let d, let f, _), 4301): screen = .dex(d, filter: f, detail: false)
-        case (.box(let i, let act, _), 10000...):
+        case (.box(let i, _, _, _), 10000...):
             guard let j = boxOrder[safe: code - 10000] else { return }
-            screen = .box(j, act: j == i ? act ?? 0 : nil, confirm: false)                          // the picked one again: 함께 / 놓아주기 / 닫기 (stays open: ↩ / 닫기 close it)
-        case (.box(let i, _, _), 4100...4103): boxSort = code - 4100; screen = .box(i, act: nil, confirm: false)
+            screen = .box(j, act: nil, confirm: false, detail: j == i)                               // the picked one again: its page
+        case (.box(let i, _, _, _), 4100...4103): boxSort = code - 4100; screen = .box(i, act: nil, confirm: false)
+        case (.box(let i, _, _, true), 4400): screen = .box(i, act: 0, confirm: false, detail: true); press(1)      // = ● 함께
+        case (.box(let i, _, _, true), 4401): screen = .box(i, act: 0, confirm: true, detail: true)                  // 놓아줄까? 아니오 first
+        case (.box(let i, _, _, true), 4402): screen = .box(i, act: nil, confirm: false, detail: true)
+        case (.box(let i, _, true, true), 4403): screen = .box(i, act: 1, confirm: true, detail: true); press(1)
         case (_, 4200), (_, 4201): gridStep(code == 4200 ? -GridModel.perPage : GridModel.perPage)
-        case (_, 4300), (_, 4302): gridStep(code == 4300 ? -1 : 1, wrap: true)
         default: return
         }
     }
-    /// What the pane's page shows: the battle, 도감 (grid or entry), 상자, 상점 or 메뉴 page; everywhere else the 상태 page.
-    func paneContent(_ now: Date) -> (battle: SideModel?, dex: DexModel?, shop: ShopModel?, menu: MenuModel?, status: StatusModel?, grid: GridModel?) {
-        if let b = sideModel(now) { return (b, nil, nil, nil, nil, nil) }
-        if let d = dexModel() { return (nil, d, nil, nil, nil, nil) }
-        if let g = gridModel(now) { return (nil, nil, nil, nil, nil, g) }
-        if let s = shopModel() { return (nil, nil, s, nil, nil, nil) }
+    /// What the pane's page shows: the battle, 도감 (grid or entry), 상자 (grid or one Pokémon), 상점 or 메뉴 page; elsewhere the status sheet if it's open.
+    func paneContent(_ now: Date) -> PaneContent {
+        if let b = sideModel(now) { return PaneContent(battle: b) }
+        if let d = dexModel() { return PaneContent(dex: d) }
+        if let g = gridModel(now) { return PaneContent(grid: g) }
+        if let m = monModel() { return PaneContent(mon: m) }
+        if let s = shopModel() { return PaneContent(shop: s) }
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }                       // a menu page's message (W가 부족하다, 커넥트): the list stays
         if case .menu(let i) = sc {
             let bp = (state.bp ?? 0).formatted(), notes = ["10W", "3W", "상자로 보내기", "오늘 \(state.today.formatted())걸음", "워커 \(state.caught.count)마리 · 도구 \(state.items.count)",
                                          "\(state.box.count.formatted())마리", "\(dexCount) / 493", "W로 사기", "\(bp)BP로 교환", "최고 \(state.towerBest ?? 0)연승"]
-            return (nil, nil, nil, MenuModel(money: "\(state.watts.formatted())W", rows: menuItems.indices.map { .init(name: menuItems[$0], note: notes[safe: $0] ?? "") }, sel: i), nil, nil)
+            return PaneContent(menu: MenuModel(rows: menuItems.indices.map { .init(name: menuItems[$0], note: notes[safe: $0] ?? "") }, sel: i))
         }
-        return (nil, nil, nil, nil, statusModel(), nil)
+        return statusOpen ? PaneContent(status: statusModel()) : PaneContent()
+    }
+    /// The 상자's one-Pokémon page: its nature and ability with what they do, IVs (as battles use them) and EVs; nil elsewhere.
+    func monModel() -> MonModel? {
+        var sc = screen; if case .say(_, let next, _) = sc { sc = next }
+        guard case .box(let i, let act, let confirm, true) = sc, let m = state.box[safe: i] else { return nil }
+        let n = natures[m.nature ?? 0], neutral = n.up == n.down, name = ["HP", "공격", "방어", "특공", "특방", "스피드"]   // the chips' and hexagons' names: every note fits its line
+        let note = neutral ? "능력치에 영향을 주지 않는 성격" : josa(name[n.up], "이", "가") + " 10% 높고 " + josa(name[n.down], "이", "가") + " 10% 낮은 성격"
+        return MonModel(nature: m.natureName, natureNote: note, ability: m.abilityName, abilityNote: abilityDescs[m.abilityID] ?? "", up: neutral ? nil : n.up, down: neutral ? nil : n.down,
+                        ivs: m.effectiveIVs, evs: m.evs ?? Array(repeating: 0, count: 6), hyper: m.hyper ?? [], v: m.perfectIVs, evTotal: (m.evs ?? []).reduce(0, +), confirm: confirm && act != nil, sel: act.flatMap { $0 < 2 ? $0 : nil })
     }
     /// 홈 (and the other screens): where, the companion, today, then egg / tower / totals / dex.
     func statusModel() -> StatusModel {
@@ -332,12 +347,11 @@ extension WalkerView {
         if case .evolve(let from, _, let since) = screen, Date().timeIntervalSince(since) < 4.4 { m = from }   // no spoiler before the LCD's reveal
         let t = expTable[growthRate[m.dex]], lo = t[m.level], hi = t[min(100, m.level + 1)]
         let exp: CGFloat = m.level >= 100 || hi <= lo ? 1 : CGFloat(m.points - lo) / CGFloat(hi - lo)
-        return StatusModel(place: state.here.name, when: "\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · \((state.weather ?? .sunny).name)",
-                           name: (m.shiny == true ? "★ " : "") + monNames[m.dex] + sexMark(m), level: "Lv.\(m.level)", toNext: m.level >= 100 ? "최고 레벨" : "\((hi - m.points).formatted()) EXP",
-                           nature: "\(m.natureName) · \(m.abilityName)", today: state.today.formatted(), watts: "\(state.watts.formatted())W", v: m.perfectIVs, exp: exp,
+        return StatusModel(dex: m.dex, name: (m.shiny == true ? "★ " : "") + monNames[m.dex], sex: sexMark(m).trimmingCharacters(in: .whitespaces), level: "Lv.\(m.level)",
+                           toNext: m.level >= 100 ? "최고 레벨" : "\((hi - m.points).formatted()) EXP", nature: "\(m.natureName) · \(m.abilityName)", female: m.female, v: m.perfectIVs, exp: exp,
+                           numbers: [.init(key: "오늘 걸음", value: state.today.formatted()), .init(key: "와트", value: "\(state.watts.formatted())W"), .init(key: "누적 걸음", value: state.total.formatted())],
                            rows: [.init(key: "알", value: state.egg.map { $0.left > 0 ? "앞으로 \($0.left.formatted())걸음" : "곧 태어난다!" } ?? "없음"),
                                   .init(key: "배틀 타워", value: "최고 \(state.towerBest ?? 0)연승 · \((state.bp ?? 0).formatted())BP"),
-                                  .init(key: "누적 걸음", value: state.total.formatted()),
                                   .init(key: "도감", value: "잡음 \(dexCount) · 봤음 \(seenList.count)")])
     }
     /// A click on the 메뉴 page: pick that page; on the picked one, open it (like ●).
@@ -364,7 +378,7 @@ extension WalkerView {
             w.once && state.owned(w) > 0 ? "이미 가지고 있어요" : state.canBuy(w, bp: bp) == 0 ? "\(unit)가 부족해요 · \(w.price.formatted())\(unit) 필요" : "클릭하거나 ●를 누르면 몇 개 살지 정해요"
         } ?? ""
         let spend = ask != nil ? w?.price ?? 0 : cost
-        return ShopModel(title: bp ? "BP 교환소" : "상점", money: "\(money.formatted())\(unit)", rows: rows, sel: sel, qty: qty, most: w.map { max(1, state.canBuy($0, bp: bp)) } ?? 1,
-                         total: "\(spend.formatted())\(unit)", after: "\((money - spend).formatted())\(unit)", hint: hint, ask: ask)
+        return ShopModel(title: bp ? "BP 교환소" : "상점", rows: rows, sel: sel, qty: qty, most: w.map { max(1, state.canBuy($0, bp: bp)) } ?? 1,
+                         total: "\(spend.formatted())\(unit)", hint: hint, ask: ask)
     }
 }

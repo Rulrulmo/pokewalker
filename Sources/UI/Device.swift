@@ -2,26 +2,23 @@ import AppKit
 import UserNotifications
 // The device: geometry in dots, shells, LCD palettes, notification switches.
 
-// MARK: - geometry (points; flipped view). One body: the Poké Ball on the left (140 dots, the LCD in its middle, no buttons),
-// the pane on the right (the page on top, the ◀ ● ▶ ↩ deck under it). Everything is in dots x PX, so the size menu scales it all.
+// MARK: - geometry (points; flipped view). The Poké Ball card: its red top holds a title row and the LCD in a dark bezel, the dark band
+// through its middle carries ◀ ● ▶ ↩ (● = the ball's button), the white bottom is the pane's page — it grows down only as far as a screen
+// needs, from a fixed top. Laid out in card points (216 wide at 보통) x K, so the size menu scales it all.
 @MainActor var SIZE = CGFloat(min(4, max(2, UserDefaults.standard.integer(forKey: "px"))))   // the 크기 menu: 2 보통 / 3 크게 / 4 아주 크게
-@MainActor var PX: CGFloat { SIZE * 1.25 }                                                   // points per dot: 2.5 / 3.75 / 5 — the LCD 1.25x the old device's (the user's pick; on a 1x screen dots are 2-3 px)
-let dev = (w: CGFloat(140), h: CGFloat(140))                                                  // the ball, in dots
-@MainActor var paneUnit: CGFloat { PX * 1.7 / 3 }                                             // the pane's layout unit (1.42 pt at 보통), in step with the ball
-@MainActor var ballOrigin: NSPoint { NSPoint(x: (5 * PX).rounded(), y: (5 * PX).rounded()) }
-@MainActor var paneRect: NSRect { NSRect(x: ballOrigin.x + ((dev.w + 4) * PX).rounded(), y: ballOrigin.y, width: (140 * paneUnit).rounded(), height: dev.h * PX) }   // whole points: a crisp window edge
-@MainActor var pageRect: NSRect { NSRect(x: paneRect.minX, y: paneRect.minY, width: paneRect.width, height: (186 * paneUnit).rounded()) }   // battle / 도감 / 상점 / 메뉴 / 상태
-@MainActor var deckRect: NSRect { let u = paneUnit; return NSRect(x: paneRect.minX + 6 * u, y: pageRect.maxY, width: paneRect.width - 12 * u, height: paneRect.maxY - pageRect.maxY - 6 * u) }
-@MainActor var devSize: NSSize { NSSize(width: (paneRect.maxX + 5 * PX).rounded(), height: (paneRect.maxY + 5 * PX).rounded()) }   // the window: 584 x 376 pt at 보통
-@MainActor var lcdRect: NSRect { NSRect(x: ballOrigin.x + 22 * PX, y: ballOrigin.y + 38 * PX, width: 96 * PX, height: 64 * PX) }   // 96x64 dots, 4 greys, like the real one; centred on the ball
-@MainActor var buttons: [(c: NSPoint, r: CGFloat)] {                                          // left, enter, right on an arc, back tucked under enter — on the pane's deck
-    let u = paneUnit, cx = deckRect.midX, cy = deckRect.minY + 17.5 * u
-    return [(NSPoint(x: cx - 40 * u, y: cy - 2 * u), 10.5 * u), (NSPoint(x: cx, y: cy), 13 * u), (NSPoint(x: cx + 40 * u, y: cy - 2 * u), 10.5 * u), (NSPoint(x: cx, y: cy + 23.5 * u), 8.2 * u)]
+@MainActor var PX: CGFloat { SIZE }                                                          // points per dot: 2 / 3 / 4 — whole pixels on a 1x screen
+@MainActor var K: CGFloat { SIZE / 2 }                                                       // the card's scale: 1 / 1.5 / 2; Pokémon are 1 pt a pixel at 보통
+enum Layout { static let w: CGFloat = 216, top: CGFloat = 24, seam: CGFloat = 176, band: CGFloat = 8, pane: CGFloat = 189, idle: CGFloat = 199, r: CGFloat = 18 }   // card points: width, title row, band centre / height, the page's top, the idle height, corners
+@MainActor var lcdRect: NSRect { NSRect(x: (12 * K).rounded(), y: (27 * K).rounded(), width: 96 * PX, height: 64 * PX) }   // 96x64 dots, 192 x 128 pt at 보통, in a 3 pt bezel; whole points (crisp at 크게 on a 1x screen)
+@MainActor var buttons: [(c: NSPoint, r: CGFloat)] {                                          // ◀ ● ▶ ↩ on the band
+    [(64, 10), (108, 13), (152, 10), (197, 10)].map { (NSPoint(x: $0.0 * K, y: Layout.seam * K), $0.1 * K) }
 }
+@MainActor var devSize: NSSize { NSSize(width: Layout.w * K, height: (Layout.idle * K).rounded()) }   // the idle card (a page makes it taller: WalkerView.cardH)
+@MainActor var chevronRect: NSRect { NSRect(x: (Layout.w - 30) * K, y: 0, width: 30 * K, height: Layout.top * K) }   // the title row's ⌄ / ⌃: the status sheet
 
-struct Shell { let name: String; let top: NSColor; var band = NSColor(white: 0.10, alpha: 1); var dex = 0; var bp = 0 }   // bp > 0: bought at the BP exchange   // top half, band; the bottom is always white. dex = Pokédex count to unlock
+struct Shell { let name: String; let top: NSColor; var band = NSColor(red: 34 / 255, green: 37 / 255, blue: 45 / 255, alpha: 1); var dex = 0; var bp = 0 }   // bp > 0: bought at the BP exchange   // top half, band; the bottom is always white. dex = Pokédex count to unlock
 let shells: [Shell] = [
-    Shell(name: "몬스터볼", top: NSColor(red: 0.89, green: 0.20, blue: 0.19, alpha: 1)),
+    Shell(name: "몬스터볼", top: NSColor(red: 214 / 255, green: 46 / 255, blue: 42 / 255, alpha: 1)),
     Shell(name: "슈퍼볼", top: NSColor(red: 0.22, green: 0.46, blue: 0.86, alpha: 1)),
     Shell(name: "하이퍼볼", top: NSColor(red: 0.17, green: 0.17, blue: 0.19, alpha: 1)),
     Shell(name: "마스터볼", top: NSColor(red: 0.47, green: 0.27, blue: 0.66, alpha: 1)),

@@ -152,9 +152,9 @@ extension WalkerView {
         case .dex(let n, let f, let detail):
             let l = dexList(f); guard !l.isEmpty else { return }
             screen = .dex(l[to(l.firstIndex(of: n) ?? 0, l.count)], filter: f, detail: detail)
-        case .box(let i, _, _):
+        case .box(let i, _, _, let detail):
             let o = boxOrder; guard !o.isEmpty else { return }
-            screen = .box(o[to(o.firstIndex(of: i) ?? 0, o.count)], act: nil, confirm: false)
+            screen = .box(o[to(o.firstIndex(of: i) ?? 0, o.count)], act: nil, confirm: false, detail: detail)
         default: return
         }
         lastInput = Date(); shown = nil; needsDisplay = true
@@ -170,7 +170,7 @@ extension WalkerView {
             case .menu: screen = .home
             case .card: screen = .menu(3)
             case .bag: screen = .menu(4)
-            case .box(let i, let act, _): screen = act == nil ? .menu(5) : .box(i, act: nil, confirm: false)   // 메뉴 / 놓아줄까? → the list (= 아니오)
+            case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : .menu(5)   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
             case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : .menu(6)   // the entry page → the grid → the menu
             case .shop(let bp, let sel, .some), .shopConfirm(let bp, let sel, _): screen = .shop(bp: bp, sel: sel, qty: nil)
             case .shop(let bp, _, nil): screen = .menu(bp ? 8 : 7)
@@ -299,23 +299,23 @@ extension WalkerView {
         case .say(_, let next, _): screen = next
         case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
             if k == 1 { if dexList(f).contains(n) { screen = .dex(n, filter: f, detail: !detail) } } else { gridStep(k == 0 ? -1 : 1, wrap: true) }
-        case .box(let i, let act, let confirm):
+        case .box(let i, let act, let confirm, let detail):
             if state.box.isEmpty { screen = .menu(5) }
             else if confirm {                                                                     // "놓아줄까?" 아니오 / 예
-                if k != 1 { screen = .box(i, act: (act ?? 0) == 0 ? 1 : 0, confirm: true) }
+                if k != 1 { screen = .box(i, act: (act ?? 0) == 0 ? 1 : 0, confirm: true, detail: detail) }
                 else if act == 1 {
                     let p = boxOrder.firstIndex(of: i) ?? 0, name = monNames[state.box[i].dex], w = state.release(i), o = boxOrder   // then the one after it in the grid
-                    screen = .say([josa(name, "은", "는") + " 풀숲으로", "돌아갔다 (+\(w)W)"], next: .box(o.isEmpty ? 0 : o[min(p, o.count - 1)], act: nil, confirm: false), since: now)
+                    screen = .say([josa(name, "은", "는") + " 풀숲으로", "돌아갔다 (+\(w)W)"], next: .box(o.isEmpty ? 0 : o[min(p, o.count - 1)], act: nil, confirm: false, detail: detail && !o.isEmpty), since: now)
                 }
-                else { screen = .box(i, act: nil, confirm: false) }
+                else { screen = .box(i, act: nil, confirm: false, detail: detail) }
             } else if let a = act {                                                              // 함께 걷기 / 놓아주기 / 닫기 (the order: the grid's tabs)
-                if k != 1 { screen = .box(i, act: (a + (k == 0 ? 2 : 1)) % 3, confirm: false); return }
+                if k != 1 { screen = .box(i, act: (a + (k == 0 ? 2 : 1)) % 3, confirm: false, detail: detail); return }
                 switch a {
                 case 0: state.pair(i); screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: now)
-                case 1: screen = .box(i, act: 0, confirm: true)
-                default: screen = .box(i, act: nil, confirm: false)
+                case 1: screen = .box(i, act: 0, confirm: true, detail: detail)
+                default: screen = .box(i, act: nil, confirm: false, detail: detail)
                 }
-            } else if k == 1 { screen = .box(i, act: 0, confirm: false) }
+            } else if k == 1 { screen = .box(i, act: detail ? 0 : nil, confirm: false, detail: true) }   // ● on the grid: its page; on its page: 함께 / 놓아주기 / 닫기
             else { gridStep(k == 0 ? -1 : 1, wrap: true) }
         case .beats, .evolve, .hatch: break
         }
@@ -345,7 +345,7 @@ extension WalkerView {
         switch screen {
         case .home, .say: press(1)
         case .menu, .card, .bag, .dex: press(x < 32 ? 0 : x >= 64 ? 2 : 1)
-        case .box(_, let act, _):
+        case .box(_, let act, _, _):
             if act != nil, y >= 50 { press(1) } else { press(x < 32 ? 0 : x >= 64 ? 2 : 1) }                             // left third ◀, middle ●, right third ▶
         case .radar(let b, _, let since, let chain): pick { screen = .radar(bush: b, cursor: (x < 48 ? 0 : 1) + (y < 32 ? 0 : 2), since: since, chain: chain) }
         case .battle(let b, _):
