@@ -39,7 +39,7 @@ extension WalkerView {
         case .bagBattle(let x, let sel): b = x; msg = "무엇을 사용할까?"; mode = .items(battleItems(x).map { "\($0.name) ×\(state.count($0.name))" }, sel)
         case .beats:
             guard let s = beatState(now) else { return nil }
-            b = s.hp; msg = message(s.beat, s.u, s.names); mode = .none
+            b = drained(s.hp, s.names, s.beat, s.u); msg = message(s.beat, s.u, s.names); mode = .none   // the bar drains (MoveFX.swift)
         default: return nil
         }
         if let said { msg = said; mode = .none }
@@ -148,10 +148,11 @@ extension WalkerView {
         for (x0, w) in [(0, lw), (96 - rw, rw)] { for y in 0..<14 { for x in x0..<min(96, x0 + w) { fb.set(x, y, 0) } } }
         fb.text(ft, 1, 0, 3, small: true)
         if owned { fb.draw(caughtMark, textWidth(ft, small: true) + 3, 2, ballPal) }                 // caught before: the HGSS ball mark
-        hpBar(&fb, 1, 9, 36, b.theirs[b.it].hp, b.theirs[b.it].maxHP)
+        let hp = beat == nil ? b : beatState(now).map { drained($0.hp, $0.names, $0.beat, $0.u) } ?? b   // the bars drain (MoveFX.swift)
+        hpBar(&fb, 1, 9, 36, hp.theirs[b.it].hp, b.theirs[b.it].maxHP)
         if b.trainer != nil { for (k, x) in b.theirs.enumerated() { fb.draw(gem, 39 + 4 * k, 9, x.alive ? ballPal : [ballPal[3], ballPal[3], ballPal[3], ballPal[3]]) } }
         fb.text(mt, 95, 0, 3, right: true, small: true)
-        hpBar(&fb, 59, 9, 36, b.mine[b.me].hp, b.mine[b.me].maxHP)
+        hpBar(&fb, 59, 9, 36, hp.mine[b.me].hp, b.mine[b.me].maxHP)
         fb.fill(0, 50, 96, 1, 2)
     }
     func message(_ beat: Beat, _ u: Double, _ b: Battle) -> String {
