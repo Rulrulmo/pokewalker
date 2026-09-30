@@ -16,6 +16,7 @@ final class WalkerView: NSView {
     lazy var lastSeason = state.season
     var shown: FB? = nil                                                   // last composed frame; draw() only when it changes
     var emote: (kind: Int, until: Date)? = nil                             // ♪ ♥ ! bubble over the companion
+    var animOn: (who: String, dex: Int, since: Date)? = nil                // the entry animation playing (Anim.swift): home's companion or a page's Pokémon
     lazy var rewarded = dexCount                                           // dex count already celebrated (no fanfare for old progress)
     var dexCount: Int { (state.owned ?? []).count }
     var pressed: Int? = nil, pressedAt = Date()
@@ -79,6 +80,7 @@ final class WalkerView: NSView {
     @objc func tick(_ sender: Any?) {
         let now = Date(), before = state.total
         if state.sync(counter: WalkerView.counter(), boot: WalkerView.boot(), at: now) { levelled = true }
+        perk(now, stepped: state.total != before)                                               // the companion's animation now and then
         if state.total != before { lastStep = now }
         if state.season != lastSeason {
             lastSeason = state.season
@@ -142,7 +144,7 @@ final class WalkerView: NSView {
         if now.timeIntervalSince(lastSave) > 60 { save(nil) }
         updateStatus()
         frame(nil)
-        let busy: Bool = { switch screen { case .beats, .hatch, .evolve, .radar, .dowse: true; default: false } }()   // fights and shows play at 30 fps, the rest at the tick's 10
+        let busy: Bool = { switch screen { case .beats, .hatch, .evolve, .radar, .dowse: true; default: false } }() || animating   // fights, shows and animations play at 30 fps, the rest at the tick's 10
         if busy != (fast != nil) {
             fast?.invalidate(); fast = nil
             if busy { let t = Timer(timeInterval: 1.0 / 30, target: self, selector: #selector(frame(_:)), userInfo: nil, repeats: true); t.tolerance = 0.005; RunLoop.main.add(t, forMode: .common); fast = t }
@@ -306,8 +308,9 @@ final class WalkerView: NSView {
             NSBezierPath(rect: NSRect(x: lcdRect.minX, y: lcdRect.minY, width: lcdRect.width, height: CGFloat(min(64, r.floor)) * PX)).addClip()
             NSGraphicsContext.current!.imageInterpolation = .none
             let feet = NSPoint(x: lcdRect.minX + CGFloat(r.x + 16) * PX, y: lcdRect.minY + CGFloat(r.y + 32) * PX), k = s * r.scale   // its 80x80 frame stands on the run's feet (bottom-centre)
-            let box = r.scale == 1 ? NSRect(x: snap(feet.x - 40 * s), y: snap(feet.y - 80 * s - CGFloat(r.bob) * s), width: 80 * s, height: 80 * s)
-                                   : NSRect(x: feet.x - 40 * k, y: feet.y - 80 * k - CGFloat(r.bob) * s, width: 80 * k, height: 80 * k)
+            let a = playing(r), (ox, oy, w, h) = a.map { (CGFloat($0.x), CGFloat($0.y), CGFloat($0.w), CGFloat($0.h)) } ?? (0, 0, 80, 80)   // an animation frame: its box in the 80x80 frame
+            let box = r.scale == 1 ? NSRect(x: snap(feet.x + (ox - 40) * s), y: snap(feet.y + (oy - 80) * s - CGFloat(r.bob) * s), width: w * s, height: h * s)
+                                   : NSRect(x: feet.x + (ox - 40) * k, y: feet.y + (oy - 80) * k - CGFloat(r.bob) * s, width: w * k, height: h * k)
             spriteImage(r, l).draw(in: box, from: .zero, operation: .sourceOver, fraction: r.alpha, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none.rawValue])
             NSGraphicsContext.restoreGraphicsState()
         }

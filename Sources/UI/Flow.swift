@@ -207,7 +207,7 @@ extension WalkerView {
         }
         let n = menuItems.count
         switch screen {
-        case .home: if k == 1 { emote = (1, now.addingTimeInterval(2)) }                            // ● pats the companion (♥); the menu is the 메뉴 key's
+        case .home: if k == 1 { emote = (1, now.addingTimeInterval(2)); animOn = ("home", state.companion.dex, now) }   // ● pats the companion (♥, its animation); the menu is the 메뉴 key's
         case .menu(let i):
             if k == 1 { open(i, now) } else { screen = .menu((i + (k == 0 ? n - 1 : 1)) % n) }       // ◀ ▶ go round the tiles
         case .radar(let b, let c, let since, let chain):

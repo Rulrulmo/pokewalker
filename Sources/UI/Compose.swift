@@ -15,7 +15,7 @@ extension WalkerView {
         switch screen {
         case .home, .menu:                                                                           // the menu is the pane's: the LCD stays home
             let f = now.timeIntervalSince(lastStep) < 3 ? half : Int(t) % 2        // steps coming in => walks twice as fast
-            fb.mon(me, f, 32, 0)
+            fb.sprite(me, 48, 16, bob: f, floor: 49, anim: animT("home", me.dex, now, start: false))   // = fb.mon(me, f, 32, 0), behind the ground line: a flyer's wings dip under it
             if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { let y = max(0, 48 - (80 - spriteTop(me.dex)) / 2 - 9); fb.draw(bubble, 38, y, ballPal); fb.draw(emotes[e.kind], 41, y + 2, redPal) }   // by its head
             fb.course(state.here.art, 1, 22, weather: state.weather ?? .sunny, t: t, hour: state.hour, season: state.season)
             fb.text("\(state.watts)W", 1, 1, 2, small: true)
@@ -179,7 +179,8 @@ extension WalkerView {
             fb.fill(0, 12, 96, 1, 2)
             let m = Mon(dex: d, level: 1, female: false)
             let shinyNow = (state.shinyOwned ?? []).contains(d) && Int(t / 2) % 2 == 1                        // caught as 이로치: both colours, 2 s each
-            if owned { fb.mon(Mon(dex: d, level: 1, female: false, shiny: shinyNow ? true : nil), half, 0, 2) } else { fb.mon(m, 0, 0, 2, tint: (3, rgb(70, 74, 84))) }   // only seen: a shadow
+            let u = animT("dex", d, now)
+            if owned { fb.mon(Mon(dex: d, level: 1, female: false, shiny: shinyNow ? true : nil), half, 0, 2, anim: u) } else { fb.mon(m, 0, 0, 2, tint: (3, rgb(70, 74, 84)), anim: u) }   // only seen: a shadow
             if shinyNow { fb.text("★이로치", 94, 32, 3, right: true, small: true) }
             fb.text(monTypes[d].map { typeKo[$0] ?? $0 }.joined(separator: "·"), 94, 16, 2, right: true, small: true)
             fb.text(owned ? "잡음" : "봤음", 94, 42, 2, right: true, small: true)
@@ -187,7 +188,7 @@ extension WalkerView {
         case .box(let i, let act, let confirm, let detail):
             guard let m = state.box[safe: i] else { header("상자"); fb.text("상자가 비어 있다", 0, 30, 2, center: true); break }
             header((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)")
-            fb.mon(m, half, 0, 2)
+            fb.mon(m, half, 0, 2, anim: animT("box \(i)", m.dex, now))
             fb.text("\((boxOrder.firstIndex(of: i) ?? 0) + 1)/\(state.box.count)", 94, 15, 2, right: true, small: true)
             if genderRate[m.dex] >= 0 { fb.text(m.female ? "암컷" : "수컷", 94, 26, 2, right: true, small: true) }; vLabel(m, 36)   // genderless: nothing (the games show no symbol)
             if let a = act {
