@@ -250,7 +250,7 @@ final class SideView: NSView {
             }
             hits.append((cell, 10000 + g.first + k))
         }
-        pager("\(g.page) / \(g.pages)", top + 198, prev: g.page > 1, next: g.page < g.pages)
+        pager("\(g.page) / \(g.pages)", top + 198, prev: g.pages > 1, next: g.pages > 1)   // the last page's ▶ goes round to #1
     }
     /// A pill track of tabs, the picked one solid red.
     func tabs(_ labels: [String], _ sel: Int, _ top: CGFloat) {

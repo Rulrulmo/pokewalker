@@ -162,7 +162,7 @@ final class WalkerView: NSView {
     }
     override func keyDown(with e: NSEvent) {                                                  // ← return/space → esc (= ↩ 뒤로); in a shop ↑ ↓ = a row, or ±10
         if case .shop(_, _, let q) = screen, let d = [126: -1, 125: 1][Int(e.keyCode)] { shopStep(q == nil ? d : -10 * d); return }
-        switch screen { case .dex(_, _, false), .box(_, .none, _, false): if let d = [126: -6, 125: 6, 116: -30, 121: 30][Int(e.keyCode)] { gridStep(d); return }; default: break }   // the grids: ↑ ↓ a row, page up / down a page
+        switch screen { case .dex(_, _, false), .box(_, .none, _, false): if let d = [126: -6, 125: 6, 116: -30, 121: 30][Int(e.keyCode)] { gridStep(d, ends: abs(d) == 30); return }; default: break }   // the grids: ↑ ↓ a row, page up / down a page
         switch screen { case .shop, .shopConfirm: if e.isARepeat, [36, 49].contains(Int(e.keyCode)) { return }; default: break }   // a held return / space doesn't keep buying
         if let i = [123: 0, 36: 1, 49: 1, 124: 2, 53: 3][Int(e.keyCode)] { press(i) } else { super.keyDown(with: e) }
     }

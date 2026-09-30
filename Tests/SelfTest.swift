@@ -563,6 +563,9 @@ import AppKit
     gv.gridStep(30); let paged = gs { if case .dex(54, _, _) = $0 { return true }; return false }
     gv.screen = .dex(490, filter: 0, detail: false); gv.gridStep(30)
     check(paged && gs { if case .dex(493, _, _) = $0 { return true }; return false }, "a page = 30 on, stopping at the end")
+    gv.gridTap(4201); let round = gs { if case .dex(1, _, _) = $0 { return true }; return false }; gv.gridTap(4200)
+    check(round && gs { if case .dex(493, _, _) = $0 { return true }; return false }, "the last page's ▶ goes round to #1, the first page's ◀ to the last")
+    gv.screen = .dex(493, filter: 0, detail: false)
     let pg = gv.paneContent(Date()).grid
     check(pg?.page == 17 && pg?.pages == 17 && pg?.cells.count == 13 && pg?.sel == 12 && pg?.cells.first?.dex == 481, "the last page: 481-493, the pick in its cell")
     gv.gridTap(4101); check(gs { if case .dex(1, 1, false) = $0 { return true }; return false }, "a tab: the pick moves onto it when it isn't on it")

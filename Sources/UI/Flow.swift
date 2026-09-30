@@ -145,9 +145,16 @@ extension WalkerView {
         }
         return b.indices.sorted { k[$0] != k[$1] ? k[$0] < k[$1] : $0 < $1 }
     }
-    /// The grids' pick moves d along its list: ◀ ▶ wrap around, rows / pages (↑ ↓, the page buttons, the wheel) stop at the ends. The box's ● menu closes.
-    func gridStep(_ d: Int, wrap: Bool = false) {
-        func to(_ i: Int, _ n: Int) -> Int { wrap ? ((i + d) % n + n) % n : max(0, min(n - 1, i + d)) }
+    /// The grids' pick moves d along its list: ◀ ▶ wrap around; rows (↑ ↓) and the wheel stop at the ends; a page step (the page buttons, page up / down,
+    /// `ends`) past the last page goes to #1, before the first to the last one. The box's ● menu closes.
+    func gridStep(_ d: Int, wrap: Bool = false, ends: Bool = false) {
+        func to(_ i: Int, _ n: Int) -> Int {
+            let j = i + d, per = GridModel.perPage
+            if wrap { return (j % n + n) % n }
+            if ends, j >= n, i / per == (n - 1) / per { return 0 }
+            if ends, j < 0, i / per == 0 { return n - 1 }
+            return max(0, min(n - 1, j))
+        }
         switch screen {
         case .dex(let n, let f, let detail):
             let l = dexList(f); guard !l.isEmpty else { return }
