@@ -37,10 +37,15 @@ jobs:
           }
           Get-ChildItem $out | Format-Table Name, Length
           $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"                     # no toolchain on the PATH: the folder must start on its own
-          & "$out\PokeWalker.exe"
-      - run: .build\release\PokeWalker.exe --selftest
+          # a window app (no console): its output through a redirect, Start-Process waits for it
+          $p = Start-Process "$out\PokeWalker.exe" -ArgumentList '--selftest' -NoNewWindow -Wait -PassThru -RedirectStandardOutput selftest.txt -RedirectStandardError selftest.err
+          Get-Content selftest.txt -Encoding utf8; Get-Content selftest.err
+          if ($p.ExitCode -ne 0) { throw "self-test failed ($($p.ExitCode))" }
       - name: Render (representative screens through the software canvas, to set beside the Mac's)
-        run: dist\PokeWalker\PokeWalker.exe --render renders
+        run: |
+          $p = Start-Process dist\PokeWalker\PokeWalker.exe -ArgumentList '--render', 'renders' -NoNewWindow -Wait -PassThru -RedirectStandardOutput render.txt -RedirectStandardError render.err
+          Get-Content render.txt; Get-Content render.err
+          if ($p.ExitCode -ne 0) { throw "render failed ($($p.ExitCode))" }
       - uses: actions/upload-artifact@v4
         with:
           name: PokeWalker-windows-x64

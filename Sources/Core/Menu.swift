@@ -22,7 +22,12 @@ extension Walker {
     func game(_ f: @escaping @MainActor () -> Void) -> (@MainActor () -> Void)? { inBattle ? nil : f }
     func menu() -> [MenuItem] {
         let state = self.state
-        var m = [MenuItem(host?.windowHidden == true ? "워커 보이기" : "메뉴 막대로 숨기기", action: { self.host?.toggleShown() }),
+        #if os(Windows)
+        let hide = "알림 영역으로 숨기기"                                                                // the tray, where the Mac has its menu bar
+        #else
+        let hide = "메뉴 막대로 숨기기"
+        #endif
+        var m = [MenuItem(host?.windowHidden == true ? "워커 보이기" : hide, action: { self.host?.toggleShown() }),
                  MenuItem("\(state.here.name) · 오늘 \(state.today)걸음 · \(state.watts)W")]
         if inBattle { m.append(MenuItem("⚔ 배틀 중 — 코스·동료·가방은 끝나고 쓸 수 있어요")) }
         m.append(.separator)

@@ -2,7 +2,11 @@ import Foundation
 
 // MARK: - save
 enum Store {
+    #if os(Windows)
+    static let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["APPDATA"] ?? NSTemporaryDirectory(), isDirectory: true).appendingPathComponent("PokeWalker", isDirectory: true)   // %APPDATA%\PokeWalker (Roaming, next to settings.json)
+    #else
     static let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("PokeWalker", isDirectory: true)
+    #endif
     static let file = dir.appendingPathComponent("state.json")
     static let bak = dir.appendingPathComponent("state.json.bak")
 
