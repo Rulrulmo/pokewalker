@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerates Sources/Data/{Data,BattleData}.swift + Resources/{hgss,icons}.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
+"""Regenerates Sources/Data/{Data,BattleData}.swift + Resources/{hgss,icons,frames}.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
 
 Sources (cached in tools/.cache, not committed):
   - PokeAPI HGSS battle sprites, front + back, normal + shiny: same pixels, other palette, so pixel pairs give each species' normal -> shiny map.
@@ -27,6 +27,10 @@ SRC = {
     **{f'plat/{s}{i}.png': f'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/platinum/{"shiny/" if s else ""}{i}.png'
        for i in (422, 423) for s in ('', 's')},
     'serebii.html': 'https://www.serebii.net/heartgoldsoulsilver/pokewalker-area.shtml',
+    'frames/egg.png': 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/heartgold-soulsilver/egg.png',
+    **{f'frames/{t}.png': f'https://play.pokemonshowdown.com/sprites/trainers/{t}.png' for t in [
+        'acetrainer-gen4', 'acetrainerf-gen4', 'veteran-gen4', 'veteranf', 'lady-gen4', 'hiker-gen4', 'scientist-gen4', 'blackbelt-gen4',
+        'battlegirl-gen4', 'psychic-gen4', 'psychicf-gen4', 'dragontamer', 'schoolkid-gen4', 'pokemonranger-gen4', 'pokemonrangerf-gen4']},
     **{f + '.csv': API + f + '.csv' for f in ['pokemon_species_names', 'item_names', 'pokemon_types', 'pokemon_types_past', 'types',
                                               'pokemon_evolution', 'pokemon_species', 'experience', 'items', 'type_names', 'pokemon_habitats',
                                               'pokemon_stats', 'pokemon', 'moves', 'move_names', 'pokemon_moves', 'type_efficacy', 'type_efficacy_past',
@@ -98,6 +102,23 @@ for dex in range(1, N + 1):
     for k in range(0, 1024, 2): iout.append(cell(px[k]) << 4 | cell(px[k + 1]))
 assert len(iout) == N * 557
 open('Resources/icons.bin', 'wb').write(iout)
+
+# --- frames.bin: other 80x80 frames at one pixel a point: the HGSS egg, then the Battle Tower's trainers (Gen IV sprites, Showdown's rips).
+# Per frame: 15 RGB, then 80x80 at 4 bpp. 3245 B each, in FRAMES order (Pixels.swift's frameNames mirrors it). Each stands on row 79.
+FRAMES = ['egg', 'acetrainer-gen4', 'acetrainerf-gen4', 'veteran-gen4', 'veteranf', 'lady-gen4', 'hiker-gen4', 'scientist-gen4', 'blackbelt-gen4',
+          'battlegirl-gen4', 'psychic-gen4', 'psychicf-gen4', 'dragontamer', 'schoolkid-gen4', 'pokemonranger-gen4', 'pokemonrangerf-gen4']
+fout = bytearray()
+for f in FRAMES:
+    a = rgba(f'frames/{f}.png'); assert a.size == (80, 80), (f, a.size)
+    bot = max(y for y in range(80) for x in range(80) if a.getpixel((x, y))[3] >= 128)
+    b = Image.new('RGBA', (80, 80)); b.paste(a, (0, 79 - bot)); a = b
+    px = list(a.getdata()); pal = sorted({p[:3] for p in px if p[3] >= 128})
+    assert 0 < len(pal) <= 15, (f, len(pal))
+    for c in pal + [(0, 0, 0)] * (15 - len(pal)): fout += bytes(c)
+    cell = lambda p: pal.index(p[:3]) + 1 if p[3] >= 128 else 0
+    for k in range(0, 6400, 2): fout.append(cell(px[k]) << 4 | cell(px[k + 1]))
+assert len(fout) == len(FRAMES) * 3245
+open('Resources/frames.bin', 'wb').write(fout)
 
 # --- names / types
 ko, en_item, ko_item, types = {}, {}, {}, {}

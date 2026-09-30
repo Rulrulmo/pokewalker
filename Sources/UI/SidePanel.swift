@@ -146,7 +146,6 @@ final class SideView: NSView {
         return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.dowse != nil, c.card != nil, c.learn != nil, c.tower != nil, c.bag != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
     }
     var hits: [(NSRect, Int)] = []                                         // clickable: battle index, 2000+ shop, 3000+ menu, 4000+ grid / box controls, 5000+ other pages, 10000+ grid cells
-    var hovered = -1                                                       // the grid cell under the pointer (its preview is on the LCD)
     weak var walker: WalkerView?
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -169,16 +168,6 @@ final class SideView: NSView {
         while abs(scrolled) >= notch { step(scrolled > 0 ? -1 : 1); scrolled -= scrolled > 0 ? notch : -notch }
     }
     override func resetCursorRects() { for (r, _) in hits { addCursorRect(r, cursor: .pointingHand) } }
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas(); trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
-    }
-    override func mouseMoved(with e: NSEvent) {                                                  // a grid cell under the pointer shows on the LCD (a click opens it)
-        guard grid != nil else { hovered = -1; return }
-        let p = convert(e.locationInWindow, from: nil), k = hits.first { $0.1 >= 10000 && $0.0.contains(p) }?.1 ?? -1
-        if k != hovered { hovered = k; if k >= 0 { walker?.gridHover(k) } }
-    }
-    override func mouseExited(with e: NSEvent) { hovered = -1 }
     func show(_ c: PaneContent) { guard c != content else { return }; content = c; needsDisplay = true }
 
     /// Card coordinates → this view (it starts at the pane's top, card y 189).

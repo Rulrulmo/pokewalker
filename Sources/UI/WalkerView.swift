@@ -141,7 +141,7 @@ final class WalkerView: NSView {
         if window?.isVisible == true { refreshPane(now) }
         guard window?.isVisible ?? true else { return }                                         // hidden in the menu bar: rules keep running, nothing to draw
         let fb = compose(now)
-        if fb.px != shown?.px || fb.col != shown?.col || fb.runs != shown?.runs || fb.flips != shown?.flips || fb.sprites != shown?.sprites || fb.over != shown?.over || now.timeIntervalSince(pressedAt) < 0.3 { shown = fb; setNeedsDisplay(now.timeIntervalSince(pressedAt) < 0.3 ? bounds : lcdRect) }   // idle home = ~2 redraws a second
+        if fb.px != shown?.px || fb.col != shown?.col || fb.runs != shown?.runs || fb.flips != shown?.flips || fb.sprites != shown?.sprites || fb.pics != shown?.pics || fb.over != shown?.over || now.timeIntervalSince(pressedAt) < 0.3 { shown = fb; setNeedsDisplay(now.timeIntervalSince(pressedAt) < 0.3 ? bounds : lcdRect) }   // idle home = ~2 redraws a second
     }
     var persist = true                                                     // false in --selftest: flows must never touch the real save (nor notify)
     lazy var unlockedAt = state.earned                                     // lifetime watts already announced
@@ -274,15 +274,30 @@ final class WalkerView: NSView {
         }
         dots(paths[0])
         let s = K, snap = { (v: CGFloat) in (v * scale).rounded() / scale }                            // 1 pt per sprite pixel at 보통, on whole device pixels
+        func pictures(behind: Bool) {                                                                  // pictures at sprite resolution: a backdrop under the sprites, a ball or an effect over them
+            for r in fb.pics where r.behind == behind {
+                guard let (img, p) = picImage(r, l) else { continue }
+                NSGraphicsContext.saveGraphicsState()
+                NSGraphicsContext.current!.imageInterpolation = .none
+                let c = NSPoint(x: lcdRect.minX + CGFloat(r.x) * s, y: lcdRect.minY + CGFloat(r.y) * s), w = CGFloat(p.w) * s * r.scale, h = CGFloat(p.h) * s * r.scale
+                if r.angle != 0 { let t = NSAffineTransform(); t.translateX(by: c.x, yBy: c.y); t.rotate(byDegrees: r.angle); t.translateX(by: -c.x, yBy: -c.y); t.concat() }
+                let box = r.scale == 1 && r.angle == 0 ? NSRect(x: snap(c.x - w / 2), y: snap(c.y - h / 2), width: w, height: h) : NSRect(x: c.x - w / 2, y: c.y - h / 2, width: w, height: h)
+                img.draw(in: box, from: .zero, operation: .sourceOver, fraction: r.alpha, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none.rawValue])
+                NSGraphicsContext.restoreGraphicsState()
+            }
+        }
+        pictures(behind: true)
         for r in fb.sprites {                                                                         // the sprites: smooth-sized pixels, not LCD dots
             NSGraphicsContext.saveGraphicsState()
             NSBezierPath(rect: NSRect(x: lcdRect.minX, y: lcdRect.minY, width: lcdRect.width, height: CGFloat(min(64, r.floor)) * PX)).addClip()
             NSGraphicsContext.current!.imageInterpolation = .none
-            let feet = NSPoint(x: lcdRect.minX + CGFloat(r.x + 16) * PX, y: lcdRect.minY + CGFloat(r.y + 32) * PX)   // its 80x80 frame stands on the run's feet (bottom-centre)
-            let box = NSRect(x: snap(feet.x - 40 * s), y: snap(feet.y - 80 * s - CGFloat(r.bob) * s), width: 80 * s, height: 80 * s)
-            spriteImage(r, l).draw(in: box, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none.rawValue])
+            let feet = NSPoint(x: lcdRect.minX + CGFloat(r.x + 16) * PX, y: lcdRect.minY + CGFloat(r.y + 32) * PX), k = s * r.scale   // its 80x80 frame stands on the run's feet (bottom-centre)
+            let box = r.scale == 1 ? NSRect(x: snap(feet.x - 40 * s), y: snap(feet.y - 80 * s - CGFloat(r.bob) * s), width: 80 * s, height: 80 * s)
+                                   : NSRect(x: feet.x - 40 * k, y: feet.y - 80 * k - CGFloat(r.bob) * s, width: 80 * k, height: 80 * k)
+            spriteImage(r, l).draw(in: box, from: .zero, operation: .sourceOver, fraction: r.alpha, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none.rawValue])
             NSGraphicsContext.restoreGraphicsState()
         }
+        pictures(behind: false)
         if gap > 0 { NSGraphicsContext.current!.shouldAntialias = false; l.shades[0].setFill(); cover.fill(); NSGraphicsContext.current!.shouldAntialias = true }
         dots(paths[1])
         for r in fb.runs {                                                                             // smooth text over the dots; flipped where it sits in an inverted box

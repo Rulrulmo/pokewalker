@@ -571,8 +571,6 @@ import AppKit
     let pg = gv.paneContent(Date()).grid
     check(pg?.page == 17 && pg?.pages == 17 && pg?.cells.count == 13 && pg?.sel == 12 && pg?.cells.first?.dex == 481, "the last page: 481-493, the pick in its cell")
     gv.gridTap(4101); check(gs { if case .dex(1, 1, false) = $0 { return true }; return false }, "a tab: the pick moves onto it when it isn't on it")
-    gv.gridHover(10002); let hovered = gs { if case .dex(25, 1, false) = $0 { return true }; return false }; gv.gridHover(10000)
-    check(hovered && gs { if case .dex(1, 1, false) = $0 { return true }; return false }, "the pointer over a cell shows it on the LCD")
     gv.gridTap(10002); check(gv.paneContent(Date()).dex?.num == 25, "a click on a cell opens its entry page")
     gv.press(2); check(gs { if case .dex(1, 1, true) = $0 { return true }; return false }, "▶ on the entry page: the next on the tab, wrapping")
     gv.press(3); let toGrid = gs { if case .dex(1, 1, false) = $0 { return true }; return false }; gv.press(3)
@@ -587,9 +585,9 @@ import AppKit
     gv.boxSort = 3; check(gv.boxOrder == [2, 1, 0], "최근: the last to arrive first"); gv.boxSort = 1
     gv.boxSort = 2; gv.state.box[1].ivs = [31, 31, 31, 0, 0, 0]; check(gv.boxOrder.first == 1 && gv.paneContent(Date()).grid?.cells.first?.v3 == true, "V순: 3V first, marked"); gv.state.box[1].ivs = nil; gv.boxSort = 1
     let shinyCell = gv.paneContent(Date()).grid?.cells[1].shiny == true
-    gv.gridHover(10001); let boxPicked = gs { if case .box(2, nil, false, false) = $0 { return true }; return false }; gv.gridTap(10001); gv.gridTap(10001)
-    check(boxPicked && shinyCell && gs { if case .box(2, nil, false, true) = $0 { return true }; return false } && gv.paneContent(Date()).mon != nil,
-          "the pointer picks a cell, a click opens its page and stays there (★ = 이로치)")
+    gv.gridTap(10001); gv.gridTap(10001)
+    check(shinyCell && gs { if case .box(2, nil, false, true) = $0 { return true }; return false } && gv.paneContent(Date()).mon != nil,
+          "a click on a cell opens its page and stays there (★ = 이로치)")
     gv.state.box[2].nature = 3; gv.state.box[2].ivs = [31, 20, 31, 0, 12, 31]; gv.state.box[2].evs = [252, 0, 6, 0, 0, 252]; gv.state.box[2].hyper = [3]
     let mm = gv.paneContent(Date()).mon
     check(mm?.nature == natures[3].name && mm?.up == natures[3].up && mm?.down == natures[3].down && mm?.natureNote.contains("10% 높고") == true && mm?.ivs == [31, 20, 31, 31, 12, 31]
@@ -752,6 +750,7 @@ import AppKit
     pt.screen = .home; pt.statusOpen = false; pt.keyDown(with: tab)
     check(tabbed && pt.statusOpen, "Tab: a grid's next tab; on home, the status sheet")
     let stm = pv.statusModel(); check(stm.level == "Lv.5" && stm.numbers.count == 3 && stm.rows.count == 3 && stm.exp >= 0 && stm.exp <= 1, "the status sheet: level, EXP to next, today / W / total, egg / tower / dex")
+    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() { check(ok, name) }   // the drawing files' own checks
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0
 }

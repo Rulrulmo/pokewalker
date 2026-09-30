@@ -47,7 +47,7 @@ extension WalkerView {
             stage(&fb, b, now, .idle, hud: false)                                                   // the side panel carries names, HP, menus
         case .beats where sideOn:
             let s = beatState(now)!
-            stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), hud: false, pending: s.pending)
+            stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), hud: false, pending: s.pending, beat: (s.beat, s.u))
             if case .hit(_, _, _, _, true) = s.beat, s.u < 0.15 { fb.invert(0, 0, 96, 64) }
             if s.beat == .appear, legendDex.contains(s.from.wild.dex), s.u < 0.5, Int(s.u * 10) % 2 == 0 { fb.invert(0, 0, 96, 64) }
         case .forfeit(let b, let yes):
@@ -130,7 +130,7 @@ extension WalkerView {
             }
         case .beats:
             let s = beatState(now)!
-            stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), pending: s.pending)
+            stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), pending: s.pending, beat: (s.beat, s.u))
             fb.text(message(s.beat, s.u, s.names), 2, 52)
             if case .hit(_, _, _, _, true) = s.beat, s.u < 0.15 { fb.invert(0, 0, 96, 64) }           // critical: the whole screen flashes
             if s.beat == .appear, legendDex.contains(s.from.wild.dex), s.u < 0.5, Int(s.u * 10) % 2 == 0 { fb.invert(0, 0, 96, 64) }   // a legend: two flashes first
@@ -375,15 +375,6 @@ extension WalkerView {
         case (.bag(let p), 5510) where p > 0 && p < bagPages - 1: press(1)
         default: return
         }
-    }
-    /// The pointer over a grid cell: it shows on the LCD (a click opens it).
-    func gridHover(_ code: Int) {
-        switch screen {
-        case .dex(_, let f, false): guard let n = dexList(f)[safe: code - 10000] else { return }; screen = .dex(n, filter: f, detail: false)
-        case .box(_, .none, _, false): guard let j = boxOrder[safe: code - 10000] else { return }; screen = .box(j, act: nil, confirm: false)
-        default: return
-        }
-        lastInput = Date(); shown = nil
     }
     /// The 상자's one-Pokémon page: its nature and ability with what they do, IVs (as battles use them) and EVs; nil elsewhere.
     func monModel() -> MonModel? {

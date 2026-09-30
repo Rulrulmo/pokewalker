@@ -174,14 +174,15 @@ extension Walk {
         let ps = party().map(\.mon), avg = ps.map(\.level).reduce(0, +) / max(1, ps.count)
         let legends = Set(courses.flatMap(\.legends) + Walk.legendShop.map(\.dex))           // shop legends too: never a tower foe
         let names = ["엘리트 트레이너", "베테랑", "아가씨", "등산가", "연구원", "격투가", "사이킥", "드래곤 조련사", "모범 소년", "레인저"]
-        let given = ["민수", "지은", "현우", "서연", "도윤", "하은", "준호", "유나", "태양", "보라"]
+        let he = ["민수", "현우", "도윤", "준호", "태양"], she = ["지은", "서연", "하은", "유나", "보라"]      // a one-sex class gets a name to match (its sprite: trainerFrame)
         let foes = (0..<3).map { _ -> Mon in
             let lv = min(100, max(5, avg + (towerStreak ?? 0) / 3 + Int.random(in: 0...2, using: &r)))
             let pool = (1...493).filter { d in !legends.contains(d) && d != 292 && (stageOf[d] == 0 || stageOf[d] == 1 && lv >= 20 || stageOf[d] >= 2 && lv >= 35)
                                               && (lv < 30 || !evolutions.contains { $0.from == d }) }
             return Mon.wild(pool.randomElement(using: &r)!, level: lv, &r)
         }
-        return (names.randomElement(using: &r)! + " " + given.randomElement(using: &r)!, foes)
+        let cls = names.randomElement(using: &r)!, given = cls == "아가씨" ? she : ["등산가", "연구원", "드래곤 조련사", "모범 소년"].contains(cls) ? he : he + she
+        return (cls + " " + given.randomElement(using: &r)!, foes)
     }
     /// A win: streak + 1, BP = 1 (+1 per full 7 already won), +3 on every 7th. Returns the BP.
     mutating func towerWin() -> Int {

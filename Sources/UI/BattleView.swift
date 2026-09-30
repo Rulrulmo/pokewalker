@@ -82,6 +82,7 @@ extension WalkerView {
         case ball(x: Int, y: Int, tilt: Int?, burst: Bool, stars: Bool, foe: Bool)   // x, y from the foe's box; foe = not swallowed yet
     }
     func pose(_ b: Beat, _ u: Double, _ bt: Battle) -> Pose {
+        if let p = movePose(b, u, bt) { return p }                                                    // a move's own way of moving (MoveFX.swift)
         func arc(_ a: Double, _ len: Double) -> Double { u < a || u > a + len ? 0 : sin(.pi * (u - a) / len) }   // 0 -> 1 -> 0
         let shake = Int(u * 30) % 2 == 0 ? 2 : -2, blink = Int(u * 12) % 2 == 0
         switch b {
@@ -107,17 +108,11 @@ extension WalkerView {
         }
     }
     /// The DS layout: theirs front-on at the top right, ours from behind at the bottom left, each on a pad.
-    func stage(_ fb: inout FB, _ b: Battle, _ now: Date, _ p: Pose, hud: Bool = true, pending: Set<Side> = []) {
+    /// beat = the beat playing and how far into it (the move effects' clock); nil between turns.
+    func stage(_ fb: inout FB, _ b: Battle, _ now: Date, _ p: Pose, hud: Bool = true, pending: Set<Side> = [], beat: (Beat, Double)? = nil) {
         let t = now.timeIntervalSinceReferenceDate, f = Int(t * 2) % 2
         let at: [Side: (x: Int, y: Int)] = [.it: (60, hud ? 14 : 8), .me: (8, hud ? 22 : 32)]   // where each stands (feet at y + 32, centre x + 16; sprites are 40 dots): theirs clear of the HP box, ours flush with the bottom
-        let pad: (UInt32, UInt32) = switch state.season {                                                         // the pad they stand on, by season
-        case .spring: (rgb(150, 206, 120), rgb(196, 230, 160)); case .summer: (rgb(130, 190, 96), rgb(176, 216, 136))
-        case .autumn: (rgb(200, 150, 80), rgb(226, 190, 120)); case .winter: (rgb(200, 212, 228), rgb(236, 242, 250))
-        }
-        for (s, rx, ry) in [(Side.it, 20.0, 3.4), (.me, 22.0, 4.0)] {
-            let cx = at[s]!.x + 16, cy = at[s]!.y + 31                                                      // under the feet (every frame stands on its box's bottom)
-            for y in cy - 4...cy + 4 { for x in cx - 23...cx + 23 { let ex = Double(x - cx) / rx, ey = Double(y - cy) / ry; if ex * ex + ey * ey < 1 { fb.set(x, y, 1, ex * ex + ey * ey > 0.7 ? pad.0 : pad.1) } } }
-        }
+        fb.battleGround(at, art: state.here.art, hour: state.hour, season: state.season, weather: state.weather ?? .sunny, indoor: b.trainer != nil)   // the ground, the pads they stand on
         defer { fb.weatherFX(state.weather ?? .sunny, 0, hud ? 12 : 0, 96, hud ? 38 : 64, t) }                         // over the fighters, under the HUD
         let foe = b.theirs[b.it].mon, mine = b.mine[b.me].mon
         let up: [Side: Bool] = [.it: b.theirs[b.it].alive || pending.contains(.it), .me: b.mine[b.me].alive || pending.contains(.me)]   // fainted = gone, once its faint has played
@@ -137,6 +132,7 @@ extension WalkerView {
             let top = at[.it]!.y + 32 - (80 - spriteTop(foe.dex)) / 2, h = at[.it]!.y + 32 - top          // a sprite pixel is half a dot
             for (k, (sx, sy)) in [(-2, 2), (26, h / 4), (12, -3), (28, h * 3 / 4)].enumerated() where (Int(t * 4) + k) % 3 == 0 { fb.draw(spark, at[.it]!.x + sx, max(0, top + sy), sparkPal) }
         }
+        if let (bt, u) = beat { moveFX(&fb, bt, u, b, at) }                                         // a move's effect over the fighters
         if let (bx, by, tilt, burst, stars) = thrown {
             let x = at[.it]!.x + 9 + bx, y = at[.it]!.y + by
             if burst { fb.draw(burstArt, x - 2, y - 2, sparkPal, scale: 2) }

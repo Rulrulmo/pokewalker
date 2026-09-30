@@ -22,7 +22,8 @@ func spritePixel(_ dex: Int, back: Bool, _ x: Int, _ y: Int, shiny: Bool) -> UIn
     spriteTops[dex * 2 + (back ? 1 : 0)] = t; return t
 }
 /// A sprite laid over the dots at 1 pt per pixel (x 1.5 / x 2 on the bigger sizes): its 80x80 frame (40x40 dots) stands on (x + 16, y + 32); `floor` = the dot row it sinks behind.
-struct SpriteRun: Equatable { var dex: Int; var shiny, back: Bool; var x, y, bob: Int; var tint: UInt32?, tintShade: UInt8; var floor: Int; var inverted = false }
+/// scale (about the feet) and alpha: growing out of / shrinking into a ball.
+struct SpriteRun: Equatable { var dex: Int; var shiny, back: Bool; var x, y, bob: Int; var tint: UInt32?, tintShade: UInt8; var floor: Int; var inverted = false; var scale = 1.0, alpha = 1.0 }
 @MainActor var spriteCache: [String: NSImage] = [:]
 /// The sprite as the LCD shows it: its colours, or on a grey screen 4 shades by brightness (white = the blank screen, like the walker's own art); a tint = a silhouette.
 /// Inverted (a full-screen flash) = the grey shades flipped, on any screen, as the dots are.
@@ -41,12 +42,85 @@ struct SpriteRun: Equatable { var dex: Int; var shiny, back: Bool; var x, y, bob
     } }
     let i = image(px, 80); spriteCache[key] = i; return i
 }
-/// A square of 0xFFRRGGBB pixels (0 = clear) as an image, for drawing without smoothing.
-func image(_ px: [UInt32], _ side: Int) -> NSImage {
-    let img = CGImage(width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: side * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+/// 0xAARRGGBB pixels (0 = clear; any alpha) as a w x h image (square if h is left out), for drawing without smoothing.
+func image(_ px: [UInt32], _ side: Int, _ h: Int? = nil) -> NSImage {
+    let h = h ?? side
+    let pre = px.map { c -> UInt32 in                                                               // premultiplied, as CGImage wants it
+        let a = c >> 24; guard a < 255 else { return c }
+        let r: UInt32 = (c >> 16 & 255) * a / 255, g: UInt32 = (c >> 8 & 255) * a / 255, b: UInt32 = (c & 255) * a / 255
+        return a << 24 | r << 16 | g << 8 | b
+    }
+    let img = CGImage(width: side, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: side * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
-                      provider: CGDataProvider(data: px.withUnsafeBufferPointer { Data(buffer: $0) } as CFData)!, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
-    return NSImage(cgImage: img, size: NSSize(width: side, height: side))
+                      provider: CGDataProvider(data: pre.withUnsafeBufferPointer { Data(buffer: $0) } as CFData)!, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+    return NSImage(cgImage: img, size: NSSize(width: side, height: h))
+}
+
+// MARK: - pictures
+/// A picture at sprite resolution (1 pixel = half a dot, like the battle sprites): 0xAARRGGBB, 0 = clear, any alpha.
+struct Pic {
+    var w, h: Int, px: [UInt32]
+    init(w: Int, h: Int) { self.w = w; self.h = h; px = Array(repeating: 0, count: w * h) }
+    /// Hand-drawn: one character a pixel, looked up in pal (anything not in it = clear).
+    init(_ rows: [String], _ pal: [Character: UInt32]) {
+        self.init(w: rows.map(\.count).max() ?? 0, h: rows.count)
+        for (y, r) in rows.enumerated() { for (x, c) in r.enumerated() { px[y * w + x] = pal[c] ?? 0 } }
+    }
+    func at(_ x: Int, _ y: Int) -> UInt32 { (0..<w).contains(x) && (0..<h).contains(y) ? px[y * w + x] : 0 }
+    mutating func set(_ x: Int, _ y: Int, _ c: UInt32) { if (0..<w).contains(x), (0..<h).contains(y) { px[y * w + x] = c } }
+    mutating func fill(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ c: UInt32) { for yy in y..<y + h { for xx in x..<x + w { set(xx, yy, c) } } }
+    /// Another picture laid on this one, its top-left at (x, y) (clear pixels skipped).
+    mutating func paste(_ p: Pic, _ x: Int, _ y: Int) { for yy in 0..<p.h { for xx in 0..<p.w where p.px[yy * p.w + xx] != 0 { set(x + xx, y + yy, p.px[yy * p.w + xx]) } } }
+}
+/// Where a picture goes: centred on (x, y) in half-dots (the LCD is 192 x 128 of them), scaled and turned (degrees, clockwise) about its centre;
+/// behind = under the sprites (a backdrop), else over them (a ball, a move's effect).
+struct PicRun: Equatable { var key: String; var x, y: Int; var scale = 1.0, alpha = 1.0, angle = 0.0; var behind = false; var inverted = false }
+/// Every picture drawn so far, by key. Keys must come from a finite set (animate with position / scale / alpha / angle or a bounded frame number):
+/// the store is never emptied, so a frame's FB can be redrawn any time.
+@MainActor var picStore: [String: Pic] = [:]
+@MainActor var picImages: [String: NSImage] = [:]
+/// A picture as the LCD shows it: its colours, or on a grey screen 4 shades by brightness (as the sprites); inverted = a full-screen flash.
+@MainActor func picImage(_ r: PicRun, _ l: LCD) -> (NSImage, Pic)? {
+    guard let p = picStore[r.key] else { return nil }
+    let key = r.key + "|" + l.name + (r.inverted ? "~" : "")
+    if let i = picImages[key] { return (i, p) }
+    let shades = l.shades.map { c -> UInt32 in let s = c.usingColorSpace(.sRGB)!; return rgb(UInt8(s.redComponent * 255), UInt8(s.greenComponent * 255), UInt8(s.blueComponent * 255)) }
+    let px = p.px.map { c -> UInt32 in
+        guard c >> 24 > 0 else { return 0 }
+        if l.color && !r.inverted { return c }
+        let lum: Double = (0.299 * Double(c >> 16 & 255) + 0.587 * Double(c >> 8 & 255) + 0.114 * Double(c & 255)) / 255
+        let shade: Int = lum > 0.78 ? 0 : lum > 0.5 ? 1 : lum > 0.25 ? 2 : 3, v: UInt32 = shades[r.inverted ? 3 - shade : shade]
+        return (c & 0xFF00_0000) | (v & 0xFF_FFFF)
+    }
+    let i = image(px, p.w, p.h); picImages[key] = i; return (i, p)
+}
+
+/// Other 80x80 frames (tools/gen.py frames.bin): the HGSS egg, then the Battle Tower's trainers. Per frame 15 RGB, then 80x80 at 4 bpp; each stands on row 79.
+let frameNames = ["egg", "acetrainer-gen4", "acetrainerf-gen4", "veteran-gen4", "veteranf", "lady-gen4", "hiker-gen4", "scientist-gen4", "blackbelt-gen4",
+                  "battlegirl-gen4", "psychic-gen4", "psychicf-gen4", "dragontamer", "schoolkid-gen4", "pokemonranger-gen4", "pokemonrangerf-gen4"]
+let frameData: Data = {
+    guard let u = Bundle.main.url(forResource: "frames", withExtension: "bin"), let d = try? Data(contentsOf: u), d.count == frameNames.count * 3245 else { return Data(count: frameNames.count * 3245) }
+    return d
+}()
+/// A frame as a picture (for fb.pic): "egg", or a trainer's sprite name (see trainerFrame).
+func framePic(_ name: String) -> Pic {
+    var p = Pic(w: 80, h: 80)
+    guard let f = frameNames.firstIndex(of: name) else { return p }
+    let o = f * 3245
+    for y in 0..<80 { for x in 0..<80 {
+        let b = frameData[o + 45 + y * 40 + x / 2], i = Int(x % 2 == 0 ? b >> 4 : b & 15)
+        if i > 0 { p.set(x, y, rgb(frameData[o + (i - 1) * 3], frameData[o + (i - 1) * 3 + 1], frameData[o + (i - 1) * 3 + 2])) }
+    } }
+    return p
+}
+/// A tower trainer's sprite, by class (the name's first words) and, where a class has both, the given name's sex.
+func trainerFrame(_ trainer: String) -> String {
+    let female = ["지은", "서연", "하은", "유나", "보라"].contains { trainer.hasSuffix($0) }
+    for (cls, m, f) in [("엘리트 트레이너", "acetrainer-gen4", "acetrainerf-gen4"), ("베테랑", "veteran-gen4", "veteranf"), ("아가씨", "lady-gen4", "lady-gen4"),
+                        ("등산가", "hiker-gen4", "hiker-gen4"), ("연구원", "scientist-gen4", "scientist-gen4"), ("격투가", "blackbelt-gen4", "battlegirl-gen4"),
+                        ("사이킥", "psychic-gen4", "psychicf-gen4"), ("드래곤 조련사", "dragontamer", "dragontamer"), ("모범 소년", "schoolkid-gen4", "schoolkid-gen4"),
+                        ("레인저", "pokemonranger-gen4", "pokemonrangerf-gen4")] where trainer.hasPrefix(cls) { return female ? f : m }
+    return female ? "acetrainerf-gen4" : "acetrainer-gen4"
 }
 /// The Gen IV box icons (tools/gen.py): per species 15 RGB, then 32x32 at 4 bpp; index 0 = transparent.
 let iconData: Data = {
@@ -133,6 +207,7 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
     var col = [UInt32](repeating: 0, count: 96 * 64)                      // colour LCD only: 0 = use the shade
     var runs: [TextRun] = [], flips: [[Int]] = []                        // smooth text to draw over the dots, and the inverted boxes it may sit in
     var sprites: [SpriteRun] = []
+    var pics: [PicRun] = []                                              // pictures at sprite resolution (see PicRun)
     var over = [Bool](repeating: false, count: 96 * 64)                  // dots set after a sprite: drawn on top of it (a HUD plate, a ball, rain)
     mutating func set(_ x: Int, _ y: Int, _ s: UInt8, _ c: UInt32 = 0) { if (0..<96).contains(x), (0..<64).contains(y) { px[y * 96 + x] = s; col[y * 96 + x] = c; if !sprites.isEmpty { over[y * 96 + x] = true } } }
     mutating func fill(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ s: UInt8) { for yy in y..<y + h { for xx in x..<x + w { set(xx, yy, s) } } }
@@ -146,6 +221,11 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
     mutating func sprite(_ m: Mon, _ x: Int, _ y: Int, back: Bool = false, bob: Int = 0, flash: Bool = false, tint: (UInt8, UInt32)? = nil, floor: Int = 64) {
         let t = tint ?? (flash ? (2, rgb(238, 84, 72)) : nil)
         sprites.append(SpriteRun(dex: m.dex, shiny: m.shiny == true, back: back, x: x, y: y, bob: bob, tint: t?.1, tintShade: t?.0 ?? 0, floor: floor))
+    }
+    /// A picture at sprite resolution centred on (x, y) in half-dots; `make` draws it the first time its key is seen (keys: a finite set).
+    mutating func pic(_ key: String, _ x: Int, _ y: Int, scale: Double = 1, alpha: Double = 1, angle: Double = 0, behind: Bool = false, _ make: () -> Pic) {
+        if picStore[key] == nil { picStore[key] = make() }
+        pics.append(PicRun(key: key, x: x, y: y, scale: scale, alpha: alpha, angle: angle, behind: behind))
     }
     /// Too wide for the screen => the small font, one row lower so baselines match.
     @discardableResult mutating func text(_ s: String, _ x: Int, _ y: Int, _ shade: UInt8 = 3, center: Bool = false, right: Bool = false, small: Bool = false) -> Int {
@@ -178,74 +258,7 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
     mutating func invert(_ x: Int, _ y: Int, _ w: Int, _ h: Int) {
         flips.append([x, y, w, h])
         let whole = x <= 0 && y <= 0 && x + w >= 96 && y + h >= 64
-        if whole { for i in sprites.indices { sprites[i].inverted.toggle() } }
+        if whole { for i in sprites.indices { sprites[i].inverted.toggle() }; for i in pics.indices { pics[i].inverted.toggle() } }
         for yy in y..<y + h { for xx in x..<x + w where (0..<96).contains(xx) && (0..<64).contains(yy) { px[yy * 96 + xx] = 3 - px[yy * 96 + xx]; col[yy * 96 + xx] = 0; if !sprites.isEmpty, !whole { over[yy * 96 + xx] = true } } }
-    }
-    /// 32x24 picture of the course, framed.
-    mutating func course(_ a: Art, _ x: Int, _ y: Int, weather w: Weather = .sunny, t: Double = 0, hour: Double = 12, season: Season = .summer) {
-        // colour: sky above the course's horizon, its ground/water below
-        let horizon = [Art.field: 14, .forest: 17, .mountain: 19, .beach: 10, .lake: 12, .town: 19, .cave: 0][a]!
-        let grey = w == .rain || w == .fog || w == .snow && a != .cave
-        // game clock: dawn 4-6, day, dusk 17-20, night 20-4 (as for evolutions); overcast greys the sky and hides the sun / moon
-        let night = hour < 4 || hour >= 20, dawn = (4..<6).contains(hour), dusk = (17..<20).contains(hour)
-        let clear = night ? rgb(34, 44, 92) : dawn ? rgb(250, 196, 170) : dusk ? rgb(248, 150, 104) : rgb(160, 208, 250)
-        let orb = night ? rgb(236, 232, 196) : dusk || dawn ? rgb(255, 120, 70) : rgb(255, 222, 96)
-        let sky = [grey ? (night ? rgb(70, 76, 92) : rgb(172, 182, 196)) : clear, grey ? (night ? rgb(80, 86, 100) : rgb(200, 204, 212)) : orb, rgb(70, 150, 80), rgb(36, 44, 56)]
-        let ground: [UInt32] = switch a {
-        case .field, .forest, .town: [rgb(130, 204, 96), rgb(100, 180, 80), rgb(70, 150, 64), rgb(36, 80, 44)]
-        case .mountain: [rgb(186, 156, 112), rgb(160, 130, 96), rgb(128, 100, 72), rgb(60, 44, 36)]
-        case .beach, .lake: [rgb(96, 170, 240), rgb(80, 150, 230), rgb(96, 170, 96), rgb(40, 90, 180)]
-        case .cave: [rgb(90, 76, 70), rgb(110, 96, 88), rgb(128, 108, 96), rgb(40, 32, 30)]
-        }
-        func p(_ dx: Int, _ dy: Int, _ s: UInt8) {
-            guard (0..<32).contains(dx), (0..<24).contains(dy) else { return }
-            var c = (dy < horizon ? sky : ground)[Int(s)]
-            let green = [.field, .forest, .town].contains(a)
-            switch season {                                                                                   // the land by season
-            case .spring: if green, dy >= horizon, s == 2, (dx + dy) % 3 == 0 { c = rgb(244, 150, 190) }         // flowers
-            case .autumn:
-                if green, dy >= horizon { c = [rgb(214, 178, 96), rgb(196, 150, 72), rgb(170, 112, 50), rgb(90, 60, 30)][Int(s)] }
-                if a == .forest, dy < horizon, s == 2 { c = (dx + dy) % 2 == 0 ? rgb(222, 120, 48) : rgb(200, 70, 40) }   // red and orange trees
-            case .winter:
-                if green || a == .mountain, dy >= horizon { c = [rgb(246, 248, 252), rgb(226, 232, 242), rgb(198, 208, 222), rgb(110, 120, 140)][Int(s)] }   // snow cover
-                if a == .forest, dy < horizon, s == 2 { c = dy % 3 == 0 ? rgb(240, 244, 250) : rgb(52, 100, 76) }   // snow on the firs
-                if a == .mountain, dy < horizon, s == 1 { c = rgb(236, 240, 246) }                                // white peaks
-            case .summer: break
-            }
-            if night, dy >= horizon || a == .cave { c = dim(c, 0.55) }                                           // the ground darkens too
-            if night, !grey, dy < horizon, s == 0, (dx * 7 + dy * 13) % 23 == 0 { c = rgb(250, 250, 220) }        // stars
-            if a == .mountain, dy < horizon, s == 1 { c = rgb(150, 132, 118) }                                     // rock faces, not sun
-            if a == .beach, dy >= 18 { c = [rgb(242, 222, 160), c, rgb(206, 176, 116), c][Int(s)] }                  // sand
-            if a == .town, dy < horizon, s == 2 { c = rgb(210, 84, 70) }                                          // roofs
-            set(x + dx, y + dy, s, c)
-        }
-        for dy in 0..<24 { for dx in 0..<32 { p(dx, dy, 0) } }
-        func tree(_ cx: Int, _ top: Int) { for i in 0..<9 { for dx in -i / 2...i / 2 { p(cx + dx, top + i, i == 8 || abs(dx) == i / 2 ? 3 : 2) } }; p(cx, top + 9, 3); p(cx, top + 10, 3) }
-        func peak(_ cx: Int, _ top: Int, _ h: Int) { for i in 0..<h { for dx in -i...i { p(cx + dx, top + i, abs(dx) == i ? 3 : (i < 3 ? 0 : 1)) } } }
-        switch a {
-        case .field:
-            for dx in 0..<32 { p(dx, 14, 3) }; for dy in 15..<24 { for dx in 0..<32 where (dx * 3 + dy * 5) % 7 == 0 { p(dx, dy, 2) } }
-            for dx in [4, 11, 18, 25] { p(dx, 15, 3); p(dx - 1, 16, 3); p(dx + 1, 16, 3) }
-            for dy in 3..<7 { for dx in 23..<27 { p(dx, dy, 1) } }
-        case .forest: tree(6, 5); tree(16, 2); tree(26, 6); for dx in 0..<32 { p(dx, 17, 3) }; for dy in 18..<24 { for dx in 0..<32 where (dx + dy) % 4 == 0 { p(dx, dy, 1) } }
-        case .mountain: peak(10, 4, 15); peak(23, 8, 11); for dx in 0..<32 { p(dx, 19, 3) }; for dy in 20..<24 { for dx in 0..<32 where dx % 3 == dy % 3 { p(dx, dy, 2) } }
-        case .beach, .lake:
-            let water = a == .beach ? 10 : 12
-            for dy in water..<24 { for dx in 0..<32 { p(dx, dy, a == .lake && (dx < 3 || dx > 28) ? 2 : ((dx + dy * 2) % 6 == 0 ? 3 : 1)) } }
-            if a == .beach { for dy in 18..<24 { for dx in 0..<32 { p(dx, dy, (dx * 7 + dy) % 5 == 0 ? 2 : 0) } } }
-            for dy in 2..<7 { for dx in 3..<8 where !(dy == 2 || dy == 6) || (dx > 3 && dx < 7) { p(dx, dy, 2) } }
-        case .town:
-            for (hx, hw) in [(3, 11), (17, 12)] {
-                for i in 0..<5 { for dx in hx + 2 - i...hx + hw - 3 + i { p(dx, 6 + i, i == 4 || dx == hx + 2 - i || dx == hx + hw - 3 + i ? 3 : 2) } }
-                for dy in 11..<19 { for dx in hx..<hx + hw { p(dx, dy, dx == hx || dx == hx + hw - 1 || dy == 18 ? 3 : 0) } }
-                for dy in 14..<18 { p(hx + hw / 2, dy, 3); p(hx + hw / 2 + 1, dy, 3) }
-            }
-            for dx in 0..<32 { p(dx, 19, 3) }
-        case .cave:
-            for dy in 0..<24 { for dx in 0..<32 { p(dx, dy, (dx * 5 + dy * 3) % 7 == 0 ? 3 : 2) } }
-            for dy in 6..<24 { for dx in 8..<24 { let ex = Double(dx) - 15.5, ey = Double(dy) - 24; if ex * ex / 64 + ey * ey / 324 < 1 { p(dx, dy, 3) } } }
-        }
-        weatherFX(w, x + 1, y + 1, 30, 22, t, cave: a == .cave)
-        for dx in 0..<32 { p(dx, 0, 3); p(dx, 23, 3) }; for dy in 0..<24 { p(0, dy, 3); p(31, dy, 3) }
     }
 }
