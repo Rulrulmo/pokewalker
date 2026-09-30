@@ -7,6 +7,15 @@ if CommandLine.arguments.contains("--selftest") { exit(selftest() ? 0 : 1) }
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let view = WalkerView(state: Store.load())
+/// Opening the app again (Finder, Spotlight, Launchpad) brings a hidden walker back: macOS may hide the menu-bar icon (too many icons, the notch, 메뉴 막대 settings).
+@MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if view.window?.isVisible != true { view.toggleShown(nil) }
+        return false
+    }
+}
+let appDelegate = AppDelegate()
+app.delegate = appDelegate
 let notifyDelegate = NotifyDelegate()
 UNUserNotificationCenter.current().delegate = notifyDelegate
 UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { @Sendable ok, _ in   // called off the main thread
@@ -51,7 +60,7 @@ do {                                                                            
     panel.setFrame(WalkerView.onScreen(NSRect(x: top.x, y: top.y - size.height, width: size.width, height: size.height), in: screen?.visibleFrame), display: false)
     view.anchorTop = top.y
 }
-if !UserDefaults.standard.bool(forKey: "hidden") { panel.orderFrontRegardless() }
+panel.orderFrontRegardless(); UserDefaults.standard.set(false, forKey: "hidden")               // a launch always shows it: a hidden walker whose menu-bar icon is hidden too could never come back
 view.sideOn = true
 panel.makeFirstResponder(view)
 
