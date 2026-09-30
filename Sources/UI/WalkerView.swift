@@ -136,7 +136,7 @@ final class WalkerView: NSView {
         case .say(_, let next, let since) where now.timeIntervalSince(since) > 3: screen = next
         case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
-        case .menu, .card, .bag, .dex, .box, .tower, .shop, .shopConfirm: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
+        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
         default: break
         }
         if now.timeIntervalSince(lastSave) > 60 { save(nil) }
@@ -255,14 +255,13 @@ final class WalkerView: NSView {
         let when = "\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · \((state.weather ?? .sunny).name)"
         switch sc {
         case .dex: return ("도감", "잡음 \(dexCount) · 봤음 \(seenList.count)", nil)
-        case .box: return ("상자", "", nil)
+        case .box, .items: return ("포켓몬", "워커 \(state.caught.count) · 상자 \(state.box.count.formatted()) · 도구 \(state.items.count)", nil)
         case .menu: return ("메뉴", "", nil)
         case .shop(let bp, _, _), .shopConfirm(let bp, _, _): return (bp ? "BP 교환소" : "상점", "", nil)
         case .radar: return ("포켓 레이더", state.here.name, nil)
         case .card: return ("트레이너 카드", "", nil)
         case .learn: return ("기술 배우기", "", nil)
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP", nil)
-        case .bag: return ("포켓몬 · 도구", "워커 \(state.caught.count)마리 · 도구 \(state.items.count)", nil)
         default: return (state.here.name, when, statusOpen)                                      // screens without a page of their own: the status sheet's ⌄
         }
     }

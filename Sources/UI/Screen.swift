@@ -2,7 +2,7 @@ import Foundation
 // Which screen the LCD is on.
 
 // MARK: - screens
-let menuItems = ["포켓 레이더", "커넥트", "트레이너 카드", "포켓몬 · 도구", "상자", "도감", "상점", "BP 교환소", "배틀 타워"]
+let menuItems = ["포켓 레이더", "커넥트", "트레이너 카드", "포켓몬", "도감", "상점", "BP 교환소", "배틀 타워"]
 /// A tile's place on the menu, by its name (the code never counts tiles).
 func menuAt(_ name: String) -> Int { menuItems.firstIndex(of: name)! }
 indirect enum Screen {
@@ -19,10 +19,10 @@ indirect enum Screen {
     case learn(sel: Int)                                               // a new move for state.learn's first: forget one of 4 (sel 0-3), or not learn it (4)
     case tower                                                         // the Battle Tower lobby
     case beats(Battle, [Beat], since: Date, from: Battle)              // one exchange playing out; `from` = HP before it
-    case card(Int), bag(Int)
+    case card(Int), items                                              // items = the walker's 도구 (from 포켓몬's last chip)
     case say([String], next: Screen, since: Date)                      // any button or 3 s
     case evolve(from: Mon, to: Mon, since: Date)                       // already applied to the state; this is the show
     case dex(Int, filter: Int, detail: Bool)                           // the pick's dex number; filter = the grid's tab (전체 / 잡음 / 못 잡음 / 이 코스); detail = the entry page
-    case box(Int, act: Int?, confirm: Bool, detail: Bool = false)      // box[i] (the grid shows boxOrder); act = the ● menu's selection; confirm = "release?"; detail = its page (IVs, EVs, nature, ability)
+    case box(Int, act: Int?, confirm: Bool, detail: Bool = false)      // 포켓몬: a ref (-1 the companion, -2-i caught[i], i box[i]; the grid shows boxOrder); act = the ● menu's selection; confirm = "release?"; detail = its page
     case hatch(Mon, since: Date)                                       // already kept; this is the show
 }

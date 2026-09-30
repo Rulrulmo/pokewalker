@@ -31,19 +31,21 @@ struct DexModel: Equatable {
     var num: Int; var status: Int                                      // 0 not met, 1 seen, 2 caught
     var stats: [Int]; var found: [String]; var evos: [String]          // up to 3 places, 2 evolutions: a line each
 }
-/// The 도감 / 상자 grid: tabs, a page of box icons (the pick bobbing), the pager.
+/// The 도감 / 포켓몬 grid: tabs, a page of box icons (the pick bobbing), the pager; 포켓몬's has the companion and the walker's in a row above.
 struct GridModel: Equatable {
     static let perPage = 30, columns = 6                               // 6 x 5
-    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false }   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box
+    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false; var level = 0 }   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box
     var tabs: [String]; var tab: Int
     var cells: [Cell]; var first: Int; var sel: Int?                   // this page's cells; first = cells[0]'s place in the whole list; sel = the pick's cell
     var page, pages: Int; var empty: String; var bob: Bool
+    var party: [Cell] = []; var partySel: Int? = nil; var items: Int? = nil   // 포켓몬: the companion + the walker's in a row over the box, then the items chip (nil = no row: 도감)
 }
 /// One Pokémon of the box, in full: nature and ability with what they do, IVs and EVs as hexagons.
 struct MonModel: Equatable {
     var nature, natureNote, ability, abilityNote: String; var up, down: Int?   // stat indices the nature raises / lowers (nil = neutral)
     var ivs, evs: [Int]; var hyper: [Int]; var v, evTotal: Int
     var confirm: Bool                                                  // 놓아줄까? is up: the buttons become 아니오 / 예
+    var place = 2                                                      // 0 the companion (nothing to do), 1 the walker's (함께 걷기 / 상자로 보내기), 2 the box's (함께 걷기 / 놓아주기)
     var sel: Int?                                                      // the LCD's pick (함께 / 놓아주기 / 닫기, or 아니오 / 예): what ● does is red
 }
 /// 포켓몬 레이더: the four bushes as on the LCD, the one rustling marked.
@@ -60,16 +62,10 @@ struct TowerModel: Equatable {
     struct Member: Equatable { var dex: Int; var name: String; var level: Int }
     var run: Bool; var streak, best, bp, fee: Int; var party: [Member]
 }
-/// 포켓몬 · 도구: the companion and the walker's Pokémon as chips, the picked one in full (or the items).
-struct BagModel: Equatable {
-    struct Chip: Equatable { var dex: Int; var name: String; var level: Int; var companion: Bool }
-    var chips: [Chip]; var sel: Int                                    // sel = chips.count: the items
-    var mon: MonModel?; var items: [String]
-}
 /// Whatever the pane shows; all nil = no page (the card's idle height).
 struct PaneContent: Equatable {
     var battle: SideModel?; var dex: DexModel?; var shop: ShopModel?; var menu: MenuModel?; var status: StatusModel?; var grid: GridModel?; var mon: MonModel?
-    var radar: RadarModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var bag: BagModel?
+    var radar: RadarModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var items: [String]?
 }
 
 // MARK: - the look (card points x K)
@@ -141,7 +137,7 @@ final class SideView: NSView {
     var downOn = 0                                                         // the page a click began on: a double-click's 2nd click on another page is dropped
     var pageKind: Int {
         let c = content
-        return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.card != nil, c.learn != nil, c.tower != nil, c.bag != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
+        return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.card != nil, c.learn != nil, c.tower != nil, c.items != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
     }
     var hits: [(NSRect, Int)] = []                                         // clickable: battle index, 2000+ shop, 3000+ menu, 4000+ grid / box controls, 5000+ other pages, 10000+ grid cells
     weak var walker: WalkerView?
@@ -173,9 +169,9 @@ final class SideView: NSView {
     func y(_ v: CGFloat) -> CGFloat { (v - Layout.pane) * K }
     func x(_ v: CGFloat) -> CGFloat { v * K }
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
-    static let tallest: CGFloat = 470                                                              // 포켓몬 · 도구: the size menu keeps it on the screen
+    static let tallest: CGFloat = 472                                                              // 포켓몬's grid: the size menu keeps it on the screen
     static func height(_ c: PaneContent) -> CGFloat {
-        c.battle != nil ? 311 : c.grid != nil || c.mon != nil ? 422 : c.bag != nil ? 470 : c.dex != nil ? 390 : c.shop != nil ? 406 : c.menu != nil ? 379
+        c.battle != nil ? 311 : c.grid?.items != nil ? 472 : c.grid != nil || c.mon != nil ? 422 : c.items != nil ? 330 : c.dex != nil ? 390 : c.shop != nil ? 406 : c.menu != nil ? 344
             : c.radar != nil ? 327 : c.card != nil ? 230 : c.learn != nil ? 365 : c.tower != nil ? 353 : c.status != nil ? 354 : Layout.idle
     }
 
@@ -183,7 +179,7 @@ final class SideView: NSView {
         hits = []; defer { window?.invalidateCursorRects(for: self) }
         let c = content
         if let d = c.dex { drawDex(d) } else if let g = c.grid { drawGrid(g) } else if let m = c.mon { drawMon(m) } else if let s = c.shop { drawShop(s) }
-        else if let m = c.menu { drawMenu(m) } else if let m = c.battle { drawBattle(m) } else if let b = c.bag { drawBag(b) } else if let r = c.radar { drawRadar(r) }
+        else if let m = c.menu { drawMenu(m) } else if let m = c.battle { drawBattle(m) } else if let i = c.items { drawItems(i) } else if let r = c.radar { drawRadar(r) }
         else if let k = c.card { tabs(["트레이너 카드", "최근 7일", "알"], k.page, 198, code: 5200) } else if let l = c.learn { drawLearn(l) }
         else if let t = c.tower { drawTower(t) } else if let s = c.status { drawStatus(s) }
     }
@@ -257,7 +253,25 @@ final class SideView: NSView {
 
     // MARK: 도감 / 상자 grid
     func drawGrid(_ g: GridModel) {
-        let top: CGFloat = 198, scale = window?.backingScaleFactor ?? 2
+        var top: CGFloat = 198
+        let scale = window?.backingScaleFactor ?? 2
+        if let n = g.items {                                                                        // 포켓몬: the companion and the walker's 3 over the box, then the items
+            let cw = (X1 - X0 - 4 * 4) / 5, snap = { (v: CGFloat) in (v * scale).rounded() / scale }
+            NSGraphicsContext.current?.imageInterpolation = .none
+            for i in 0..<5 {
+                let rc = r(X0 + CGFloat(i) * (cw + 4), top, cw, 42), on = i == g.partySel, path = rounded(rc, 10 * K)
+                path.fill(with: on ? Ink.redTint : Ink.tile); if on { Ink.red.setStroke(); path.lineWidth = 1.5 * K; path.stroke() }
+                if i == 4 { pixelArt(gem, gemPal, NSPoint(x: rc.midX, y: rc.minY + x(15)), 3 * K); say("도구 \(n)", rc.midX, rc.maxY - x(7), font(8, .bold), Ink.sub, 0.5); hits.append((rc, 4510)) }
+                else if let c = g.party[safe: i] {
+                    let lift = on && g.bob ? K : 0
+                    iconImage(c.dex).draw(in: NSRect(x: snap(rc.midX - 16 * K), y: snap(rc.minY - x(3) - lift), width: 32 * K, height: 32 * K), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none.rawValue])
+                    say(i == 0 ? "함께" : "Lv.\(c.level)", rc.midX, rc.maxY - x(7), font(8, .bold), i == 0 ? Ink.red : Ink.sub, 0.5)
+                    if c.shiny { say("★", rc.maxX - x(5), rc.minY + x(6), font(7, .bold), Ink.gold, 1) }
+                    hits.append((rc, 4500 + i))
+                } else { say("비어 있음", rc.midX, rc.midY, font(7.5, .medium), Ink.faint, 0.5) }   // the walker holds 3
+            }
+            top += 50
+        }
         tabs(g.tabs, g.tab, top)
         let board = r(X0, top + 28, X1 - X0, 5 * 33)
         rounded(board, 11 * K).fill(with: Ink.board)
@@ -326,9 +340,10 @@ final class SideView: NSView {
     // MARK: 상자: one Pokémon — nature, ability, IVs and EVs, and 함께 / 놓아주기
     func drawMon(_ m: MonModel) {
         let yy = monBody(m, 198)
-        // 함께 걷기 / 놓아주기 (놓아줄까? → 아니오 / 예)
+        // 함께 걷기 / 상자로 보내기 (the walker's) or 놓아주기 (the box's; 놓아줄까? → 아니오 / 예); the companion: nothing to do
         let cw = (X1 - X0 - 5) / 2
-        let opts: [(String, Int)] = m.confirm ? [("아니오", 4402), ("예 · 놓아주기", 4403)] : [("함께 걷기", 4400), ("놓아주기", 4401)]
+        if m.place == 0 { let rc = r(X0, yy, X1 - X0, 30); rounded(rc, 10 * K).fill(with: Ink.tile); say("함께 걷는 중", rc.midX, rc.midY, font(11, .bold), Ink.sub, 0.5); return }
+        let opts: [(String, Int)] = m.confirm ? [("아니오", 4402), ("예 · 놓아주기", 4403)] : [("함께 걷기", 4400), m.place == 1 ? ("상자로 보내기", 4404) : ("놓아주기", 4401)]
         for (i, (t, code)) in opts.enumerated() {
             let rc = r(X0 + CGFloat(i) * (cw + 5), yy, cw, 30), strong = m.sel == i                   // red = what ● does now (the LCD's pick); none while nothing is picked
             rounded(rc, 10 * K).fill(with: strong ? Ink.red : Ink.tile); say(t, rc.midX, rc.midY, font(11, .bold), strong ? .white : Ink.ink, 0.5); hits.append((rc, code))
@@ -524,34 +539,12 @@ extension SideView {
         rounded(go, 12 * K).fill(with: Ink.red); say(m.run ? "다음 상대" : "도전 · \(m.fee)W", go.midX, go.midY, font(13, .bold), .white, 0.5); hits.append((go, 5400))
         rounded(out, 12 * K).fill(with: Ink.tile); say("나가기", out.midX, out.midY, font(11, .bold), Ink.ink, 0.5); hits.append((out, 5401))
     }
-    /// 포켓몬 · 도구: chips for the companion and the walker's Pokémon (and the items), then the picked one in full.
-    func drawBag(_ b: BagModel) {
-        let scale = window?.backingScaleFactor ?? 2, snap = { (v: CGFloat) in (v * scale).rounded() / scale }, n = b.chips.count + 1
-        let cw = (X1 - X0 - CGFloat(n - 1) * 4) / CGFloat(n)
-        NSGraphicsContext.current?.imageInterpolation = .none
-        for i in 0..<n {
-            let rc = r(X0 + CGFloat(i) * (cw + 4), 198, cw, 42), on = i == b.sel, path = rounded(rc, 10 * K)
-            path.fill(with: on ? Ink.redTint : Ink.tile); if on { Ink.red.setStroke(); path.lineWidth = 1.5 * K; path.stroke() }
-            if let c = b.chips[safe: i] {
-                iconImage(c.dex).draw(in: NSRect(x: snap(rc.midX - 16 * K), y: snap(rc.minY - x(3)), width: 32 * K, height: 32 * K), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none.rawValue])
-                say(c.companion ? "함께" : "Lv.\(c.level)", rc.midX, rc.maxY - x(7), font(8, .bold), c.companion ? Ink.red : Ink.sub, 0.5)
-            } else {
-                pixelArt(gem, gemPal, NSPoint(x: rc.midX, y: rc.minY + x(15)), 3 * K)
-                say("도구 \(b.items.count)", rc.midX, rc.maxY - x(7), font(8, .bold), Ink.sub, 0.5)
-            }
-            hits.append((rc, 5500 + i))
-        }
-        if let m = b.mon {
-            let yy = monBody(m, 246), rc = r(X0, yy, X1 - X0, 30), companion = b.chips[safe: b.sel]?.companion == true
-            rounded(rc, 10 * K).fill(with: companion ? Ink.tile : Ink.red)
-            say(companion ? "함께 걷는 중" : "함께 걷기", rc.midX, rc.midY, font(11, .bold), companion ? Ink.sub : .white, 0.5)
-            if !companion { hits.append((rc, 5510)) }
-            return
-        }
-        say("워커의 도구 · 커넥트하면 가방으로 가요", x(X0 + 2), y(256), font(9, .medium), Ink.sub)
-        if b.items.isEmpty { say("없음", x(Layout.w / 2), y(300), font(10, .medium), Ink.sub, 0.5) }
-        for (i, it) in b.items.enumerated() {
-            let rc = r(X0, 266 + CGFloat(i) * 29, X1 - X0, 26); rounded(rc, 9 * K).fill(with: Ink.tile)
+    /// The walker's 도구 (포켓몬's last chip).
+    func drawItems(_ items: [String]) {
+        say("워커의 도구 · 커넥트하면 가방으로 가요", x(X0 + 2), y(206), font(9, .medium), Ink.sub)
+        if items.isEmpty { say("없음", x(Layout.w / 2), y(250), font(10, .medium), Ink.sub, 0.5) }
+        for (i, it) in items.enumerated() {
+            let rc = r(X0, 216 + CGFloat(i) * 29, X1 - X0, 26); rounded(rc, 9 * K).fill(with: Ink.tile)
             pixelArt(gem, gemPal, NSPoint(x: rc.minX + x(14), y: rc.midY), 2.5 * K); say(it, rc.minX + x(28), rc.midY, font(10, .bold), Ink.ink)
         }
     }

@@ -160,9 +160,10 @@ extension WalkerView {
         case .dex(let n, let f, let detail):
             let l = dexList(f); guard !l.isEmpty else { return }
             screen = .dex(l[to(l.firstIndex(of: n) ?? 0, l.count)], filter: f, detail: detail)
-        case .box(let i, _, _, let detail):
-            let o = boxOrder; guard !o.isEmpty else { return }
-            screen = .box(o[to(o.firstIndex(of: i) ?? 0, o.count)], act: nil, confirm: false, detail: detail)
+        case .box(let i, _, _, let detail):                                                       // ◀ ▶: the companion, the walker's, then the box, round; rows and pages in the box
+            let o = boxOrder, all = [-1] + state.caught.indices.map { -2 - $0 } + o, at = o.firstIndex(of: i)
+            let next = wrap ? all[to(all.firstIndex(of: i) ?? 0, all.count)] : at == nil ? (d > 0 ? o.first : nil) : d < 0 && d > -GridModel.perPage && at! + d < 0 ? -1 : o[to(at!, o.count)]
+            if let next { screen = .box(next, act: nil, confirm: false, detail: detail) }            // up from the box's top row: the companion
         default: return
         }
         lastInput = Date(); shown = nil; needsDisplay = true
@@ -172,8 +173,8 @@ extension WalkerView {
     func homeKey() -> Bool? {
         switch screen {
         case .home: true
-        case .menu, .card, .bag, .box, .dex, .shop, .shopConfirm, .tower: false
-        case .say(_, let next, _): switch next { case .home, .menu, .card, .bag, .box, .dex, .shop, .shopConfirm, .tower: false; default: nil }
+        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower: false
+        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower: false; default: nil }
         default: nil
         }
     }
@@ -190,8 +191,8 @@ extension WalkerView {
             case .say(_, let next, _): screen = next                                               // like ●
             case .menu: screen = .home
             case .card: screen = .menu(menuAt("트레이너 카드"))
-            case .bag: screen = .menu(menuAt("포켓몬 · 도구"))
-            case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : .menu(menuAt("상자"))   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
+            case .items: screen = .box(-1, act: nil, confirm: false)                                  // back to 포켓몬
+            case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : .menu(menuAt("포켓몬"))   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
             case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : .menu(menuAt("도감"))   // the entry page → the grid → the menu
             case .shop(let bp, let sel, .some), .shopConfirm(let bp, let sel, _): screen = .shop(bp: bp, sel: sel, qty: nil)
             case .shop(let bp, _, nil): screen = .menu(menuAt(bp ? "BP 교환소" : "상점"))
@@ -301,19 +302,12 @@ extension WalkerView {
             else if state.spend(Walk.towerFee) { state.towerStreak = 0; startTower(now) }
             else { screen = .say(["W가 부족하다", "(\(Walk.towerFee)W 필요)"], next: .tower, since: now) }
         case .card(let p): screen = k == 1 ? .menu(menuAt("트레이너 카드")) : .card((p + (k == 0 ? 2 : 1)) % 3)
-        case .bag(let p):                                                                         // 0 = the companion, then the walker's Pokémon, then the items
-            let n = bagPages
-            if k != 1 { screen = .bag((p + (k == 0 ? n - 1 : 1)) % n) }
-            else if p == 0 { screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷고 있다"], next: .bag(0), since: now) }
-            else if state.caught.indices.contains(p - 1), p < n - 1 {                      // ● on one of the walker's: walk with it
-                state.pair(p - 1, onWalker: true)
-                screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: now)
-            } else { screen = .menu(menuAt("포켓몬 · 도구")) }
         case .say(_, let next, _): screen = next
         case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
             if k == 1 { if dexList(f).contains(n) { screen = .dex(n, filter: f, detail: !detail) } } else { gridStep(k == 0 ? -1 : 1, wrap: true) }
-        case .box(let i, let act, let confirm, let detail):
-            if state.box.isEmpty { screen = .menu(menuAt("상자")) }
+        case .items: break
+        case .box(let i, let act, let confirm, let detail):                                     // i: -1 the companion, -2-j the walker's j-th, else box[i]
+            if state.mon(i) == nil { screen = .box(-1, act: nil, confirm: false) }                // gone meanwhile: back to the companion
             else if confirm {                                                                     // "놓아줄까?" 아니오 / 예
                 if k != 1 { screen = .box(i, act: (act ?? 0) == 0 ? 1 : 0, confirm: true, detail: detail) }
                 else if act == 1 {
@@ -324,11 +318,14 @@ extension WalkerView {
             } else if let a = act {                                                              // 함께 걷기 / 놓아주기 / 닫기 (the order: the grid's tabs)
                 if k != 1 { screen = .box(i, act: (a + (k == 0 ? 2 : 1)) % 3, confirm: false, detail: detail); return }
                 switch a {
-                case 0: state.pair(i); screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: now)
+                case 0 where i != -1: if i < -1 { state.pair(-2 - i, onWalker: true) } else { state.pair(i) }; screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: now)
+                case 1 where i < -1: let name = monNames[state.caught[-2 - i].dex]; state.store(-2 - i)   // the walker's: into the box, picked there
+                    screen = .say([josa(name, "을", "를"), "상자로 보냈다"], next: .box(state.box.count - 1, act: nil, confirm: false), since: now)
                 case 1: screen = .box(i, act: 0, confirm: true, detail: detail)
                 default: screen = .box(i, act: nil, confirm: false, detail: detail)
                 }
-            } else if k == 1 { screen = .box(i, act: detail ? 0 : nil, confirm: false, detail: true) }   // ● on the grid: its page; on its page: 함께 / 놓아주기 / 닫기
+            } else if k == 1, detail, i == -1 { screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷고 있다"], next: screen, since: now) }
+            else if k == 1 { screen = .box(i, act: detail ? 0 : nil, confirm: false, detail: true) }   // ● on the grid: its page; on its page: 함께 / 상자로 or 놓아주기 / 닫기
             else { gridStep(k == 0 ? -1 : 1, wrap: true) }
         case .beats, .evolve, .hatch: break
         }
@@ -342,8 +339,7 @@ extension WalkerView {
             if let e = state.tradeEvolution(now) { startEvolving(e, now); return }                 // Connect is the walker's link cable
             screen = .say(n == 0 ? ["보낼 것이", "없다"] : ["상자로", "\(n)개 보냈다"], next: .menu(i), since: now)
         case "트레이너 카드": screen = .card(0)
-        case "포켓몬 · 도구": screen = .bag(0)
-        case "상자": screen = .box(boxOrder.first ?? 0, act: nil, confirm: false)
+        case "포켓몬": screen = .box(-1, act: nil, confirm: false)                                  // the companion first
         case "상점", "BP 교환소": screen = .shop(bp: menuItems[i] == "BP 교환소", sel: 0, qty: nil)
         case "배틀 타워": screen = .tower
         default: screen = .dex(state.companion.dex, filter: 0, detail: false)
