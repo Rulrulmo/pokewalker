@@ -8,6 +8,7 @@ final class WalkerView: NSView {
     var boxSort = 0                                                        // the 상자 grid's order: 번호순 / 레벨순 / V순 / 최근
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
     var keyShown: Bool?? = .none                                           // the 메뉴 / 홈 key as last drawn (see homeKey)
+    var strollX = 60.0, strollRight = false, strollAt = Date(), strollTurnAt = Date(), stepRate = 0.0   // home: the companion's feet (dots), which way it faces, its pace
     var fast: Timer?                                                       // the 30 fps frame timer while a fight or a show plays
     var usedItem = "몬스터볼"                                                // the potion / ball / revive the current beat names
     var towerRefs: [Int] = [], towerRun = false
@@ -82,6 +83,7 @@ final class WalkerView: NSView {
         if state.sync(counter: WalkerView.counter(), boot: WalkerView.boot(), at: now) { levelled = true }
         perk(now, stepped: state.total != before)                                               // the companion's animation now and then
         if state.total != before { lastStep = now }
+        stepRate = stepRate * 0.8 + Double(min(50, state.total - before)) * 10 * 0.2               // steps a second, smoothed (the tick is 10 Hz)
         if state.season != lastSeason {
             lastSeason = state.season
             notify("weather", state.season.name + "이 왔어요", ["꽃이 피었어요", "햇볕이 쨍쨍해요", "단풍이 들었어요", "눈이 쌓여요"][state.season.rawValue] + " · 게임 속 \(seasonDays)일마다 계절이 바뀌어요")
@@ -144,7 +146,7 @@ final class WalkerView: NSView {
         if now.timeIntervalSince(lastSave) > 60 { save(nil) }
         updateStatus()
         frame(nil)
-        let busy: Bool = { switch screen { case .beats, .hatch, .evolve, .radar: true; default: false } }() || animating   // fights, shows and animations play at 30 fps, the rest at the tick's 10
+        let busy: Bool = { switch screen { case .beats, .hatch, .evolve, .radar: true; case .home, .menu: strolling(now); default: false } }() || animating   // fights, shows and animations play at 30 fps, the rest at the tick's 10
         if busy != (fast != nil) {
             fast?.invalidate(); fast = nil
             if busy { let t = Timer(timeInterval: 1.0 / 30, target: self, selector: #selector(frame(_:)), userInfo: nil, repeats: true); t.tolerance = 0.005; RunLoop.main.add(t, forMode: .common); fast = t }
@@ -155,6 +157,7 @@ final class WalkerView: NSView {
         let now = Date()
         if window?.isVisible == true { refreshPane(now) }
         guard window?.isVisible ?? true else { return }                                         // hidden in the menu bar: rules keep running, nothing to draw
+        stroll(now)
         let fb = compose(now)
         if fb.px != shown?.px || fb.col != shown?.col || fb.runs != shown?.runs || fb.flips != shown?.flips || fb.sprites != shown?.sprites || fb.pics != shown?.pics || fb.over != shown?.over || now.timeIntervalSince(pressedAt) < 0.3 { shown = fb; setNeedsDisplay(now.timeIntervalSince(pressedAt) < 0.3 ? bounds : lcdRect) }   // idle home = ~2 redraws a second
     }
@@ -305,8 +308,9 @@ final class WalkerView: NSView {
             NSGraphicsContext.saveGraphicsState()
             NSBezierPath(rect: NSRect(x: lcdRect.minX, y: lcdRect.minY, width: lcdRect.width, height: CGFloat(min(64, r.floor)) * PX)).addClip()
             NSGraphicsContext.current!.imageInterpolation = .none
-            let feet = NSPoint(x: lcdRect.minX + CGFloat(r.x + 16) * PX, y: lcdRect.minY + CGFloat(r.y + 32) * PX), k = s * r.scale   // its 80x80 frame stands on the run's feet (bottom-centre)
-            let a = playing(r), (ox, oy, w, h) = a.map { (CGFloat($0.x), CGFloat($0.y), CGFloat($0.w), CGFloat($0.h)) } ?? (0, 0, 80, 80)   // an animation frame: its box in the 80x80 frame
+            let feet = NSPoint(x: lcdRect.minX + CGFloat(r.x + 16) * PX + CGFloat(r.nudge) * s, y: lcdRect.minY + CGFloat(r.y + 32) * PX), k = s * r.scale   // its 80x80 frame stands on the run's feet (bottom-centre)
+            let a = playing(r), (ox0, oy, w, h) = a.map { (CGFloat($0.x), CGFloat($0.y), CGFloat($0.w), CGFloat($0.h)) } ?? (0, 0, 80, 80)   // an animation frame: its box in the 80x80 frame
+            let ox = r.flip ? 80 - ox0 - w : ox0                                                          // mirrored about the frame's middle
             let box = r.scale == 1 ? NSRect(x: snap(feet.x + (ox - 40) * s), y: snap(feet.y + (oy - 80) * s - CGFloat(r.bob) * s), width: w * s, height: h * s)
                                    : NSRect(x: feet.x + (ox - 40) * k, y: feet.y + (oy - 80) * k - CGFloat(r.bob) * s, width: w * k, height: h * k)
             spriteImage(r, l).draw(in: box, from: .zero, operation: .sourceOver, fraction: r.alpha, respectFlipped: true, hints: [.interpolation: NSImageInterpolation.none.rawValue])

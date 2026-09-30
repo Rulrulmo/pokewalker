@@ -24,6 +24,12 @@ extension FB {
         weatherFX(w, x + 1, y + 1, 40, 24, t, cave: a == .cave, behind: true)
         pic("route|frame", cx, cy, behind: true) { windowPic(84, 52) }
     }
+    /// Home: the course as a wide band, y 12 ..< 50 dots, for the companion to walk in (the sky, the scenery, the ground it walks on at y ~48; the weather over it).
+    mutating func homeScene(_ a: Art, weather w: Weather, t: Double, hour: Double, season: Season) {
+        let tb = lightBand(hour), grey = w != .sunny, g = lcds[lcdStyle].color ? "" : "|g"
+        pic("home|\(a)|\(season.rawValue)|\(tb)|\(grey)" + g, 96, 62, behind: true) { lcdReady(stagePic(a, season, tb, grey, 192, 76, [(-60, 52, 0.1, 0.1)])) }
+        weatherFX(w, 0, 12, 96, 38, t, cave: a == .cave, behind: true)
+    }
     /// Under a fight: an HGSS battle backdrop (the course's scenery pale on the horizon, the ground, a pad under each side; indoor = the Battle Tower's hall).
     /// With the old in-LCD HUD the stage is only y 14 ..< 50 (dots), so the backdrop is too. Pads: under the feet (at[s].y + 32), centred on at[s].x + 16.
     mutating func battleGround(_ at: [Side: (x: Int, y: Int)], art: Art, hour: Double, season: Season, weather: Weather, indoor: Bool) {

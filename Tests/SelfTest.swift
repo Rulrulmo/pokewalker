@@ -477,6 +477,12 @@ import AppKit
     v.press(4); let menuUp = on(v) { if case .menu(menuAt("포켓 레이더")) = $0 { return true }; return false } && v.compose(Date()).sprites.count == 1 && v.homeKey() == false; v.press(0)
     check(homeStays && menuUp && on(v) { if case .menu(menuAt("배틀 타워")) = $0 { return true }; return false }, "home: ● pats (♥), ▶ does nothing; the 메뉴 key opens the menu on the pane (the LCD stays home); ◀ goes round")
     v.press(4); check(on(v) { if case .home = $0 { return true }; return false } && v.homeKey() == true, "… the same key again: home"); v.press(4)
+    let sv = WalkerView(state: Walk()); sv.persist = false; sv.screen = .home
+    sv.strollX = 79.5; sv.strollRight = true; sv.lastStep = Date(); sv.strollAt = Date().addingTimeInterval(-0.2); sv.stroll(Date())
+    let turned = sv.strollX == 80 && !sv.strollRight, facesLeft = sv.compose(Date()).sprites.first?.flip == false
+    sv.strollRight = true; let facesRight = sv.compose(Date()).sprites.first?.flip == true
+    sv.lastStep = .distantPast; let x0 = sv.strollX; sv.strollAt = Date().addingTimeInterval(-0.2); sv.stroll(Date())
+    check(turned && facesLeft && facesRight && sv.strollX == x0, "home: the companion walks while steps come in, turns at the end (mirrored to face right), stands still when they stop")
     v.press(1); check(v.state.watts == 90 && on(v) { if case .radar = $0 { return true }; return false }, "radar costs 10W")
     v.screen = .radar(bush: 2, cursor: 0, since: Date().addingTimeInterval(-2), chain: 0)
     v.press(2); v.press(2); v.press(1)
