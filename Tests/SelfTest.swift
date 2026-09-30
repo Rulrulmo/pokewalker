@@ -749,6 +749,12 @@ import AppKit
     pt.screen = .box(-2, act: nil, confirm: false, detail: true); pt.gridTap(4404)
     check(idle && pt.state.caught.isEmpty && pt.state.box.last?.dex == 25 && pts { if case .say(_, .box(0, nil, false, false), _) = $0 { return true }; return false },
           "… the companion's own page has nothing to do; 상자로 보내기 moves one of the walker's into the box, picked there")
+    let pgv = WalkerView(state: { var s = Walk(); s.box = (1...31).map { Mon(dex: $0, level: 5, female: false) }; return s }()); pgv.persist = false
+    pgv.screen = .box(-1, act: nil, confirm: false); pgv.gridTap(4201); let pageOn = pgv.paneContent(Date()).grid?.page == 2
+    pgv.screen = .box(-1, act: nil, confirm: false); pgv.gridTap(4200); let pageRound = pgv.paneContent(Date()).grid?.page == 2
+    pgv.state.box = [Mon(dex: 1, level: 5, female: false)]; pgv.screen = .box(0, act: 1, confirm: true, detail: true); pgv.press(1)
+    check(pageOn && pageRound && pgv.state.box.isEmpty && { if case .say(_, .box(-1, nil, false, false), _) = pgv.screen { return true }; return false }(),
+          "포켓몬: from the row above the pager still turns the box's pages (◀ round to the last); letting the last one go picks the companion")
     pt.screen = .say(["W가 부족하다"], next: .menu(menuAt("포켓 레이더")), since: Date()); pt.menuTap(menuAt("트레이너 카드"))
     check(pts { if case .card(0) = $0 { return true }; return false }, "a click on a page still up under its message ends the message and counts")
     let tab = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48)!

@@ -5,10 +5,10 @@ extension WalkerView {
     /// Where a playing turn is right now: HP as of this moment, names before this beat's damage lands; pending = a side whose KO'd fighter
     /// hasn't had its faint yet (it stays on the stage through the recoil, drain, U-turn … beats in between).
     func beatState(_ now: Date) -> (hp: Battle, names: Battle, beat: Beat, u: Double, from: Battle, pending: Set<Side>)? {
-        guard case .beats(_, let beats, let since, let from) = screen else { return nil }
+        guard case .beats(let end, let beats, let since, let from) = screen else { return nil }
         var u = now.timeIntervalSince(since), i = 0
         while i < beats.count - 1, u >= beats[i].length { u -= beats[i].length; i += 1 }
-        var hp = from
+        var hp = from; hp.turnNo = end.turnNo                                                    // the turn these beats belong to (the opening's is 0: only its send-out is the trainer's intro)
         for (k, bt) in beats.enumerated() where k < i { hp.apply(bt) }
         let names = hp                                                                           // names before this beat lands
         hp.apply(beats[i])
@@ -125,7 +125,7 @@ extension WalkerView {
             let alive = s == .me ? b.mine[b.me].alive : b.theirs[b.it].alive                         // only a fainting one sinks behind its pad; a lunge isn't clipped
             let plain = s == .it && alive && shot?.glow == nil && !v.flash && { if case .ball = p { return false }; return true }()   // out and standing: HGSS plays its own animation once
             fb.sprite(s == .me ? mine : foe, a.x + v.dx, a.y + v.dy, back: s == .me, bob: s == .me ? f - 1 : f, flash: v.flash, floor: alive ? 64 : a.y + 32,
-                      anim: plain ? animT("foe \(b.seed) \(b.it)", foe.dex, now) : nil)   // ours bobs down: its cut-off back never lifts
+                      anim: plain ? animT("foe \(b.it)", foe.dex, now) : nil)   // ours bobs down: its cut-off back never lifts
             if let g = shot?.glow, shot?.side == s { fb.glow(g) }                                     // going into / coming out of a ball
         }
         if case .idle = p, foe.shiny == true, shown[.it]!.on {                                      // sparkles around it, from its head down

@@ -462,7 +462,7 @@ extension WalkerView {
             mask(s, "heal", rgb(208, 255, 200), alpha: pulse(v, 0.3))
         case .hurt(let s, _, let t):                                                            // what hurts it now
             let v = u / 0.9, c = aim(s)
-            if t.contains("독") { rise(.bubble, "poison", s, v, n: 6); mask(s, "poison", rgb(168, 72, 216), alpha: pulse(v, 0.5)) }
+            if t.contains("독의 데미지") { rise(.bubble, "poison", s, v, n: 6); mask(s, "poison", rgb(168, 72, 216), alpha: pulse(v, 0.5)) }
             else if t.contains("화상") { around(.flame, "fire", s, v, n: 4); mask(s, "burn", rgb(255, 96, 48), alpha: pulse(v, 0.45)) }
             else if t.contains("모래바람") {                                                     // sand blown across
                 let p = body(s)

@@ -35,8 +35,13 @@ extension WalkerView {
     func startTower(_ now: Date) {
         towerRefs = state.party().map { state.id($0.ref)! }; let p = state.party()                  // uids first, so the fighters carry them
         let f = state.towerFoes(&rng); var b = Battle(party: p.map(\.mon), trainer: f.trainer, foes: f.foes)
-        let from = b, beats = b.begin(weather: nil, &rng)
+        freshFight(); let from = b, beats = b.begin(weather: nil, &rng)
         towerRun = true; screen = .beats(b, beats, since: now, from: from)
+    }
+    /// A fight begins: its foes play their entry animations afresh, and the last fight's per-species effect masks are let go (they're rebuilt on demand).
+    func freshFight() {
+        animOn = nil
+        picStore = picStore.filter { !$0.key.hasPrefix("fx|mask|") }; picImages = picImages.filter { !$0.key.hasPrefix("fx|mask|") }
     }
     func radarWindow(_ chain: Int) -> Double { max(0.8, 2.0 - 0.25 * Double(chain)) }
     func notify(_ kind: String, _ title: String, _ body: String) {
@@ -162,7 +167,7 @@ extension WalkerView {
             screen = .dex(l[to(l.firstIndex(of: n) ?? 0, l.count)], filter: f, detail: detail)
         case .box(let i, _, _, let detail):                                                       // ◀ ▶: the companion, the walker's, then the box, round; rows and pages in the box
             let o = boxOrder, all = [-1] + state.caught.indices.map { -2 - $0 } + o, at = o.firstIndex(of: i)
-            let next = wrap ? all[to(all.firstIndex(of: i) ?? 0, all.count)] : at == nil ? (d > 0 ? o.first : nil) : d < 0 && d > -GridModel.perPage && at! + d < 0 ? -1 : o[to(at!, o.count)]
+            let next = wrap ? all[to(all.firstIndex(of: i) ?? 0, all.count)] : at == nil ? (o.isEmpty || d < 0 && !ends ? nil : abs(d) < GridModel.perPage ? o.first : o[to(0, o.count)]) : d < 0 && d > -GridModel.perPage && at! + d < 0 ? -1 : o[to(at!, o.count)]
             if let next { screen = .box(next, act: nil, confirm: false, detail: detail) }            // up from the box's top row: the companion
         default: return
         }
@@ -220,7 +225,7 @@ extension WalkerView {
                                  perfect: max(l == nil ? 0 : 3, Walk.chainPerfectIVs(chain)), &rng)   // chains raise 이로치 odds and sure 31s; legends have 3
                 if l == nil { m.female = s.female }                                                // the walker's slots fix the sex
                 var b = Battle(wild: m, companion: state.companion, chain: chain); state.see(m.dex)
-                let from = b, beats = b.begin(weather: state.weather, &rng); screen = .beats(b, beats, since: now, from: from)
+                freshFight(); let from = b, beats = b.begin(weather: state.weather, &rng); screen = .beats(b, beats, since: now, from: from)
             } else { screen = .say(chain > 0 ? ["빗나갔다...", "연쇄 끝 (\(chain))"] : ["아무것도", "없었다..."], next: .home, since: now) }
         case .battle(var b, let sel):
             let opts = battleMenu(b), n = opts.count
@@ -312,7 +317,7 @@ extension WalkerView {
                 if k != 1 { screen = .box(i, act: (act ?? 0) == 0 ? 1 : 0, confirm: true, detail: detail) }
                 else if act == 1 {
                     let p = boxOrder.firstIndex(of: i) ?? 0, name = monNames[state.box[i].dex], w = state.release(i), o = boxOrder   // then the one after it in the grid
-                    screen = .say([josa(name, "은", "는") + " 풀숲으로", "돌아갔다 (+\(w)W)"], next: .box(o.isEmpty ? 0 : o[min(p, o.count - 1)], act: nil, confirm: false, detail: detail && !o.isEmpty), since: now)
+                    screen = .say([josa(name, "은", "는") + " 풀숲으로", "돌아갔다 (+\(w)W)"], next: .box(o.isEmpty ? -1 : o[min(p, o.count - 1)], act: nil, confirm: false, detail: detail && !o.isEmpty), since: now)
                 }
                 else { screen = .box(i, act: nil, confirm: false, detail: detail) }
             } else if let a = act {                                                              // 함께 걷기 / 놓아주기 / 닫기 (the order: the grid's tabs)

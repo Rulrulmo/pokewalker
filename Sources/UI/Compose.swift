@@ -16,7 +16,7 @@ extension WalkerView {
         case .home, .menu:                                                                           // the menu is the pane's: the LCD stays home
             let f = now.timeIntervalSince(lastStep) < 3 ? half : Int(t) % 2        // steps coming in => walks twice as fast
             fb.sprite(me, 48, 16, bob: f, floor: 49, anim: animT("home", me.dex, now, start: false))   // = fb.mon(me, f, 32, 0), behind the ground line: a flyer's wings dip under it
-            if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { let y = max(0, 48 - (80 - spriteTop(me.dex)) / 2 - 9); fb.draw(bubble, 38, y, ballPal); fb.draw(emotes[e.kind], 41, y + 2, redPal) }   // by its head
+            if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { let y = max(0, 48 - (80 - spriteTop(me.dex)) / 2 - 9); fb.draw(bubble, 44, y, ballPal); fb.draw(emotes[e.kind], 47, y + 2, redPal) }   // by its head, clear of the course picture
             fb.course(state.here.art, 1, 22, weather: state.weather ?? .sunny, t: t, hour: state.hour, season: state.season)
             fb.text("\(state.watts)W", 1, 1, 2, small: true)
             for i in 0..<state.caught.count { fb.draw(ball, 1 + 8 * i, 13, ballPal) }

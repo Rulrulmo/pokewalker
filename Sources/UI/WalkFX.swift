@@ -206,7 +206,7 @@ extension FB {
     /// A Pokémon on the shows' spot (its feet on dot (48, 49)), scaled about its middle; tint = a silhouette in that colour.
     mutating func showMon(_ m: Mon, scale s: Double = 1, alpha: Double = 1, tint: UInt32? = nil, bob: Int = 0, anim u: Double? = nil) {
         let mid = Double(80 - spriteTop(m.dex)) / 4                                                      // its middle, in dots above its feet
-        sprite(m, 32, 17 - Int((mid * (1 - s)).rounded()), bob: bob, tint: tint.map { (0, $0) }, anim: u)
+        sprite(m, 32, 17 - Int((mid * (1 - s)).rounded()), bob: bob, tint: tint.map { (0, $0) }, floor: 50, anim: u)   // a wing's swing stays off the message row
         sprites[sprites.count - 1].scale = s; sprites[sprites.count - 1].alpha = alpha
     }
     /// A glow on (x, y) half-dots, cut off at the message row (y 100) so the light stays on the stage.
