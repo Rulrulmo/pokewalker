@@ -27,10 +27,12 @@ extension WalkerView {
             fb.text("Lv.\(me.level)", 11, 53, 2, small: true)
             if let e = state.egg { fb.homeEgg(close: e.left < 500, t: t) }                        // rocks when it's close
             fb.text("\(state.today)", 94, 52, 3, right: true)
-        case .radar(let b, let c, let since, let chain):
-            let u = now.timeIntervalSince(since), live = (1.5...(1.5 + radarWindow(chain))).contains(u)
-            fb.radarFX(live: live ? b : nil, cursor: c, u: u, t: t, season: state.season)
-            if chain > 0, u < 1.5 { fb.text("연쇄 \(chain)!", 0, 22, 3, center: true); if let n = chainNote { fb.text(n, 0, 33, 2, center: true, small: true) } }   // between the grass rows
+        case .radar(_, _, let since, let chain):                                                    // which patch and the cursor are the pane's; here, the companion waiting in the grass
+            let u = now.timeIntervalSince(since), window = radarWindow(chain), live = (1.5...(1.5 + window)).contains(u)
+            fb.radarFX(me, live: live ? u - 1.5 : nil, u: u, t: t, season: state.season)
+            if live { hpBar(&fb, 8, 59, 80, Int(((1.5 + window - u) * 1000).rounded()), Int(window * 1000)) }   // the time left to pick one
+            if chain > 0 { fb.text(u < 1.5 ? "연쇄 \(chain)!" : "연쇄 \(chain)", 2, 1, 3, small: u >= 1.5) }
+            if chain > 0, u < 1.5, let n = chainNote { fb.text(n, 2, 11, 2, small: true) }
         case .battle(let b, _) where sideOn, .moves(let b, _) where sideOn, .party(let b, _) where sideOn, .bagBattle(let b, _) where sideOn, .forfeit(let b, _) where sideOn:
             stage(&fb, b, now, .idle, hud: false)                                                   // the side panel carries names, HP, menus
         case .beats where sideOn:

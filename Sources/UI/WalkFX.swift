@@ -162,9 +162,9 @@ func grassKey(_ w: Int, _ h: Int, _ season: Season, _ f: Int, rustle: Bool, flip
 // MARK: - the shows
 extension FB {
     /// A tall-grass patch standing on (x, y) half-dots (its foot's centre), swaying (f 0...5); `live` = seconds it's been rustling: thrown about, leaves flying, a "!" popping up.
-    mutating func grass(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ season: Season, sway f: Int, flip: Bool = false, live: Double? = nil) {
+    mutating func grass(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ season: Season, sway f: Int, flip: Bool = false, live: Double? = nil, behind: Bool = false) {   // behind: under the sprites
         pic("w.shade|\(w - 6)", x, y - 1, behind: true) { shadePic(w - 6) }
-        guard let u = live else { pic(grassKey(w, h, season, f, rustle: false, flip: flip), x, y - h / 2) { grassPic(w, h, season, f, flip: flip) }; return }
+        guard let u = live else { pic(grassKey(w, h, season, f, rustle: false, flip: flip), x, y - h / 2, behind: behind) { grassPic(w, h, season, f, flip: flip) }; return }
         let r = Int(u * 14) % 4
         pic(grassKey(w, h, season, r, rustle: true, flip: flip), x, y - h / 2) { grassPic(w, h, season, r, rustle: true, flip: flip) }
         for i in 0..<7 where u >= Double(i) * 0.1 {                                                    // leaves thrown up and off in turn, round and round
@@ -175,17 +175,26 @@ extension FB {
         let pop = u < 0.12 ? u / 0.12 * 1.35 : u < 0.24 ? 1.35 - (u - 0.12) / 0.12 * 0.35 : 1                // "!": pops up, settles, then bobs
         pic("w.bang", x + w / 2 - 2, y - h + 6 - Int(7 * pop) - (u > 0.24 && Int(u * 4) % 2 == 0 ? 1 : 0), scale: pop) { bangPic }
     }
-    /// 포켓 레이더: four patches, the Radar's pulse at the start, the cursor; the live one (b) rustles from 1.5 s.
-    mutating func radarFX(live b: Int?, cursor c: Int, u: Double, t: Double, season: Season) {
-        for i in 0..<2 {                                                                               // two rings spreading from the middle
+    /// 포켓 레이더 on the LCD (the pane has the four patches to pick): the companion standing in the tall grass, the Radar's pulse spreading from it;
+    /// live = seconds since something turned up: the grass round it stirs and "!" pops over its head.
+    mutating func radarFX(_ me: Mon, live: Double?, u: Double, t: Double, season: Season) {
+        for k in 0..<5 { grass(14 + 41 * k, 88, 48, 36, season, sway: (Int(t * 5) + k * 2) % 6, flip: k % 2 == 1, behind: true) }   // the back row, behind it
+        for i in 0..<2 {                                                                               // two rings spreading from it
             let k = (u - 0.35 * Double(i)) / 0.9
-            if (0..<1).contains(k) { let r = 3 + Int(k * 30); pic("w.ring|\(r)", 96, 64, alpha: 1 - k) { ringPic(r * 4) } }
+            if (0..<1).contains(k) { let r = 3 + Int(k * 30); pic("w.ring|\(r)", 96, 80, alpha: 1 - k) { ringPic(r * 4) } }
         }
-        for k in 0..<4 {
-            let x = 44 + (k % 2) * 104, y = 46 + (k / 2) * 76
-            grass(x, y, 48, 36, season, sway: (Int(t * 5) + k * 2) % 6, flip: k == 1 || k == 2, live: k == b ? u - 1.5 : nil)
-            if k == c { pic("w.ptr|r", x - 33 + Int(t * 3) % 2, y - 16) { pointerPic(down: false) } }
+        sprite(me, 32, 22, bob: live == nil ? Int(t * 2) % 2 : 0)                                    // its feet at (48, 54): down in the grass
+        for k in 0..<4 {                                                                               // the front row, over its legs; round it, stirring once something's there
+            let x = 34 + 41 * k, near = k == 1 || k == 2
+            if let v = live, near {
+                let r = Int(v * 14) % 4
+                pic("w.shade|42", x, 123, behind: true) { shadePic(42) }
+                pic(grassKey(48, 36, season, r, rustle: true, flip: k == 2), x, 124 - 18) { grassPic(48, 36, season, r, rustle: true, flip: k == 2) }
+            } else { grass(x, 124, 48, 36, season, sway: (Int(t * 5) + k * 3) % 6, flip: k % 2 == 0) }
         }
+        guard let v = live else { return }
+        let head = 108 - (80 - spriteTop(me.dex)), pop = v < 0.12 ? v / 0.12 * 1.35 : v < 0.24 ? 1.35 - (v - 0.12) / 0.12 * 0.35 : 1   // "!": pops up, settles, then bobs
+        pic("w.bang", 116, max(12, head - 4) - Int(6 * pop) - (v > 0.24 && Int(v * 4) % 2 == 0 ? 1 : 0), scale: pop) { bangPic }
     }
     /// An egg picture standing on (x, y) half-dots, h px tall, rocking about its foot by `angle`.
     mutating func egg(_ key: String, _ x: Int, _ y: Int, _ h: Int, scale: Double = 1, angle: Double = 0, shade: Int = 0, _ make: () -> Pic) {
@@ -295,7 +304,7 @@ extension FB {
     for f in 0..<400 {                                                                                // 30 fps through each show, then the same again an hour on
         let u = Double(f % 200) / 30, t = u + (f < 200 ? 0 : 3600.3)
         var h = FB(); h.hatchFX(egg, u, bob: 0); var e = FB(); e.evolveFX(a, b, u, bob: 0)
-        var r = FB(); r.radarFX(live: u > 1.5 ? 1 : nil, cursor: f % 4, u: u, t: t, season: Season(rawValue: f % 4)!)
+        var r = FB(); r.radarFX(Mon(dex: 25, level: 5, female: false), live: u > 1.5 ? u - 1.5 : nil, u: u, t: t, season: Season(rawValue: f % 4)!)
         var d = FB(); d.homeEgg(close: true, t: t); d.cardEgg(close: true, t: t)
         for p in h.pics + e.pics + r.pics + d.pics { if f < 200 { keys.insert(p.key) } else { later.insert(p.key) } }
         for p in h.pics + e.pics {                                                                  // the lowest opaque row of each picture, on screen
