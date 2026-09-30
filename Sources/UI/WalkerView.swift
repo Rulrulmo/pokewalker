@@ -25,7 +25,7 @@ final class WalkerView: NSView {
     var clickCount = 1                                                     // the mouse event's, for touch(): a double-click's 2nd click never buys
     var paneAt = Date.distantPast                                          // when the pane's page was last refreshed
     var cardH = Layout.idle                                                  // the card's height now (card points): the page's
-    var statusOpen = UserDefaults.standard.bool(forKey: "statusOpen")      // the title row's ⌄: the status sheet under the band where no page is up
+    var statusOpen = settings.bool("statusOpen", false)                    // the title row's ⌄: the status sheet under the band where no page is up
     var hud: SideModel? = nil                                              // a fight's HP boxes, drawn over the LCD
     var titleShown = ""                                                    // the title row as last drawn: a change redraws it
     var anchorTop: CGFloat? = nil                                          // where the user put the card's top (screen y): a tall page lifts it off the Dock, the next short one drops it back
@@ -67,20 +67,15 @@ final class WalkerView: NSView {
         if key != titleShown { titleShown = key; setNeedsDisplay(NSRect(x: 0, y: 0, width: bounds.width, height: Layout.top * K)) }
     }
     /// The status sheet open or shut (the title row's chevron).
-    func toggleStatus() { statusOpen.toggle(); if persist { UserDefaults.standard.set(statusOpen, forKey: "statusOpen") }; refreshPane(Date(), force: true) }
+    func toggleStatus() { statusOpen.toggle(); if persist { settings.set("statusOpen", statusOpen) }; refreshPane(Date(), force: true) }
     required init?(coder: NSCoder) { fatalError() }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
 
-    static func counter() -> UInt32 {
-        [CGEventType.keyDown, .leftMouseDown, .rightMouseDown].reduce(UInt32(0)) { $0 &+ CGEventSource.counterForEventType(.combinedSessionState, eventType: $1) }
-    }
-    static func boot() -> Double { var tv = timeval(), n = MemoryLayout<timeval>.size; sysctlbyname("kern.boottime", &tv, &n, nil, 0); return Double(tv.tv_sec) }
-
     @objc func tick(_ sender: Any?) {
         let now = Date(), before = state.total
-        if state.sync(counter: WalkerView.counter(), boot: WalkerView.boot(), at: now) { levelled = true }
+        if state.sync(counter: host.counter(), boot: host.boot(), at: now) { levelled = true }
         perk(now, stepped: state.total != before)                                               // the companion's animation now and then
         if state.total != before { lastStep = now }
         stepRate = stepRate * 0.8 + Double(min(50, state.total - before)) * 10 * 0.2               // steps a second, smoothed (the tick is 10 Hz)

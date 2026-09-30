@@ -205,12 +205,12 @@ extension WalkerView {
         screen = .say(["\(r.count)마리를 놓아줬다", "+\(r.watts)W"], next: .home, since: Date()); save(nil)
     }
     @objc func testNotify(_ i: NSMenuItem) { notify("pet", josa(monNames[state.companion.dex], "이", "가") + " 인사해요", "알림이 이렇게 와요 · 지금 \(state.watts)W") }
-    @objc func toggleNotify(_ i: NSMenuItem) { let k = notifyKinds[i.tag].0; UserDefaults.standard.set(!notifyOn(k), forKey: "notify.\(k)") }
+    @objc func toggleNotify(_ i: NSMenuItem) { let k = notifyKinds[i.tag].0; settings.set("notify.\(k)", !notifyOn(k)) }
     /// Walker <-> menu bar. Hiding parks it on the home screen so the events (which wait for home) keep coming.
     @objc func toggleShown(_ sender: Any?) {
         guard let w = window else { return }
         if w.isVisible { if !inBattle { screen = .home }; w.orderOut(nil) } else { shown = nil; refreshPane(Date(), force: true); w.orderFrontRegardless() }   // a fight just waits while hidden; back at today's page and height
-        UserDefaults.standard.set(!w.isVisible, forKey: "hidden")
+        settings.set("hidden", !w.isVisible)
     }
     func updateStatus() {
         let s = "\(state.watts)W" + (state.egg.map { $0.left < 500 ? " ·알" : "" } ?? "")                 // watts: what the radar / dowsing spend
@@ -262,7 +262,7 @@ extension WalkerView {
     func sizeFits(_ size: CGFloat) -> Bool { SideView.tallest * size / 2 <= (window?.screen ?? NSScreen.main)?.visibleFrame.height ?? .infinity }
     @objc func setSize(_ item: NSMenuItem) {                     // keeps the top-left corner, as the card grows down
         guard sizeFits(CGFloat(item.tag)) else { NSSound.beep(); return }
-        SIZE = CGFloat(item.tag); UserDefaults.standard.set(item.tag, forKey: "px")
+        SIZE = CGFloat(item.tag); settings.set("px", item.tag)
         fitWindow(); shown = nil; needsDisplay = true
     }
     /// A frame pulled back inside a screen's visible area (the body is wide: a spot near an edge must not push it off).
@@ -271,8 +271,8 @@ extension WalkerView {
         var g = f; g.origin.x = min(max(g.minX, s.minX), s.maxX - g.width); g.origin.y = min(max(g.minY, s.minY), s.maxY - g.height); return g
     }
     func shellOpen(_ s: Shell) -> Bool { s.dex <= dexCount && (s.bp == 0 || (state.bought ?? []).contains(s.name)) }
-    @objc func setTheme(_ item: NSMenuItem) { guard shellOpen(shells[item.tag]) else { return }; theme = item.tag; UserDefaults.standard.set(theme, forKey: "shell"); needsDisplay = true }
-    @objc func setTextStyle(_ item: NSMenuItem) { smoothText = item.tag == 1; UserDefaults.standard.set(smoothText, forKey: "smoothText"); shown = nil; needsDisplay = true }
-    @objc func setLCD(_ item: NSMenuItem) { shown = nil; lcdStyle = item.tag; UserDefaults.standard.set(lcdStyle, forKey: "lcd"); needsDisplay = true }
-    @objc func setPaper(_ item: NSMenuItem) { shown = nil; paperStyle = item.tag; UserDefaults.standard.set(paperStyle, forKey: "paper"); needsDisplay = true }
+    @objc func setTheme(_ item: NSMenuItem) { guard shellOpen(shells[item.tag]) else { return }; theme = item.tag; settings.set("shell", theme); needsDisplay = true }
+    @objc func setTextStyle(_ item: NSMenuItem) { smoothText = item.tag == 1; settings.set("smoothText", smoothText); shown = nil; needsDisplay = true }
+    @objc func setLCD(_ item: NSMenuItem) { shown = nil; lcdStyle = item.tag; settings.set("lcd", lcdStyle); needsDisplay = true }
+    @objc func setPaper(_ item: NSMenuItem) { shown = nil; paperStyle = item.tag; settings.set("paper", paperStyle); needsDisplay = true }
 }

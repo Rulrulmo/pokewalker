@@ -454,6 +454,22 @@ import AppKit
     w.owned = Array(1...10); check(w.unlocked(20) && courses[20].name == "노란 숲", "10 caught -> 노란 숲")
     check(monNames.count == 494 && monTypes.count == 494 && monNames[25] == "피카츄", "493 names + types")
     check(hgssData.count == 493 * 6490, "hgss.bin in the bundle")
+    func hex(_ s: String) -> Data { let c = Array(s); return Data(stride(from: 0, to: c.count, by: 2).map { UInt8(String(c[$0...$0 + 1]), radix: 16)! }) }
+    var lcg = 1, ab: [UInt8] = []; for _ in 0..<256 { lcg = (lcg * 1103515245 + 12345) & 0x7fffffff; ab.append(lcg >> 16 & 1 == 0 ? 97 : 98) }   // a's and b's: zlib picks a dynamic block
+    check(inflate(hex("010a00f5ff506f6b6557616c6b6572")) == Array("PokeWalker".utf8) && inflate(hex("cb48cdc9c957c840903a0ae58939d9a9458a00")) == Array("hello hello hello, walker!".utf8)
+          && inflate(hex("000300fcff616263cb48cdc9c90700")) == Array("abchello".utf8)
+          && inflate(hex("558e890d003008026785fd87a8b9421f6d0251844a9e923528f8801841987fb3fdb614ce96c2c891e6f0ed421d8e7776bd8bb76f46ec9d7f5ee9614dafbc04c54393dcc502")) == ab
+          && inflate(hex("cb48cdc9c957c840")) == nil && inflate(hex("010a00f5fe506f6b6557616c6b6572")) == nil, "inflate: stored, fixed with copies, two blocks, dynamic; cut short or a bad LEN => nil")
+    #if canImport(Darwin)
+    let raw = [ab, Array(String(repeating: "피카츄 이브이 리자몽 ", count: 40).utf8), (0..<5000).map { UInt8(truncatingIfNeeded: $0 * $0 / 7) }].map { Data($0) }
+    check(raw.allSatisfy { p in (try? (p as NSData).compressed(using: .zlib)).map { inflate($0 as Data) == [UInt8](p) } == true }, "inflate: NSData's own DEFLATE round-trips")
+    var blocks = 0, differ: [String] = []
+    for (f, a) in [("anims", animData), ("walk", walkData)] { for d in 1...493 { if let b = block(a, d) {
+        blocks += 1; let ns = (try? (b as NSData).decompressed(using: .zlib)).map { [UInt8]($0 as Data) }
+        if ns == nil || inflate(b) != ns { differ.append("\(f) \(d)") }
+    } } }
+    check(blocks > 0 && differ.isEmpty, "inflate: every species' anims.bin and walk.bin block unpacks as NSData does", "\(blocks) blocks, differ \(differ)")
+    #endif
     check(iconData.count == 493 * 557 && (1...493).allSatisfy { d in (0..<1024).filter { iconPixel(d, $0 % 32, $0 / 32) != 0 }.count >= 20 }, "icons.bin: a box icon for every species")
     func opaque(_ d: Int, back: Bool) -> [(x: Int, y: Int)] { (0..<80).flatMap { y in (0..<80).map { (x: $0, y: y) } }.filter { spritePixel(d, back: back, $0.x, $0.y, shiny: false) != 0 } }
     var off: [Int] = []                                                                    // every frame stands on row 79; every shiny differs on 5%+ of it (422/423: PokeAPI's copies)

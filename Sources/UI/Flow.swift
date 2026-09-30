@@ -1,5 +1,4 @@
 import AppKit
-import UserNotifications
 // What the buttons and taps do on each screen, and how a fight ends.
 
 extension WalkerView {
@@ -46,14 +45,7 @@ extension WalkerView {
     func radarWindow(_ chain: Int) -> Double { max(0.8, 2.0 - 0.25 * Double(chain)) }
     func notify(_ kind: String, _ title: String, _ body: String) {
         guard persist, notifyOn(kind) else { return }
-        if useOsascript {                                                                        // shows as "스크립트 편집기" in Notification Center
-            func q(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\"" }
-            let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            p.arguments = ["-e", "display notification \(q(body)) with title \(q("PokeWalker")) subtitle \(q(title))"]
-            try? p.run(); return
-        }
-        let c = UNMutableNotificationContent(); c.title = title; c.body = body
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
+        host.notify(title, body)
     }
     @objc func save(_ sender: Any?) { guard persist else { return }; Store.save(state); lastSave = Date() }
     /// The next move waiting in state.learning: straight in with a free slot, else the forget-one screen.
@@ -79,7 +71,7 @@ extension WalkerView {
             screen = .say(["전설의 " + monNames[m.dex] + "!", "Lv.\(m.level) · 워커에 왔다"], next: back, since: now)
             notify("unlock", "전설의 \(monNames[m.dex])", "Lv.\(m.level)이 워커에 왔어요")
         case .shell(let s)?:
-            if let t = shells.firstIndex(where: { $0.name == s }) { theme = t; if persist { UserDefaults.standard.set(t, forKey: "shell") } }   // wear it straight away
+            if let t = shells.firstIndex(where: { $0.name == s }) { theme = t; if persist { settings.set("shell", t) } }   // wear it straight away
             screen = .say(["기기 색", s + " 획득!"], next: back, since: now)
         case nil: screen = .say([bp ? "BP가 부족하다" : "W가 부족하다"], next: back, since: now); return
         }

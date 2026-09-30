@@ -4,7 +4,7 @@ import AppKit
 // MARK: - pixels
 /// HGSS battle sprites (tools/gen.py): per species 15 normal + 15 shiny RGB, then front and back 80x80 at 4 bpp; index 0 = transparent.
 let hgssData: Data = {
-    guard let u = Bundle.main.url(forResource: "hgss", withExtension: "bin"), let d = try? Data(contentsOf: u), d.count == 493 * 6490 else { return Data(count: 493 * 6490) }
+    guard let d = resource("hgss.bin"), d.count == 493 * 6490 else { return Data(count: 493 * 6490) }
     return d
 }()
 /// 0 = transparent, else 0xFFRRGGBB.
@@ -100,7 +100,7 @@ struct PicRun: Equatable { var key: String; var x, y: Int; var scale = 1.0, alph
 let frameNames = ["egg", "acetrainer-gen4", "acetrainerf-gen4", "veteran-gen4", "veteranf", "lady-gen4", "hiker-gen4", "scientist-gen4", "blackbelt-gen4",
                   "battlegirl-gen4", "psychic-gen4", "psychicf-gen4", "dragontamer", "schoolkid-gen4", "pokemonranger-gen4", "pokemonrangerf-gen4"]
 let frameData: Data = {
-    guard let u = Bundle.main.url(forResource: "frames", withExtension: "bin"), let d = try? Data(contentsOf: u), d.count == frameNames.count * 3245 else { return Data(count: frameNames.count * 3245) }
+    guard let d = resource("frames.bin"), d.count == frameNames.count * 3245 else { return Data(count: frameNames.count * 3245) }
     return d
 }()
 /// A frame as a picture (for fb.pic): "egg", or a trainer's sprite name (see trainerFrame).
@@ -125,7 +125,7 @@ func trainerFrame(_ trainer: String) -> String {
 }
 /// The Gen IV box icons (tools/gen.py): per species 15 RGB, then 32x32 at 4 bpp; index 0 = transparent.
 let iconData: Data = {
-    guard let u = Bundle.main.url(forResource: "icons", withExtension: "bin"), let d = try? Data(contentsOf: u), d.count == 493 * 557 else { return Data(count: 493 * 557) }
+    guard let d = resource("icons.bin"), d.count == 493 * 557 else { return Data(count: 493 * 557) }
     return d
 }()
 func iconPixel(_ dex: Int, _ x: Int, _ y: Int) -> UInt32 {
@@ -156,19 +156,17 @@ let legendDex = Set(courses.flatMap(\.legends))
 let spark = art(["__#__", "__#__", "##:##", "__#__", "__#__"])
 let sparkPal = [rgb(255, 236, 120), rgb(255, 236, 120), rgb(255, 250, 200), rgb(250, 190, 40)]
 
-/// Galmuri (OFL, a pixel font drawn after the Nintendo DS system font) at its native sizes, so every glyph lands on whole dots.
-let fontsReady: Bool = {
-    for f in ["Galmuri9", "Galmuri7"] { if let u = Bundle.main.url(forResource: f, withExtension: "ttf") { CTFontManagerRegisterFontsForURL(u as CFURL, .process, nil) } }
-    return true
-}()
+/// Galmuri (OFL, a pixel font drawn after the Nintendo DS system font) at its native sizes, so every glyph lands on whole dots: 9 at 10 px, 7 at 8 px, from the bundled files.
+@MainActor let galmuri: [CTFont?] = [("Galmuri9", 10.0), ("Galmuri7", 8.0)].map { f, size in
+    resource(f + ".ttf").flatMap { CTFontManagerCreateFontDescriptorFromData($0 as CFData) }.map { CTFontCreateWithFontDescriptor($0, size, nil) }
+}
 @MainActor var textCache: [String: [[Bool]]] = [:]
 /// 11 rows (Galmuri9 10 px) or, small, 9 rows (Galmuri7 8 px); baseline one row up from the bottom.
 @MainActor func textDots(_ s: String, small: Bool = false) -> [[Bool]] {
     let key = (small ? "s|" : "m|") + s
     if let t = textCache[key] { return t }
-    _ = fontsReady
     let size: CGFloat = small ? 8 : 10, h = small ? 9 : 11
-    let font = NSFont(name: small ? "Galmuri7" : "Galmuri9", size: size) ?? .systemFont(ofSize: size)
+    let font: AnyObject = galmuri[small ? 1 : 0] ?? NSFont.systemFont(ofSize: size)
     let line = CTLineCreateWithAttributedString(NSAttributedString(string: s, attributes: [.font: font, NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true]))
     let w = max(1, Int(ceil(CTLineGetTypographicBounds(line, nil, nil, nil))))
     var px = [UInt8](repeating: 0, count: w * h)
@@ -181,7 +179,7 @@ let fontsReady: Bool = {
     textCache[key] = t; return t
 }
 /// LCD text: smooth system-font text laid over the dot screen (default), or the old dot font. Sprites, pictures, icons stay dots either way.
-@MainActor var smoothText = UserDefaults.standard.object(forKey: "smoothText") as? Bool ?? true
+@MainActor var smoothText = settings.bool("smoothText", true)
 @MainActor func lcdFont(_ small: Bool) -> NSFont { .systemFont(ofSize: (small ? 6.5 : 8) * PX, weight: small ? .regular : .medium) }
 /// A string's width in LCD dots, in whichever text style is on (layout, centring and tap targets all use this).
 @MainActor func textWidth(_ s: String, small: Bool = false) -> Int {

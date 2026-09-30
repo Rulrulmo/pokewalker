@@ -3,7 +3,7 @@ import AppKit
 
 /// 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none), then per species a raw-DEFLATE block: x, y (int16), w, h, n (uint8),
 /// n x uint16 ms, n frames w x h at 4 bpp (hgss.bin's colour slots; 0 = clear).
-let animData: Data = Bundle.main.url(forResource: "anims", withExtension: "bin").flatMap { try? Data(contentsOf: $0, options: .mappedIfSafe) } ?? Data()
+let animData = resource("anims.bin") ?? Data()
 /// One species' animation: its frames' box in the sprite's 80x80 frame (top-left x, y: may be < 0 or past 79: a jump, a stretch), each frame's time.
 struct Anim {
     let dex, x, y, w, h: Int, ms: [Int]
@@ -29,11 +29,9 @@ struct Anim {
 @MainActor func anim(_ dex: Int) -> Anim? {
     if let a = animCache[dex] { return a }
     if animCache.count >= 8 { animCache.removeAll() }                                        // one species a page: a handful is plenty
-    func off(_ i: Int) -> Int { Int(animData[i * 4]) | Int(animData[i * 4 + 1]) << 8 | Int(animData[i * 4 + 2]) << 16 | Int(animData[i * 4 + 3]) << 24 }
     var a: Anim? = nil
-    if (1...493).contains(dex), animData.count > 494 * 4, off(dex - 1) < off(dex), off(dex) <= animData.count,
-       let d = try? (animData.subdata(in: off(dex - 1)..<off(dex)) as NSData).decompressed(using: .zlib), d.length >= 7 {
-        let u = [UInt8](d as Data), w = Int(u[4]), h = Int(u[5]), n = Int(u[6]), p = 7 + 2 * n
+    if let u = block(animData, dex).flatMap(inflate), u.count >= 7 {
+        let w = Int(u[4]), h = Int(u[5]), n = Int(u[6]), p = 7 + 2 * n
         if n > 0, u.count >= p + n * w * h / 2 {
             a = Anim(dex: dex, x: Int(Int16(bitPattern: UInt16(u[0]) | UInt16(u[1]) << 8)), y: Int(Int16(bitPattern: UInt16(u[2]) | UInt16(u[3]) << 8)), w: w, h: h,
                      ms: (0..<n).map { Int(u[7 + 2 * $0]) | Int(u[8 + 2 * $0]) << 8 }, bytes: u, start: p)

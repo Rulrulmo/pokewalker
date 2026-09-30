@@ -3,6 +3,7 @@ import UserNotifications
 // Launch: --selftest, or the menu-bar app with its floating device.
 
 // MARK: - app
+settings = UserDefaults.standard; host = MacHost()                                             // before anything reads a setting (the look's globals) or counts steps
 if CommandLine.arguments.contains("--selftest") { exit(selftest() ? 0 : 1) }
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
@@ -39,7 +40,7 @@ if let b = statusItem?.button {
     b.toolTip = "PokeWalker — 클릭: 보이기/숨기기 · 우클릭: 메뉴"
 }
 view.state.dex()
-view.levelled = view.state.sync(counter: WalkerView.counter(), boot: WalkerView.boot(), at: Date())      // steps typed while the app was quit (same login) count
+view.levelled = view.state.sync(counter: host.counter(), boot: host.boot(), at: Date())   // steps typed while the app was quit (same login) count
 view.save(nil)
 view.refreshPane(Date(), force: true)                          // the page it opens on (the status sheet, if it was left open): no jump after it shows
 let size = view.frame.size
@@ -60,7 +61,7 @@ do {                                                                            
     panel.setFrame(WalkerView.onScreen(NSRect(x: top.x, y: top.y - size.height, width: size.width, height: size.height), in: screen?.visibleFrame), display: false)
     view.anchorTop = top.y
 }
-panel.orderFrontRegardless(); UserDefaults.standard.set(false, forKey: "hidden")               // a launch always shows it: a hidden walker whose menu-bar icon is hidden too could never come back
+panel.orderFrontRegardless(); settings.set("hidden", false)                                    // a launch always shows it: a hidden walker whose menu-bar icon is hidden too could never come back
 view.sideOn = true
 panel.makeFirstResponder(view)
 

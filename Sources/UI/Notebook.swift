@@ -3,9 +3,9 @@ import AppKit
 // the companion as a die-cut sticker (its white rim follows its HGSS animation), the walker's catches and the egg as small stickers, a desk calendar for the season.
 // No numbers: those are the 상태 sheet's. All pictures at sprite resolution from a finite set of keys; a frame only places them.
 
-/// The 수첩 배경 menu (UserDefaults "paper"): the page under everything on home.
+/// The 수첩 배경 menu (setting "paper"): the page under everything on home.
 let paperNames = ["점 격자 수첩", "모눈 노트", "줄 노트", "크라프트지", "코르크 보드", "체크 무늬 천"]
-@MainActor var paperStyle = min(max(UserDefaults.standard.integer(forKey: "paper"), 0), paperNames.count - 1)
+@MainActor var paperStyle = min(max(settings.int("paper", 0), 0), paperNames.count - 1)
 /// The polaroid round courseBox (half-dots): 4 px of white round the photo, 12 under it.
 let polaroid = (x: 2 * courseBox.x - 4, y: 2 * courseBox.y - 4, w: 2 * courseBox.w + 8, h: 2 * courseBox.h + 16)
 let stickerFeet = (x: 148, y: 114)                                                  // the big companion's feet (half-dots): the widest sprite and its rim still clear the right bezel

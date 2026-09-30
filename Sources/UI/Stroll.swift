@@ -4,7 +4,7 @@ import AppKit
 
 /// The HGSS following Pokémon (tools/gen.py walk.bin): 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none), then per species a
 /// raw-DEFLATE block: size (32, or 64 for the big ones), 15 normal + 15 shiny RGB, then left, right, down x 4 frames, size x size at 4 bpp.
-let walkData: Data = Bundle.main.url(forResource: "walk", withExtension: "bin").flatMap { try? Data(contentsOf: $0, options: .mappedIfSafe) } ?? Data()
+let walkData = resource("walk.bin") ?? Data()
 struct WalkSprite {
     let size: Int, bytes: [UInt8]
     /// Direction 0 left, 1 right, 2 down (facing us); frame 0...3.
@@ -22,11 +22,9 @@ struct WalkSprite {
 @MainActor func walkSprite(_ dex: Int) -> WalkSprite? {
     if let w = walkCache[dex] { return w }
     if walkCache.count >= 8 { walkCache.removeAll() }
-    func off(_ i: Int) -> Int { Int(walkData[i * 4]) | Int(walkData[i * 4 + 1]) << 8 | Int(walkData[i * 4 + 2]) << 16 | Int(walkData[i * 4 + 3]) << 24 }
     var w: WalkSprite? = nil
-    if (1...493).contains(dex), walkData.count > 494 * 4, off(dex - 1) < off(dex), off(dex) <= walkData.count,
-       let d = try? (walkData.subdata(in: off(dex - 1)..<off(dex)) as NSData).decompressed(using: .zlib) {
-        let u = [UInt8](d as Data), size = Int(u.first ?? 0)
+    if let u = block(walkData, dex).flatMap(inflate) {
+        let size = Int(u.first ?? 0)
         if size > 0, u.count >= 91 + 12 * size * size / 2 { w = WalkSprite(size: size, bytes: u) }
     }
     walkCache[dex] = w; return w
