@@ -145,6 +145,22 @@ Mac엔 만보기가 없으니 **키 누름·마우스 클릭 1회 = 1걸음**. �
   - 통신교환: 그 포켓몬과 함께 걷는 중 **커넥트** = 통신 (필요한 도구는 가방에).
   - 진화는 되돌리거나 취소할 수 없음(B 캔슬 없음). 껍질몬(Shedinja)은 없음.
 
+## 그림 · 데이터 출처 (`tools/gen.py`가 받아서 `tools/.cache`에 캐시, 결과만 커밋)
+
+| 무엇 | 어디서 | 결과 |
+|---|---|---|
+| HGSS 배틀 스프라이트(앞·뒤, 일반·이로치) | PokeAPI sprites — `sprites/pokemon/versions/generation-iv/heartgold-soulsilver/{n}.png`, `shiny/`, `back/`, `back/shiny/` (422·423 이로치는 `platinum/` 앞모습) | `hgss.bin` |
+| 4세대 박스 아이콘 | PokeAPI sprites — `.../generation-iv/icons/{n}.png` | `icons.bin` |
+| HGSS 등장 애니메이션(APNG) | PokeAPI sprites — `.../heartgold-soulsilver/animated/{n}.png` (`shiny/`도 있음) | `anims.bin` |
+| HGSS 알 | PokeAPI sprites — `.../heartgold-soulsilver/egg.png` | `frames.bin` |
+| 배틀 타워 트레이너(4세대) | Pokémon Showdown — `https://play.pokemonshowdown.com/sprites/trainers/<이름>.png` (acetrainer-gen4, veteranf, dragontamer …, 목록은 gen.py) | `frames.bin` |
+| HGSS 따라 걷는 포켓몬(필드 걷기 도트, 4방향 × 4프레임) | GitHub [teobz/pkmn-hgss-animated-overworld-sprites](https://github.com/teobz/pkmn-hgss-animated-overworld-sprites) — `APNG/by-direction/{left,right,down,up}/{regular,shiny}/{nnn}_{shiny_}{방향}.png` (도감 번호 3자리, 암컷·폼 별도) | `walk.bin` |
+| 코스(포켓몬·도구·확률) | Serebii — `https://www.serebii.net/heartgoldsoulsilver/pokewalker-area.shtml` | `Data.swift` |
+| 이름·타입·기술·특성·성격·진화·종족값 등 | PokeAPI CSV — `https://raw.githubusercontent.com/PokeAPI/pokeapi/master/data/v2/csv/*.csv` | `Data.swift` · `BattleData.swift` |
+| 글꼴 Galmuri9·Galmuri7 | npm `galmuri` (jsDelivr), SIL OFL | `Resources/fonts/` |
+
+포켓몬을 더 넣을 땐(494번~) 모두 도감 번호로 되어 있어서 gen.py의 `N`과 SRC 범위, Swift 쪽 493 상수만 늘리면 됨 — 다만 필드 걷기 도트 모음은 493번까지뿐.
+
 ## 파일
 
 | 경로 | 내용 |
@@ -154,9 +170,9 @@ Mac엔 만보기가 없으니 **키 누름·마우스 클릭 1회 = 1걸음**. �
 | `Sources/UI/` | AppKit: `WalkerView` 기기 뷰(틱·입력·그리기) / `Flow` 버튼·터치 처리 / `Compose` 화면별 LCD 그리기 / `BattleView` 배틀 연출·HUD·패널 모델 / `Menu` 우클릭 메뉴 / `SidePanel` 패널 페이지(배틀·도감·포켓몬(상자)·포켓몬 상세·상점·메뉴·상태) / `Pixels` 스프라이트·폰트·프레임버퍼 / `Device` 기기 크기·색·LCD |
 | `Sources/App/main.swift` | 실행: `--selftest` 또는 메뉴 막대 앱 |
 | `Sources/Data/` | **생성됨** (`tools/gen.py`) — `Data.swift` 493종 이름·타입·성장 곡선·4세대 종족값·레벨업 기술·상성·진화·35코스·알 풀 / `BattleData.swift` 기술 467개·특성·성격·노력치·몸무게·성비 |
-| `Resources/` | **생성됨** `hgss.bin`(493종 × 앞·뒤 80×80, 4bpp + 종별 일반/이로치 15색 팔레트) · `icons.bin`(4세대 박스 아이콘 32×32) · `frames.bin`(HGSS 알 + 4세대 트레이너 15명, Showdown) · `anims.bin`(493종 HGSS 등장 애니메이션, 종별 raw deflate) / `fonts/` Galmuri9·Galmuri7 (이민서, SIL OFL 1.1 — `fonts/OFL.md`) |
+| `Resources/` | **생성됨** `hgss.bin`(493종 × 앞·뒤 80×80, 4bpp + 종별 일반/이로치 15색 팔레트) · `icons.bin`(4세대 박스 아이콘 32×32) · `frames.bin`(HGSS 알 + 4세대 트레이너 15명, Showdown) · `anims.bin`(493종 HGSS 등장 애니메이션, 종별 raw deflate) · `walk.bin`(493종 HGSS 필드 걷기 도트 좌·우·앞 × 4프레임, 일반·이로치) / `fonts/` Galmuri9·Galmuri7 (이민서, SIL OFL 1.1 — `fonts/OFL.md`) |
 | `Tests/SelfTest.swift` | `PokeWalker --selftest` (334 checks, 그림 파일마다 자체 검사 포함) — 규칙·배틀(데미지 공식은 Bulbapedia 예시 수치로, 특성·기술 20여 개는 한 기술씩) · 데이터 · 무작위 배틀 300판 + 실제 뷰를 버튼·패널 클릭·키로 조작하는 흐름 검사(세이브는 건드리지 않음). 빌드할 때마다 돌고, 실패하면 빌드 실패 |
-| `tools/gen.py` | `Sources/Data/`·`Resources/`를 원본(PokeAPI HGSS 스프라이트·CSV, Serebii)에서 재생성. Pillow 필요 |
+| `tools/gen.py` | `Sources/Data/`·`Resources/`를 원본(위 "그림 · 데이터 출처")에서 재생성. Pillow 필요 |
 
 세이브: `~/Library/Application Support/PokeWalker/state.json` (+ `.bak`, 손상 시 `state.corrupt-*.json`). 창 위치·크기·색은 `defaults dev.khmin.pokewalker`.
 

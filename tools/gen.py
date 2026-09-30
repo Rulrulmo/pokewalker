@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Regenerates Sources/Data/{Data,BattleData}.swift + Resources/{hgss,icons,frames,anims}.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
+"""Regenerates Sources/Data/{Data,BattleData}.swift + Resources/{hgss,icons,frames,anims,walk}.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
 
-Sources (cached in tools/.cache, not committed):
-  - PokeAPI HGSS battle sprites, front + back, normal + shiny: same pixels, other palette, so pixel pairs give each species' normal -> shiny map.
-  - PokeAPI Gen IV icons (the HGSS box / party icons, 32x32) for the 도감 and 상자 grids.
-  - PokeAPI HGSS animated fronts (APNG): each species' own entry animation.
+Sources (cached in tools/.cache, not committed; every URL is in SRC below — README "그림 · 데이터 출처" has the same list):
+  - PokeAPI sprites (raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/...):
+      heartgold-soulsilver/{n}.png, shiny/{n}.png, back/{n}.png, back/shiny/{n}.png  HGSS battle sprites -> hgss.bin (same pixels, other palette:
+        pixel pairs give each species' normal -> shiny map); platinum/{,shiny/}422|423.png (HGSS's shiny 422/423 are copies of the normal)
+      icons/{n}.png                                    Gen IV box / party icons (32x32) -> icons.bin (도감 / 포켓몬 grids)
+      heartgold-soulsilver/animated/{n}.png            HGSS entry animations (APNG; shiny/ too) -> anims.bin
+      heartgold-soulsilver/egg.png                     the HGSS egg -> frames.bin
+  - Pokémon Showdown trainer sprites: play.pokemonshowdown.com/sprites/trainers/<name>.png (Gen IV rips) -> frames.bin (tower trainers)
+  - HGSS following Pokémon (overworld walking, 4 frames a direction): github.com/teobz/pkmn-hgss-animated-overworld-sprites,
+      APNG/by-direction/{left,right,down,up}/{regular,shiny}/{nnn}_{shiny_}{dir}.png (dex 3 digits) -> walk.bin
   - Serebii's Pokéwalker course page: per course 6 Pokémon (groups A/B/C x 2) + 10 items, with min steps and chances.
-  - PokeAPI CSVs: Korean names, Gen IV types (pokemon_types_past overrides the Fairy retcon).
+  - PokeAPI CSVs (raw.githubusercontent.com/PokeAPI/pokeapi/master/data/v2/csv/): Korean names, Gen IV types (pokemon_types_past overrides
+      the Fairy retcon), moves, abilities, natures, evolutions, stats... (the list is in SRC).
+  New species beyond 493: every table above is by national dex, so raising N and the SRC ranges (plus the Swift constants that assume 493)
+  is the whole job — the sources above cover later generations too, except walk.bin (the overworld set stops at 493).
 
 The walker's own draw: for each of the 3 carried Pokémon, rarest first, "steps >= min and rand(100) < chance" wins, else the
 next; the commonest is the fallback. Serebii prints the resulting band percentages; chance = the slot's % in the first band
