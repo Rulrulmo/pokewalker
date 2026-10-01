@@ -440,7 +440,7 @@ extension Walker {
     /// 홈 (and the other screens): where, the companion, today, then egg / tower / totals / dex.
     func statusModel() -> StatusModel {
         var m = state.companion
-        if case .evolve(let from, _, let since) = screen, Date().timeIntervalSince(since) < 4.4 { m = from }   // no spoiler before the LCD's reveal
+        if case .evolve(let from, _, let since) = screen, from.uid == m.uid, Date().timeIntervalSince(since) < 4.4 { m = from }   // no spoiler before the LCD's reveal (the companion's own)
         let t = expTable[growthRate[m.dex]], lo = t[m.level], hi = t[min(100, m.level + 1)]
         let exp: CGFloat = m.level >= 100 || hi <= lo ? 1 : CGFloat(m.points - lo) / CGFloat(hi - lo)
         return StatusModel(dex: m.dex, name: (m.shiny == true ? "★ " : "") + monNames[m.dex], sex: sexMark(m).trimmingCharacters(in: .whitespaces), level: "Lv.\(m.level)",

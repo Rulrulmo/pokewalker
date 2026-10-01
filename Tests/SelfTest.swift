@@ -851,6 +851,15 @@ import AppKit                                                                   
     check(capUse?.contains("고르기") == true && trainPage?.sel == 0 && trainPage?.go != nil && nw.state.companion.effectiveIVs[0] == 31 && nw.state.count("은색병뚜껑") == 0, "은색병뚜껑: 도구 → pick a stat → 특훈")
     nw.state.box = [Mon(dex: 19, level: 8, female: false), Mon(dex: 19, level: 3, female: false), Mon(dex: 19, level: 5, female: false)]
     nw.screen = .box(0, act: 0, confirm: true, detail: true); check(nw.paneContent(Date()).mon?.dupes == 2, "놓아줄까? also offers 중복 n마리 (that species' spares)")
+    // 1.4: the walker's ones evolve too (after a fight they levelled in; at launch if they're already past it)
+    let ev = Walker(state: { var s = Walk(); s.caught = [Mon(dex: 16, level: 17, female: false), Mon(dex: 19, level: 25, female: false)]; return s }()); ev.persist = false; ev.rng = Seeded(s: 5)
+    ev.partyRefs = [ev.state.id(-1)!, ev.state.id(-2)!]
+    var evB = Battle(wild: rat, party: [ev.state.companion, ev.state.caught[0]]); var evUp = evB.mine[1].mon; _ = evUp.gainBattleExp(evUp.points); evB.mine[1].mon = evUp
+    _ = ev.after(evB, .won, Date()); ev.screen = .home; let evQueued = ev.state.evolving?.count == 1; ev.tick(Date())
+    let evShow: Bool = { if case .evolve(let f, let t, _) = ev.screen { return f.dex == 16 && t.dex == 17 }; return false }()
+    check(evQueued && evShow && ev.state.caught[0].dex == 17 && ev.state.companion.dex == 25 && ev.state.evolving == nil, "a walker's 구구 that levels past 18 in a fight evolves once home (the companion stays)")
+    ev.screen = .home; ev.queueReadyEvolutions(); let evLate = ev.state.evolving?.count == 1; ev.tick(Date())
+    check(evLate && { if case .evolve(_, let t, _) = ev.screen { return t.dex == 20 }; return false }() && ev.state.caught[1].dex == 20, "at launch: a walker's 꼬렛 already past 20 evolves at home")
     pt.screen = .menu(menuAt("포켓몬")); pt.press(1); let g0 = pt.paneContent(Date()).grid
     check(pts { if case .box(-1, nil, false, false) = $0 { return true }; return false } && g0?.party.map(\.dex) == [25, 16] && g0?.partySel == 0 && g0?.items == 1
           && pt.paneContent(Date()).height == 472, "포켓몬: the companion (picked first) and the walker's in a row over the box, then the items' chip")

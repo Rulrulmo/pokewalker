@@ -30,6 +30,7 @@ struct Walk: Codable, Equatable {
     var bestChain: Int? = nil
     var bp: Int? = nil, towerStreak: Int? = nil, towerBest: Int? = nil   // Battle Tower points, current and best win streak
     var towerPick: [Int]? = nil                                        // the tower party the player chose (uids, the lead first); nil = the recommended one
+    var evolving: [Int]? = nil                                         // uids of ours (not the companion) that levelled in a fight: they evolve once home
     var bought: [String]? = nil                                        // one-off BP buys (device colours)
 
     var here: Course { courses[course] }
@@ -173,9 +174,9 @@ struct Walk: Codable, Equatable {
         if let p = e.place { switch p { case "cave": if here.art != .cave { return false }; case "forest": if here.art != .forest { return false }; default: if here.name != "얼음 산길" { return false } } }
         return true
     }
-    /// What the companion becomes on this level-up, if anything. Several fits (Wurmple, Tyrogue): picked by its steps, fixed per moment.
-    func levelEvolution(_ now: Date) -> Evo? {
-        let m = companion
+    /// What the companion (or the one at ref) becomes on this level-up, if anything. Several fits (Wurmple, Tyrogue): picked by its steps, fixed per moment.
+    func levelEvolution(_ now: Date, ref: Int = -1) -> Evo? {
+        guard let m = mon(ref) else { return nil }
         let fits = evolutions.filter { $0.from == m.dex && ($0.way == .level && m.level >= $0.level || $0.way == .friend && (m.walked ?? 0) >= friendSteps) && allows($0, m, now) }
         return fits.isEmpty ? nil : fits[(m.walked ?? 0) % fits.count]
     }
@@ -183,12 +184,13 @@ struct Walk: Codable, Equatable {
     func tradeEvolution(_ now: Date) -> Evo? { evolutions.first { $0.from == companion.dex && $0.way == .trade && allows($0, companion, now) } }
     /// Items the companion could evolve with (for the W shop).
     func evolutionItems() -> [String] { Array(Set(evolutions.filter { $0.from == companion.dex }.compactMap(\.item))).sorted() }
-    mutating func evolve(_ e: Evo) {
+    mutating func evolve(_ e: Evo, ref: Int = -1) {
+        guard var m = mon(ref) else { return }
         if let i = e.item { if let k = bag.firstIndex(of: i) { bag.remove(at: k) } else if let k = items.firstIndex(of: i) { items.remove(at: k) } }
-        if companion.known == nil { companion.known = companion.moves }
-        companion.dex = e.to; own(e.to, shiny: companion.shiny)
-        queueMoves(-1, from: companion.level - 1)                                                  // the new form's move at this level
-        if e.to == 291 { var g = SystemRandomNumberGenerator(), m = Mon.wild(292, level: companion.level, shiny: companion.shiny, &g); m.known = companion.known; _ = keep(m) }   // 토중몬 -> 아이스크 leaves a 껍질몬 behind
+        if m.known == nil { m.known = m.moves }                                                    // its moves stay (the new form's defaults would replace them)
+        m.dex = e.to; setMon(ref, m); own(e.to, shiny: m.shiny)
+        queueMoves(ref, from: m.level - 1)                                                         // the new form's move at this level
+        if e.to == 291 { var g = SystemRandomNumberGenerator(), s = Mon.wild(292, level: m.level, shiny: m.shiny, &g); s.known = m.known; _ = keep(s) }   // 토중몬 -> 아이스크 leaves a 껍질몬 behind
     }
 
     /// Steps = keys + clicks since the last poll. Same boot and a counter that only grew => the gap (also while the app was quit) counts;

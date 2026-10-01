@@ -13,9 +13,7 @@ extension Walker {
             if let n = nb.foeNext { nb.foeNext = nil; nb.out = []; nb.switchIn(.it, n); bs += nb.out }   // a trainer's one KO'd that same turn: its next comes out now
             return .beats(nb, bs, since: now, from: from)
         }
-        let before = state.companion.level
-        state.writeBack(partyRefs, b.mine.map(\.mon))
-        if state.companion.level > before { levelled = true }                                     // the home screen then checks evolutions
+        writeBackFight(b)
         if b.trainer != nil {
             if end == .won { let g = state.towerWin(); return .say(["\(state.towerStreak ?? 0)연승!", "+\(g) BP"], next: .tower(pick: nil), since: now) }
             let s = state.towerStreak ?? 0; state.towerEnd(); towerRun = false
@@ -137,7 +135,26 @@ extension Walker {
             return u.flatMap { b.usable($0) ? (i, $0) : nil }
         }
     }
-    func startEvolving(_ e: Evo, _ now: Date) { let from = state.companion; state.evolve(e); screen = .evolve(from: from, to: state.companion, since: now); save() }
+    func startEvolving(_ e: Evo, _ now: Date, ref: Int = -1) {
+        guard let from = state.mon(ref) else { return }
+        state.evolve(e, ref: ref); screen = .evolve(from: from, to: state.mon(ref) ?? from, since: now); save()
+    }
+    /// A fight's EXP, EVs and levels back to ours. The companion's level-up shows (and maybe evolves) at home; the others that levelled queue to evolve there.
+    func writeBackFight(_ b: Battle) {
+        let before = partyRefs.map { u in state.ref(uid: u).flatMap { state.mon($0)?.level } }, lv = state.companion.level
+        state.writeBack(partyRefs, b.mine.map(\.mon))
+        if state.companion.level > lv { levelled = true }                                          // the home screen then checks its evolution
+        for (u, l) in zip(partyRefs, before) {
+            guard let l, let r = state.ref(uid: u), r != -1, let m = state.mon(r), m.level > l else { continue }
+            state.evolving = (state.evolving ?? []).filter { $0 != u } + [u]
+        }
+    }
+    /// At launch: the walker's ones already past their evolution (they levelled before the others could evolve) wait to evolve at home.
+    func queueReadyEvolutions() {
+        for i in state.caught.indices where state.levelEvolution(Date(), ref: -2 - i) != nil {
+            if let u = state.id(-2 - i), !(state.evolving ?? []).contains(u) { state.evolving = (state.evolving ?? []) + [u] }
+        }
+    }
     var seenList: [Int] { Array(Set((state.seen ?? []) + (state.owned ?? []))).sorted() }
     /// The 도감 grid's list for a tab: 전체 (1-493) / 잡음 / 못 잡음 (seen, not caught) / 이 코스 (what walks here, legends too).
     func dexList(_ f: Int) -> [Int] {
@@ -296,7 +313,7 @@ extension Walker {
         case .forfeit(let b, let yes):
             if k != 1 { screen = .forfeit(b, yes: !yes); return }
             if yes {
-                let lv = state.companion.level; state.writeBack(partyRefs, b.mine.map(\.mon)); if state.companion.level > lv { levelled = true }   // what it earned this fight stays, as when it loses
+                writeBackFight(b)                                                                  // what it earned this fight stays, as when it loses
                 let s = state.towerStreak ?? 0; state.towerEnd(); towerRun = false; screen = .say(["기권했다", "\(s)연승에서 끝"], next: .home, since: now)
             }
             else { screen = .battle(b, sel: battleMenu(b).firstIndex(of: "기권") ?? 0) }

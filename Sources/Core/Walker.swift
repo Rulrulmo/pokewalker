@@ -100,6 +100,13 @@ import Foundation
                 if state.companion.level % 5 == 0 { notify("grow", "레벨 업!", name + " Lv.\(state.companion.level)") }
             }
         }
+        if case .home = screen, var q = state.evolving, !q.isEmpty {                                // ours that levelled in a fight: one at a time, home in between
+            let u = q.removeFirst(); state.evolving = q.isEmpty ? nil : q
+            if let r = state.ref(uid: u), let e = state.levelEvolution(now, ref: r) {
+                let name = monNames[state.mon(r)!.dex]
+                startEvolving(e, now, ref: r); notify("grow", "어라...? " + josa(name, "의", "의") + " 모습이...!", josa(name, "이", "가") + " " + josa(monNames[e.to], "으로", "로") + " 진화했어요!")
+            }
+        }
         if case .home = screen, (state.learning ?? []).count >= 2 { nextLearn(now) }
         switch screen {
         case .radar(_, _, let since, let chain) where now.timeIntervalSince(since) > 1.5 + radarWindow(chain):
