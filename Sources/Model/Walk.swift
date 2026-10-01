@@ -22,6 +22,7 @@ struct Walk: Codable, Equatable {
     var learning: [Int]? = nil                          // moves waiting to be learned: (uid, move) pairs
     var lastUID: Int? = nil
     var counter: UInt32 = 0, boot: Double = 0           // system input-event counter at the last poll, and the boot it belongs to
+    var syncedAt: Double? = nil                          // when that poll was (seconds since 2001): the gap while the app was quit
     var seen: [Int]? = nil, owned: [Int]? = nil         // Pokédex, sorted; Optional so older saves decode (see `dex()`)
     var shinyOwned: [Int]? = nil                        // species ever owned as 이로치 (the dex shows those colours too)
     var weather: Weather? = nil, weatherAt: Int? = nil  // nil = sunny; total steps at the last roll
@@ -196,9 +197,15 @@ struct Walk: Codable, Equatable {
     /// Steps = keys + clicks since the last poll. Same boot and a counter that only grew => the gap (also while the app was quit) counts;
     /// anything else (reboot, logout, first run) just re-baselines.
     /// Returns true when the companion levelled up.
-    @discardableResult mutating func sync(counter c: UInt32, boot b: Double, at now: Date) -> Bool {
-        defer { counter = c; boot = b }
-        return walk(b == boot && c >= counter ? Int(c - counter) : 0, at: now)
+    @discardableResult mutating func sync(counter c: UInt32, boot b: Double, at now: Date, away: Bool = false) -> Bool {
+        let gap = syncedAt.map { now.timeIntervalSinceReferenceDate - $0 } ?? 3600
+        let n = take(counter: c, boot: b, at: now)
+        return walk(away ? min(n, Int(max(0, gap) / 3600 * 3000)) : n, at: now)              // away = typed while the app was quit: at most 3,000 an hour count
+    }
+    /// The raw keys + clicks since the last poll (the baseline moves on); 0 after a reboot / a counter that went back.
+    mutating func take(counter c: UInt32, boot b: Double, at now: Date) -> Int {
+        defer { counter = c; boot = b; syncedAt = now.timeIntervalSinceReferenceDate }
+        return b == boot && c >= counter ? Int(c - counter) : 0
     }
 
     mutating func spend(_ w: Int) -> Bool { guard watts >= w else { return false }; watts -= w; return true }

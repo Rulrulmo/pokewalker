@@ -296,6 +296,7 @@ func put<T>(_ s: String, _ field: inout T) {
     func rawInput(_ lp: LPARAM) {
         var raw = RAWINPUT(), size = UINT(MemoryLayout<RAWINPUT>.size)                            // a keyboard's or a mouse's fits (no heap per mouse move)
         guard let h = HRAWINPUT(bitPattern: Int(lp)), GetRawInputData(h, UINT(RID_INPUT), &raw, &size, UINT(MemoryLayout<RAWINPUTHEADER>.size)) != UINT.max else { return }
+        guard raw.header.hDevice != nil else { return }                                            // no device: SendInput's (AutoHotkey & co.), not a keyboard's or a mouse's
         if raw.header.dwType == DWORD(RIM_TYPEKEYBOARD) {
             let k = raw.data.keyboard, id = k.VKey | (k.Flags & UInt16(RI_KEY_E0) != 0 ? 0x100 : 0), now = GetTickCount64()
             guard k.VKey != 0xFF else { return }                                                   // a fake key (the shift PS/2 sends around the grey arrows)

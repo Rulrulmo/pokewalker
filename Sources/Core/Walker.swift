@@ -23,6 +23,7 @@ import Foundation
     var pane = PaneContent(), paneAt = Date.distantPast                    // the pane's page as shown, when it was last refreshed
     var cardH = Layout.idle                                                // the card's height now (card points): the page's
     var hud: SideModel? = nil                                              // a fight's HP boxes, drawn over the LCD
+    var gate = StepGate(), heldSteps = 0                                   // the step filter; steps made during a fight, counted after it
     var statusOpen = settings.bool("homePanel", true)                     // the title row's ⌄: the status sheet under the band where no page is up (open unless folded)
     var battleSpeed: Double { Double(settings.int("battleSpeed", 3)) / 2 }     // 배틀 속도 (the right-click's): 보통 x1, 빠르게 x1.5 (the default), 아주 빠르게 x2
     var titleShown = ""                                                    // the title row as last shown: a change redraws it
@@ -50,7 +51,11 @@ import Foundation
     /// The clock (the host's, 10 a second): steps, the companion's finds, weather, unlocks, level-ups; screens that time out; the minute's save.
     func tick(_ now: Date) {
         let before = state.total
-        if let h = host, !inBattle, state.sync(counter: h.counter(), boot: h.boot(), at: now) { levelled = true }   // not mid-fight: the fight's copy would overwrite those steps' EXP; they count once it's over
+        if let h = host {                                                                          // keys + clicks, the way a person makes them (StepGate)
+            let n = gate.pass(state.take(counter: h.counter(), boot: h.boot(), at: now), now.timeIntervalSinceReferenceDate)
+            if inBattle { heldSteps += n }                                                         // mid-fight: the fight's copy would overwrite their EXP; they count once it's over
+            else if n + heldSteps > 0 { if state.walk(n + heldSteps, at: now) { levelled = true }; heldSteps = 0 }
+        }
         perk(now, stepped: state.total != before)                                               // the companion's animation now and then
         if state.total != before { lastStep = now }
         stepRate = stepRate * 0.8 + Double(min(50, state.total - before)) * 10 * 0.2               // steps a second, smoothed (the tick is 10 Hz)
@@ -173,7 +178,7 @@ import Foundation
         case .course: return ("코스", "\(courses.indices.filter(state.unlocked).count) / \(courses.count) 열림")
         case .train: return ("대단한 특훈", "은색병뚜껑 ×\(state.count("은색병뚜껑"))")
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
-        default: return (state.here.name, when)                                                 // screens without a page of their own: the status sheet
+        default: return (state.here.name, gate.held ? "자동 입력 감지 · 걸음 멈춤" : when)                                                 // screens without a page of their own: the status sheet
         }
     }
 }

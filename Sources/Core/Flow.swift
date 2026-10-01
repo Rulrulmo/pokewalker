@@ -49,7 +49,10 @@ extension Walker {
     }
     func save() { guard persist else { return }; Store.save(state); lastSave = Date() }
     /// Quitting: count the steps a fight held back (its copy is dropped on quit), then save.
-    func quitSave() { if let h = host { state.sync(counter: h.counter(), boot: h.boot(), at: Date()) }; save() }
+    func quitSave() {
+        if let h = host { let n = gate.pass(state.take(counter: h.counter(), boot: h.boot(), at: Date()), Date().timeIntervalSinceReferenceDate); state.walk(n + heldSteps, at: Date()); heldSteps = 0 }
+        save()
+    }
     /// The next move waiting in state.learning: straight in with a free slot, else the forget-one screen.
     func nextLearn(_ now: Date) {
         while let (ref, id) = state.nextToLearn() {

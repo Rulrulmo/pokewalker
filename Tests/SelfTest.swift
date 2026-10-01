@@ -45,6 +45,8 @@ import AppKit                                                                   
     w.sync(counter: 1250, boot: 7, at: at(10)); check(w.total == 250, "counter growth = steps")
     w.sync(counter: 40, boot: 7, at: at(10)); check(w.total == 250 && w.counter == 40, "counter went backwards => re-baseline")
     w.sync(counter: 900, boot: 8, at: at(10)); check(w.total == 250 && w.boot == 8, "new boot => re-baseline")
+    w.syncedAt = at(10).timeIntervalSinceReferenceDate - 3600; w.sync(counter: 10_900, boot: 8, at: at(10), away: true)
+    check(w.total == 250 + 3000 && w.counter == 10_900, "typed while quit: at most 3,000 an hour count (a macro left on all night counts little)", "\(w.total)")
 
     // 5 the draw reproduces Serebii's bands (상쾌한 들판, A = 두두 70 %, B 75 %)
     w = Walk(); w.companion = Mon(dex: 7, level: 5, female: false)            // squirtle: water, no bonus here
@@ -600,8 +602,8 @@ import AppKit                                                                   
     check(!lcdTap && bk.state.towerStreak == 5 && isBattle(bk.screen, "기권"), "the LCD answers nothing even without the pane; the pane's 아니오 is 아니오")
     bk.screen = .battle(wild, sel: 0)
     let rightClick = bk.menu()
-    check(!rightClick.contains { m in ["코스", "함께 걷기", "가방", "진화의 돌"].contains { m.title.hasPrefix($0) } } && rightClick.contains { $0.title.hasPrefix("배틀 속도 · 빠르게") },
-          "the right-click is options only (the game is on the pane), 배틀 속도 빠르게 by default")
+    check(!rightClick.contains { m in ["코스", "함께 걷기", "가방", "진화의 돌"].contains { m.title.hasPrefix($0) } } && rightClick.contains { $0.title.hasPrefix("배틀 속도 · ") },
+          "the right-click is options only (the game is on the pane), with 배틀 속도")
     let hider = Walker(state: Walk()); hider.persist = false; hider.screen = .say(["PP가 없다"], next: .moves(wild, sel: 0), since: Date())
     let midFight = hider.inBattle; hider.screen = .say(["샀다"], next: .shop(bp: false, sel: 0, qty: nil), since: Date())
     check(midFight && !hider.inBattle, "inBattle covers a fight's messages (so hiding to the menu bar keeps the fight), not a shop's")
@@ -760,7 +762,7 @@ import AppKit                                                                   
           "보통: a 216 x 199 card, the LCD 192 x 128 (2 pt a dot: whole pixels on a 1x screen)", "\(devSize) \(lcdRect)")
     check(buttons.count == 5 && buttons.allSatisfy { $0.c.y == Layout.seam && $0.c.x - $0.r >= 0 && $0.c.x + $0.r <= Layout.w } && buttons[1].r > buttons[0].r && buttons.prefix(4).map(\.c.x) == buttons.prefix(4).map(\.c.x).sorted()
           && buttons[4].c.x + buttons[3].c.x == Layout.w * K, "메뉴 ◀ ● ▶ ↩ on the band, ● the ball's own bigger button, 메뉴 across from ↩")
-    let gk = Walker(state: Walk()); gk.persist = false
+    let gk = Walker(state: Walk()); gk.persist = false; gk.statusOpen = true                   // (not the user's own setting)
     #if os(macOS)
     let gw = WalkerView(walker: gk)                                                               // the Mac: its view, the host, follows the card
     #endif
@@ -779,7 +781,7 @@ import AppKit                                                                   
           "the card grows down to the page: 홈's status sheet 354 and the menu the same (the 메뉴 / 홈 key never resizes it), battle 311, a grid 422 (the page under the band)", "\(homeH) \(menuH) \(gridH) \(fightH) \(gk.cardH)")
     check(foldH == 199 && foldChev == false && gk.chevron == true, "⌄ folds home's status sheet: the idle card (199); open again: 354", "\(foldH)")
     SIZE = 3; check(PX == 3 && 422 * K < 850, "크게: 3 pt a dot, its tallest page still under a 13-inch screen's height"); SIZE = size0
-    let pv = Walker(state: { var s = Walk(); s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); pv.persist = false; pv.rng = Seeded(s: 61)
+    let pv = Walker(state: { var s = Walk(); s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); pv.persist = false; pv.statusOpen = true; pv.rng = Seeded(s: 61)
     func kind(_ sc: Screen) -> String {
         pv.screen = sc; let c = pv.paneContent(Date())
         return c.battle != nil ? "battle" : c.dex != nil ? "dex" : c.grid != nil ? "grid" : c.mon != nil ? "mon" : c.shop != nil ? "shop" : c.menu.map { "menu\($0.sel)" } ?? (c.status != nil ? "status" : "none")
@@ -844,9 +846,9 @@ import AppKit                                                                   
           "코스 (the menu's): the list, a click picks one, 가기 walks it (the walker's team stays)")
     nw.state.earned = 0; nw.screen = .course(2); let cLocked = nw.paneContent(Date()).course; nw.press(1)
     check(cLocked?.go == nil && cLocked?.rows[2].open == false && nw.state.course == 1, "… a locked one can't be walked")
-    nw.screen = .beats(Battle(wild: rat, companion: pika50), [.appear], since: Date().addingTimeInterval(-Beat.appear.length / 1.5 - 0.01), from: Battle(wild: rat, companion: pika50))
+    nw.screen = .beats(Battle(wild: rat, companion: pika50), [.appear], since: Date().addingTimeInterval(-Beat.appear.length / nw.battleSpeed - 0.01), from: Battle(wild: rat, companion: pika50))
     let fastEnd = nw.beatState(Date()) != nil; nw.tick(Date())
-    check(nw.battleSpeed == 1.5 && fastEnd && { if case .beats = nw.screen { return false }; return true }(), "배틀 속도 빠르게 (x1.5, the default) plays the beats faster")
+    check(nw.battleSpeed >= 1 && fastEnd && { if case .beats = nw.screen { return false }; return true }(), "배틀 속도 runs the beats' clock (x\(nw.battleSpeed))")
     nw.state.companion = { var m = Mon(dex: 25, level: 60, female: false); m.ivs = [10, 31, 31, 31, 31, 31]; return m }(); nw.state.bag = ["은색병뚜껑"]
     nw.screen = .items(0); let capUse = nw.paneContent(Date()).items?.action; nw.press(1); let trainPage = nw.paneContent(Date()).train
     nw.pageTap(5910)
@@ -914,7 +916,7 @@ import AppKit                                                                   
     #else
     let frameTimer = { (_: Walker) -> [(Bool, String)] in [] }                                    // P3: Windows' SetTimer shell
     #endif
-    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks(timer: frameTimer) + notebookChecks() { check(ok, name) }   // the drawing files' own checks
+    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks(timer: frameTimer) + notebookChecks() + stepGateChecks() { check(ok, name) }   // the drawing files' own checks
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0
 }

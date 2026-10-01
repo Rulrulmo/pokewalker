@@ -43,7 +43,7 @@ if let b = statusItem?.button {
 }
 registerHideHotKey { view.toggleShown(nil) }                       // ⌃⌥P from anywhere
 walker.state.dex()
-walker.levelled = walker.state.sync(counter: view.counter(), boot: view.boot(), at: Date())   // steps typed while the app was quit (same login) count
+walker.levelled = walker.state.sync(counter: view.counter(), boot: view.boot(), at: Date(), away: true)   // steps typed while the app was quit (same login) count
 walker.queueReadyEvolutions()                                    // the walker's ones past their evolution (before 1.4 only the companion evolved) evolve at home
 walker.save()
 walker.refreshPane(Date(), force: true)                          // the page it opens on (the status sheet): no jump after it shows
