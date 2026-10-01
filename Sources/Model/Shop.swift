@@ -130,10 +130,26 @@ extension Walk {
 
     // MARK: Battle Tower: 3 against a trainer's 3, 50 W to enter, BP per win
     static let towerFee = 50
-    /// The party: the companion and the two strongest others (walker + box). ref -1 = companion, -2-i = caught[i], i = box[i].
+    /// The party: the companion and the two strongest others (walker + box) — or the player's own (towerPick), whoever of it is still here, topped up the same way.
+    /// ref -1 = companion, -2-i = caught[i], i = box[i].
     func party() -> [(ref: Int, mon: Mon)] {
-        let others = caught.enumerated().map { (-2 - $0.offset, $0.element) } + box.enumerated().map { ($0.offset, $0.element) }
-        return [(-1, companion)] + others.sorted { $0.1.points > $1.1.points }.prefix(2).map { (ref: $0.0, mon: $0.1) }
+        let others = caught.enumerated().map { (-2 - $0.offset, $0.element.points) } + box.enumerated().map { ($0.offset, $0.element.points) }
+        var refs: [Int] = []
+        for r in (towerPick ?? []).compactMap({ ref(uid: $0) }) + [-1] + others.sorted(by: { $0.1 > $1.1 }).map(\.0) where refs.count < 3 && !refs.contains(r) { refs.append(r) }
+        return refs.map { (ref: $0, mon: mon($0)!) }
+    }
+    /// Who can go up the tower, for the lobby's picker: everyone (the companion, the walker's, the box) by level, then dex number (EXP alone would reorder it every step).
+    var towerCandidates: [Int] {
+        let all = [-1] + caught.indices.map { -2 - $0 } + Array(box.indices), key = all.map { r in let m = mon(r)!; return (-m.level, m.dex) }
+        return all.indices.sorted { key[$0] != key[$1] ? key[$0] < key[$1] : $0 < $1 }.map { all[$0] }
+    }
+    /// The lobby's picker: the one at `r` goes in party slot `slot` (one already in the party swaps places with it). The recommended party again = no pick.
+    mutating func towerSet(_ slot: Int, _ r: Int) {
+        var refs = party().map(\.ref)
+        guard refs.indices.contains(slot), mon(r) != nil else { return }
+        if let j = refs.firstIndex(of: r) { refs.swapAt(slot, j) } else { refs[slot] = r }
+        towerPick = nil
+        if refs != party().map(\.ref) { towerPick = refs.compactMap { id($0) } }
     }
     /// Writes a fight's EXP back to whoever took part, found by uid wherever they are now (gone or evolved = skipped), and queues what they learn.
     mutating func writeBack(_ uids: [Int], _ mons: [Mon]) {

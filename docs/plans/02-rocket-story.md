@@ -147,7 +147,7 @@ struct Chapter { let id, title: String; let badges, fallbackW: Int; let art: Art
                  let grunts: Int; let bosses: [(name: String, lines: [Int], plus: Int)]; let floors: Bool }
 ```
 
-**01과의 연결**: 필요한 건 `state.badgeCount`(Int) 하나. 01이 없으면 `fallbackW` 로. 추가로 싸게 할 수 있는 것: 01의 체육관 관장 인사에 "우물 일은 고마워!" 같은 한 줄(해당 장을 끝냈을 때만), 목호 그림은 01이 챔피언용으로 넣으면 공유. 01의 "다음 체육관"은 상태 시트(⌄) 줄이라 이 배너와 별개. 홈 배너 한 줄은 04 사파리 · 07 탐험 도착과 **우선순위로 나눠 씀**(→ README.md '홈 알림 자리').
+**01과의 연결**: 필요한 건 `state.badgeCount`(Int) 하나. 01이 없으면 `fallbackW` 로. 추가로 싸게 할 수 있는 것: 01의 체육관 관장 인사에 "우물 일은 고마워!" 같은 한 줄(해당 장을 끝냈을 때만), 목호 그림은 01이 챔피언용으로 넣으면 공유. 01의 "다음 체육관"은 상태 시트 줄이라 이 배너와 별개. 홈 배너 한 줄은 04 사파리 · 07 탐험 도착과 **우선순위로 나눠 씀**(→ README.md '홈 알림 자리').
 
 ## 6. 데이터 · 저장
 

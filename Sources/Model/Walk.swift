@@ -29,6 +29,7 @@ struct Walk: Codable, Equatable {
     var egg: Egg? = nil
     var bestChain: Int? = nil
     var bp: Int? = nil, towerStreak: Int? = nil, towerBest: Int? = nil   // Battle Tower points, current and best win streak
+    var towerPick: [Int]? = nil                                        // the tower party the player chose (uids, the lead first); nil = the recommended one
     var bought: [String]? = nil                                        // one-off BP buys (device colours)
 
     var here: Course { courses[course] }

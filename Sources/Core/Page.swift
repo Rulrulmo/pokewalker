@@ -210,11 +210,11 @@ extension Canvas {
             hits.append((cell, code + i))
         }
     }
-    /// ◀ n / m ▶, centred.
-    func pager(_ label: String, _ top: CGFloat, prev: Bool, next: Bool) {
+    /// ◀ n / m ▶, centred (codes: the grids' by default).
+    func pager(_ label: String, _ top: CGFloat, prev: Bool, next: Bool, codes: (Int, Int) = (4200, 4201)) {
         let f = font(10, .semibold), cy = y(top + 9), tw = width(label, f)
         c.say(label, x(Layout.w / 2), cy, f, Ink.ink, 0.5)
-        for (dx, left, on, code) in [(-tw / 2 - x(16), true, prev, 4200), (tw / 2 + x(16), false, next, 4201)] {
+        for (dx, left, on, code) in [(-tw / 2 - x(16), true, prev, codes.0), (tw / 2 + x(16), false, next, codes.1)] {
             let o = CGRect(x: x(Layout.w / 2) + dx - x(9), y: cy - x(9), width: x(18), height: x(18))
             c.fill(.oval(o), Ink.tile); c.triangle(o.midX + (left ? -0.5 : 0.5) * K, o.midY, 3 * K, left: left, on ? Ink.sub : Ink.line)
             if on { hits.append((o, code)) }
@@ -356,7 +356,7 @@ extension Canvas {
     func drawMenu(_ m: MenuModel) {
         let rh: CGFloat = 31, gap: CGFloat = 4, cw = (X1 - X0 - gap) / 2
         for (i, row) in m.rows.enumerated() {
-            let rc = r(X0 + CGFloat(i % 2) * (cw + gap), 198 + CGFloat(i / 2) * (rh + gap), cw, rh), on = i == m.sel
+            let rc = r(X0 + CGFloat(i % 2) * (cw + gap), 203 + CGFloat(i / 2) * (rh + gap), cw, rh), on = i == m.sel
             c.fill(.rounded(rc, 9 * K), on ? Ink.red : Ink.tile)
             c.say(row.name, rc.minX + x(9), rc.minY + x(10.5), font(10, .bold), on ? .white : Ink.ink, maxW: rc.width - x(14))
             c.say(row.note, rc.minX + x(9), rc.minY + x(22), font(8, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(14))
@@ -438,18 +438,44 @@ extension Page {
             line(mv, rc); hits.append((rc, 5300 + i))
         }
     }
-    /// 배틀 타워's lobby: the run, the three who go, then 도전 (or the next trainer) and 나가기.
+    /// 배틀 타워's lobby: the run, the three who go (a click: who goes there instead; 추천으로 once it's the player's own), then 도전 (or the next trainer) and 나가기.
     func drawTower(_ m: TowerModel) {
+        if let p = m.pick { drawTowerPick(p); return }
         c.say(m.run ? "\(m.streak)연승 중 · 최고 \(m.best)연승" : "최고 \(m.best)연승 · \(m.bp)BP", x(X0 + 2), y(206), font(11, .medium), Ink.ink)
-        let scale = c.scale, snap = { (v: CGFloat) in (v * scale).rounded() / scale }
+        if m.custom {
+            let t = "추천으로", f = font(8.5, .bold), w = width(t, f) + x(14), rc = CGRect(x: x(X1) - w, y: y(206) - x(7.5), width: w, height: x(15))
+            c.pill(rc, Ink.redTint); c.say(t, rc.midX, rc.midY, f, Ink.red, 0.5); hits.append((rc, 5420))
+        } else { c.say("추천 파티", x(X1 - 2), y(206), font(9, .medium), Ink.faint, 1) }
+        let scale = c.scale, snap = { (v: CGFloat) in (v * scale).rounded() / scale }, hint = font(8, .semibold)
         for (i, p) in m.party.enumerated() {
             let rc = r(X0, 220 + CGFloat(i) * 27.5, X1 - X0, 25); c.fill(.rounded(rc, 9 * K), Ink.tile)
             c.image(iconImage(p.dex), CGRect(x: snap(rc.minX + x(2)), y: snap(rc.midY - 16 * K - x(2)), width: 32 * K, height: 32 * K), alpha: 1)
-            c.say(p.name, rc.minX + x(38), rc.midY, font(10, .bold), Ink.ink); c.say("Lv.\(p.level)", rc.maxX - x(9), rc.midY, font(9, .semibold), Ink.sub, 1)
+            let hw = c.say("바꾸기", rc.maxX - x(9), rc.midY, hint, Ink.faint, 1)
+            c.say(p.name, rc.minX + x(38), rc.midY, font(10, .bold), Ink.ink); c.say("Lv.\(p.level)", rc.maxX - x(9) - hw - x(8), rc.midY, font(9, .semibold), Ink.sub, 1)
+            hits.append((rc, 5410 + i))
         }
         let go = r(X0, 307, X1 - X0 - 64, 36), out = r(X1 - 59, 307, 59, 36)
         c.fill(.rounded(go, 12 * K), Ink.red); c.say(m.run ? "다음 상대" : "도전 · \(m.fee)W", go.midX, go.midY, font(13, .bold), .white, 0.5); hits.append((go, 5400))
         c.fill(.rounded(out, 12 * K), Ink.tile); c.say("나가기", out.midX, out.midY, font(11, .bold), Ink.ink, 0.5); hits.append((out, 5401))
+    }
+    /// The tower's picker: who could go in the slot, by level, a page of five (the party's marked with where they are; picking one of them swaps the two).
+    func drawTowerPick(_ p: TowerModel.Pick) {
+        c.say("\(p.slot + 1)번째 자리 · 누구로 바꿀까?", x(X0 + 2), y(206), font(11, .medium), Ink.ink)
+        for (i, row) in p.rows.enumerated() {
+            let rc = r(X0, 216 + CGFloat(i) * 22, X1 - X0, 20)
+            tile(rc, 7, on: p.first + i == p.sel)
+            var xr = rc.maxX - x(9)
+            if let s = row.slot {
+                let t = "\(s + 1)번", f = font(7.5, .bold), w = width(t, f) + x(8), mine = s == p.slot
+                c.pill(CGRect(x: xr - w, y: rc.midY - x(5.5), width: w, height: x(11)), mine ? Ink.red : Ink.tint(Ink.blue, 0.16)); c.say(t, xr - w / 2, rc.midY, f, mine ? .white : Ink.blue, 0.5)
+                xr -= w + x(6)
+            }
+            xr -= c.say("Lv.\(row.level)", xr, rc.midY, font(9, .semibold), Ink.sub, 1)
+            c.say(row.name, rc.minX + x(9), rc.midY, font(10, .bold), Ink.ink, maxW: xr - rc.minX - x(17))
+            hits.append((rc, 5430 + i))
+        }
+        let per = TowerModel.perPage, pages = (p.count + per - 1) / per
+        if pages > 1 { pager("\(p.first / per + 1) / \(pages)", 327, prev: true, next: true, codes: (5440, 5441)) }
     }
     /// 도구: everything carried, a row a kind (six in view, the pick kept there; a click picks it), then what the pick does and its button.
     func drawItems(_ m: ItemsModel) {

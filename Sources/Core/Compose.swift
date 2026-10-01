@@ -286,7 +286,7 @@ extension Walker {
         default: return
         }
     }
-    /// What the pane's page shows: the battle, 도감 (grid or entry), 상자 (grid or one Pokémon), 상점 or 메뉴 page; elsewhere the status sheet if it's open.
+    /// What the pane's page shows: the battle, 도감 (grid or entry), 상자 (grid or one Pokémon), 상점 or 메뉴 page; elsewhere the status sheet.
     func paneContent(_ now: Date) -> PaneContent {
         if let b = sideModel(now) { return PaneContent(battle: b) }
         if let d = dexModel() { return PaneContent(dex: d) }
@@ -309,15 +309,22 @@ extension Walker {
             guard let (ref, id) = st.nextToLearn(), let m = state.mon(ref), let new = moveTable[id] else { break }
             func mv(_ x: MoveInfo) -> LearnModel.Move { .init(name: x.name, type: x.type, power: x.power, pp: x.pp) }
             return PaneContent(learn: LearnModel(who: monNames[m.dex], new: mv(new), known: m.moves.compactMap { moveTable[$0] }.map(mv), sel: sel))
-        case .tower:
+        case .tower(let p):
+            let party = state.party(), per = TowerModel.perPage
+            let pick = p.map { p -> TowerModel.Pick in
+                let all = state.towerCandidates, sel = all.firstIndex(of: p.at) ?? 0, first = sel / per * per
+                return .init(slot: p.slot, sel: sel, count: all.count, first: first, rows: all[first..<min(all.count, first + per)].map { r in
+                    let m = state.mon(r)!; return .init(name: monNames[m.dex], level: m.level, slot: party.firstIndex { $0.ref == r }) })
+            }
             return PaneContent(tower: TowerModel(run: towerRun, streak: state.towerStreak ?? 0, best: state.towerBest ?? 0, bp: state.bp ?? 0, fee: Walk.towerFee,
-                                                 party: state.party().map { .init(dex: $0.mon.dex, name: monNames[$0.mon.dex], level: $0.mon.level) }))
+                                                 party: party.map { .init(dex: $0.mon.dex, name: monNames[$0.mon.dex], level: $0.mon.level) }, custom: state.towerPick != nil, pick: pick))
         default: break
         }
-        return statusOpen ? PaneContent(status: statusModel()) : PaneContent()
+        return PaneContent(status: statusModel())
     }
     /// A click on a walker page that isn't a grid: 5000 + k a radar bush, 5200 + p a card page, 5300 + k a move to forget (4 = don't),
-    /// 5400 / 5401 the tower's 도전 / 나가기. One click does it, as ● would.
+    /// 5400 / 5401 the tower's 도전 / 나가기, 5410 + i its party row i (who goes there instead), 5420 추천으로, then its picker: 5430 + k a row of the page,
+    /// 5440 / 5441 the page before / after (round). One click does it, as ● would.
     func pageTap(_ code: Int) {
         throughSay(); lastInput = Date(); host?.redraw(.all)
         switch (screen, code) {
@@ -326,8 +333,15 @@ extension Walker {
         case (.learn, 5300...5304): screen = .learn(sel: code - 5300); press(1)
         case (.items, 5600..<5700): screen = .items(code - 5600)
         case (.items, 5700): press(1)
-        case (.tower, 5400): press(1)
-        case (.tower, 5401): press(3)
+        case (.tower(nil), 5400): press(1)
+        case (.tower(nil), 5401): press(3)
+        case (.tower(nil), 5410...5412):
+            if let r = state.party()[safe: code - 5410]?.ref { screen = .tower(pick: (code - 5410, r)) }
+        case (.tower(nil), 5420): state.towerPick = nil; save()
+        case (.tower(let p?), 5430..<5445):                                                     // a row of the page in view, or its ◀ ▶ (round)
+            let per = TowerModel.perPage, all = state.towerCandidates, page = (all.firstIndex(of: p.at) ?? 0) / per, pages = (all.count + per - 1) / per
+            if code >= 5440 { screen = .tower(pick: (p.slot, all[min(all.count - 1, (page + (code == 5440 ? pages - 1 : 1)) % pages * per)])) }
+            else if let r = all[safe: page * per + code - 5430] { screen = .tower(pick: (p.slot, r)); press(1) }
         default: return
         }
     }

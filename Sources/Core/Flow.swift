@@ -15,7 +15,7 @@ extension Walker {
         state.writeBack(b.trainer != nil ? towerRefs : [state.id(-1)!], b.mine.map(\.mon))
         if state.companion.level > before { levelled = true }                                     // the home screen then checks evolutions
         if b.trainer != nil {
-            if end == .won { let g = state.towerWin(); return .say(["\(state.towerStreak ?? 0)연승!", "+\(g) BP"], next: .tower, since: now) }
+            if end == .won { let g = state.towerWin(); return .say(["\(state.towerStreak ?? 0)연승!", "+\(g) BP"], next: .tower(pick: nil), since: now) }
             let s = state.towerStreak ?? 0; state.towerEnd(); towerRun = false
             return .say(["\(s)연승에서 끝났다", "BP \(state.bp ?? 0)"], next: .home, since: now)
         }
@@ -88,12 +88,20 @@ extension Walker {
         if let q = qty { screen = .shop(bp: bp, sel: sel, qty: d.map { max(1, min(max(1, most), q + $0)) } ?? max(1, most)) }
         else if let d { screen = .shop(bp: bp, sel: max(0, min(ws.count - 1, sel + d.signum())), qty: nil) }
     }
-    /// The scroll wheel / trackpad on the shop panel: a row up or down, leaving how-many (the amount only changes on purpose).
-    func shopRow(_ d: Int) {
+    /// The scroll wheel / trackpad on a list: a row up or down — the shop's (leaving how-many: the amount only changes on purpose) or the tower's picker.
+    func listRow(_ d: Int) {
+        if case .tower(_?) = screen { towerStep(d); return }
         let bp: Bool, sel: Int
         switch screen { case .shop(let b, let s, _), .shopConfirm(let b, let s, _): bp = b; sel = s; default: return }
         lastInput = Date(); host?.redraw(.all)
         screen = .shop(bp: bp, sel: max(0, min(wares(bp).count - 1, sel + d)), qty: nil)
+    }
+    /// The tower's picker: d rows on (↑ ↓, page up / down, the wheel), stopping at the ends.
+    func towerStep(_ d: Int) {
+        guard case .tower(let p?) = screen else { return }
+        lastInput = Date(); host?.redraw(.all)
+        let all = state.towerCandidates, sel = all.firstIndex(of: p.at) ?? 0
+        screen = .tower(pick: (p.slot, all[max(0, min(all.count - 1, sel + d))]))
     }
     /// A click on the shop panel: 2100 + k = row k (and how-many, if it can be bought), 2000-2004 = −10 −1 +1 +10 max, 2005 = buy, 2006 / 2007 = 예 / 아니오.
     func shopTap(_ code: Int) {
@@ -200,7 +208,7 @@ extension Walker {
             case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : .menu(menuAt("도감"))   // the entry page → the grid → the menu
             case .shop(let bp, let sel, .some), .shopConfirm(let bp, let sel, _): screen = .shop(bp: bp, sel: sel, qty: nil)
             case .shop(let bp, _, nil): screen = .menu(menuAt(bp ? "BP 교환소" : "상점"))
-            case .tower: screen = .menu(menuAt("배틀 타워"))                                                          // a run stays on: ● in the lobby goes on
+            case .tower(let p): screen = p != nil ? .tower(pick: nil) : .menu(menuAt("배틀 타워"))                    // the picker → the lobby → the menu; a run stays on: ● in the lobby goes on
             case .learn: screen = .learn(sel: 4)                                                    // onto 배우지 않는다; ● decides
             case .moves(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "공격") ?? 0)   // back to where it came from
             case .party(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "교체") ?? 0)
@@ -300,11 +308,14 @@ extension Walker {
             else if sel == b.me { screen = .say(["이미 싸우고 있다"], next: .party(b, sel: sel), since: now) }
             else if !b.mine[sel].alive { screen = .say(["기절해서", "싸울 수 없다"], next: .party(b, sel: sel), since: now) }
             else { let from = b; let beats = b.mustReplace ? b.replace(sel) : b.turn(.swap(sel), &rng); screen = .beats(b, beats, since: now, from: from) }
+        case .tower(let p?):                                                                      // the picker: ◀ ▶ a row (round), ● puts it in the slot
+            let all = state.towerCandidates, sel = all.firstIndex(of: p.at) ?? 0
+            if k == 1 { state.towerSet(p.slot, all[sel]); screen = .tower(pick: nil) } else { screen = .tower(pick: (p.slot, all[(sel + (k == 0 ? all.count - 1 : 1)) % all.count])) }
         case .tower:
             guard k == 1 else { return }
             if towerRun { startTower(now) }
             else if state.spend(Walk.towerFee) { state.towerStreak = 0; startTower(now) }
-            else { screen = .say(["W가 부족하다", "(\(Walk.towerFee)W 필요)"], next: .tower, since: now) }
+            else { screen = .say(["W가 부족하다", "(\(Walk.towerFee)W 필요)"], next: .tower(pick: nil), since: now) }
         case .card(let p): screen = k == 1 ? .menu(menuAt("트레이너 카드")) : .card((p + (k == 0 ? 2 : 1)) % 3)
         case .say(_, let next, _): screen = next
         case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
@@ -361,7 +372,7 @@ extension Walker {
         case "트레이너 카드": screen = .card(0)
         case "포켓몬": screen = .box(-1, act: nil, confirm: false)                                  // the companion first
         case "상점", "BP 교환소": screen = .shop(bp: menuItems[i] == "BP 교환소", sel: 0, qty: nil)
-        case "배틀 타워": screen = .tower
+        case "배틀 타워": screen = .tower(pick: nil)
         default: screen = .dex(state.companion.dex, filter: 0, detail: false)
         }
     }

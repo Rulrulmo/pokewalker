@@ -17,7 +17,7 @@ indirect enum Screen {
     case shop(bp: Bool, sel: Int, qty: Int?)                         // 상점 (W) or BP 교환소: the list, or (qty) how many of row sel
     case shopConfirm(bp: Bool, sel: Int, yes: Bool)                    // a once-only row (전설, 기기 색): 정말? — yes = the highlighted answer, 아니오 first
     case learn(sel: Int)                                               // a new move for state.learn's first: forget one of 4 (sel 0-3), or not learn it (4)
-    case tower                                                         // the Battle Tower lobby
+    case tower(pick: (slot: Int, at: Int)?)                            // the Battle Tower lobby; pick = choosing who goes in party slot `slot`, `at` the ref under the cursor (a level-up reorders the list: it stays on that one)
     case beats(Battle, [Beat], since: Date, from: Battle)              // one exchange playing out; `from` = HP before it
     case card(Int), items(Int)                                         // 도구: everything carried (the walker's + the bag), the picked row (from 포켓몬's last chip)
     case say([String], next: Screen, since: Date)                      // any button or 3 s

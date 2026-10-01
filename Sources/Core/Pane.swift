@@ -16,7 +16,7 @@ struct ShopModel: Equatable {
     var hint: String                                                   // the bottom row when nothing is being counted: a message, or why not
     var ask: Bool?                                                     // a once-only row's 정말? (true = 예 highlighted)
 }
-/// The status sheet (the title row's ⌄): the companion, today, then the rest.
+/// The status sheet (home's page, and any screen without one of its own): the companion, today, then the rest.
 struct StatusModel: Equatable {
     struct Row: Equatable { var key, value: String }
     var dex: Int; var name, sex, level, toNext, nature: String; var female: Bool; var v: Int; var exp: CGFloat; var numbers: [Row]; var rows: [Row]
@@ -62,7 +62,13 @@ struct LearnModel: Equatable {
 /// 배틀 타워's lobby: the run, the party, the button.
 struct TowerModel: Equatable {
     struct Member: Equatable { var dex: Int; var name: String; var level: Int }
-    var run: Bool; var streak, best, bp, fee: Int; var party: [Member]
+    /// Picking who goes in party slot `slot`: count candidates, `rows` the page in view from `first` (slot = where that one is in the party now).
+    struct Pick: Equatable {
+        struct Row: Equatable { var name: String; var level: Int; var slot: Int? }
+        var slot, sel, count, first: Int; var rows: [Row]
+    }
+    static let perPage = 5
+    var run: Bool; var streak, best, bp, fee: Int; var party: [Member]; var custom = false; var pick: Pick? = nil   // custom = the player's party, not the recommended one
 }
 /// 도구: everything carried — the walker's and the bag's, a row a kind; the picked one's use (nil = nothing to press) and a line about it.
 struct ItemsModel: Equatable {
@@ -78,7 +84,7 @@ extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
     static let tallest: CGFloat = 472                                                              // 포켓몬's grid: the size menu keeps it on the screen
     var height: CGFloat {
-        battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 454 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 406 : menu != nil ? 344
+        battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 454 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 406 : menu != nil ? 354
             : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : status != nil ? 354 : Layout.idle
     }
 }

@@ -44,7 +44,7 @@ if let b = statusItem?.button {
 walker.state.dex()
 walker.levelled = walker.state.sync(counter: view.counter(), boot: view.boot(), at: Date())   // steps typed while the app was quit (same login) count
 walker.save()
-walker.refreshPane(Date(), force: true)                          // the page it opens on (the status sheet, if it was left open): no jump after it shows
+walker.refreshPane(Date(), force: true)                          // the page it opens on (the status sheet): no jump after it shows
 let size = view.frame.size
 let panel = Panel(contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
 panel.level = .floating

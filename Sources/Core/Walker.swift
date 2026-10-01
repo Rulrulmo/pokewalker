@@ -22,7 +22,6 @@ import Foundation
     var rng = Seeded(s: .random(in: .min ... .max))
     var pane = PaneContent(), paneAt = Date.distantPast                    // the pane's page as shown, when it was last refreshed
     var cardH = Layout.idle                                                // the card's height now (card points): the page's
-    var statusOpen = settings.bool("statusOpen", false)                    // the title row's ⌄: the status sheet under the band where no page is up
     var hud: SideModel? = nil                                              // a fight's HP boxes, drawn over the LCD
     var titleShown = ""                                                    // the title row as last shown: a change redraws it
     var persist = true                                                     // false in --selftest: flows must never touch the real save (nor notify)
@@ -42,11 +41,9 @@ import Foundation
         let hb = sideOn ? c.battle : nil
         if hb != hud { hud = hb; host?.redraw(.lcd) }
         if homeKey() != keyShown { keyShown = homeKey(); host?.redraw(.key) }                   // the 메뉴 / 홈 key's face
-        let t = title(), key = t.title + "|" + t.meta + "|" + "\(t.chevron.map { $0 ? 1 : 0 } ?? 2)"
+        let t = title(), key = t.title + "|" + t.meta
         if key != titleShown { titleShown = key; host?.redraw(.title) }
     }
-    /// The status sheet open or shut (the title row's chevron).
-    func toggleStatus() { statusOpen.toggle(); if persist { settings.set("statusOpen", statusOpen) }; refreshPane(Date(), force: true) }
 
     /// The clock (the host's, 10 a second): steps, the companion's finds, weather, unlocks, level-ups; screens that time out; the minute's save.
     func tick(_ now: Date) {
@@ -122,43 +119,44 @@ import Foundation
     /// The keys as the walker knows them: ◀ ▶ ↑ ↓, page up / down, tab, ● (return / space), ↩ (esc), 메뉴 / 홈 (M).
     enum Key { case left, right, up, down, pageUp, pageDown, tab, enter, back, menu }
     /// A key down (held: the key's repeat): in a shop ↑ ↓ = a row, or ±10; in a grid ↑ ↓ a row, page up / down a page; tab a grid's next tab
-    /// (shift: the one before), where no page is up the status sheet. false = not the walker's (the platform passes it on).
+    /// (shift: the one before). false = not the walker's (the platform passes it on).
     func key(_ k: Key, shift: Bool = false, held: Bool = false) -> Bool {
         if case .shop(_, _, let q) = screen, let d = [Key.up: -1, .down: 1][k] { shopStep(q == nil ? d : -10 * d); return true }
+        if case .tower(_?) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -TowerModel.perPage, .pageDown: TowerModel.perPage][k] { towerStep(d); return true }   // the tower's picker: ↑ ↓ a row, page up / down a page
         switch screen { case .dex(_, _, false), .box(_, .none, _, false): if let d = [Key.up: -6, .down: 6, .pageUp: -30, .pageDown: 30][k] { gridStep(d, ends: abs(d) == 30); return true }; default: break }   // the grids: ↑ ↓ a row, page up / down a page
         if k == .tab {
             switch screen {
             case .dex(_, let f, false): gridTap(4100 + (f + (shift ? 3 : 1)) % 4)
             case .box(_, .none, _, false): gridTap(4100 + (boxSort + (shift ? 3 : 1)) % 4)
-            default: if title().chevron != nil { toggleStatus() }
+            default: break
             }
             return true
         }
-        switch screen { case .shop, .shopConfirm: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying
+        switch screen { case .shop, .shopConfirm, .tower: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, or pay into the tower after a pick
         guard let i = [Key.left: 0, .enter: 1, .right: 2, .back: 3, .menu: 4][k] else { return false }
         press(i); return true
     }
 
-    /// The title row for this screen: what it is, one line of what the LCD doesn't show, and home's chevron (nil = none; true = open).
-    func title() -> (title: String, meta: String, chevron: Bool?) {
+    /// The title row for this screen: what it is, and one line of what the LCD doesn't show.
+    func title() -> (title: String, meta: String) {
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }
         let fight: Battle? = switch sc { case .battle(let b, _), .moves(let b, _), .party(let b, _), .bagBattle(let b, _), .forfeit(let b, _), .beats(let b, _, _, _): b; default: nil }
         if let b = fight {
-            guard let tr = b.trainer else { return ("야생 배틀", state.here.name, nil) }
+            guard let tr = b.trainer else { return ("야생 배틀", state.here.name) }
             let left = { (fs: [Fighter]) in fs.filter(\.alive).count }
-            return (tr, "배틀 타워 · 남은 \(left(b.theirs)) : \(left(b.mine))", nil)
+            return (tr, "배틀 타워 · 남은 \(left(b.theirs)) : \(left(b.mine))")
         }
         let when = "\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · \((state.weather ?? .sunny).name)"
         switch sc {
-        case .dex: return ("도감", "잡음 \(dexCount) · 봤음 \(seenList.count)", nil)
-        case .box, .items: return ("포켓몬", "워커 \(state.caught.count) · 상자 \(state.box.count.formatted()) · 도구 \(state.items.count + state.bag.count)", nil)
-        case .menu: return ("메뉴", "", nil)
-        case .shop(let bp, _, _), .shopConfirm(let bp, _, _): return (bp ? "BP 교환소" : "상점", "", nil)
-        case .radar: return ("포켓 레이더", state.here.name, nil)
-        case .card: return ("트레이너 카드", "", nil)
-        case .learn: return ("기술 배우기", "", nil)
-        case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP", nil)
-        default: return (state.here.name, when, statusOpen)                                      // screens without a page of their own: the status sheet's ⌄
+        case .dex: return ("도감", "잡음 \(dexCount) · 봤음 \(seenList.count)")
+        case .box, .items: return ("포켓몬", "워커 \(state.caught.count) · 상자 \(state.box.count.formatted()) · 도구 \(state.items.count + state.bag.count)")
+        case .menu: return ("메뉴", "")
+        case .shop(let bp, _, _), .shopConfirm(let bp, _, _): return (bp ? "BP 교환소" : "상점", "")
+        case .radar: return ("포켓 레이더", state.here.name)
+        case .card: return ("트레이너 카드", "")
+        case .learn: return ("기술 배우기", "")
+        case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
+        default: return (state.here.name, when)                                                 // screens without a page of their own: the status sheet
         }
     }
 }

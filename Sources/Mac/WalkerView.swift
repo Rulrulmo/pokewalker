@@ -81,8 +81,7 @@ final class WalkerView: NSView {
             if i == 1 || i == 4, e.clickCount > 1 { return }                                        // ● or 메뉴 twice fast: once (the 2nd would act on what the 1st opened)
             pressed = i; pressedAt = Date(); walker.press(i)
             perform(#selector(tick(_:)), with: nil, afterDelay: 0.15, inModes: [.common])
-        } else if chevronRect.contains(p), walker.title().chevron != nil { walker.toggleStatus() }
-        else if lcdRect.contains(p), walker.touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needsDisplay = true }
+        } else if lcdRect.contains(p), walker.touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needsDisplay = true }
         else { window?.performDrag(with: e) }
     }
     override func keyDown(with e: NSEvent) {                                                  // ← → ↑ ↓, page up / down, tab, return / space, esc (= ↩ 뒤로), M (= 메뉴 / 홈): Walker.key
@@ -92,7 +91,6 @@ final class WalkerView: NSView {
     }
     override var acceptsFirstResponder: Bool { true }
     override func resetCursorRects() {
-        if walker.title().chevron != nil { addCursorRect(chevronRect, cursor: .pointingHand) }            // the LCD is to look at: no hand over it
         for b in buttons { addCursorRect(NSRect(x: b.c.x - b.r, y: b.c.y - b.r, width: 2 * b.r, height: 2 * b.r), cursor: .pointingHand) }
     }
 

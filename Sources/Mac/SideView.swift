@@ -21,14 +21,14 @@ final class SideView: NSView {
     override func mouseDown(with e: NSEvent) {
         let p = convert(e.locationInWindow, from: nil), c = content
         guard let k = art.hits.first(where: { $0.0.contains(p) })?.1 else { window?.performDrag(with: e); return }   // not on a button: drag the whole body
-        if e.clickCount == 1 { downOn = pageKind } else if c.battle != nil || c.shop?.ask != nil || c.mon != nil || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened (a move, 예, 함께 under 아니오, a cell under 메뉴's tile): ignored
+        if e.clickCount == 1 { downOn = pageKind } else if c.battle != nil || c.shop?.ask != nil || c.mon != nil || c.tower != nil && !(5440...5441).contains(k) || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened (a move, 예, 함께 under 아니오, a cell under 메뉴's tile, the tower's picker under its row): ignored
         if k >= 5000, k < 10000 { walker?.pageTap(k) } else if k >= 4000 { walker?.gridTap(k) } else if k >= 3000 { walker?.menuTap(k - 3000) } else if k >= 2000 { walker?.shopTap(k) } else { walker?.sidePick(k) }
     }
     override func scrollWheel(with e: NSEvent) {                                                 // the shop list: a row per notch (or 6 pt of trackpad); a grid: a page (24 pt)
         let grid = content.grid != nil
-        guard content.shop != nil || grid else { return super.scrollWheel(with: e) }
+        guard content.shop != nil || content.tower?.pick != nil || grid else { return super.scrollWheel(with: e) }
         let notch: CGFloat = grid ? 24 : 6
-        func step(_ d: Int) { if grid { walker?.gridStep(d * GridModel.perPage) } else { walker?.shopRow(d) } }   // rows only, never the amount
+        func step(_ d: Int) { if grid { walker?.gridStep(d * GridModel.perPage) } else { walker?.listRow(d) } }   // rows only, never the amount
         if !e.hasPreciseScrollingDeltas { if e.scrollingDeltaY != 0 { step(e.scrollingDeltaY > 0 ? -1 : 1) }; return }
         if e.phase == .began { scrolled = 0 }
         scrolled += e.scrollingDeltaY

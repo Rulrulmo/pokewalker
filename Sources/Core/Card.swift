@@ -15,14 +15,10 @@ extension Walker {
         c.fill(CGRect(x: 0, y: (Layout.seam - Layout.band / 2) * k, width: W, height: Layout.band * k), dark && t.band.brightness < 0.3 ? Color(white: 0.34, alpha: 1) : t.band)
         c.restore()
         c.stroke(body, Color(white: 0, alpha: 0.12), width: 0.5)
-        // the title row: what the LCD doesn't show; home's ⌄ opens the status sheet
+        // the title row: what the LCD doesn't show
         let tl = title(), fg = light ? Ink.ink : .white, fg2 = light ? Ink.sub : Color(white: 1, alpha: 0.82), cy = 12.5 * k
         c.say(tl.title, 12 * k, cy, font(11, .bold), fg, maxW: 120 * k)
-        c.say(tl.meta, (207 - 3 - (tl.chevron != nil ? 13 : 0)) * k, cy, font(9, .medium), fg2, 1, maxW: 110 * k)
-        if let open = tl.chevron {
-            let cx = 200 * k, s3 = 3 * k, d: CGFloat = open ? -1 : 1
-            c.stroke(.poly([CGPoint(x: cx - s3, y: cy - d * s3 / 2), CGPoint(x: cx, y: cy + d * s3 / 2), CGPoint(x: cx + s3, y: cy - d * s3 / 2)], closed: false), fg, width: 1.5 * k, round: true)
-        }
+        c.say(tl.meta, (207 - 3) * k, cy, font(9, .medium), fg2, 1, maxW: 110 * k)
         let bezel = CGRect(x: (9 * k).rounded(), y: (24 * k).rounded(), width: (198 * k).rounded(), height: (134 * k).rounded()), bp = Path.rounded(bezel, 7 * k)
         c.fill(bp, Ink.dark)                                                                       // the LCD's bezel
         if dark { c.stroke(bp, Color(white: 1, alpha: 0.22), width: max(1, k)) }

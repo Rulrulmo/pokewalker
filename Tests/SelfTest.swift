@@ -547,7 +547,7 @@ import AppKit                                                                   
     bk.screen = .battle(tw, sel: 3); bk.press(1); bk.press(2); bk.press(1)
     check(bk.state.towerStreak == 0 && !bk.towerRun, "… ▶ 예 ● gives up")
     bk.towerRun = true; bk.state.towerStreak = 2
-    check({ if case .menu(menuAt("배틀 타워")) = back(.tower) { return true }; return false }() && bk.towerRun && bk.state.towerStreak == 2, "tower lobby: ↩ to the menu, the run stays on")
+    check({ if case .menu(menuAt("배틀 타워")) = back(.tower(pick: nil)) { return true }; return false }() && bk.towerRun && bk.state.towerStreak == 2, "tower lobby: ↩ to the menu, the run stays on")
     let radar = Screen.radar(bush: 1, cursor: 0, since: Date(), chain: 4)
     check({ if case .radar(_, _, _, 4) = back(radar) { return true }; return false }(), "radar: ↩ does nothing (the 10W and the chain stay)")
     check({ if case .learn(4) = back(.learn(sel: 1)) { return true }; return false }(), "learn: ↩ onto 배우지 않는다")
@@ -734,7 +734,7 @@ import AppKit                                                                   
     _ = dc.key(.enter, held: true)
     #endif
     check(dc.state.watts == 1000, "a held return doesn't buy")
-    dc.shopStep(10); dc.shopRow(1); check(on(dc) { if case .shop(false, 1, nil) = $0 { return true }; return false }, "scrolling the panel moves a row and leaves how-many (never the amount)")
+    dc.shopStep(10); dc.listRow(1); check(on(dc) { if case .shop(false, 1, nil) = $0 { return true }; return false }, "scrolling the panel moves a row and leaves how-many (never the amount)")
     dc.screen = .shop(bp: false, sel: 0, qty: nil); check(dc.shopModel()?.hint.contains("●") == true, "the panel says what ● does")
     dc.screen = .shop(bp: false, sel: dc.wares(false).count - 1, qty: nil); check(dc.shopModel()?.hint == "W가 부족해요 · 9,999W 필요", "the panel says why a row can't be bought", "\(dc.shopModel()?.hint ?? "")")
     // 7g the Poké Ball card: the LCD 2 pt a dot at 보통, the keys on the band, the page under it growing down per screen
@@ -743,31 +743,31 @@ import AppKit                                                                   
           "보통: a 216 x 199 card, the LCD 192 x 128 (2 pt a dot: whole pixels on a 1x screen)", "\(devSize) \(lcdRect)")
     check(buttons.count == 5 && buttons.allSatisfy { $0.c.y == Layout.seam && $0.c.x - $0.r >= 0 && $0.c.x + $0.r <= Layout.w } && buttons[1].r > buttons[0].r && buttons.prefix(4).map(\.c.x) == buttons.prefix(4).map(\.c.x).sorted()
           && buttons[4].c.x + buttons[3].c.x == Layout.w * K, "메뉴 ◀ ● ▶ ↩ on the band, ● the ball's own bigger button, 메뉴 across from ↩")
-    let gk = Walker(state: Walk()); gk.persist = false; gk.statusOpen = false
+    let gk = Walker(state: Walk()); gk.persist = false
     #if os(macOS)
     let gw = WalkerView(walker: gk)                                                               // the Mac: its view, the host, follows the card
     #endif
-    gk.refreshPane(Date(), force: true); let idleH = gk.cardH
+    gk.refreshPane(Date(), force: true); let homeH = gk.cardH
+    gk.screen = .menu(0); gk.refreshPane(Date(), force: true); let menuH = gk.cardH
     gk.screen = .dex(25, filter: 0, detail: false); gk.refreshPane(Date(), force: true); let gridH = gk.cardH
     gk.screen = .battle(wild, sel: 0); gk.refreshPane(Date(), force: true); let fightH = gk.cardH, hudUp = gk.hud == nil
-    gk.screen = .home; gk.statusOpen = true; gk.refreshPane(Date(), force: true)
+    gk.screen = .home; gk.refreshPane(Date(), force: true)
     #if os(macOS)
     let viewed = gw.frame.size == CGSize(width: 216, height: 354) && gw.page.frame.minY == Layout.pane
     #else
     let viewed = true
     #endif
-    check(idleH == 199 && gridH == 422 && fightH == 311 && gk.cardH == 354 && viewed && hudUp,
-          "the card grows down to the page: idle 199, battle 311, a grid 422, the status sheet 354 (the page under the band)", "\(idleH) \(gridH) \(fightH) \(gk.cardH)")
+    check(homeH == 354 && menuH == 354 && gridH == 422 && fightH == 311 && gk.cardH == 354 && viewed && hudUp,
+          "the card grows down to the page: 홈's status sheet 354 and the menu the same (the 메뉴 / 홈 key never resizes it), battle 311, a grid 422 (the page under the band)", "\(homeH) \(menuH) \(gridH) \(fightH) \(gk.cardH)")
     SIZE = 3; check(PX == 3 && 422 * K < 850, "크게: 3 pt a dot, its tallest page still under a 13-inch screen's height"); SIZE = size0
     let pv = Walker(state: { var s = Walk(); s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); pv.persist = false; pv.rng = Seeded(s: 61)
     func kind(_ sc: Screen) -> String {
         pv.screen = sc; let c = pv.paneContent(Date())
         return c.battle != nil ? "battle" : c.dex != nil ? "dex" : c.grid != nil ? "grid" : c.mon != nil ? "mon" : c.shop != nil ? "shop" : c.menu.map { "menu\($0.sel)" } ?? (c.status != nil ? "status" : "none")
     }
-    pv.statusOpen = false; let shut = kind(.home); pv.statusOpen = true
-    check(shut == "none" && kind(.home) == "status" && kind(.box(0, act: nil, confirm: false, detail: true)) == "mon" && kind(.menu(menuAt("트레이너 카드"))) == "menu\(menuAt("트레이너 카드"))" && kind(.battle(wild, sel: 0)) == "battle" && kind(.shop(bp: false, sel: 0, qty: nil)) == "shop" && kind(.dex(1, filter: 0, detail: true)) == "dex"
+    check(kind(.home) == "status" && kind(.box(0, act: nil, confirm: false, detail: true)) == "mon" && kind(.menu(menuAt("트레이너 카드"))) == "menu\(menuAt("트레이너 카드"))" && kind(.battle(wild, sel: 0)) == "battle" && kind(.shop(bp: false, sel: 0, qty: nil)) == "shop" && kind(.dex(1, filter: 0, detail: true)) == "dex"
           && kind(.dex(1, filter: 0, detail: false)) == "grid" && kind(.box(0, act: nil, confirm: false)) == "grid",
-          "the pane: nothing on 홈 until ⌄ opens the status sheet, 메뉴 tiles on the menu, the battle / 상점 pages, 도감 / 상자 grids, the dex entry, a box Pokémon's page")
+          "the pane: the status sheet on 홈 (always: the card never shuts), 메뉴 tiles on the menu, the battle / 상점 pages, 도감 / 상자 grids, the dex entry, a box Pokémon's page")
     check(kind(.say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date())) == "battle" && kind(.say(["W가 부족하다"], next: .menu(menuAt("포켓 레이더")), since: Date())) == "menu0"
           && pv.paneContent(Date()).menu != nil, "a fight's / a menu page's message keeps its page up")
     pv.screen = .say(["기술의 남은", "PP가 없다!"], next: .moves(wild, sel: 0), since: Date()); check(pv.sideModel(Date())?.message == "기술의 남은 PP가 없다!", "… with the message in the battle page's box")
@@ -784,8 +784,31 @@ import AppKit                                                                   
     let rm = pt.paneContent(Date()).radar; pt.pageTap(5002)
     check(rm?.live == 2 && pts { if case .beats(_, let bs, _, _) = $0 { return bs.first == .appear }; return false }, "레이더: the rustling bush is marked on the pane, a click on it searches there")
     pt.screen = .card(0); pt.pageTap(5202); check(pts { if case .card(2) = $0 { return true }; return false } && pt.paneContent(Date()).card?.page == 2, "트레이너 카드: its pages are tabs")
-    pt.screen = .tower; let lobby = pt.paneContent(Date()).tower; pt.pageTap(5400)
+    pt.screen = .tower(pick: nil); let lobby = pt.paneContent(Date()).tower; pt.pageTap(5400)
     check(lobby?.party.count == 2 && lobby?.fee == Walk.towerFee && pt.state.watts == 500 - Walk.towerFee && pts { if case .beats = $0 { return true }; return false }, "배틀 타워: the party, and 도전 pays and starts")
+    let tp = Walker(state: { var s = Walk(); s.companion = Mon(dex: 25, level: 10, female: false); s.caught = [Mon(dex: 16, level: 20, female: false)]
+        s.box = [Mon(dex: 1, level: 30, female: false), Mon(dex: 4, level: 5, female: false), Mon(dex: 7, level: 15, female: false)]; return s }()); tp.persist = false
+    func tdex() -> [Int] { tp.state.party().map(\.mon.dex) }
+    func tpick() -> TowerModel.Pick? { tp.paneContent(Date()).tower?.pick }
+    tp.screen = .tower(pick: nil); let twRec = tdex(), twRecCustom = tp.paneContent(Date()).tower?.custom; tp.pageTap(5412); let twPk = tpick()
+    check(twRec == [25, 1, 16] && twRecCustom == false && twPk?.slot == 2 && twPk?.count == 5 && twPk?.rows.map(\.name) == [1, 16, 7, 25, 4].map { monNames[$0] } && twPk?.rows.map(\.slot) == [1, 2, nil, 0, nil] && twPk?.sel == 1,
+          "배틀 타워: the recommended party (the companion, then the strongest two); a party row opens everyone by level, on its own one, the party's marked")
+    tp.pageTap(5432); let twPlaced = tdex(), twCustom = tp.paneContent(Date()).tower?.custom == true && tpick() == nil
+    tp.pageTap(5410); tp.press(2); tp.press(1); let twByKeys = tdex()
+    tp.pageTap(5411); tp.pageTap(5432); let twSwapped = tdex()
+    check(twPlaced == [25, 1, 7] && twCustom && twByKeys == [4, 1, 7] && twSwapped == [4, 7, 1], "… a click on one puts it in the slot (추천으로 shows); ◀ ▶ ● do the same; picking one of the party swaps the two")
+    let twSaved = (try? JSONDecoder().decode(Walk.self, from: JSONEncoder().encode(tp.state)))?.party().map(\.mon.dex)
+    tp.state.box.remove(at: 0); let twGone = tdex()
+    tp.pageTap(5420); let twBack = tdex(), twPlain = tp.state.towerPick == nil && tp.paneContent(Date()).tower?.custom == false
+    check(twSaved == [4, 7, 1] && twGone == [4, 7, 25] && twBack == [25, 16, 7] && twPlain, "… kept in the save, by who they are (one let go: the rest stay, topped up as recommended); 추천으로 goes back", "\(String(describing: twSaved)) \(twGone) \(twBack)")
+    tp.state.box += (10...14).map { Mon(dex: $0, level: 3, female: false) }; tp.pageTap(5410); let twP1 = tpick(); tp.pageTap(5441); let twP2 = tpick(); _ = tp.key(.up); let twP3 = tpick()
+    tp.pageTap(5440); let twWrapped = tpick(); tp.press(3); let twLobbyAgain = tpick() == nil && tp.paneContent(Date()).tower != nil; tp.press(3)
+    check(twP1?.count == 9 && twP1?.rows.count == 5 && twP2?.first == 5 && twP2?.sel == 5 && twP2?.rows.count == 4 && twP3?.sel == 4 && twP3?.first == 0 && twWrapped?.first == 5 && twLobbyAgain
+          && tp.paneContent(Date()).tower == nil && tp.state.party().map(\.mon.dex) == [25, 16, 7], "… five a page (▶ ◀ pages round, ↑ ↓ rows); ↩ leaves the picker, then the lobby")
+    tp.state.watts = 500; tp.screen = .tower(pick: nil); tp.pageTap(5411); _ = tp.key(.down); tp.state.companion.level = 18; let twMoved = tpick()
+    _ = tp.key(.enter, held: true); let twHeld = tpick() != nil; tp.press(1); let twAfter = tdex(); _ = tp.key(.enter, held: true)
+    check(twMoved?.sel == 2 && twMoved?.rows[safe: 2]?.name == monNames[7] && twHeld && twAfter == [25, 7, 16] && tp.state.watts == 500 && tp.paneContent(Date()).tower != nil && tpick() == nil,
+          "… the cursor stays on its Pokémon when a level-up reorders the list; a held ● neither picks again nor pays into a fight", "\(String(describing: twMoved)) \(twAfter)")
     pt.screen = .menu(menuAt("포켓몬")); pt.press(1); let g0 = pt.paneContent(Date()).grid
     check(pts { if case .box(-1, nil, false, false) = $0 { return true }; return false } && g0?.party.map(\.dex) == [25, 16] && g0?.partySel == 0 && g0?.items == 1
           && pt.paneContent(Date()).height == PaneContent.tallest, "포켓몬: the companion (picked first) and the walker's in a row over the box, then the items' chip")
@@ -825,8 +848,7 @@ import AppKit                                                                   
     func pressTab() { _ = pt.key(.tab) }
     #endif
     pt.screen = .dex(1, filter: 0, detail: false); pressTab(); let tabbed = pts { if case .dex(_, 1, false) = $0 { return true }; return false }
-    pt.screen = .home; pt.statusOpen = false; pressTab()
-    check(tabbed && pt.statusOpen, "Tab: a grid's next tab; on home, the status sheet")
+    check(tabbed, "Tab: a grid's next tab")
     let stm = pv.statusModel(); check(stm.level == "Lv.5" && stm.numbers.count == 3 && stm.rows.count == 3 && stm.exp >= 0 && stm.exp <= 1, "the status sheet: level, EXP to next, today / W / total, egg / tower / dex")
     #if os(macOS)
     let frameTimer = { (v: Walker) -> [(Bool, String)] in                                        // the frame timer is the Mac view's

@@ -253,15 +253,14 @@ func put<T>(_ s: String, _ field: inout T) {
     }
 
     // MARK: input
-    /// A click, in card points: a key, the chevron, the LCD (a touch only ends a message), the page's hits; anything else drags the card.
+    /// A click, in card points: a key, the LCD (a touch only ends a message), the page's hits; anything else drags the card.
     func mouseDown(_ p: CGPoint, count n: Int) {
         if p.y >= pageTop, p.y < (walker.cardH * K).rounded() { pageDown(CGPoint(x: p.x, y: p.y - pageTop), count: n); return }   // the page is its own view on the Mac
         if let i = buttons.firstIndex(where: { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r + 2 * K }) {
             if i == 1 || i == 4, n > 1 { return }                                                  // ● or 메뉴 twice fast: once (the 2nd would act on what the 1st opened)
             pressed = i; pressedAt = Date(); walker.press(i)
             _ = SetTimer(hwnd, 3, 150, nil)                                                        // the key comes back up
-        } else if chevronRect.contains(p), walker.title().chevron != nil { walker.toggleStatus() }
-        else if lcdRect.contains(p), walker.touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needAll = true; post() }
+        } else if lcdRect.contains(p), walker.touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needAll = true; post() }
         else { drag() }
     }
     var pageKind: Int {
@@ -271,16 +270,16 @@ func put<T>(_ s: String, _ field: inout T) {
     func pageDown(_ p: CGPoint, count n: Int) {
         let c = walker.pane
         guard let k = page.hits.first(where: { $0.0.contains(p) })?.1 else { drag(); return }    // not on a button: drag the whole card
-        if n == 1 { downOn = pageKind } else if c.battle != nil || c.shop?.ask != nil || c.mon != nil || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened: ignored
+        if n == 1 { downOn = pageKind } else if c.battle != nil || c.shop?.ask != nil || c.mon != nil || c.tower != nil && !(5440...5441).contains(k) || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened: ignored
         if k >= 5000, k < 10000 { walker.pageTap(k) } else if k >= 4000 { walker.gridTap(k) } else if k >= 3000 { walker.menuTap(k - 3000) } else if k >= 2000 { walker.shopTap(k) } else { walker.sidePick(k) }
     }
     func drag() { _ = ReleaseCapture(); _ = SendMessageW(hwnd, UINT(WM_NCLBUTTONDOWN), WPARAM(HTCAPTION), 0) }
     /// The wheel over the page: the shop list a row a notch, a grid a page.
     func wheel(_ delta: Int, at p: CGPoint) {
         let grid = walker.pane.grid != nil
-        guard p.y >= pageTop, walker.pane.shop != nil || grid else { return }
+        guard p.y >= pageTop, walker.pane.shop != nil || walker.pane.tower?.pick != nil || grid else { return }
         scrolled += delta
-        while abs(scrolled) >= 120 { let d = scrolled > 0 ? -1 : 1; if grid { walker.gridStep(d * GridModel.perPage) } else { walker.shopRow(d) }; scrolled += d * 120 }
+        while abs(scrolled) >= 120 { let d = scrolled > 0 ? -1 : 1; if grid { walker.gridStep(d * GridModel.perPage) } else { walker.listRow(d) }; scrolled += d * 120 }
     }
     /// ← → ↑ ↓, page up / down, tab, return / space, esc (= ↩ 뒤로), M (= 메뉴 / 홈): Walker.key.
     func keyDown(_ wp: WPARAM, _ lp: LPARAM) -> Bool {
@@ -305,10 +304,10 @@ func put<T>(_ s: String, _ field: inout T) {
             if f & UInt16(RI_MOUSE_RIGHT_BUTTON_DOWN) != 0 { steps &+= 1 }
         }
     }
-    /// Over a key, the chevron or one of the page's buttons: the hand (the LCD is to look at).
+    /// Over a key or one of the page's buttons: the hand (the LCD is to look at).
     func cursorHand(_ p: CGPoint) -> Bool {
         if p.y >= pageTop { let q = CGPoint(x: p.x, y: p.y - pageTop); return page.hits.contains { $0.0.contains(q) } }
-        return buttons.contains { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r } || (walker.title().chevron != nil && chevronRect.contains(p))
+        return buttons.contains { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r }
     }
     func client(_ lp: LPARAM) -> CGPoint { CGPoint(x: CGFloat(lo(lp)) / sc, y: CGFloat(hi(lp)) / sc) }
 

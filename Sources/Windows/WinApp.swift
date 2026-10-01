@@ -58,7 +58,7 @@ final class JSONSettings: Settings {
     walker.state.dex()
     walker.levelled = walker.state.sync(counter: c.counter(), boot: c.boot(), at: Date())        // a new launch only baselines: steps while it was closed can't be seen
     walker.save()
-    walker.refreshPane(Date(), force: true)                                                      // the page it opens on (the status sheet, if it was left open)
+    walker.refreshPane(Date(), force: true)                                                      // the page it opens on (the status sheet)
     c.open(); settings.set("hidden", false)                                                      // a launch always shows it
     walker.sideOn = true
     var msg = MSG()
