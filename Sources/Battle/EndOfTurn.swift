@@ -11,9 +11,9 @@ extension Battle {
         for s in [Side.me, .it] where f(s).alive && !over {
             let x = f(s), n = nm(s), guardian = x.has(98)
             switch weatherOn {
-            case .sand where !x.typeList.contains(where: { ["rock", "ground", "steel"].contains($0) }) && !x.has(8) && !guardian && x.semi == 0: hurt(s, max(1, x.maxHP / 16), "모래바람이 " + josa(n, "을", "를") + " 덮쳤다!")
-            case .hail where !x.typeList.contains("ice"):
-                if x.has(115) { restore(s, max(1, x.maxHP / 16), "") } else if !x.has(81) && !guardian && x.semi == 0 { hurt(s, max(1, x.maxHP / 16), "싸라기눈이 " + josa(n, "을", "를") + " 덮쳤다!") }
+            case .sand where !x.typeList.contains(where: { ["rock", "ground", "steel"].contains($0) }) && !x.has(8) && !guardian && ![91, 291].contains(x.semi): hurt(s, max(1, x.maxHP / 16), "모래바람이 " + josa(n, "을", "를") + " 덮쳤다!")   // only underground / underwater is out of it
+            case .hail:
+                if x.has(115) { restore(s, max(1, x.maxHP / 16), "") } else if !x.typeList.contains("ice"), !x.has(81), !guardian, ![91, 291].contains(x.semi) { hurt(s, max(1, x.maxHP / 16), "싸라기눈이 " + josa(n, "을", "를") + " 덮쳤다!") }   // 아이스바디 (always on an ice type)
             case .rain:
                 if x.has(44) { restore(s, max(1, x.maxHP / 16), "") }; if x.has(87) { restore(s, max(1, x.maxHP / 8), "") }
                 if x.has(93), x.status != nil { setStatus(s, nil, josa(n, "은", "는") + " 촉촉바디로 나았다!") }
@@ -22,6 +22,7 @@ extension Battle {
             }
             faints()
         }
+        guard !over else { return }                                                                  // a KO that ended it: nothing after the last beat (the screen would read on)
         for s in [Side.me, .it] {
             let k = si(s)
             if sides[k].future > 0 { sides[k].future -= 1; if sides[k].future == 0, f(s).alive { hurt(s, sides[k].futureDmg, josa(nm(s), "은", "는") + " 미래의 공격을 받았다!") } }
@@ -40,27 +41,31 @@ extension Battle {
                 switch x.status {
                 case .poison?: if x.has(90) { restore(s, max(1, x.maxHP / 8), "") } else { hurt(s, max(1, x.maxHP / 8), josa(n, "은", "는") + " 독의 데미지를 입었다!") }
                 case .toxic?: if x.has(90) { restore(s, max(1, x.maxHP / 8), "") } else { hurt(s, max(1, x.maxHP * x.toxic / 16), josa(n, "은", "는") + " 독의 데미지를 입었다!"); mod(s) { $0.toxic = min(15, $0.toxic + 1) } }
-                case .burn?: hurt(s, max(1, x.maxHP / 8), josa(n, "은", "는") + " 화상 데미지를 입었다!")
+                case .burn?: hurt(s, max(1, x.maxHP / (x.has(85) ? 16 : 8)), josa(n, "은", "는") + " 화상 데미지를 입었다!")   // 내열 halves it
                 default: break
                 }
             }
             if f(s).alive, x.nightmare, x.status == .sleep, !guardian { hurt(s, max(1, x.maxHP / 4), josa(n, "은", "는") + " 악몽에 시달리고 있다!") }
             if f(s).alive, x.cursed, !guardian { hurt(s, max(1, x.maxHP / 4), josa(n, "은", "는") + " 저주를 받고 있다!") }
-            if f(s).alive, x.bound > 0 { mod(s) { $0.bound -= 1 }; if f(s).bound == 0 { say(s, josa(n, "은", "는") + " 조임에서 풀려났다!") } else if !guardian { hurt(s, max(1, x.maxHP / 16), josa(n, "은", "는") + " 조임의 데미지를 입었다!") } }
+            if f(s).alive, x.bound > 0, f(t).alive {                                                   // (its binder KO'd: let go when the next comes out)
+                let by = moveTable[x.boundBy]?.name ?? "조이기"
+                mod(s) { $0.bound -= 1 }; if f(s).bound == 0 { say(s, josa(n, "은", "는") + " " + by + "에서 풀려났다!") } else if !guardian { hurt(s, max(1, x.maxHP / 16), josa(n, "은", "는") + " " + by + "의 데미지를 입었다!") }
+            }
             if f(s).alive, x.has(3), x.turnsOut > 0 { boost(s, 5, 1, from: s) }
             if f(s).alive, x.has(61), f(s).status != nil, pct(30) { setStatus(s, nil, josa(n, "은", "는") + " 탈피로 나았다!") }
             if f(s).alive, x.status == .sleep, f(t).alive, f(t).has(123), !guardian { hurt(s, max(1, x.maxHP / 8), josa(n, "은", "는") + " 나이트메어에 시달리고 있다!") }
             if f(s).alive, x.yawn > 0 { mod(s) { $0.yawn -= 1 }; if f(s).yawn == 0 { inflict(s, .sleep, from: t, loud: false) } }
-            if f(s).alive, x.perish > 0 { mod(s) { $0.perish -= 1 }; say(s, josa(n, "의", "의") + " 멸망 카운트가 \(f(s).perish)이(가) 되었다!"); if f(s).perish == 0 { hurt(s, f(s).hp, "") } }
+            if f(s).alive, x.perish > 0 { mod(s) { $0.perish -= 1 }; say(s, josa(n, "의", "의") + " 멸망 카운트가 \(f(s).perish)" + (f(s).perish == 2 ? "가" : "이") + " 되었다!"); if f(s).perish == 0 { hurt(s, f(s).hp, "") } }
             mod(s) {
-                if $0.taunt > 0 { $0.taunt -= 1 }; if $0.encore > 0 { $0.encore -= 1 }; if $0.disable > 0 { $0.disable -= 1 }
+                if $0.taunt > 0 { $0.taunt -= 1 }; if $0.encore > 0 { $0.encore -= 1 }; if $0.encore > 0, let k = $0.moves.firstIndex(of: $0.encoreMove), $0.pp[k] == 0 { $0.encore = 0 }; if $0.disable > 0 { $0.disable -= 1 }
                 if $0.healBlock > 0 { $0.healBlock -= 1 }; if $0.magnetRise > 0 { $0.magnetRise -= 1 }; if $0.embargo > 0 { $0.embargo -= 1 }
-                if $0.lockOn > 0 { $0.lockOn -= 1 }; if $0.slowStart > 0 { $0.slowStart -= 1 }; if $0.uproar > 0 { $0.uproar -= 1 }
-                $0.turnsOut += 1; $0.roosted = false; $0.rage = $0.lastMove == 99 && $0.rage
+                if $0.lockOn > 0 { $0.lockOn -= 1 }; if $0.slowStart > 0 { $0.slowStart -= 1 }; if $0.uproar > 0 { $0.uproar -= 1 }; if $0.charge > 0 { $0.charge -= 1 }
+                $0.roosted = false; $0.rage = $0.lastMove == 99 && $0.rage
                 if $0.lastMove != 182 && $0.lastMove != 197 && $0.lastMove != 203 { $0.protectChain = 0 }
             }
             faints()
         }
+        guard !over else { return }
         for k in 0..<2 {
             let s: Side = k == 0 ? .me : .it
             for (path, text) in [(\SideState.reflect, "리플렉터"), (\SideState.light, "빛의장막"), (\SideState.safeguard, "신비의부적"), (\SideState.mist, "흰안개"), (\SideState.tailwind, "순풍"), (\SideState.luckyChant, "행운의주문")] where sides[k][keyPath: path] > 0 {
@@ -85,7 +90,7 @@ extension Battle {
                     out.append(.gained(exp: e, level: up ? probe.level : nil, foe: foe.dex, to: k)); apply(out.last!)
                 }
             }
-            if let n = theirs.indices.first(where: { theirs[$0].alive }) { switchIn(.it, n) } else { out.append(.won); over = true; return }
+            if let n = theirs.indices.first(where: { theirs[$0].alive }) { if inTurn { foeNext = n } else { switchIn(.it, n) } } else { out.append(.won); over = true; return }   // mid-turn: at its end
         }
         if !f(.me).alive, !f(.me).down {
             mod(.me) { $0.down = true }; out.append(.fainted(.me))
@@ -97,7 +102,7 @@ extension Battle {
     mutating func throwBall(_ ball: Double) -> Bool {
         let t = f(.it), bonus: Double = [.sleep, .freeze].contains(t.status) ? 2 : t.status != nil ? 1.5 : 1
         let a = Double((3 * t.maxHP - 2 * t.hp) * catchRate[t.mon.dex]) * ball * bonus / Double(3 * t.maxHP)
-        let b = a >= 255 ? 65536 : 65536 / pow(255 / max(a, 0.1), 0.1875)
+        let b = a >= 255 ? 65536 : 1048560 / sqrt(sqrt(16711680 / max(a, 0.1)))                 // Gen III-IV shake check
         var shakes = 0
         while shakes < 4, Double(roll(65536)) < b { shakes += 1 }
         out.append(.thrown(shakes: min(shakes, 3)))
@@ -125,7 +130,8 @@ extension Battle {
             if conf, f(.me).confused > 0 { mod(.me) { $0.confused = 0 }; say(.me, josa(n, "의", "의") + " 혼란이 풀렸다!") }
         case .pp(let k, let all):
             mod(.me) { x in
-                let idx = all ? Array(x.moves.indices) : [x.moves.indices.min { x.pp[$0] < x.pp[$1] } ?? 0]
+                func short(_ i: Int) -> Int { (moveTable[x.moves[i]]?.pp ?? 5) - x.pp[i] }
+                let idx = all ? Array(x.moves.indices) : [x.moves.indices.max { short($0) < short($1) } ?? 0]   // the move missing the most
                 for i in idx { x.pp[i] = min(moveTable[x.moves[i]]?.pp ?? 5, x.pp[i] + k) }
             }
             say(.me, josa(n, "의", "의") + " PP가 회복되었다!")
@@ -193,6 +199,13 @@ extension Battle {
         guard let i = safe.max(by: { offense(theirs[$0]) < offense(theirs[$1]) }), pct(60) else { return nil }
         foeSwapTurn = turnNo; return i
     }
+    /// The ▲ / ▼ / 효과 없음 hint on our move button: the type chart as that move will meet theirs (fixed damage only minds an immunity; a status move only 전기자석파's).
+    func hint(_ id: Int, _ type: String) -> Double {
+        let e = typeEff(type, .it, by: .me)
+        if id == 248 { return 1 }                                                                  // 미래예지: typeless in Gen IV
+        if moveTable[id]!.isStatus { return id == 86 && e == 0 ? 0 : 1 }
+        return Moves.fixedDamage.contains(id) ? (e == 0 ? 0 : 1) : e
+    }
     /// Ours can't pick this turn (charging, rampaging, recharging, biding, encored): the move it's stuck with.
     var forced: Int? {
         let x = mine[me]
@@ -203,6 +216,7 @@ extension Battle {
     /// Whether this item would do anything for ours right now (the bag hides the rest).
     func usable(_ u: ItemUse) -> Bool {
         let x = mine[me]
+        guard x.embargo == 0 else { return false }                                                 // 금제: no items at all
         switch u {
         case .heal: return x.hp < x.maxHP
         case .restore: return x.hp < x.maxHP || x.status != nil || x.confused > 0

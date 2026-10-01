@@ -22,7 +22,7 @@ extension Battle {
             guard f(t).lastMove != 0, f(t).disable == 0 else { if loud { say(t, "그러나 실패했다!") }; return }
             let k = 4 + roll(4); mod(t) { $0.disable = k; $0.disabledMove = $0.lastMove }; say(t, josa(nm(t), "의", "의") + " " + josa(moveTable[f(t).lastMove]!.name, "을", "를") + " 사슬묶기했다!")
         case "heal-block": mod(t) { $0.healBlock = 5 }; say(t, josa(nm(t), "은", "는") + " 회복봉인 당했다!")
-        case "no-type-immunity": mod(t) { $0.identified = true; $0.stage[7] = min(0, $0.stage[7]) }; say(t, josa(nm(t), "의", "의") + " 정체를 꿰뚫어 보았다!")
+        case "no-type-immunity": mod(t) { if m.id == 357 { $0.miracleEye = true } else { $0.identified = true }; $0.stage[7] = min(0, $0.stage[7]) }; say(t, josa(nm(t), "의", "의") + " 정체를 꿰뚫어 보았다!")   // 미라클아이: Psychic on Dark; 꿰뚫어보기 / 냄새구별: Normal & Fighting on Ghost
         case "embargo": mod(t) { $0.embargo = 5 }; say(t, josa(nm(t), "은", "는") + " 도구를 쓸 수 없게 되었다!")
         case "perish-song":
             say(t, "멸망의 노래를 들은 포켓몬은 3턴 후에 쓰러진다!")
@@ -47,13 +47,12 @@ extension Battle {
             if id == 445, genderRate[f(s).mon.dex] < 0 || genderRate[f(t).mon.dex] < 0 || f(s).mon.female == f(t).mon.female { fail(); return }
             for k in stride(from: 0, to: m.stats.count, by: 2) { boost(who, m.stats[k] - 1, m.stats[k + 1], from: s) }
             if id == 107 { mod(s) { $0.minimized = true } }; if id == 111 { mod(s) { $0.curled = true } }
-            if id == 268 { mod(s) { $0.charged = true }; say(s, josa(n, "은", "는") + " 충전했다!") }
-            if id == 254 { if f(s).stockpile >= 3 { fail() } else { mod(s) { $0.stockpile += 1 }; say(s, josa(n, "은", "는") + " \(f(s).stockpile)개 비축했다!") } }
+            if id == 268 { mod(s) { $0.charge = 2 }; say(s, josa(n, "은", "는") + " 충전했다!") }                    // its next turn's Electric move
             return
         case 3:
             var p = m.healing
-            if [234, 235, 236].contains(id) { p = weatherOn == .sun ? 67 : weatherOn == .clear || weatherOn == .fog ? 50 : 25 }
-            if id == 256 { guard f(s).stockpile > 0 else { fail(); return }; p = [0, 25, 50, 100][f(s).stockpile]; mod(s) { $0.stage[2] -= $0.stockpile; $0.stage[4] -= $0.stockpile; $0.stockpile = 0 } }
+            if [234, 235, 236].contains(id) { p = weatherOn == .sun ? 67 : weatherOn == .clear ? 50 : 25 }   // any other weather (fog too): a quarter
+            if id == 256 { guard f(s).stockpile > 0 else { fail(); return }; let k = f(s).stockpile; p = [0, 25, 50, 100][k]; mod(s) { $0.stockpile = 0 }; boost(s, 2, -k, from: s); boost(s, 4, -k, from: s) }
             if id == 355 { mod(s) { $0.roosted = true } }
             if f(s).hp == f(s).maxHP { say(s, josa(n, "의", "의") + " HP는 가득하다!"); return }
             restore(s, f(s).maxHP * p / 100, josa(n, "은", "는") + " 체력을 회복했다!"); return
@@ -65,6 +64,9 @@ extension Battle {
         }
         switch id {                                                                                  // everything with its own rule
         case 150: say(s, "그러나 아무 일도 일어나지 않았다!")
+        case 254:                                                                                    // 비축하기: up to 3, each +1 방어 / 특수방어 (토해내기 / 꿀꺽 spend them)
+            guard f(s).stockpile < 3 else { fail(); return }
+            mod(s) { $0.stockpile += 1 }; say(s, josa(n, "은", "는") + " \(f(s).stockpile)개 비축했다!"); boost(s, 2, 1, from: s); boost(s, 4, 1, from: s)
         case 182, 197, 203:
             let ok = (f(s).protectChain == 0 || roll(1 << min(8, f(s).protectChain)) == 0) && !f(other(s)).movedThisTurn   // fails when used last, and gets less likely in a row
             guard ok else { mod(s) { $0.protectChain = 0 }; fail(); return }
@@ -83,7 +85,7 @@ extension Battle {
         case 114: for x in [Side.me, .it] { mod(x) { $0.stage = Array(repeating: 0, count: 8) } }; say(s, "모든 능력 변화가 원래대로 돌아왔다!")
         case 156:
             guard f(s).hp < f(s).maxHP, f(s).status != .sleep, !f(s).has(15), !f(s).has(72) else { fail(); return }
-            setStatus(s, .sleep, josa(n, "은", "는") + " 잠들어 체력을 회복했다!"); mod(s) { $0.sleep = 2 }; restore(s, f(s).maxHP, "")
+            setStatus(s, .sleep, josa(n, "은", "는") + " 잠들어 체력을 회복했다!"); mod(s) { $0.sleep = 3 }; restore(s, f(s).maxHP, "")   // asleep 2 turns
         case 116: guard !f(s).focus else { fail(); return }; mod(s) { $0.focus = true }; say(s, josa(n, "은", "는") + " 의욕이 넘치고 있다!")
         case 164:
             guard f(s).sub == 0, f(s).hp > f(s).maxHP / 4 else { fail(); return }
@@ -100,11 +102,11 @@ extension Battle {
         case 144:
             guard f(t).form == nil else { fail(); return }
             let src = f(t)
-            mod(s) { $0.form = src.form ?? src.mon; $0.types = src.typeList; $0.stage = src.stage; $0.moves = src.moves; $0.pp = src.moves.map { _ in 5 }; $0.abilityOver = src.ability }; retyped(s)
+            mod(s) { if $0.ownMoves == nil { $0.ownMoves = $0.moves; $0.ownPP = $0.pp }; $0.form = src.form ?? src.mon; $0.types = src.typeList; $0.stage = src.stage; $0.moves = src.moves; $0.pp = src.moves.map { _ in 5 }; $0.abilityOver = src.ability }; retyped(s)
             say(s, josa(n, "은", "는") + " " + josa(monNames[src.mon.dex], "으로", "로") + " 변신했다!")
         case 102:
             guard f(t).lastMove != 0, !f(s).moves.contains(f(t).lastMove), let k = f(s).moves.firstIndex(of: 102) else { fail(); return }
-            let lm = f(t).lastMove; mod(s) { $0.moves[k] = lm; $0.pp[k] = 5 }; say(s, josa(n, "은", "는") + " " + josa(moveTable[lm]!.name, "을", "를") + " 흉내 냈다!")
+            let lm = f(t).lastMove; mod(s) { if $0.ownMoves == nil { $0.ownMoves = $0.moves; $0.ownPP = $0.pp }; $0.moves[k] = lm; $0.pp[k] = 5 }; say(s, josa(n, "은", "는") + " " + josa(moveTable[lm]!.name, "을", "를") + " 흉내 냈다!")
         case 160:
             let ts = f(s).moves.compactMap { moveTable[$0]?.type }.filter { !f(s).typeList.contains($0) && $0 != "" }
             guard let ty = ts.first else { fail(); return }; mod(s) { $0.types = [ty] }; retyped(s); say(s, josa(n, "은", "는") + " " + (typeKo[ty] ?? ty) + " 타입이 되었다!")
@@ -122,13 +124,13 @@ extension Battle {
             } else { boost(s, 5, -1, from: s); boost(s, 1, 1, from: s); boost(s, 2, 1, from: s) }
         case 180:
             guard let k = f(t).moves.firstIndex(of: f(t).lastMove), f(t).pp[k] > 0 else { fail(); return }
-            let c = min(f(t).pp[k], 2 + roll(4)); mod(t) { $0.pp[k] -= c }; say(t, josa(tn + "의 " + moveTable[f(t).lastMove]!.name, "의", "의") + " PP가 \(c) 줄었다!")
+            let c = min(f(t).pp[k], 4); mod(t) { $0.pp[k] -= c }; say(t, josa(tn + "의 " + moveTable[f(t).lastMove]!.name, "의", "의") + " PP가 \(c) 줄었다!")   // Gen IV: 4
         case 187:
             guard f(s).hp > f(s).maxHP / 2, f(s).stage[1] < 6 else { fail(); return }
             hurt(s, f(s).maxHP / 2, josa(n, "은", "는") + " 체력을 깎아서 공격을 최대로 올렸다!"); mod(s) { $0.stage[1] = 6 }
-        case 191: guard sides[si(t)].spikes < 3 else { fail(); return }; sides[si(t)].spikes += 1; say(t, "상대 주위에 압정이 뿌려졌다!")
-        case 390: guard sides[si(t)].toxicSpikes < 2 else { fail(); return }; sides[si(t)].toxicSpikes += 1; say(t, "상대 주위에 독압정이 뿌려졌다!")
-        case 446: guard !sides[si(t)].stealthRock else { fail(); return }; sides[si(t)].stealthRock = true; say(t, "상대 주위에 뾰족한 바위가 떠다니기 시작했다!")
+        case 191: guard sides[si(t)].spikes < 3 else { fail(); return }; sides[si(t)].spikes += 1; say(t, (t == .it ? "상대" : "우리 편") + " 주위에 압정이 뿌려졌다!")
+        case 390: guard sides[si(t)].toxicSpikes < 2 else { fail(); return }; sides[si(t)].toxicSpikes += 1; say(t, (t == .it ? "상대" : "우리 편") + " 주위에 독압정이 뿌려졌다!")
+        case 446: guard !sides[si(t)].stealthRock else { fail(); return }; sides[si(t)].stealthRock = true; say(t, (t == .it ? "상대" : "우리 편") + " 주위에 뾰족한 바위가 떠다니기 시작했다!")
         case 194: mod(s) { $0.destinyBond = true }; say(s, josa(n, "은", "는") + " 상대를 길동무로 삼으려 하고 있다!")
         case 201, 240, 241, 258:
             let sk: Sky = [201: .sand, 240: .rain, 241: .sun, 258: .hail][id]!
@@ -147,7 +149,7 @@ extension Battle {
             guard let i = nextAlive(s) else { fail(); return }
             say(s, josa(n, "은", "는") + " 바통을 넘겼다!"); switchIn(s, i, baton: true)
         case 227:
-            guard f(t).lastMove != 0, f(t).encore == 0, ![227, 102, 165, 118].contains(f(t).lastMove) else { fail(); return }
+            guard f(t).lastMove != 0, f(t).encore == 0, ![227, 102, 165, 118].contains(f(t).lastMove), let lk = f(t).moves.firstIndex(of: f(t).lastMove), f(t).pp[lk] > 0 else { fail(); return }
             let k = 4 + roll(5); mod(t) { $0.encore = k; $0.encoreMove = $0.lastMove }; say(t, josa(tn, "은", "는") + " 앙코르를 받았다!")
         case 244: let st = f(t).stage; mod(s) { $0.stage = st }; say(s, josa(n, "은", "는") + " " + josa(tn, "의", "의") + " 능력 변화를 복사했다!")
         case 248, 353:
@@ -157,7 +159,7 @@ extension Battle {
         case 262:
             hurt(s, f(s).hp, ""); boost(t, 1, -2, from: s); boost(t, 3, -2, from: s)
         case 269: guard f(t).taunt == 0 else { fail(); return }; let k = 3 + roll(3); mod(t) { $0.taunt = k }; say(t, josa(tn, "은", "는") + " 도발에 넘어갔다!")
-        case 272: let a = f(t).ability; guard ![25, 36].contains(a) else { fail(); return }; mod(s) { $0.abilityOver = a }; say(s, josa(n, "은", "는") + " " + josa(abilityNames[a]!, "을", "를") + " 복사했다!")
+        case 272: let a = f(t).ability; guard ![0, 25, 36].contains(a) else { fail(); return }; mod(s) { $0.abilityOver = a }; say(s, josa(n, "은", "는") + " " + josa(abilityNames[a]!, "을", "를") + " 복사했다!")
         case 273: guard sides[si(s)].wish == 0 else { fail(); return }; sides[si(s)].wish = 2; sides[si(s)].wishHP = f(s).maxHP / 2; say(s, josa(n, "은", "는") + " 희망사항을 빌었다!")
         case 277: mod(s) { $0.magicCoat = true }; say(s, josa(n, "은", "는") + " 매직코트로 몸을 감쌌다!")
         case 285:
@@ -167,12 +169,15 @@ extension Battle {
         case 288: mod(s) { $0.grudge = true }; say(s, josa(n, "은", "는") + " 원념을 품었다!")
         case 300: mudSport = true; say(s, "전기의 위력이 약해졌다!")
         case 346: waterSport = true; say(s, "불꽃의 위력이 약해졌다!")
-        case 356: guard gravity == 0 else { fail(); return }; gravity = 5; mod(.me) { $0.magnetRise = 0 }; mod(.it) { $0.magnetRise = 0 }; say(s, "중력이 강해졌다!")
-        case 361, 461: guard nextAlive(s) != nil else { fail(); return }; sides[si(s)].healingWish = true; hurt(s, f(s).hp, "")
+        case 356:
+            guard gravity == 0 else { fail(); return }; gravity = 5
+            for x in [Side.me, .it] { mod(x) { $0.magnetRise = 0; if [19, 340].contains($0.semi) { $0.semi = 0; $0.charging = 0 } } }   // whoever's up in the air comes down
+            say(s, "중력이 강해졌다!")
+        case 361, 461: guard nextAlive(s) != nil else { fail(); return }; sides[si(s)].healingWish = true; sides[si(s)].lunarDance = id == 461; hurt(s, f(s).hp, "")
         case 367:
             let ks = (1...7).filter { f(s).stage[$0] < 6 }; guard !ks.isEmpty else { fail(); return }; boost(s, ks[roll(ks.count)], 2, from: s)
         case 375:
-            guard let st = f(s).status, f(t).status == nil else { fail(); return }
+            guard let st = f(s).status, f(t).status == nil, f(t).sub == 0 else { fail(); return }
             if inflict(t, st, from: s, loud: true) { setStatus(s, nil, josa(n, "의", "의") + " 상태이상이 옮겨졌다!") }
         case 380: mod(t) { $0.abilityOver = 0 }; say(t, josa(tn, "의", "의") + " 특성이 사라졌다!")
         case 388: guard !f(t).has(54), !f(t).has(121) else { fail(); return }; mod(t) { $0.abilityOver = 15 }; say(t, josa(tn, "은", "는") + " 불면 특성이 되었다!")

@@ -48,7 +48,7 @@ import Foundation
     /// The clock (the host's, 10 a second): steps, the companion's finds, weather, unlocks, level-ups; screens that time out; the minute's save.
     func tick(_ now: Date) {
         let before = state.total
-        if let h = host, state.sync(counter: h.counter(), boot: h.boot(), at: now) { levelled = true }
+        if let h = host, !inBattle, state.sync(counter: h.counter(), boot: h.boot(), at: now) { levelled = true }   // not mid-fight: the fight's copy would overwrite those steps' EXP; they count once it's over
         perk(now, stepped: state.total != before)                                               // the companion's animation now and then
         if state.total != before { lastStep = now }
         stepRate = stepRate * 0.8 + Double(min(50, state.total - before)) * 10 * 0.2               // steps a second, smoothed (the tick is 10 Hz)
@@ -132,7 +132,7 @@ import Foundation
             }
             return true
         }
-        switch screen { case .shop, .shopConfirm, .tower: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, or pay into the tower after a pick
+        switch screen { case .shop, .shopConfirm, .tower, .radar: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, or pick a bush too early
         guard let i = [Key.left: 0, .enter: 1, .right: 2, .back: 3, .menu: 4][k] else { return false }
         press(i); return true
     }

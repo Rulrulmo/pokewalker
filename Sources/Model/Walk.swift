@@ -206,7 +206,8 @@ struct Walk: Codable, Equatable {
     /// chain = radar chain length: +20 % per link on the A/B groups (up to 8 links), stopping at 90 % so no group shuts the rest out.
     func encounter<R: RandomNumberGenerator>(_ r: inout R, chain: Int = 0, guests: Bool = true) -> Slot {
         if guests, !here.guests.isEmpty, Double.random(in: 0..<1, using: &r) < guestOdds {       // a visitor, at the C group's level + 2
-            return Slot(dex: here.guests.randomElement(using: &r)!, level: here.slots[4].level + 2, steps: 0, chance: 100, female: Bool.random(using: &r))
+            let d = here.guests.randomElement(using: &r)!
+            return Slot(dex: d, level: here.slots[4].level + 2, steps: 0, chance: 100, female: Int.random(in: 0..<8, using: &r) < genderRate[d])   // by its species' ratio (genderless / male-only: never)
         }
         let boost = (weather ?? .sunny).types
         func pick(_ c: [Slot]) -> Slot {

@@ -6,10 +6,12 @@ extension Walker {
     func after(_ b: Battle, _ end: Beat, _ now: Date) -> Screen {
         if end == .lost, let r = state.useRevive() {                                              // a revive in the bag: back up, the fight goes on
             var nb = b; let hp = max(1, nb.mine[nb.me].maxHP * r.pct / 100); usedItem = r.item
-            nb.mine[nb.me].status = nil; nb.mine[nb.me].down = false; nb.over = false
+            nb.mine[nb.me].clearVolatile(); nb.mine[nb.me].status = nil; nb.mine[nb.me].down = false; nb.over = false   // back up fresh: what felled it (저주, 씨뿌리기, 조이기 …) is gone
             let from = nb, beat = Beat.heal(.me, amount: hp, text: josa(r.item, "으로", "로") + " 되살아났다!")
             nb.apply(beat)                                                                         // the fight goes on from the revived HP
-            return .beats(nb, [beat], since: now, from: from)
+            var bs = [beat]
+            if let n = nb.foeNext { nb.foeNext = nil; nb.out = []; nb.switchIn(.it, n); bs += nb.out }   // a trainer's one KO'd that same turn: its next comes out now
+            return .beats(nb, bs, since: now, from: from)
         }
         let before = state.companion.level
         state.writeBack(b.trainer != nil ? towerRefs : [state.id(-1)!], b.mine.map(\.mon))
@@ -48,6 +50,8 @@ extension Walker {
         host?.notify(title, body)
     }
     func save() { guard persist else { return }; Store.save(state); lastSave = Date() }
+    /// Quitting: count the steps a fight held back (its copy is dropped on quit), then save.
+    func quitSave() { if let h = host { state.sync(counter: h.counter(), boot: h.boot(), at: Date()) }; save() }
     /// The next move waiting in state.learning: straight in with a free slot, else the forget-one screen.
     func nextLearn(_ now: Date) {
         while let (ref, id) = state.nextToLearn() {
@@ -286,7 +290,10 @@ extension Walker {
             else { screen = .say(w.once && state.owned(w) > 0 ? ["이미 가지고 있다"] : [bp ? "BP가 부족하다" : "W가 부족하다"], next: .shop(bp: bp, sel: sel, qty: nil), since: now) }
         case .forfeit(let b, let yes):
             if k != 1 { screen = .forfeit(b, yes: !yes); return }
-            if yes { let s = state.towerStreak ?? 0; state.towerEnd(); towerRun = false; screen = .say(["기권했다", "\(s)연승에서 끝"], next: .home, since: now) }
+            if yes {
+                let lv = state.companion.level; state.writeBack(towerRefs, b.mine.map(\.mon)); if state.companion.level > lv { levelled = true }   // what it earned this fight stays, as when it loses
+                let s = state.towerStreak ?? 0; state.towerEnd(); towerRun = false; screen = .say(["기권했다", "\(s)연승에서 끝"], next: .home, since: now)
+            }
             else { screen = .battle(b, sel: battleMenu(b).firstIndex(of: "기권") ?? 0) }
         case .shopConfirm(let bp, let sel, let yes):
             if k != 1 { screen = .shopConfirm(bp: bp, sel: sel, yes: !yes); return }
@@ -305,8 +312,8 @@ extension Walker {
             let n = b.mine.count
             if k == 0 { screen = .party(b, sel: (sel + n - 1) % n) }
             else if k == 2 { screen = .party(b, sel: (sel + 1) % n) }
-            else if sel == b.me { screen = .say(["이미 싸우고 있다"], next: .party(b, sel: sel), since: now) }
             else if !b.mine[sel].alive { screen = .say(["기절해서", "싸울 수 없다"], next: .party(b, sel: sel), since: now) }
+            else if sel == b.me { screen = .say(["이미 싸우고 있다"], next: .party(b, sel: sel), since: now) }
             else { let from = b; let beats = b.mustReplace ? b.replace(sel) : b.turn(.swap(sel), &rng); screen = .beats(b, beats, since: now, from: from) }
         case .tower(let p?):                                                                      // the picker: ◀ ▶ a row (round), ● puts it in the slot
             let all = state.towerCandidates, sel = all.firstIndex(of: p.at) ?? 0

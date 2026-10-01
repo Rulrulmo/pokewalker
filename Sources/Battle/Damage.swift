@@ -13,19 +13,23 @@ extension Battle {
         }
     }
     mutating func crash(_ s: Side, _ t: Side, _ m: MoveInfo) {
-        if [26, 136].contains(m.id), !f(s).has(98) { hurt(s, min(f(t).maxHP / 2, max(1, f(s).maxHP / 8)), josa(nm(s), "은", "는") + " 기세 좋게 넘어졌다!") }
+        if [26, 136].contains(m.id), !f(s).has(98) {                                              // half of what it would have done (on an immune one: as if it hit for its full HP), at most half the target's max HP
+            let e = typeEff(m.type, t, by: s), d = e == 0 ? f(t).maxHP : calc(s, t, m, power: m.power, type: m.type, eff: e, crit: false)
+            hurt(s, min(max(1, d / 2), max(1, f(t).maxHP / 2)), josa(nm(s), "은", "는") + " 기세 좋게 넘어졌다!")
+        }
         if [120, 153].contains(m.id) { hurt(s, f(s).hp, "") }
     }
     mutating func hits(_ s: Side, _ t: Side, _ m: MoveInfo) -> Bool {
-        if m.accuracy == 0 || f(s).has(99) || f(t).has(99) || f(s).lockOn > 0 { return true }
-        if [12, 32, 90, 329].contains(m.id) {                                                      // one-hit KOs
+        if [12, 32, 90, 329].contains(m.id) {                                                      // one-hit KOs: never on a higher level or 옹골참; then 노가드 / 록온 make sure
             guard f(t).mon.level <= f(s).mon.level, !dAb(t, 5, by: s) else { return false }
+            if f(s).has(99) || f(t).has(99) || f(s).lockOn > 0 { return true }
             return roll(100) < 30 + f(s).mon.level - f(t).mon.level
         }
+        if m.accuracy == 0 || f(s).has(99) || f(t).has(99) || f(s).lockOn > 0 { return true }
         var acc = Double(m.accuracy)
         if m.id == 87 { if weatherOn == .rain { return true }; if weatherOn == .sun { acc = 50 } }
         if m.id == 59, weatherOn == .hail { return true }
-        let evas = f(s).has(109) || f(t).identified ? 0 : f(t).stage[7], accu = f(t).has(109) ? 0 : f(s).stage[6]
+        let evas = f(s).has(109) || f(t).identified || f(t).miracleEye ? 0 : f(t).stage[7], accu = dAb(t, 109, by: s) ? 0 : f(s).stage[6]
         acc *= accMult(accu - evas)
         if f(s).has(14) { acc *= 1.3 }; if f(s).has(55), m.physical { acc *= 0.8 }
         if weatherOn == .sand, dAb(t, 8, by: s) { acc *= 0.8 }; if weatherOn == .hail, dAb(t, 81, by: s) { acc *= 0.8 }
@@ -39,8 +43,8 @@ extension Battle {
         for dt in f(t).typeList {
             var x = typeChart[type]?[dt] ?? 1
             if x == 0, dt == "ghost", type == "normal" || type == "fighting", f(s).has(113) || f(t).identified { x = 1 }
-            if x == 0, dt == "dark", type == "psychic", f(t).identified { x = 1 }
-            if x == 0, dt == "flying", type == "ground", gravity > 0 { x = 1 }
+            if x == 0, dt == "dark", type == "psychic", f(t).miracleEye { x = 1 }
+            if x == 0, dt == "flying", type == "ground", grounded(t) { x = 1 }                           // 중력, 뿌리박기
             e *= x
         }
         if type == "ground", !grounded(t), !(f(s).has(104) && f(t).has(26) && f(t).magnetRise == 0 && !f(t).typeList.contains("flying")) { e = 0 }
@@ -57,7 +61,7 @@ extension Battle {
         var A = Double(base(s, phys ? 1 : 3)), D = Double(base(t, phys ? 2 : 4))
         var aS = a.stage[phys ? 1 : 3], dS = d.stage[phys ? 2 : 4]
         if crit { aS = max(0, aS); dS = min(0, dS) }
-        if d.has(109) { aS = 0 }; if a.has(109) { dS = 0 }
+        if dAb(t, 109, by: s) { aS = 0 }; if a.has(109) { dS = 0 }
         A *= mult(aS); D *= mult(dS)
         if phys {
             if a.has(37) || a.has(74) { A *= 2 }; if a.has(55) { A *= 1.5 }; if a.has(62), a.status != nil { A *= 1.5 }
@@ -65,7 +69,7 @@ extension Battle {
             if dAb(t, 63, by: s), d.status != nil { D *= 1.5 }
         } else {
             if weatherOn == .sun, a.has(94) { A *= 1.5 }
-            if weatherOn == .sand, d.typeList.contains("rock") { D *= 1.5 }; if weatherOn == .sun, d.has(122) { D *= 1.5 }
+            if weatherOn == .sand, d.typeList.contains("rock") { D *= 1.5 }; if weatherOn == .sun, dAb(t, 122, by: s) { D *= 1.5 }
         }
         if [120, 153].contains(m.id) { D *= 0.5 }
         if dAb(t, 47, by: s), type == "fire" || type == "ice" { A *= 0.5 }
@@ -75,7 +79,7 @@ extension Battle {
         if a.hp * 3 <= a.maxHP, (type == "grass" && a.has(65)) || (type == "fire" && a.has(66)) || (type == "water" && a.has(67)) || (type == "bug" && a.has(68)) { P *= 1.5 }
         if a.has(79), genderRate[a.mon.dex] >= 0, genderRate[d.mon.dex] >= 0 { P *= a.mon.female == d.mon.female ? 1.25 : 0.75 }
         if dAb(t, 85, by: s), type == "fire" { P *= 0.5 }; if dAb(t, 87, by: s), type == "fire" { P *= 1.25 }
-        if a.charged, type == "electric" { P *= 2 }; if mudSport, type == "electric" { P *= 0.5 }; if waterSport, type == "fire" { P *= 0.5 }
+        if a.charge > 0, type == "electric" { P *= 2 }; if mudSport, type == "electric" { P *= 0.5 }; if waterSport, type == "fire" { P *= 0.5 }
         var x = floor(floor(Double(2 * a.mon.level / 5 + 2) * P * A / max(1, D)) / 50)
         if a.status == .burn, phys, !a.has(62) { x = floor(x / 2) }
         if !crit, (phys && sides[si(t)].reflect > 0) || (!phys && sides[si(t)].light > 0) { x = floor(x / 2) }
@@ -102,20 +106,24 @@ extension Battle {
     /// The type (and power) a move really has when s uses it: 노말스킨, 발버둥 (typeless), 잠재파워, 웨더볼, 심판의뭉치.
     func moveType(_ s: Side, _ m: MoveInfo) -> (type: String, power: Int) {
         let id = m.id
-        var type = f(s).has(96) && id != 165 ? "normal" : m.type, power = m.power
+        var type = m.type, power = m.power
         if id == 165 { type = "" }
         if id == 237 { (type, power) = hiddenPower(f(s).mon) }
-        if id == 311 { switch weatherOn { case .sun: type = "fire"; power = 100; case .rain: type = "water"; power = 100; case .sand: type = "rock"; power = 100; case .hail: type = "ice"; power = 100; default: break } }
-        if id == 449 { type = monTypes[f(s).mon.dex][0] }
+        if id == 311 { switch weatherOn { case .sun: type = "fire"; power = 100; case .rain: type = "water"; power = 100; case .sand: type = "rock"; power = 100; case .hail: type = "ice"; power = 100; case .fog: power = 100; default: break } }
+        if id == 284 || id == 323 { power = max(1, 150 * f(s).hp / f(s).maxHP) }                   // 분화 / 해수스파우팅: by the HP left
+        if f(s).has(96), id != 165 { type = "normal" }                                             // 노말스킨 last: it turns even those Normal (심판의뭉치 without plates is Normal anyway)
         return (type, power)
     }
     mutating func damageMove(_ s: Side, _ t: Side, _ m: MoveInfo) {
         let id = m.id, n = nm(s), tn = nm(t)
+        subTook = false
         var (type, power) = moveType(s, m)
         // immunity abilities first
         if !type.isEmpty {
             if (type == "water" && (dAb(t, 11, by: s) || dAb(t, 87, by: s))) || (type == "electric" && dAb(t, 10, by: s)) {
-                say(t, josa(tn, "은", "는") + " " + abilityNames[f(t).ability]! + "로 회복했다!"); restore(t, f(t).maxHP / 4, ""); return }
+                let ab = abilityNames[f(t).ability]!
+                if f(t).hp < f(t).maxHP { restore(t, f(t).maxHP / 4, josa(tn, "은", "는") + " " + josa(ab, "으로", "로") + " 회복했다!") } else { say(t, josa(tn, "에게는", "에게는") + " 효과가 없는 것 같다...") }
+                return }
             if type == "electric", dAb(t, 78, by: s) { say(t, josa(tn, "은", "는") + " 전기엔진이 작동했다!"); boost(t, 5, 1, from: t); return }
             if type == "fire", dAb(t, 18, by: s) { mod(t) { $0.flashFire = true }; say(t, josa(tn, "은", "는") + " 타오르는불꽃으로 불꽃 기술의 위력이 올라갔다!"); return }
         }
@@ -124,11 +132,11 @@ extension Battle {
         if dAb(t, 25, by: s), eff <= 1, !type.isEmpty { say(t, josa(tn, "은", "는") + " 불가사의부적으로 공격을 받지 않는다!"); return }
         if id == 138, f(t).status != .sleep { say(t, josa(tn, "은", "는") + " 잠들어 있지 않다!"); return }
         if id == 173, f(s).status != .sleep { say(s, "그러나 실패했다!"); return }
-        if id == 252, f(s).turnsOut > 0 { say(s, "그러나 실패했다!"); return }
+        if id == 252, f(s).turnsOut > 1 { say(s, "그러나 실패했다!"); return }                         // 속이기: its first turn out only
         if id == 264, f(s).hitThisTurn { say(s, josa(n, "은", "는") + " 집중이 흐트러져서 기술을 쓸 수 없다!"); return }
         if id == 389, f(t).movedThisTurn || (moveTable[planned[si(t)]]?.isStatus ?? true) { say(s, "그러나 실패했다!"); return }
         if id == 364, !f(t).protected { say(s, "그러나 실패했다!"); return }
-        if [120, 153].contains(id), [mine[me], theirs[it]].contains(where: { $0.has(6) }) { say(s, "습기 때문에 " + josa(m.name, "을", "를") + " 쓸 수 없다!"); return }
+        if [120, 153].contains(id), !f(s).has(104), [mine[me], theirs[it]].contains(where: { $0.has(6) }) { say(s, "습기 때문에 " + josa(m.name, "을", "를") + " 쓸 수 없다!"); return }
         if id == 255 && f(s).stockpile == 0 { say(s, "그러나 비축하지 못했다!"); return }
         // fixed damage
         let fixed: Int? = switch id {
@@ -158,11 +166,10 @@ extension Battle {
             say(s, josa(n, "의", "의") + " 참았던 힘이 풀렸다!"); land(s, t, m, f(s).bideDmg * 2, eff: 1, crit: false); return
         }
         // variable power
-        let tw = weightKg[f(t).mon.dex], ratio = Double(f(s).hp) / Double(f(s).maxHP)
+        let tw = weightKg[f(t).mon.dex]
         switch id {
         case 67, 447: power = tw < 10 ? 20 : tw < 25 ? 40 : tw < 50 ? 60 : tw < 100 ? 80 : tw < 200 ? 100 : 120
         case 175, 179: let p = 48 * f(s).hp / f(s).maxHP; power = p <= 1 ? 200 : p <= 4 ? 150 : p <= 9 ? 100 : p <= 16 ? 80 : p <= 32 ? 40 : 20
-        case 284, 323: power = max(1, Int(150 * ratio))
         case 378, 462: power = 1 + 120 * f(t).hp / f(t).maxHP
         case 216, 218: let fr = min(255, 70 + (f(s).mon.walked ?? 0) / 100); power = max(1, (id == 216 ? fr : 255 - fr) * 10 / 25)
         case 222: let k = roll(100); let i = [5, 15, 35, 65, 85, 95, 100].firstIndex { k < $0 }!; power = [10, 30, 50, 70, 90, 110, 150][i]; say(s, "매그니튜드 \(i + 4)!"); if f(t).semi == 91 { power *= 2 }
@@ -171,7 +178,7 @@ extension Battle {
         case 376: let left = f(s).moves.firstIndex(of: id).map { f(s).pp[$0] } ?? 0; power = [200, 80, 60, 50][min(3, left)] ; if left > 3 { power = 40 }
         case 255: power = 100 * f(s).stockpile
         case 217: let k = roll(10); if k < 2 { restore(t, 80, josa(tn, "의", "의") + " 체력이 회복되었다!"); return }; power = k < 6 ? 40 : k < 9 ? 80 : 120
-        case 263: if f(s).status != nil { power *= 2 }
+        case 263: if [.poison, .toxic, .burn, .paralysis].contains(f(s).status) { power *= 2 }   // not asleep / frozen
         case 362: if f(t).hp * 2 <= f(t).maxHP { power *= 2 }
         case 371: if f(t).movedThisTurn { power *= 2 }
         case 279, 419: if f(s).hitThisTurn { power *= 2 }
@@ -189,7 +196,6 @@ extension Battle {
         case 76: if [.rain, .sand, .hail].contains(weatherOn) { power /= 2 }
         default: break
         }
-        if id != 210 { mod(s) { $0.furyCutter = 0 } }
         if id != 205 && id != 301 { mod(s) { $0.rollout = 0 } }
         // hits
         var count = 1
@@ -198,7 +204,7 @@ extension Battle {
             else if m.minHits == 2 && m.maxHits == 5 { let k = roll(8); count = k < 3 ? 2 : k < 6 ? 3 : k < 7 ? 4 : 5 }
             else { count = m.minHits + roll(m.maxHits - m.minHits + 1) }
         }
-        if id == 251 { count = (s == .me ? mine : theirs).filter { $0.alive && $0.status == nil }.count; type = "dark" }
+        if id == 251 { count = (s == .me ? mine : theirs).filter { $0.alive && $0.status == nil }.count; type = "dark"; if count == 0 { say(s, "그러나 실패했다!"); return } }
         var total = 0, landed = 0
         for k in 0..<count {
             guard f(t).alive, f(s).alive else { break }
@@ -214,19 +220,22 @@ extension Battle {
     /// One hit landing: substitute first; 버티기 / 칼등치기 leave 1 HP.
     mutating func land(_ s: Side, _ t: Side, _ m: MoveInfo, _ d0: Int, eff: Double, crit: Bool) {
         if f(t).sub > 0, s != t {
-            let d = min(f(t).sub, d0); mod(t) { $0.sub -= d }
+            let d = min(f(t).sub, d0); mod(t) { $0.sub -= d }; subTook = true
             say(t, "대타가 " + josa(nm(t), "을", "를") + " 대신하여 공격을 받았다!")
             if f(t).sub <= 0 { say(t, josa(nm(t), "의", "의") + " 대타는 사라져 버렸다...") }
             return
         }
+        subTook = false                                                                              // this hit reached the Pokémon (a multi-hit's later ones after the sub broke)
         var d = min(d0, f(t).hp), endured = false
         if d >= f(t).hp, f(t).endure || m.id == 206 { d = f(t).hp - 1; endured = f(t).endure }
         out.append(.hit(t, move: m.id, damage: d, effect: eff, crit: crit)); apply(out.last!)
         if endured { say(t, josa(nm(t), "은", "는") + " 공격을 버텼다!") }
         mod(t) { $0.hitThisTurn = true; $0.lastHitDmg = d; $0.lastHitSpecial = m.special; if $0.bide > 0 { $0.bideDmg += d } }
         if f(t).rage, f(t).alive { boost(t, 1, 1, from: t) }
-        if f(t).alive, dAb(t, 16, by: s), !m.type.isEmpty, !f(t).typeList.elementsEqual([m.type]) { mod(t) { $0.types = [m.type] }; retyped(t); say(t, josa(nm(t), "은", "는") + " " + (typeKo[m.type] ?? m.type) + " 타입이 되었다!") }
+        let ty = moveType(s, m).type                                                                 // 변색: the type it really had
+        if f(t).alive, dAb(t, 16, by: s), !ty.isEmpty, !f(t).typeList.elementsEqual([ty]) { mod(t) { $0.types = [ty] }; retyped(t); say(t, josa(nm(t), "은", "는") + " " + (typeKo[ty] ?? ty) + " 타입이 되었다!") }
         if !f(t).alive, f(t).destinyBond { say(t, josa(nm(t), "은", "는") + " 상대를 길동무로 삼았다!"); hurt(s, f(s).hp, "") }
+        if !f(t).alive, f(t).grudge, let k = f(s).moves.firstIndex(of: m.id) { mod(s) { $0.pp[k] = 0 }; say(s, josa(nm(s) + "의 " + m.name, "은", "는") + " 원념으로 PP가 0이 되었다!") }
     }
     /// After the hits: drain / recoil, contact abilities, secondary effects, and each move's own aftermath.
     mutating func post(_ s: Side, _ t: Side, _ m: MoveInfo, dealt: Int) {
@@ -238,7 +247,7 @@ extension Battle {
         if m.drain < 0, dealt > 0, !f(s).has(69), !f(s).has(98) { hurt(s, max(1, dealt * -m.drain / 100), josa(n, "은", "는") + " 반동으로 데미지를 입었다!") }
         if id == 165 { hurt(s, max(1, f(s).maxHP / 4), josa(n, "은", "는") + " 반동으로 데미지를 입었다!") }
         if [120, 153].contains(id) { hurt(s, f(s).hp, "") }
-        if m.contact, dealt > 0, f(s).alive {                                                    // the defender's body abilities
+        if m.contact, dealt > 0, !subTook, f(s).alive {                                                    // the defender's body abilities
             let a = f(t).ability, roll30 = pct(30)
             switch a {
             case 9 where roll30: inflict(s, .paralysis, from: t, loud: false)
@@ -255,29 +264,43 @@ extension Battle {
         // secondary effects (not through a substitute; 인분 blocks them; 하늘의은총 doubles the odds)
         let grace = f(s).has(32) ? 2.0 : 1.0
         func odds(_ p: Int) -> Double { Double(p == 0 ? 100 : p) * grace }
-        if f(t).alive, dealt > 0, f(t).sub == 0, !f(t).has(19) {
-            if m.ailment != "none", m.cat == 4 || m.cat == 6 || m.cat == 0, m.ailmentChance > 0, pct(odds(m.ailmentChance)) { ailment(t, m.ailment, from: s, loud: false, move: m) }
+        if f(t).alive, dealt > 0, !subTook, !dAb(t, 19, by: s) {
+            for _ in 0..<(id == 41 ? 2 : 1) where m.ailment != "none" && (m.cat == 4 || m.cat == 6 || m.cat == 0) && m.ailmentChance > 0 { if pct(odds(m.ailmentChance)) { ailment(t, m.ailment, from: s, loud: false, move: m) } }   // 더블니들: a roll a needle
             if id == 161, pct(odds(20)) { inflict(t, [.burn, .paralysis, .freeze][roll(3)], from: s, loud: false) }
             if id == 290, pct(odds(30)) { inflict(t, .paralysis, from: s, loud: false) }
-            if m.flinch > 0, !f(t).movedThisTurn, !f(t).has(39), pct(odds(m.flinch)) { mod(t) { $0.flinch = true } }
+            if m.flinch > 0, !f(t).movedThisTurn, !dAb(t, 39, by: s), pct(odds(m.flinch)) { mod(t) { $0.flinch = true } }
             if m.cat == 6, !m.stats.isEmpty, m.statChance == 0 || pct(odds(m.statChance)) { for k in stride(from: 0, to: m.stats.count, by: 2) { boost(t, m.stats[k] - 1, m.stats[k + 1], from: s) } }
         }
         if m.cat == 7, f(s).alive, !m.stats.isEmpty, m.statChance == 0 || pct(odds(m.statChance)) { for k in stride(from: 0, to: m.stats.count, by: 2) { boost(s, m.stats[k] - 1, m.stats[k + 1], from: s) } }
-        if f(t).alive, id == 358, f(t).status == .sleep { setStatus(t, nil, josa(tn, "은", "는") + " 눈을 떴다!") }
-        if f(t).alive, id == 265, f(t).status == .paralysis { setStatus(t, nil, josa(tn, "의", "의") + " 마비가 풀렸다!") }
+        if f(t).alive, !subTook, f(t).status == .freeze, dealt > 0, moveType(s, m).type == "fire" { setStatus(t, nil, josa(tn, "의", "의") + " 얼음이 녹았다!") }   // a fire hit thaws it
+        if f(t).alive, !subTook, id == 358, f(t).status == .sleep { setStatus(t, nil, josa(tn, "은", "는") + " 눈을 떴다!") }
+        if f(t).alive, !subTook, id == 265, f(t).status == .paralysis { setStatus(t, nil, josa(tn, "의", "의") + " 마비가 풀렸다!") }
         if id == 229 {                                                                               // 고속스핀 clears the user's side
             sides[si(s)].spikes = 0; sides[si(s)].stealthRock = false; sides[si(s)].toxicSpikes = 0; mod(s) { $0.seeded = false; $0.bound = 0 }
         }
-        if m.ailment == "trap", f(t).alive, f(t).bound == 0 { let k = 2 + roll(4); mod(t) { $0.bound = k }; say(t, josa(tn, "은", "는") + " 조임을 당했다!") }
+        if m.ailment == "trap", f(t).alive, !subTook, f(t).bound == 0 {                            // each binding move its own line (one "조임" for all read as 조이기 on a ghost)
+            let k = 3 + roll(4); mod(t) { $0.bound = k; $0.boundBy = id }                            // 2-5 turns of damage
+            let caught = switch id {
+            case 20: n + "에게 조이기를 당했다!"
+            case 35: n + "에게 김밥말이를 당했다!"
+            case 83: "불꽃의 소용돌이에 갇혔다!"
+            case 128: josa(n, "의", "의") + " 껍질에 끼였다!"
+            case 250: "소용돌이에 갇혔다!"
+            case 328: "모래지옥에 갇혔다!"
+            case 463: "마그마의 소용돌이에 갇혔다!"
+            default: josa(m.name, "에", "에") + " 갇혔다!"
+            }
+            say(t, josa(tn, "은", "는") + " " + caught)
+        }
         if [200, 37, 80].contains(id) {                                                              // 역린 난동부리기 꽃잎댄스
             if f(s).lock == 0 { let k = 2 + roll(2); mod(s) { $0.lock = k; $0.lockMove = id } }
             mod(s) { $0.lock -= 1 }
-            if f(s).lock == 0 { say(s, josa(n, "은", "는") + " 지쳐서 혼란에 빠졌다!"); mod(s) { $0.confused = 0 }; confuse(s, from: nil, loud: false) }
+            if f(s).lock == 0, f(s).confused == 0, !f(s).has(20) { let c = 2 + roll(4); mod(s) { $0.confused = c }; say(s, josa(n, "은", "는") + " 지쳐서 혼란에 빠졌다!") }   // one line; 마이페이스 stays clear
         } else if [205, 301].contains(id) { mod(s) { $0.lock -= 1 }; if f(s).lock == 0 { mod(s) { $0.rollout = 0 } } }
         if id == 253 { if f(s).lock == 0 { let k = 2 + roll(4); mod(s) { $0.lock = k; $0.lockMove = id; $0.uproar = k }; say(s, josa(n, "은", "는") + " 소란을 피우기 시작했다!") }; mod(s) { $0.lock -= 1 } }
-        if id == 255 { mod(s) { $0.stage[2] -= $0.stockpile; $0.stage[4] -= $0.stockpile; $0.stockpile = 0 } }
+        if id == 255 { let k = f(s).stockpile; mod(s) { $0.stockpile = 0 }; boost(s, 2, -k, from: s); boost(s, 4, -k, from: s) }   // the stock's 방어 / 특수방어 back
         if id == 99 { mod(s) { $0.rage = true } }
-        if id == 369, f(s).alive, let i = nextAlive(s) { say(s, josa(n, "은", "는") + " 돌아왔다!"); switchIn(s, i) }
+        if id == 369, f(s).alive, nextAlive(s) != nil { faints(); if !over, f(s).alive, let i = nextAlive(s) { say(s, josa(n, "은", "는") + " 돌아왔다!"); switchIn(s, i) } }   // a KO (and its EXP) before the switch
     }
 
 }

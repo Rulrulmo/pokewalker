@@ -203,7 +203,7 @@ import AppKit                                                                   
     func catches(_ m: Mon, hp: Int?, ball: Double, status: Status? = nil) -> Int { var n = 0; for _ in 0..<2000 { var b = Battle(wild: m, companion: pika50); if let hp { b.theirs[0].hp = hp }; b.theirs[0].status = status; if b.turn(.capture, &r, ball: ball).contains(.caught) { n += 1 } }; return n }
     let pFull = catches(Mon(dex: 16, level: 5, female: false), hp: nil, ball: 1), p1 = catches(Mon(dex: 16, level: 5, female: false), hp: 1, ball: 1)
     let mew = catches(Mon(dex: 150, level: 50, female: false), hp: 1, ball: 2), mewZ = catches(Mon(dex: 150, level: 50, female: false), hp: 1, ball: 2, status: .sleep)
-    check((780...980).contains(pFull) && p1 > 1900 && (60...240).contains(mew) && mewZ > mew * 3 / 2, "Gen IV catch formula: 구구 full ~44 %, 1 HP ~100 %, 뮤츠 1 HP + 하이퍼볼 ~6 %, asleep x2", "\(pFull) \(p1) \(mew) \(mewZ)")
+    check((560...780).contains(pFull) && p1 > 1850 && (20...90).contains(mew) && mewZ > mew * 3 / 2, "Gen IV catch formula: 구구 full ~33 %, 1 HP ~97 %, 뮤츠 1 HP + 하이퍼볼 ~2.4 %, asleep x2", "\(pFull) \(p1) \(mew) \(mewZ)")
     var hb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); hb.mine[0].hp = 10
     let hbeats = hb.turn(.item(.heal(50)), &r)
     check({ if case .heal(.me, 50, _)? = hbeats.first { return true }; return false }() && hb.mine[0].hp <= 60 && hb.mine[0].hp > 10, "potion first, then it may attack")
@@ -247,7 +247,7 @@ import AppKit                                                                   
             if from.me != b.me || from.it != b.it || from.mine.map(\.hp) != b.mine.map(\.hp) || from.theirs.map(\.hp) != b.theirs.map(\.hp)
                 || from.mine.map(\.typeList) != b.mine.map(\.typeList) || from.theirs.map(\.typeList) != b.theirs.map(\.typeList) { fuzzBad += 1 }
         }
-        if k >= 400 { fuzzStall += 1 }
+        if k >= 400 || b.over && !(bs.last?.ends ?? false) { fuzzStall += 1 }   // over, but the last beat not its end: the screen would read on
     }
     check(fuzzBad == 0 && fuzzStall == 0, "300 random fights: all end, and the beats replay to the engine's HP and types", "\(fuzzBad) \(fuzzStall)")
     // 7a' rules the menus follow: trapping, 도발 / 트집, choosing who's next, EXP split, trainers switching
@@ -311,7 +311,7 @@ import AppKit                                                                   
         for bt in d5.turn(.fight(d5.theirs[0].status == nil ? 92 : 150), &r) { if case .hurt(.it, let d, let t) = bt, t.contains("독") { poisonHits.append(d) } }
     }
     let rmax = d5.theirs[0].maxHP; check(poisonHits == [rmax / 16, rmax * 2 / 16], "맹독: 1/16, then 2/16 …", "\(poisonHits) \(rmax)")
-    var d6 = duel(pika50, rat, [73]); d6.mine[0].hp = 50; let s6 = d6.turn(.fight(73), &r)
+    var d6 = duel(pika50, rat, [73]); d6.mine[0].hp = 50; d6.mine[0].lockOn = 2; let s6 = d6.turn(.fight(73), &r)   // sure to land
     check(s6.contains(.hurt(.it, damage: d6.theirs[0].maxHP / 8, text: "씨뿌리기가 야생 꼬렛의 체력을 빼앗는다!")) && s6.contains { if case .heal(.me, d6.theirs[0].maxHP / 8, _) = $0 { return true }; return false }, "씨뿌리기: 1/8 a turn, to the user", "\(s6)")
     var d7 = duel(pika50, Mon(dex: 1, level: 30, female: false), [73]); _ = d7.turn(.fight(73), &r); check(!d7.theirs[0].seeded, "씨뿌리기 doesn't take on grass types")
     var d8 = duel(pika50, rat, [182], [33]); check(!d8.turn(.fight(182), &r).contains { if case .hit(.me, _, _, _, _) = $0 { return true }; return false }, "방어: the attack is blocked")
@@ -324,12 +324,48 @@ import AppKit                                                                   
     var d10 = duel(Mon(dex: 291, level: 30, female: false), rat, [150]); _ = d10.turn(.fight(150), &r); _ = d10.turn(.fight(150), &r)
     check(abilitySlots[291] == [3] && d10.mine[0].stage[5] >= 1, "가속: 스피드 up at the end of the turn")
     var sleeps = Set<Int>(); for _ in 0..<300 { var b = duel(pika50, rat, [150]); b.seed = r.next() | 1; b.inflict(.it, .sleep, from: .me, loud: false); sleeps.insert(b.theirs[0].sleep) }
-    check(sleeps == [1, 2, 3, 4], "sleep lasts 1-4 turns (Gen IV)", "\(sleeps)")
+    check(sleeps == [2, 3, 4, 5], "sleep lasts 1-4 turns (Gen IV: the counter runs out on the turn it wakes and moves)", "\(sleeps)")
     var d11 = duel(pika50, rat, [156]); d11.mine[0].hp = 20; _ = d11.turn(.fight(156), &r)
-    check(d11.mine[0].hp == d11.mine[0].maxHP && d11.mine[0].status == .sleep && d11.mine[0].sleep == 2, "잠자기: full HP, asleep 2 turns")
+    check(d11.mine[0].hp == d11.mine[0].maxHP && d11.mine[0].status == .sleep && d11.mine[0].sleep == 3, "잠자기: full HP, asleep 2 turns")
     var d12 = duel(pika50, Mon(dex: 19, level: 5, female: false), [164, 150], [33]); _ = d12.turn(.fight(164), &r); let afterSub = d12.mine[0].hp
     _ = d12.turn(.fight(150), &r)
     check(afterSub == d12.mine[0].maxHP - d12.mine[0].maxHP / 4 && d12.mine[0].hp == afterSub && d12.mine[0].sub < d12.mine[0].maxHP / 4, "대타출동: 1/4 HP, then it takes the hits")
+    // the battle review (2026-10-01): one check a fix
+    func notes(_ bs: [Beat]) -> [String] { bs.compactMap { if case .note(_, let t) = $0 { return t }; if case .hurt(_, _, let t) = $0 { return t }; return nil } }
+    var rvLock = duel(pika50, Mon(dex: 94, level: 50, female: false), [37]); rvLock.mine[0].lock = 2; rvLock.mine[0].lockMove = 37; _ = rvLock.turn(.fight(37), &r)
+    check(rvLock.mine[0].lock == 0 && rvLock.switchBlock == nil, "a rampage that can't land (into a ghost) ends there: no endless lock")
+    var rvCharge = duel(pika50, rat, [268, 150]); _ = rvCharge.turn(.fight(268), &r); let rvOn = rvCharge.mine[0].charge > 0; _ = rvCharge.turn(.fight(150), &r)
+    check(rvOn && rvCharge.mine[0].charge == 0, "충전 lasts its next turn only")
+    var rvBond = duel(pika50, rat, [194, 150]); _ = rvBond.turn(.fight(194), &r); let rvSet = rvBond.mine[0].destinyBond; _ = rvBond.turn(.fight(150), &r)
+    check(rvSet && !rvBond.mine[0].destinyBond, "길동무 wears off when it moves again")
+    var rvStock = duel(pika50, rat, [254]); _ = rvStock.turn(.fight(254), &r)
+    check(rvStock.mine[0].stockpile == 1 && rvStock.mine[0].stage[2] == 1 && rvStock.mine[0].stage[4] == 1, "비축하기 stocks one (+1 방어 / 특수방어)")
+    var rvSub = duel(pika50, rat, [189]); rvSub.mine[0].lockOn = 2; rvSub.theirs[0].sub = 1; _ = rvSub.turn(.fight(189), &r)
+    var rvWrap = duel(pika50, rat, [35]); rvWrap.mine[0].lockOn = 2; rvWrap.theirs[0].sub = 999; _ = rvWrap.turn(.fight(35), &r)
+    check(rvSub.theirs[0].sub == 0 && rvSub.theirs[0].stage[6] == 0 && rvWrap.theirs[0].bound == 0, "a hit on a substitute (even the one that breaks it) has no side effects; no binding through it")
+    var rvTomb = duel(pika50, rat, [328]); rvTomb.mine[0].lockOn = 2; let rvTombText = notes(rvTomb.turn(.fight(328), &r))
+    check(rvTomb.theirs[0].boundBy == 328 && rvTombText.contains { $0.contains("모래지옥에 갇혔다") } && rvTombText.contains { $0.contains("모래지옥의 데미지") }, "binding moves say their own name (모래지옥, not 조임)", "\(rvTombText)")
+    var rvLet = Battle(party: [pika50, rat], trainer: "x", foes: [rat, rat]); rvLet.mine[0].bound = 3; rvLet.mine[0].attracted = true; rvLet.switchIn(.it, 1)
+    check(rvLet.mine[0].bound == 0 && !rvLet.mine[0].attracted, "the one that bound / charmed ours leaves: ours is let go")
+    var rvNext = Battle(party: [pika50], trainer: "x", foes: [Mon(dex: 19, level: 2, female: false), rat]); rvNext.theirs[0].moves = [150]; rvNext.theirs[0].pp = [40]; rvNext.mine[0].moves = [33]; rvNext.mine[0].pp = [35]; rvNext.mine[0].lockOn = 2
+    let rvNextBeats = rvNext.turn(.fight(33), &r), rvOut = rvNextBeats.lastIndex(of: .sendOut(.it, 1))
+    check(rvOut != nil && !rvNextBeats[rvOut!...].contains { if case .hit(.it, _, _, _, _) = $0 { return true }; return false } && rvNext.theirs[1].turnsOut == 0, "a trainer's next one comes out at the end of the turn (nothing hits it on the way in)")
+    var rvThaw = duel(pika50, rat, [52]); rvThaw.mine[0].lockOn = 2; rvThaw.theirs[0].status = .freeze; _ = rvThaw.turn(.fight(52), &r)
+    check(rvThaw.theirs[0].status != .freeze, "a fire hit thaws the frozen")
+    var rvTrace = duel(pika50, rat, [150]); rvTrace.mine[0].abilityOver = 36; rvTrace.theirs[0].abilityOver = 0; rvTrace.entry(.me)
+    check(rvTrace.mine[0].abilityOver == 36, "트레이스 on one with no ability (위액): nothing to copy, no crash")
+    var rvFuture = duel(Mon(dex: 65, level: 50, female: false), rat, [248]); let rvHP = rvFuture.theirs[0].hp; _ = rvFuture.turn(.fight(248), &r)
+    check(rvFuture.theirs[0].hp == rvHP && rvFuture.sides[1].future > 0, "미래예지 lands later, not at once")
+    var rvIce = duel(pika50, Mon(dex: 363, level: 50, female: false), [150]); rvIce.theirs[0].abilityOver = 115; rvIce.theirs[0].hp -= 20; rvIce.sky = .hail; let rvIceHP = rvIce.theirs[0].hp; _ = rvIce.turn(.fight(150), &r)
+    check(rvIce.theirs[0].hp > rvIceHP, "아이스바디 heals in hail")
+    var rvLost = Battle(party: [pika50], trainer: "x", foes: [Mon(dex: 19, level: 2, female: false), rat]); rvLost.mine[0].moves = [33]; rvLost.mine[0].pp = [35]; rvLost.mine[0].lockOn = 2
+    rvLost.theirs[0].moves = [150]; rvLost.theirs[0].pp = [40]; rvLost.mine[0].hp = 1; rvLost.mine[0].status = .poison
+    let rvLostBeats = rvLost.turn(.fight(33), &r), rvWv = Walker(state: { var s = Walk(); s.items = ["기력의조각"]; return s }()); rvWv.persist = false
+    let rvAfter = rvWv.after(rvLost, .lost, Date()), rvBack: [Beat] = { if case .beats(_, let bs, _, _) = rvAfter { return bs }; return [] }()
+    check(rvLostBeats.last == .lost && rvBack.contains(.sendOut(.it, 1)), "ours KO'd in the turn it beat the trainer's one: revived, the next foe still comes out", "\(rvBack)")
+    var rvAsleep = Battle(party: [Mon(dex: 19, level: 5, female: false)], trainer: "x", foes: [Mon(dex: 101, level: 100, female: false), rat]); rvAsleep.theirs[0].moves = [262]; rvAsleep.theirs[0].pp = [10]
+    rvAsleep.mine[0].moves = [33]; rvAsleep.mine[0].pp = [35]; rvAsleep.mine[0].status = .sleep; rvAsleep.mine[0].sleep = 3; _ = rvAsleep.turn(.fight(33), &r)
+    check(rvAsleep.mine[0].sleep == 2, "its target gone first (추억의선물), ours' sleep still counts down that turn")
     var bp = Battle(party: [pika50, lax50], trainer: "x", foes: [Mon(dex: 19, level: 5, female: false)]); bp.mine[0].moves = [14, 226]; bp.mine[0].pp = [20, 40]; bp.theirs[0].moves = [150]; bp.theirs[0].pp = [40]
     _ = bp.turn(.fight(14), &r); _ = bp.turn(.fight(226), &r); check(bp.me == 1 && bp.mine[1].stage[1] == 2, "바톤터치 passes 칼춤's +2")
     var d13 = duel(pika50, rat, [389], [150]), d14 = duel(pika50, rat, [389], [33])

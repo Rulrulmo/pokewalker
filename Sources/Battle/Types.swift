@@ -29,6 +29,7 @@ enum Moves {
     static let unsupported: Set<Int> = [166, 266, 270, 274, 278, 271, 415, 374, 363, 286, 289, 382]
     static func supported(_ id: Int) -> Bool { id < 10000 && moveTable[id] != nil && !unsupported.contains(id) }
     static let semiInvulnerable: Set<Int> = [19, 91, 291, 340, 467]  // 공중날기 구멍파기 다이빙 뛰어오르다 섀도다이브
+    static let fixedDamage: Set<Int> = [12, 32, 49, 68, 69, 82, 90, 101, 117, 149, 162, 243, 283, 329, 368]   // only an immunity changes what they do
     static let fixedOrVariable: Set<Int> = [12, 32, 49, 67, 68, 69, 82, 90, 101, 117, 149, 162, 175, 179, 216, 217, 218, 222, 243, 255, 283, 329, 360, 368, 376, 378, 447, 462]
 }
 
@@ -41,15 +42,16 @@ struct Fighter: Equatable {
     var status: Status? = nil; var sleep = 0, toxic = 0
     var moves: [Int]; var pp: [Int]
     var stage = [Int](repeating: 0, count: 8)                          // 1 atk 2 def 3 spa 4 spd 5 spe 6 accuracy 7 evasion
-    var confused = 0, flinch = false, seeded = false, sub = 0, focus = false, charged = false, cursed = false, nightmare = false
+    var confused = 0, flinch = false, seeded = false, sub = 0, focus = false, charge = 0, cursed = false, nightmare = false
     var ingrain = false, aquaRing = false, destinyBond = false, perish = 0, yawn = 0, taunt = 0, encore = 0, encoreMove = 0
     var disable = 0, disabledMove = 0, torment = false, lastMove = 0, lock = 0, lockMove = 0, rollout = 0, furyCutter = 0
     var charging = 0, semi = 0, recharge = false, protectChain = 0, protected = false, endure = false, bide = 0, bideDmg = 0
-    var bound = 0, stockpile = 0, lastHitDmg = 0, lastHitSpecial = false, hitThisTurn = false, movedThisTurn = false
+    var bound = 0, boundBy = 0, stockpile = 0, lastHitDmg = 0, lastHitSpecial = false, hitThisTurn = false, movedThisTurn = false
     var types: [String]? = nil, abilityOver: Int? = nil, flashFire = false, truantSkip = false, slowStart = 0
-    var healBlock = 0, magnetRise = 0, roosted = false, lockOn = 0, minimized = false, curled = false, rage = false, identified = false
+    var healBlock = 0, magnetRise = 0, roosted = false, lockOn = 0, minimized = false, curled = false, rage = false, identified = false, miracleEye = false
     var magicCoat = false, grudge = false, attracted = false, trapped = false, embargo = 0, form: Mon? = nil, turnsOut = 0, uproar = 0
     var down = false                                                   // its KO has been handled
+    var ownMoves: [Int]? = nil, ownPP: [Int]? = nil                    // its own moves and PP before 변신 / 흉내내기 changed them (back on switching out)
 
     init(_ m: Mon) { mon = m; hp = m.stats[0]; moves = m.moves; pp = m.moves.map { moveTable[$0]?.pp ?? 5 } }
     var maxHP: Int { mon.stats[0] }
@@ -59,12 +61,13 @@ struct Fighter: Equatable {
     func has(_ a: Int) -> Bool { ability == a }
     /// Back to the start: what switching out clears (Baton Pass keeps some of it, see there).
     mutating func clearVolatile() {
-        let (m, h, st, sl, mv, p, d, transformed) = (mon, hp, status, sleep, moves, pp, down, form != nil)
-        self = Fighter(m); hp = h; status = st; sleep = sl; down = d
-        if !transformed { moves = mv; pp = p }                                                     // 변신 / 흉내내기 wear off; PP stays spent
+        let (m, h, st, sl, mv, p, d, om, op, transformed) = (mon, hp, status, sleep, moves, pp, down, ownMoves, ownPP, form != nil)
+        self = Fighter(m); hp = h; status = st; toxic = st == .toxic ? 1 : 0; sleep = sl; down = d    // 맹독's count starts over
+        guard let om, let op else { moves = mv; pp = p; return }                                   // PP stays spent
+        moves = om; pp = om.indices.map { k in !transformed && k < mv.count && mv[k] == om[k] ? p[k] : op[k] }   // 변신 / 흉내내기 wear off: its own moves back (after 흉내내기, the PP the others spent since)
     }
 }
-struct SideState: Equatable { var reflect = 0, light = 0, safeguard = 0, mist = 0, tailwind = 0, luckyChant = 0, spikes = 0, toxicSpikes = 0, stealthRock = false, wish = 0, wishHP = 0, future = 0, futureDmg = 0, healingWish = false }
+struct SideState: Equatable { var reflect = 0, light = 0, safeguard = 0, mist = 0, tailwind = 0, luckyChant = 0, spikes = 0, toxicSpikes = 0, stealthRock = false, wish = 0, wishHP = 0, future = 0, futureDmg = 0, healingWish = false, lunarDance = false }
 
 enum Move: Equatable { case fight(Int), capture, item(ItemUse), swap(Int), run }
 /// A bag item used in battle (the UI picks it and takes it out of the bag).

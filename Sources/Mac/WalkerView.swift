@@ -72,7 +72,8 @@ final class WalkerView: NSView {
         let fb = walker.compose(now)
         if fb.px != shown?.px || fb.col != shown?.col || fb.runs != shown?.runs || fb.flips != shown?.flips || fb.sprites != shown?.sprites || fb.pics != shown?.pics || fb.over != shown?.over || now.timeIntervalSince(pressedAt) < 0.3 { shown = fb; setNeedsDisplay(now.timeIntervalSince(pressedAt) < 0.3 ? bounds : lcdRect) }   // idle home = ~2 redraws a second
     }
-    @objc func save(_ sender: Any?) { walker.save() }                                           // going to sleep, quitting
+    @objc func save(_ sender: Any?) { walker.save() }                                           // going to sleep
+    @objc func quitting(_ sender: Any?) { walker.quitSave() }                                     // quitting: the steps a fight held back count
 
     // MARK: input
     override func mouseDown(with e: NSEvent) {

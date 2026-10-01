@@ -8,7 +8,7 @@ extension Walker {
         guard case .beats(let end, let beats, let since, let from) = screen else { return nil }
         var u = now.timeIntervalSince(since), i = 0
         while i < beats.count - 1, u >= beats[i].length { u -= beats[i].length; i += 1 }
-        var hp = from; hp.turnNo = end.turnNo                                                    // the turn these beats belong to (the opening's is 0: only its send-out is the trainer's intro)
+        var hp = from; hp.turnNo = end.turnNo; hp.sky = end.sky; hp.skyTurns = end.skyTurns   // the weather on the stage: the battle's, from its first beat                                                    // the turn these beats belong to (the opening's is 0: only its send-out is the trainer's intro)
         for (k, bt) in beats.enumerated() where k < i { hp.apply(bt) }
         let names = hp                                                                           // names before this beat lands
         hp.apply(beats[i])
@@ -30,7 +30,7 @@ extension Walker {
             let f = x.mine[x.me]
             mode = .moves(f.moves.enumerated().map { k, id in                                       // hints from the types it has now, as the damage sees them
                 let m = moveTable[id]!, real = x.moveType(.me, m)
-                return .init(name: m.name, type: real.type.isEmpty ? m.type : real.type, power: real.power, effect: m.isStatus ? 1 : x.typeEff(real.type, .it, by: .me), pp: f.pp[k], maxPP: m.pp)
+                return .init(name: m.name, type: real.type.isEmpty ? m.type : real.type, power: Moves.fixedOrVariable.contains(id) ? 0 : real.power, effect: x.hint(id, real.type), pp: f.pp[k], maxPP: m.pp, status: m.isStatus)
             }, sel)
         case .party(let x, let sel): b = x; msg = x.mustReplace ? "다음은 누구를 내보낼까?" : "누구로 교체할까?"; mode = .party(x.mine.enumerated().map { card($1, out: $0 == x.me) }, sel)
         case .forfeit(let x, let yes):
@@ -107,9 +107,12 @@ extension Walker {
     func stage(_ fb: inout FB, _ b: Battle, _ now: Date, _ p: Pose, hud: Bool = true, pending: Set<Side> = [], beat: (Beat, Double)? = nil) {
         let t = now.timeIntervalSinceReferenceDate, f = Int(t * 2) % 2
         let at: [Side: (x: Int, y: Int)] = [.it: (60, hud ? 14 : 8), .me: (8, hud ? 22 : 32)]   // where each stands (feet at y + 32, centre x + 16; sprites are 40 dots): theirs clear of the HP box, ours flush with the bottom
-        fb.battleGround(at, art: state.here.art, hour: state.hour, season: state.season, weather: state.weather ?? .sunny, indoor: b.trainer != nil)   // the ground, the pads they stand on
-        defer { fb.weatherFX(b.trainer == nil ? state.weather ?? .sunny : .sunny, 0, hud ? 12 : 0, 96, hud ? 38 : 64, t) }   // over the fighters, under the HUD (the tower is indoors)
-        let foe = b.theirs[b.it].mon, mine = b.mine[b.me].mon
+        let sky: Weather = switch b.weatherOn { case .rain: .rain; case .hail: .snow; case .fog: .fog; default: .sunny }   // the battle's own weather (a 비바라기 shows), not the course's
+        fb.battleGround(at, art: state.here.art, hour: state.hour, season: state.season, weather: sky, indoor: b.trainer != nil)   // the ground, the pads they stand on
+        defer { fb.weatherFX(sky, 0, hud ? 12 : 0, 96, hud ? 38 : 64, t) }   // over the fighters, under the HUD (the tower is indoors)
+        let foe = b.theirs[b.it].mon, mine = b.mine[b.me].mon                                          // the HUD: who it is (its own name, level, shine)
+        func look(_ f: Fighter) -> Mon { var m = f.mon; if let x = f.form { m.dex = x.dex }; return m }   // the sprite: 변신 shows what it became
+        let foeLook = look(b.theirs[b.it]), mineLook = look(b.mine[b.me])
         let up: [Side: Bool] = [.it: b.theirs[b.it].alive || pending.contains(.it), .me: b.mine[b.me].alive || pending.contains(.me)]   // fainted = gone, once its faint has played
         var shown: [Side: (dx: Int, dy: Int, flash: Bool, on: Bool)] = [.it: (0, 0, false, up[.it]!), .me: (0, 0, false, up[.me]!)]
         var shot: BallShot? = nil
@@ -124,12 +127,12 @@ extension Walker {
             let v = shown[s]!, a = at[s]!
             let alive = s == .me ? b.mine[b.me].alive : b.theirs[b.it].alive                         // only a fainting one sinks behind its pad; a lunge isn't clipped
             let plain = s == .it && alive && shot?.glow == nil && !v.flash && { if case .ball = p { return false }; return true }()   // out and standing: HGSS plays its own animation once
-            fb.sprite(s == .me ? mine : foe, a.x + v.dx, a.y + v.dy, back: s == .me, bob: s == .me ? f - 1 : f, flash: v.flash, floor: alive ? 64 : a.y + 32,
-                      anim: plain ? animT("foe \(b.it)", foe.dex, now) : nil)   // ours bobs down: its cut-off back never lifts
+            fb.sprite(s == .me ? mineLook : foeLook, a.x + v.dx, a.y + v.dy, back: s == .me, bob: s == .me ? f - 1 : f, flash: v.flash, floor: alive ? 64 : a.y + 32,
+                      anim: plain ? animT("foe \(b.it)", foeLook.dex, now) : nil)   // ours bobs down: its cut-off back never lifts
             if let g = shot?.glow, shot?.side == s { fb.glow(g) }                                     // going into / coming out of a ball
         }
         if case .idle = p, foe.shiny == true, shown[.it]!.on {                                      // sparkles around it, from its head down
-            let top = at[.it]!.y + 32 - (80 - spriteTop(foe.dex)) / 2, h = at[.it]!.y + 32 - top          // a sprite pixel is half a dot
+            let top = at[.it]!.y + 32 - (80 - spriteTop(foeLook.dex)) / 2, h = at[.it]!.y + 32 - top          // a sprite pixel is half a dot
             for (k, (sx, sy)) in [(-2, 2), (26, h / 4), (12, -3), (28, h * 3 / 4)].enumerated() where (Int(t * 4) + k) % 3 == 0 { fb.draw(spark, at[.it]!.x + sx, max(0, top + sy), sparkPal) }
         }
         if let (bt, u) = beat { moveFX(&fb, bt, u, b, at) }                                         // a move's effect over the fighters
@@ -151,7 +154,7 @@ extension Walker {
         fb.fill(0, 50, 96, 1, 2)
     }
     func message(_ beat: Beat, _ u: Double, _ b: Battle) -> String {
-        let it = monNames[b.theirs[b.it].mon.dex], me = monNames[b.mine[b.me].mon.dex]
+        let it = monNames[b.theirs[b.it].mon.dex]
         switch beat {
         case .appear:
             if b.wild.shiny == true && u < 0.9 { return "✦ 반짝! ✦" }
@@ -169,12 +172,12 @@ extension Walker {
         case .status(let s, let st, let t): return t.isEmpty ? josa(b.nm(s), "은", "는") + (st == nil ? " 건강해졌다!" : " " + st!.badge + " 상태가 되었다!") : t
         case .note(_, let t): return t
         case .retype: return ""
-        case .fainted(let s): return josa(s == .me ? me : it, "은", "는") + " 쓰러졌다!"
+        case .fainted(let s): return josa(b.nm(s), "은", "는") + " 쓰러졌다!"
         case .thrown(let n): return u < 1.8 ? "가랏, " + usedItem + "!" : String(repeating: ".", count: min(n, 1 + Int((u - 1.8) / 0.75)))   // a dot a rock
         case .broke: return "앗! 나와버렸다!"
         case .caught: return "딸깍! " + josa(it, "을", "를") + " 잡았다!"
         case .gained(let e, let l, _, let k): let who = monNames[b.mine[k].mon.dex]; return l.map { who + " Lv.\($0)!" } ?? josa(who, "은", "는") + " 경험치 \(e) 획득"
-        case .fled: return josa(it, "은", "는") + " 도망쳤다..."
+        case .fled: return josa(b.nm(.it), "은", "는") + " 도망쳤다..."
         case .ran: return "무사히 도망쳤다!"
         case .won: return b.trainer.map { josa($0, "과", "와") + "의 승부에서 이겼다!" } ?? "승리!"
         case .lost: return "눈앞이 캄캄해졌다..."

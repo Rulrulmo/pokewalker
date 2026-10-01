@@ -5,7 +5,7 @@ import Foundation
 /// The battle: names, HP, types for the LCD's HP boxes; the message and the choices for the page.
 struct SideModel: Equatable {
     struct Card: Equatable { var name: String; var level, hp, max: Int; var out: Bool; var status: String? = nil; var types: [String] = []; var owned = false }   // types / owned: shown for theirs
-    struct MoveBtn: Equatable { var name, type: String; var power: Int; var effect: Double; var pp = 0, maxPP = 0 }
+    struct MoveBtn: Equatable { var name, type: String; var power: Int; var effect: Double; var pp = 0, maxPP = 0; var status = false }
     enum Mode: Equatable { case none, menu([String], Int), moves([MoveBtn], Int), party([Card], Int), items([String], Int), ask(Bool) }   // ask: 아니오 / 예 (true = 예 highlighted)
     var foe: Card; var mine: Card; var message: String; var mode: Mode
 }

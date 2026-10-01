@@ -13,6 +13,8 @@ struct Battle: Equatable {
     var faced: Set<Int> = [0]                        // ours that have been out against their current one (they share its EXP)
     var mustReplace = false                          // ours fainted with others left: the player picks who's next (replace(_:))
     var foeSwapTurn = -9                             // when the trainer last pulled one back
+    var inTurn = false, foeNext: Int? = nil          // a trainer's KO'd one is replaced once the turn is over, not mid-turn
+    var subTook = false                              // the hit being resolved went into a substitute (no secondary or contact effects)
     var wild: Mon { theirs[it].mon }
 
     init(wild: Mon, companion: Mon, chain: Int = 0) { mine = [Fighter(companion)]; theirs = [Fighter(wild)]; self.chain = chain }
@@ -39,7 +41,7 @@ struct Battle: Equatable {
         case .retype(let s, let t): mod(s) { $0.types = t }
         case .hit(let s, _, let d, _, _), .hurt(let s, let d, _): mod(s) { $0.hp = max(0, $0.hp - d) }
         case .heal(let s, let n, _): mod(s) { $0.hp = min($0.maxHP, $0.hp + n) }
-        case .status(let s, let st, _): mod(s) { $0.status = st }
+        case .status(let s, let st, _): mod(s) { $0.status = st; if st != .sleep { $0.nightmare = false } }   // any wake ends 악몽
         case .gained(let e, _, let foe, let k):
             let old = mine[k].maxHP
             if mine[k].mon.gainBattleExp(e) { mine[k].hp += mine[k].maxHP - old }                    // a level-up raises current HP too
@@ -51,7 +53,7 @@ struct Battle: Equatable {
     mutating func hurt(_ s: Side, _ n: Int, _ text: String) { let d = min(f(s).hp, max(1, n)); out.append(.hurt(s, damage: d, text: text)); apply(out.last!) }
     mutating func restore(_ s: Side, _ n: Int, _ text: String) {
         guard f(s).healBlock == 0 else { say(s, josa(nm(s), "은", "는") + " 회복할 수 없다!"); return }
-        let h = min(f(s).maxHP - f(s).hp, max(1, n)); guard h > 0 else { say(s, josa(nm(s), "의", "의") + " HP는 가득하다!"); return }
+        let h = min(f(s).maxHP - f(s).hp, max(1, n)); guard h > 0 else { return }                // full: nothing to say (a heal move checks first)
         out.append(.heal(s, amount: h, text: text)); apply(out.last!)
     }
     /// After the engine changed a fighter's types: a beat, so the replay (and the panel's type badges) follow.
@@ -71,17 +73,17 @@ struct Battle: Equatable {
         if sides[si(s)].tailwind > 0 { v *= 2 }
         return v
     }
-    func grounded(_ s: Side) -> Bool { let x = f(s); return gravity > 0 || !(x.typeList.contains("flying") || x.has(26) || x.magnetRise > 0) }
+    func grounded(_ s: Side) -> Bool { let x = f(s); return gravity > 0 || x.ingrain || !(x.typeList.contains("flying") || x.has(26) || x.magnetRise > 0) }
 
     // MARK: status and stat changes
-    /// Tries to give `st` to s. Returns false (quietly, unless `loud`) when it can't stick.
-    @discardableResult mutating func inflict(_ s: Side, _ st: Status, from: Side?, loud: Bool) -> Bool {
+    /// Tries to give `st` to s. Returns false (quietly, unless `loud`) when it can't stick. A substitute is the move's business (the callers check);
+    /// sync = 싱크로 may pass it back (not for 독압정, which no one used).
+    @discardableResult mutating func inflict(_ s: Side, _ st: Status, from: Side?, loud: Bool, sync: Bool = true) -> Bool {
         let x = f(s), n = nm(s)
         func no(_ why: String) -> Bool { if loud { say(s, why) }; return false }
         guard x.alive else { return false }
         if x.status != nil { return no(x.status == st || (st == .poison && x.status == .toxic) ? josa(n, "은", "는") + " 이미 " + st.badge + " 상태다!" : "그러나 실패했다!") }
         if from != nil, from != s, sides[si(s)].safeguard > 0 { return no(josa(n, "은", "는") + " 신비의 베일에 보호받고 있다!") }
-        if from != nil, from != s, x.sub > 0 { return no("그러나 실패했다!") }
         let t = x.typeList
         switch st {
         case .poison, .toxic: if t.contains("poison") || t.contains("steel") || x.has(17) { return no(josa(n, "에게는", "에게는") + " 효과가 없는 것 같다...") }
@@ -93,11 +95,11 @@ struct Battle: Equatable {
             if [mine[me], theirs[it]].contains(where: { $0.uproar > 0 }) { return no("소란 때문에 잠들 수 없다!") }
         }
         if weatherOn == .sun, x.has(102) { return no(josa(n, "은", "는") + " 리프가드로 보호받고 있다!") }
-        if st == .sleep { let turns = 1 + roll(4); mod(s) { $0.sleep = turns } }                       // 1-4 turns asleep
+        if st == .sleep { let turns = 2 + roll(4); mod(s) { $0.sleep = turns } }                       // 1-4 turns asleep (the counter runs out on the turn it wakes and moves)
         if st == .toxic { mod(s) { $0.toxic = 1 } }
         let line = ["poison": "독에 걸렸다!", "toxic": "맹독을 입었다!", "burn": "화상을 입었다!", "paralysis": "마비되어 기술이 나오기 어려워졌다!", "sleep": "잠들어 버렸다!", "freeze": "얼어붙었다!"][st.rawValue]!
         setStatus(s, st, josa(n, "은", "는") + " " + line)
-        if let src = from, src != s, f(s).has(28), [.poison, .toxic, .burn, .paralysis].contains(st) { inflict(src, st == .toxic ? .poison : st, from: s, loud: false) }   // 싱크로
+        if sync, let src = from, src != s, f(s).has(28), [.poison, .toxic, .burn, .paralysis].contains(st) { inflict(src, st == .toxic ? .poison : st, from: s, loud: false) }   // 싱크로
         return true
     }
     mutating func confuse(_ s: Side, from: Side?, loud: Bool) {
@@ -106,7 +108,7 @@ struct Battle: Equatable {
         if x.confused > 0 { if loud { say(s, josa(nm(s), "은", "는") + " 이미 혼란 상태다!") }; return }
         if x.has(20) { if loud { say(s, josa(nm(s), "은", "는") + " 마이페이스라 혼란하지 않는다!") }; return }
         if from != nil, from != s, sides[si(s)].safeguard > 0 { if loud { say(s, josa(nm(s), "은", "는") + " 신비의 베일에 보호받고 있다!") }; return }
-        let n = 1 + roll(4); mod(s) { $0.confused = n }
+        let n = 2 + roll(4); mod(s) { $0.confused = n }                                            // 1-4 moves confused (the last one snaps out and acts)
         say(s, josa(nm(s), "은", "는") + " 혼란에 빠졌다!")
     }
     /// Stage change on s (by `from`'s move). Simple doubles, Clear Body & co. block drops, Mist too.

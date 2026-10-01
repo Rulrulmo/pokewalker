@@ -447,11 +447,16 @@ with open('Sources/Data/Data.swift', 'w') as f:
     vg = {r['id']: int(r['order']) for r in csv.DictReader(open(get('version_groups.csv')))}
     HG = vg['10']
     mv = {int(r['id']): dict(r) for r in csv.DictReader(open(get('moves.csv'))) if int(r['generation_id']) <= 4}
+    oldChance = {}                                                                      # a secondary effect's chance as it was in HGSS (move_meta only has today's)
     for r in sorted(csv.DictReader(open(get('move_changelog.csv'))), key=lambda r: vg[r['changed_in_version_group_id']], reverse=True):
         m = mv.get(int(r['move_id']))
         if m is None or vg[r['changed_in_version_group_id']] <= HG: continue
-        for k in ('type_id', 'power', 'accuracy', 'priority'):
+        for k in ('type_id', 'power', 'pp', 'accuracy', 'priority'):
             if r[k]: m[k] = r[k]                                                        # newest-first, so the earliest change after HGSS wins
+        if r['effect_chance']: oldChance[int(r['move_id'])] = int(r['effect_chance'])
+    # what the changelog misses (Gen V+ changes PokeAPI only has as today's values): priorities, Gen IX's healing PP, stat changes
+    for i, pr in {182: 3, 197: 3, 203: 3, 245: 1, 252: 1}.items(): mv[i]['priority'] = str(pr)        # 방어 판별 버티기 +3, 신속 속이기 +1
+    for i in (105, 135, 208, 303, 355, 156): mv[i]['pp'] = '10'                         # HP회복 알낳기 우유마시기 게으름피우기 날개쉬기 잠자기
     mko = {int(r['move_id']): r['name'] for r in csv.DictReader(open(get('move_names.csv'))) if r['local_language_id'] == '3'}
     # moves this engine can't do right: 속이기 (first turn + flinch), ones that need sleep / a charge / an item / a delay, and self-KOs that would just be free 200-power hits
     known = set(mv)                                                                     # every Gen I-IV move; Battle.swift knows which ones it can run
@@ -480,6 +485,12 @@ with open('Sources/Data/Data.swift', 'w') as f:
     ail = {r['id']: r['identifier'] for r in csv.DictReader(open(get('move_meta_ailments.csv')))}
     sch = {}
     for r in csv.DictReader(open(get('move_meta_stat_changes.csv'))): sch.setdefault(int(r['move_id']), []).append((int(r['stat_id']), int(r['change'])))
+    sch.update({229: [], 74: [(4, 1)], 107: [(8, 1)], 230: [(8, -1)], 81: [(6, -1)], 294: [(4, 2)]})   # Gen IV: 고속스핀 no Speed, 성장 특공 only, 작아지기 / 달콤한향기 / 실뿜기 ±1, 반딧불 +2
+    for i, c in oldChance.items():                                                      # the old chance goes on whichever secondary the move has
+        me = meta.get(i)
+        if me: me.update({k: str(c) for k in ('ailment_chance', 'flinch_chance', 'stat_chance') if int(me.get(k) or 0) > 0})
+    if 305 in meta: meta[305]['ailment_chance'] = '30'                                  # 맹독엄니: 30 % in Gen IV
+    if 448 in meta: meta[448]['ailment_chance'] = '10'                                  # 수다: by the recorded cry's loudness in Gen IV (0-31 %), not today's sure confusion
     KIND = {'2': 0, '3': 1, '1': 2}                                                     # physical, special, status
     FLAG = {'1': 1, '8': 2, '9': 4, '4': 8, '5': 16, '6': 32, '3': 64, '2': 128, '10': 256, '11': 512, '13': 1024}   # contact punch sound protect reflectable snatch recharge charge gravity defrost heal
     flags = {}

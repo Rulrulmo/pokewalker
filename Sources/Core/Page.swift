@@ -103,6 +103,7 @@ extension Canvas {
             lines.append(cur); if lines.count > 3 { f = font(10, .medium) }
             for (j, l) in lines.prefix(4).enumerated() { c.say(l.trimmingCharacters(in: .whitespaces), x(X0 + 2), y(top + 8 + CGFloat(j) * 17), f, Ink.ink) }
             return
+        case .moves: break                                                                        // the four buttons need the room (HGSS's move screen has no prompt either)
         default: c.say(m.message, x(X0 + 2), y(top + 8), font(11, .medium), Ink.ink, maxW: x(w - 4))
         }
         let y0 = top + 23
@@ -115,16 +116,17 @@ extension Canvas {
                 let rc = r(X0 + CGFloat(i - 1) * (cw + 5), y0 + 44, cw, 36)
                 button(rc, opts[i], sel == i ? Ink.red : Ink.tint(tints[opts[i]] ?? Ink.faint, 0.2), sel == i ? .white : Ink.ink, i)
             }
-        case .moves(let ms, let sel):                                                             // 2 x 2 in their type's tint, the pick ringed
+        case .moves(let ms, let sel):                                                             // 2 x 2 in their type's tint, the pick ringed: name; type, 위력; PP
             let cw = (w - 5) / 2
             for (i, mv) in ms.enumerated() {
-                let rc = r(X0 + CGFloat(i % 2) * (cw + 5), y0 + CGFloat(i / 2) * 43, cw, 38), dead = mv.effect == 0 || mv.pp == 0, col = typeColor[mv.type] ?? .gray
+                let rc = r(X0 + CGFloat(i % 2) * (cw + 5), top + 3 + CGFloat(i / 2) * 53, cw, 48), dead = mv.effect == 0 || mv.pp == 0, col = typeColor[mv.type] ?? .gray
                 let p = Path.rounded(rc, 10 * K); c.fill(p, dead ? Ink.tile : Ink.tint(col, 0.2))
                 if i == sel { c.stroke(p, Ink.red, width: 2 * K) }
                 c.say(mv.name, rc.minX + x(9), rc.minY + x(12), font(11, .bold), dead ? Ink.faint : Ink.ink, maxW: rc.width - x(14))
                 c.typePill(mv.type, rc.minX + x(8), rc.minY + x(27), h: x(11), size: 7.5, grey: dead)
+                c.say(mv.status ? "변화" : "위력 " + (mv.power > 1 ? "\(mv.power)" : "—"), rc.maxX - x(8), rc.minY + x(27.5), font(8, .semibold), dead ? Ink.faint : Ink.sub, 1)   // a power that varies: —
                 let e = mv.effect == 0 ? "효과 없음" : (mv.effect > 1 ? "▲ " : mv.effect < 1 ? "▼ " : "") + "PP \(mv.pp)/\(mv.maxPP)"
-                c.say(e, rc.maxX - x(8), rc.minY + x(27.5), font(8, .semibold), mv.effect > 1 ? Ink.red : Ink.sub, 1)
+                c.say(e, rc.maxX - x(8), rc.minY + x(39.5), font(8, .semibold), mv.effect > 1 ? Ink.red : Ink.sub, 1)
                 hits.append((rc, i))
             }
         case .party(let ps, let sel):                                                             // three rows: name, HP

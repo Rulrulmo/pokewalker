@@ -72,7 +72,7 @@ timer.tolerance = 0.02
 RunLoop.main.add(timer, forMode: .common)
 let ws = NSWorkspace.shared.notificationCenter
 ws.addObserver(view, selector: #selector(WalkerView.save(_:)), name: NSWorkspace.willSleepNotification, object: nil)
-NotificationCenter.default.addObserver(view, selector: #selector(WalkerView.save(_:)), name: NSApplication.willTerminateNotification, object: nil)
+NotificationCenter.default.addObserver(view, selector: #selector(WalkerView.quitting(_:)), name: NSApplication.willTerminateNotification, object: nil)
 app.run()
 #elseif os(Windows)
 windowsMain()

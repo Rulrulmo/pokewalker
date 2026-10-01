@@ -196,7 +196,7 @@ func put<T>(_ s: String, _ field: inout T) {
     func confirm(_ title: String, _ body: String, ok: String) -> Bool {
         wide(body + "\n\n확인 = " + ok) { b in wide(title) { t in MessageBoxW(hwnd, b, t, UINT(MB_OKCANCEL) | UINT(MB_ICONQUESTION) | UINT(MB_TOPMOST) | UINT(MB_SETFOREGROUND)) } } == IDOK
     }
-    func quit() { walker.save(); tray(DWORD(NIM_DELETE)); _ = DestroyWindow(hwnd) }
+    func quit() { walker.quitSave(); tray(DWORD(NIM_DELETE)); _ = DestroyWindow(hwnd) }
 
     // MARK: the tray
     func trayData() -> NOTIFYICONDATAW {
@@ -365,7 +365,7 @@ func put<T>(_ s: String, _ field: inout T) {
         case wmShow: if windowHidden { toggleShown() }; return 0                                  // launched again: a hidden card comes back
         case taskbarCreated: tray(DWORD(NIM_ADD)); return 0                                       // Explorer restarted: the icon again
         case UINT(WM_QUERYENDSESSION): walker.save(); return 1
-        case UINT(WM_ENDSESSION): if wp != 0 { walker.save() }; return 0
+        case UINT(WM_ENDSESSION): if wp != 0 { walker.quitSave() }; return 0
         case UINT(WM_POWERBROADCAST): if wp == WPARAM(PBT_APMSUSPEND) { walker.save() }; return nil   // going to sleep
         case UINT(WM_CLOSE): quit(); return 0
         case UINT(WM_DESTROY): PostQuitMessage(0); return 0
