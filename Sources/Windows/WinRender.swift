@@ -6,6 +6,7 @@ import Foundation
 
 @MainActor func renderShots(_ dir: String) -> Int {
     let T = Date(timeIntervalSinceReferenceDate: 800_000_000)                                   // every shot's "now": a past day (the app's own Date() reads land long after)
+    settings.set("battleSpeed", 2)                                                             // x1: the timed battle shots land where their names say
     try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
     /// Pikachu Lv.30 (a 천둥의돌 in the bag), two on the walker, five in the box, an egg; spring day 6, noon, sunny.
     func base() -> Walk {

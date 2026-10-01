@@ -260,12 +260,13 @@ func put<T>(_ s: String, _ field: inout T) {
             if i == 1 || i == 4, n > 1 { return }                                                  // ● or 메뉴 twice fast: once (the 2nd would act on what the 1st opened)
             pressed = i; pressedAt = Date(); walker.press(i)
             _ = SetTimer(hwnd, 3, 150, nil)                                                        // the key comes back up
-        } else if lcdRect.contains(p), walker.touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needAll = true; post() }
+        } else if lcdRect.contains(p), n == 1 || walker.stickerAt(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) == nil,   // a sticker's 2nd click would swap back
+                  walker.touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needAll = true; post() }
         else { drag() }
     }
     var pageKind: Int {
         let c = walker.pane
-        return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.card != nil, c.learn != nil, c.tower != nil, c.items != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
+        return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.card != nil, c.learn != nil, c.tower != nil, c.items != nil, c.course != nil, c.train != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
     }
     func pageDown(_ p: CGPoint, count n: Int) {
         let c = walker.pane
@@ -277,7 +278,7 @@ func put<T>(_ s: String, _ field: inout T) {
     /// The wheel over the page: the shop list a row a notch, a grid a page.
     func wheel(_ delta: Int, at p: CGPoint) {
         let grid = walker.pane.grid != nil
-        guard p.y >= pageTop, walker.pane.shop != nil || walker.pane.tower?.pick != nil || grid else { return }
+        guard p.y >= pageTop, walker.pane.shop != nil || walker.pane.tower?.pick != nil || walker.pane.course != nil || walker.pane.train != nil || grid else { return }
         scrolled += delta
         while abs(scrolled) >= 120 { let d = scrolled > 0 ? -1 : 1; if grid { walker.gridStep(d * GridModel.perPage) } else { walker.listRow(d) }; scrolled += d * 120 }
     }
@@ -307,7 +308,7 @@ func put<T>(_ s: String, _ field: inout T) {
     /// Over a key or one of the page's buttons: the hand (the LCD is to look at).
     func cursorHand(_ p: CGPoint) -> Bool {
         if p.y >= pageTop { let q = CGPoint(x: p.x, y: p.y - pageTop); return page.hits.contains { $0.0.contains(q) } }
-        return buttons.contains { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r }
+        return buttons.contains { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r } || walker.stickerRects.contains { $0.contains(p) }
     }
     func client(_ lp: LPARAM) -> CGPoint { CGPoint(x: CGFloat(lo(lp)) / sc, y: CGFloat(hi(lp)) / sc) }
 

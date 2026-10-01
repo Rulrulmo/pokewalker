@@ -17,7 +17,8 @@ struct Battle: Equatable {
     var subTook = false                              // the hit being resolved went into a substitute (no secondary or contact effects)
     var wild: Mon { theirs[it].mon }
 
-    init(wild: Mon, companion: Mon, chain: Int = 0) { mine = [Fighter(companion)]; theirs = [Fighter(wild)]; self.chain = chain }
+    init(wild: Mon, companion: Mon, chain: Int = 0) { self.init(wild: wild, party: [companion], chain: chain) }
+    init(wild: Mon, party: [Mon], chain: Int = 0) { mine = party.map(Fighter.init); theirs = [Fighter(wild)]; self.chain = chain }   // the companion first, then the walker's
     init(party: [Mon], trainer: String, foes: [Mon]) { mine = party.map(Fighter.init); theirs = foes.map(Fighter.init); self.trainer = trainer }
 
     // MARK: plumbing

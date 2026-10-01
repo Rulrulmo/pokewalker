@@ -47,6 +47,8 @@ struct MonModel: Equatable {
     var confirm: Bool                                                  // 놓아줄까? is up: the buttons become 아니오 / 예
     var place = 2                                                      // 0 the companion (nothing to do), 1 the walker's (함께 걷기 / 상자로 보내기), 2 the box's (함께 걷기 / 워커로 / 놓아주기)
     var fetch = false                                                  // the box's: 워커로 is open (the walker has room)
+    var dupes = 0                                                      // the box's: how many of its species 중복 놓아주기 would let go (the 놓아줄까? row offers it)
+    var moves: [String] = []                                           // its four moves
     var evos: [String] = [], evoAction: String? = nil                  // how it evolves (a line a target); the companion's: what evolves it right now
     var sel: Int?                                                      // the LCD's pick (함께 / 놓아주기 / 닫기, or 아니오 / 예): what ● does is red
 }
@@ -70,6 +72,17 @@ struct TowerModel: Equatable {
     static let perPage = 5
     var run: Bool; var streak, best, bp, fee: Int; var party: [Member]; var custom = false; var pick: Pick? = nil   // custom = the player's party, not the recommended one
 }
+/// 코스: every course, a page of five (the pick's picture is on the LCD). note = what opens a locked one; go = the button (nil: locked, or walking it now).
+struct CourseModel: Equatable {
+    struct Row: Equatable { var name, note: String; var open, here: Bool }
+    static let perPage = 5
+    var rows: [Row]; var sel, first, count, opened: Int; var go: String?; var about = ""   // about = the pick: its levels and types
+}
+/// 대단한 특훈 with 은색병뚜껑: the companion's six IVs (hyper = already trained), the pick and its button (nil: nothing to raise / too low a level).
+struct TrainModel: Equatable {
+    struct Row: Equatable { var name: String; var iv: Int; var hyper: Bool }
+    var who: String; var caps: Int; var rows: [Row]; var sel: Int; var go: String?; var note: String; var v = 0   // v = its 31s now
+}
 /// 도구: everything carried — the walker's and the bag's, a row a kind; the picked one's use (nil = nothing to press) and a line about it.
 struct ItemsModel: Equatable {
     struct Row: Equatable { var name: String; var count, onWalker: Int }
@@ -78,13 +91,13 @@ struct ItemsModel: Equatable {
 /// Whatever the pane shows; all nil = no page (the card's idle height).
 struct PaneContent: Equatable {
     var battle: SideModel?; var dex: DexModel?; var shop: ShopModel?; var menu: MenuModel?; var status: StatusModel?; var grid: GridModel?; var mon: MonModel?
-    var radar: RadarModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var items: ItemsModel?
+    var radar: RadarModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var items: ItemsModel?; var course: CourseModel?; var train: TrainModel?
 }
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
-    static let tallest: CGFloat = 472                                                              // 포켓몬's grid: the size menu keeps it on the screen
+    static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
     var height: CGFloat {
-        battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 454 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 406 : menu != nil ? 354
-            : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : status != nil ? 354 : Layout.idle
+        battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 406 : menu != nil ? 354
+            : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : status != nil ? 354 : Layout.idle
     }
 }

@@ -12,7 +12,7 @@ import Foundation
     var keyShown: Bool?? = .none                                           // the 메뉴 / 홈 key as last shown (see homeKey)
     var strollX = 54.0, strollRight = false, strollAt = Date(), strollTurnAt = Date(), stepRate = 0.0   // home: the walking sprite's middle in the course picture (half-dots), which way it goes, the pace
     var usedItem = "몬스터볼"                                                // the potion / ball / revive the current beat names
-    var towerRefs: [Int] = [], towerRun = false
+    var partyRefs: [Int] = [], towerRun = false                        // partyRefs: the uids of ours in the fight (written back after it)
     var sideOn = false                                                     // the pane carries the battle's text (the app; not --selftest): the LCD shows the stage only
     lazy var lastSeason = state.season
     var emote: (kind: Int, until: Date)? = nil                             // ♪ ♥ ! bubble over the companion
@@ -23,6 +23,7 @@ import Foundation
     var pane = PaneContent(), paneAt = Date.distantPast                    // the pane's page as shown, when it was last refreshed
     var cardH = Layout.idle                                                // the card's height now (card points): the page's
     var hud: SideModel? = nil                                              // a fight's HP boxes, drawn over the LCD
+    var battleSpeed: Double { Double(settings.int("battleSpeed", 3)) / 2 }     // 배틀 속도 (the right-click's): 보통 x1, 빠르게 x1.5 (the default), 아주 빠르게 x2
     var titleShown = ""                                                    // the title row as last shown: a change redraws it
     var persist = true                                                     // false in --selftest: flows must never touch the real save (nor notify)
     lazy var unlockedAt = state.earned                                     // lifetime watts already announced
@@ -75,13 +76,13 @@ import Foundation
         }
         if case .home = screen, state.hatchDue {
             let m = state.hatch(&rng); screen = .hatch(m, since: now); save()
-            notify("hatch", "알에서 " + josa(monNames[m.dex], "이", "가") + " 태어났어요!" + (m.shiny == true ? " ✦" : ""), m.shiny == true ? "이로치예요!" : "Lv.1 · 워커에 있어요")
+            notify("hatch", "알에서 " + josa(monNames[m.dex], "이", "가") + " 태어났어요!" + (m.shiny == true ? " ✦" : ""), m.shiny == true ? "이로치예요! 상자에 있어요" : "Lv.1 · 상자에 있어요")
         }
         if state.earned > unlockedAt {                                                           // lifetime watts opened a course
             let new = courses.enumerated().filter { $0.element.watts > unlockedAt && $0.element.watts <= state.earned && state.unlocked($0.offset) }.map(\.element.name)
             unlockedAt = state.earned
             if let n = new.first {
-                notify("unlock", "새 코스가 열렸어요", n + " · 우클릭 → 코스")
+                notify("unlock", "새 코스가 열렸어요", n + " · 메뉴 → 코스")
                 if case .home = screen { screen = .say(["새 코스 해금!", n], next: .home, since: now) }
             }
         }
@@ -103,12 +104,12 @@ import Foundation
         switch screen {
         case .radar(_, _, let since, let chain) where now.timeIntervalSince(since) > 1.5 + radarWindow(chain):
             screen = .say(chain > 0 ? ["...!", "연쇄가 끊겼다 (\(chain))"] : ["...!", "사라져버렸다"], next: .home, since: now)
-        case .beats(let bt, let beats, let since, _) where now.timeIntervalSince(since) >= beats.map(\.length).reduce(0, +):
+        case .beats(let bt, let beats, let since, _) where now.timeIntervalSince(since) * battleSpeed >= beats.map(\.length).reduce(0, +):
             screen = beats.last!.ends ? after(bt, beats.last!, now) : bt.mustReplace ? .party(bt, sel: bt.mine.indices.first { bt.mine[$0].alive } ?? 0) : .battle(bt, sel: 0)
         case .say(_, let next, let since) where now.timeIntervalSince(since) > 3: screen = next
         case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
-        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
+        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
         default: break
         }
         if now.timeIntervalSince(lastSave) > 60 { save() }
@@ -123,6 +124,7 @@ import Foundation
     func key(_ k: Key, shift: Bool = false, held: Bool = false) -> Bool {
         if case .shop(_, _, let q) = screen, let d = [Key.up: -1, .down: 1][k] { shopStep(q == nil ? d : -10 * d); return true }
         if case .tower(_?) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -TowerModel.perPage, .pageDown: TowerModel.perPage][k] { towerStep(d); return true }   // the tower's picker: ↑ ↓ a row, page up / down a page
+        switch screen { case .course, .train: if let d = [Key.up: -1, .down: 1, .pageUp: -CourseModel.perPage, .pageDown: CourseModel.perPage][k] { listRow(d); return true }; default: break }   // the lists: the same
         switch screen { case .dex(_, _, false), .box(_, .none, _, false): if let d = [Key.up: -6, .down: 6, .pageUp: -30, .pageDown: 30][k] { gridStep(d, ends: abs(d) == 30); return true }; default: break }   // the grids: ↑ ↓ a row, page up / down a page
         if k == .tab {
             switch screen {
@@ -132,7 +134,7 @@ import Foundation
             }
             return true
         }
-        switch screen { case .shop, .shopConfirm, .tower, .radar: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, or pick a bush too early
+        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, or pick a bush too early
         guard let i = [Key.left: 0, .enter: 1, .right: 2, .back: 3, .menu: 4][k] else { return false }
         press(i); return true
     }
@@ -155,6 +157,8 @@ import Foundation
         case .radar: return ("포켓 레이더", state.here.name)
         case .card: return ("트레이너 카드", "")
         case .learn: return ("기술 배우기", "")
+        case .course: return ("코스", "\(courses.indices.filter(state.unlocked).count) / \(courses.count) 열림")
+        case .train: return ("대단한 특훈", "은색병뚜껑 ×\(state.count("은색병뚜껑"))")
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
         default: return (state.here.name, when)                                                 // screens without a page of their own: the status sheet
         }

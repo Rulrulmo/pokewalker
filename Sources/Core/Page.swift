@@ -79,7 +79,7 @@ extension Canvas {
         if let d = p.dex { drawDex(d) } else if let g = p.grid { drawGrid(g) } else if let m = p.mon { drawMon(m) } else if let s = p.shop { drawShop(s) }
         else if let m = p.menu { drawMenu(m) } else if let m = p.battle { drawBattle(m) } else if let i = p.items { drawItems(i) } else if let r = p.radar { drawRadar(r) }
         else if let k = p.card { tabs(["트레이너 카드", "최근 7일", "알"], k.page, 198, code: 5200) } else if let l = p.learn { drawLearn(l) }
-        else if let t = p.tower { drawTower(t) } else if let s = p.status { drawStatus(s) }
+        else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let s = p.status { drawStatus(s) }
     }
     let X0: CGFloat = 9, X1: CGFloat = 207                                                         // the content column (card points): the bezel's edges
     /// A hairline across the column at y (page coordinates).
@@ -111,7 +111,7 @@ extension Canvas {
         case .menu(let opts, let sel):                                                            // big 공격, three below; the pick is red
             let tints: [String: Color] = ["볼": Ink.yellow, "도구": Ink.green, "교체": Ink.blue, "도망": Ink.blue, "기권": Ink.faint]
             button(r(X0, y0, w, 38), opts[0], sel == 0 ? Ink.red : Ink.redTint, sel == 0 ? .white : Ink.red, 0, 13)
-            let cw = (w - 10) / 3
+            let n = CGFloat(opts.count - 1), cw = (w - 5 * (n - 1)) / n                                // three or four below
             for i in 1..<opts.count {
                 let rc = r(X0 + CGFloat(i - 1) * (cw + 5), y0 + 44, cw, 36)
                 button(rc, opts[i], sel == i ? Ink.red : Ink.tint(tints[opts[i]] ?? Ink.faint, 0.2), sel == i ? .white : Ink.ink, i)
@@ -129,15 +129,17 @@ extension Canvas {
                 c.say(e, rc.maxX - x(8), rc.minY + x(39.5), font(8, .semibold), mv.effect > 1 ? Ink.red : Ink.sub, 1)
                 hits.append((rc, i))
             }
-        case .party(let ps, let sel):                                                             // three rows: name, HP
+        case .party(let ps, let sel):                                                             // a row each (three, or four with the walker's team, tighter): name, HP
+            let pitch: CGFloat = ps.count > 3 ? 21.5 : 27.5
             for (i, p) in ps.enumerated() {
-                let rc = r(X0, y0 + CGFloat(i) * 27.5, w, 25), f = p.max > 0 ? CGFloat(p.hp) / CGFloat(p.max) : 0
+                let rc = r(X0, y0 + CGFloat(i) * pitch, w, pitch - 2.5), f = p.max > 0 ? CGFloat(p.hp) / CGFloat(p.max) : 0
                 tile(rc, 9, on: i == sel)
-                let nx = c.say((p.out ? "▶ " : "") + p.name, rc.minX + x(9), rc.minY + x(9.5), font(10, .bold), p.hp > 0 ? Ink.ink : Ink.faint)
-                let lx = rc.minX + x(9) + nx + x(4) + c.say("Lv\(p.level)", rc.minX + x(13) + nx, rc.minY + x(10), font(8, .semibold), Ink.sub)
-                if let st = p.status { let sw = width(st, font(7.5, .bold)) + x(8); c.pill(CGRect(x: lx + x(4), y: rc.minY + x(4.5), width: sw, height: x(11)), Ink.faint); c.say(st, lx + x(4) + sw / 2, rc.minY + x(10), font(7.5, .bold), .white, 0.5) }
-                c.say("\(p.hp)/\(p.max)", rc.maxX - x(9), rc.minY + x(9.5), font(9, .semibold), Ink.ink, 1)
-                c.bar(rc.minX + x(9), rc.maxX - x(9), rc.minY + x(19), f, Ink.hp(f), h: x(3))
+                let ty = pitch > 22 ? 9.5 : 7.0                                                    // the text's line (higher in the tight rows, the bar under it)
+                let nx = c.say((p.out ? "▶ " : "") + p.name, rc.minX + x(9), rc.minY + x(ty), font(10, .bold), p.hp > 0 ? Ink.ink : Ink.faint)
+                let lx = rc.minX + x(9) + nx + x(4) + c.say("Lv\(p.level)", rc.minX + x(13) + nx, rc.minY + x(ty + 0.5), font(8, .semibold), Ink.sub)
+                if let st = p.status { let sw = width(st, font(7.5, .bold)) + x(8); c.pill(CGRect(x: lx + x(4), y: rc.minY + x(ty - 5), width: sw, height: x(11)), Ink.faint); c.say(st, lx + x(4) + sw / 2, rc.minY + x(ty + 0.5), font(7.5, .bold), .white, 0.5) }
+                c.say("\(p.hp)/\(p.max)", rc.maxX - x(9), rc.minY + x(ty), font(9, .semibold), Ink.ink, 1)
+                c.bar(rc.minX + x(9), rc.maxX - x(9), pitch > 22 ? rc.minY + x(19) : rc.maxY - x(3.5), f, Ink.hp(f), h: x(pitch > 22 ? 3 : 2.5))
                 hits.append((rc, i))
             }
         case .items(let names, let sel):                                                          // three rows, the pick kept in view
@@ -247,6 +249,9 @@ extension Canvas {
         rule(y(yy - 2))                                                                            // 진화: how it evolves, a line a target
         c.say("진화", x(X0 + 2), y(yy + 6), font(9, .medium), Ink.sub)
         for (j, l) in m.evos.prefix(2).enumerated() { c.say(l, x(X0 + 34), y(yy + 6 + CGFloat(j) * 13), font(9, j == 0 ? .medium : .regular), l.hasPrefix("→") ? Ink.ink : Ink.sub, maxW: x(X1 - X0 - 36)) }
+        yy += 30
+        c.say("기술", x(X0 + 2), y(yy + 6), font(9, .medium), Ink.sub)                            // its four moves, two a line (the right-click used to show them)
+        for (j, mv) in m.moves.enumerated() { c.say(mv, x(X0 + 34 + CGFloat(j % 2) * 84), y(yy + 6 + CGFloat(j / 2) * 13), font(9, .medium), Ink.ink, maxW: x(80)) }
         yy += 32
         if m.place == 0 {                                                                          // the companion: what evolves it now, if anything; else nothing to do
             let rc = r(X0, yy, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.evoAction == nil ? Ink.tile : Ink.red)
@@ -254,7 +259,7 @@ extension Canvas {
             return
         }
         // 함께 걷기 / 상자로 보내기 (the walker's) or 워커로 / 놓아주기 (the box's; 놓아줄까? → 아니오 / 예)
-        let opts: [(String, Int)] = m.confirm ? [("아니오", 4402), ("예 · 놓아주기", 4403)]
+        let opts: [(String, Int)] = m.confirm ? [("아니오", 4402), ("예 · 놓아주기", 4403)] + (m.dupes > 0 ? [("중복 \(m.dupes)마리", 4408)] : [])
             : m.place == 1 ? [("함께 걷기", 4400), ("상자로 보내기", 4404)] : [("함께 걷기", 4400)] + (m.fetch ? [("워커로", 4407)] : []) + [("놓아주기", 4401)]
         let cw = (X1 - X0 - 5 * CGFloat(opts.count - 1)) / CGFloat(opts.count)
         for (i, (t, code)) in opts.enumerated() {
@@ -478,6 +483,36 @@ extension Page {
         }
         let per = TowerModel.perPage, pages = (p.count + per - 1) / per
         if pages > 1 { pager("\(p.first / per + 1) / \(pages)", 327, prev: true, next: true, codes: (5440, 5441)) }
+    }
+    /// 코스: a page of five (open ones dark, locked ones faint with what opens them, the one walked marked), the pager, and 가기.
+    func drawCourse(_ m: CourseModel) {
+        c.say(m.about, x(X0 + 2), y(206), font(11, .medium), Ink.ink, maxW: x(X1 - X0 - 4))                      // the pick: its levels and types (the title row has how many are open)
+        for (i, row) in m.rows.enumerated() {
+            let rc = r(X0, 216 + CGFloat(i) * 22, X1 - X0, 20); tile(rc, 7, on: m.first + i == m.sel)
+            var xr = rc.maxX - x(9)
+            if row.here { let t = "지금", f = font(7.5, .bold), w = width(t, f) + x(8); c.pill(CGRect(x: xr - w, y: rc.midY - x(5.5), width: w, height: x(11)), Ink.red); c.say(t, xr - w / 2, rc.midY, f, .white, 0.5); xr -= w + x(6) }
+            if !row.note.isEmpty { xr -= c.say(row.note, xr, rc.midY, font(8.5, .semibold), Ink.faint, 1) + x(6) }
+            c.say(row.name, rc.minX + x(9), rc.midY, font(10, .bold), row.open ? Ink.ink : Ink.faint, maxW: xr - rc.minX - x(9))
+            hits.append((rc, 5800 + i))
+        }
+        let per = CourseModel.perPage, pages = (m.count + per - 1) / per
+        pager("\(m.first / per + 1) / \(pages)", 327, prev: true, next: true, codes: (5810, 5811))
+        let here = m.rows[safe: m.sel - m.first]?.here == true, rc = r(X0, 352, X1 - X0, 30)
+        c.fill(.rounded(rc, 10 * K), m.go == nil ? Ink.tile : Ink.red)
+        c.say(m.go ?? (here ? "지금 걷는 코스" : "아직 잠겨 있어요"), rc.midX, rc.midY, font(11, .bold), m.go == nil ? Ink.sub : .white, 0.5); if m.go != nil { hits.append((rc, 5820)) }
+    }
+    /// 대단한 특훈: the companion's six stats (trained ones and 31s marked), the pick, then its button (or why not).
+    func drawTrain(_ m: TrainModel) {
+        c.say(m.who, x(X0 + 2), y(206), font(11, .medium), Ink.ink); c.say("지금 \(m.v)V", x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)   // (the caps left: the title row)
+        for (i, row) in m.rows.enumerated() {
+            let rc = r(X0, 216 + CGFloat(i) * 22, X1 - X0, 20); tile(rc, 7, on: i == m.sel)
+            c.say(row.name, rc.minX + x(9), rc.midY, font(10, .bold), Ink.ink)
+            let done = row.hyper || row.iv >= 31
+            c.say(row.hyper ? "\(row.iv) → 31 · 특훈함" : row.iv >= 31 ? "31 · 최고" : "\(row.iv)", rc.maxX - x(9), rc.midY, font(9, .semibold), done ? Ink.faint : Ink.sub, 1)
+            hits.append((rc, 5900 + i))
+        }
+        let rc = r(X0, 352, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.go == nil ? Ink.tile : Ink.red)
+        c.say(m.go ?? m.note, rc.midX, rc.midY, font(11, .bold), m.go == nil ? Ink.sub : .white, 0.5); if m.go != nil { hits.append((rc, 5910)) }
     }
     /// 도구: everything carried, a row a kind (six in view, the pick kept there; a click picks it), then what the pick does and its button.
     func drawItems(_ m: ItemsModel) {

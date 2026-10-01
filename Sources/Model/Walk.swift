@@ -231,16 +231,15 @@ struct Walk: Codable, Equatable {
     }
 
     /// Returns false when the walker was full and it went straight to the box / bag.
-    mutating func keep(_ m: Mon) -> Bool { own(m.dex, shiny: m.shiny); if caught.count < 3 { caught.append(m); return true }; box.append(m); return false }
+    mutating func keep(_ m: Mon) -> Bool { own(m.dex, shiny: m.shiny); box.append(m); return false }   // every catch / hatch / buy goes to the box: the walker takes only who the player sends (워커로)
     mutating func keep(_ i: String) -> Bool { if items.count < 3 { items.append(i); return true }; bag.append(i); return false }
-    mutating func connect() { box += caught; bag += items; caught = []; items = [] }
     /// One of the walker's to the box (포켓몬's 상자로 보내기).
     mutating func store(_ i: Int) { box.append(caught.remove(at: i)) }
     /// One of the box's back onto the walker (while it holds fewer than 3).
     mutating func fetch(_ i: Int) { guard caught.count < 3, box.indices.contains(i) else { return }; caught.append(box.remove(at: i)) }
 
     mutating func setCourse<R: RandomNumberGenerator>(_ i: Int, _ r: inout R) {
-        connect(); course = i; courseSteps = 0
+        course = i; courseSteps = 0                                                              // the walker's team and items come along
     }
     /// Walk with box[i] (or, onWalker, caught[i]) instead; the old companion takes its place on the walker, or goes to the box's end
     /// (the box stays in arrival order: the 상자 grid's 최근). Course progress stays (the real device re-pairs and restarts the course,

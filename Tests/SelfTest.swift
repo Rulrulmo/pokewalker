@@ -60,16 +60,16 @@ import AppKit                                                                   
     check(w.bonus && w.effSteps == 2000, "type bonus: 25 % fewer steps")
     w = Walk(); check((0..<50).allSatisfy { _ in w.courseItem(&r) == "상처약" }, "a find at 0 steps: only the common item")
 
-    // 6 walker holds 3, overflow goes home
+    // 6 catches go to the box; the walker holds 3 the player sends (워커로); items: 3 on the walker, then the bag
     w = Walk(); for d in 1...4 { _ = w.keep(Mon(dex: d, level: 5, female: false)) }
-    check(w.caught.count == 3 && w.box.map(\.dex) == [4], "4th catch goes to the box")
+    check(w.caught.isEmpty && w.box.map(\.dex) == [1, 2, 3, 4], "every catch goes to the box")
+    for _ in 0..<4 { w.fetch(0) }; check(w.caught.map(\.dex) == [1, 2, 3] && w.box.map(\.dex) == [4], "워커로: the walker takes three")
     for _ in 0..<4 { _ = w.keep("상처약") }; check(w.items.count == 3 && w.bag.count == 1, "4th item goes to the bag")
-    w.connect(); check(w.caught.isEmpty && w.items.isEmpty && w.box.count == 4 && w.bag.count == 4, "connect empties the walker")
     w.courseSteps = 900; w.setCourse(3, &r)
     check(w.course == 3 && w.courseSteps == 0, "new course: steps restart")
-    w.courseSteps = 700; w.pair(0); check(w.companion.dex == 4 && w.box.last?.dex == 25 && w.box.count == 4 && w.courseSteps == 700, "pair swaps with the box (the old one to its end), course progress kept")
-    _ = w.keep(Mon(dex: 16, level: 5, female: false)); w.pair(0, onWalker: true)
-    check(w.companion.dex == 16 && w.caught[0].dex == 4, "pair with a Pokémon still on the walker")
+    w.courseSteps = 700; w.pair(0); check(w.companion.dex == 4 && w.box.last?.dex == 25 && w.box.count == 1 && w.caught.count == 3 && w.courseSteps == 700, "pair swaps with the box (the old one to its end), course progress kept")
+    w.pair(0, onWalker: true)
+    check(w.companion.dex == 1 && w.caught[0].dex == 4, "pair with a Pokémon on the walker")
     check(Walk().unlocked(1) && !Walk().unlocked(2), "courses unlock by lifetime watts")
 
     // 6b levels, evolution, dex
@@ -128,7 +128,7 @@ import AppKit                                                                   
     w = Walk(); w.egg = Egg(dex: 172, left: eggCycles[172] * 255)
     check(w.egg!.left == 2550 && eggPool.contains(172) && eggPool.contains(1) && !eggPool.contains(25) && !eggPool.contains(150), "피츄 egg 2550 steps; pool = unreachable bases, no legends")
     w.walk(2549, at: at(10)); check(!w.hatchDue, "not yet"); w.walk(1, at: at(10)); check(w.hatchDue, "hatches on the 2550th step")
-    let baby = w.hatch(&r); check(baby.dex == 172 && baby.level == 1 && w.egg == nil && w.caught.first?.dex == 172 && w.owned!.contains(172), "hatched Lv.1 피츄, kept and in the dex")
+    let baby = w.hatch(&r); check(baby.dex == 172 && baby.level == 1 && w.egg == nil && w.box.last?.dex == 172 && w.owned!.contains(172), "hatched Lv.1 피츄, in the box and the dex")
     w = Walk(); w.course = 34; var legends = 0
     for _ in 0..<5000 where w.legend(&r, chain: 0) != nil { legends += 1 }
     check((60...140).contains(legends), "legend course: ~2 % of radar finds", "\(legends)")
@@ -136,7 +136,7 @@ import AppKit                                                                   
     check((25...75).contains(again), "all of a course's legends caught: they still turn up, half as often (a shiny to hunt)", "\(again)")
     w = Walk(); check((0..<500).allSatisfy { _ in w.legend(&r, chain: 4) == nil }, "never on normal courses")
     w = Walk(); w.companion = Mon(dex: 290, level: 20, female: false); let nin = w.levelEvolution(at(10))!
-    w.evolve(nin); check(w.companion.dex == 291 && w.caught.map(\.dex) == [292], "토중몬 -> 아이스크 leaves 껍질몬")
+    w.evolve(nin); check(w.companion.dex == 291 && w.box.map(\.dex) == [292], "토중몬 -> 아이스크 leaves 껍질몬 (in the box)")
 
     // 6f items
     check(ItemKind.of("상처약") == .heal(20) && ItemKind.of("풀회복약") == .heal(999) && ItemKind.of("기력의조각") == .revive(50) && ItemKind.of("하이퍼볼") == .ball(2)
@@ -443,8 +443,8 @@ import AppKit                                                                   
     w.watts = 100; check(w.purchase(.init(kind: .item("슈퍼볼"), price: 40), 1, bp: false) != nil && w.watts == 60 && w.bag.last == "슈퍼볼" && w.purchase(.init(kind: .item("풀회복약"), price: 300), 1, bp: false) == nil, "W shop")
     check(w.purchase(.init(kind: .item("이상한사탕"), price: 8), 1, bp: true) != nil && w.bp == 4 && w.purchase(.init(kind: .item("이상한사탕"), price: 8), 1, bp: true) == nil, "BP exchange")
     w = Walk(); w.watts = 9998; check(w.buyLegend(0) == nil, "칠색조 needs the full 9,999 W")
-    w.watts = 9999; check(w.buyLegend(0)?.dex == 250 && w.watts == 0 && w.caught.last?.level == 50 && w.buyLegend(0) == nil, "칠색조: 9,999 W (not again without the watts)")
-    w.watts = 9999; check(w.buyLegend(0)?.dex == 250 && w.caught.filter { $0.dex == 250 }.count == 2, "… and again once they're back: as often as you can pay")
+    w.watts = 9999; check(w.buyLegend(0)?.dex == 250 && w.watts == 0 && w.box.last?.level == 50 && w.buyLegend(0) == nil, "칠색조: 9,999 W (not again without the watts)")
+    w.watts = 9999; check(w.buyLegend(0)?.dex == 250 && w.box.filter { $0.dex == 250 }.count == 2, "… and again once they're back: as often as you can pay")
     w.bp = 299; check(w.buyLegend(1) == nil, "뮤츠 needs 300 BP"); w.bp = 300
     check(w.buyLegend(1)?.dex == 150 && w.bp == 0 && w.legendBought(150) && (w.owned ?? []).contains(150), "뮤츠: 300 BP, in the dex")
     check((w.caught + w.box).filter { [150, 250].contains($0.dex) }.allSatisfy { $0.perfectIVs >= 3 }, "shop legends come with 3 IVs at 31")
@@ -551,7 +551,7 @@ import AppKit                                                                   
     let caughtB = Battle(wild: Mon(dex: 16, level: 3, female: false), companion: v.state.companion, chain: 1)
     v.screen = .beats(caughtB, [.thrown(shakes: 3), .caught], since: Date().addingTimeInterval(-30), from: caughtB); v.tick(Date())
     let chained = on(v) { if case .radar(_, _, _, 2) = $0 { return true }; return false }, ended = on(v) { if case .say = $0 { return true }; return false }
-    check((chained || ended) && v.state.caught.last?.dex == 16, "a catch keeps it, then the chain goes on or quietly ends")
+    check((chained || ended) && v.state.box.last?.dex == 16, "a catch goes to the box, then the chain goes on or quietly ends")
     var hpB = Battle(wild: Mon(dex: 143, level: 30, female: false), companion: Mon(dex: 25, level: 30, female: false))
     hpB.mine[0].moves = [85]; hpB.mine[0].pp = [15]; hpB.theirs[0].moves = [33]; hpB.theirs[0].pp = [35]   // damaging moves only (no 꼬리흔들기, no 잠자기)
     v.screen = .moves(hpB, sel: 0); v.press(1)
@@ -599,9 +599,9 @@ import AppKit                                                                   
     bk.sideOn = false; bk.screen = .forfeit(tw, yes: false); let lcdTap = bk.touch(55, 56); bk.sidePick(0)
     check(!lcdTap && bk.state.towerStreak == 5 && isBattle(bk.screen, "기권"), "the LCD answers nothing even without the pane; the pane's 아니오 is 아니오")
     bk.screen = .battle(wild, sel: 0)
-    let battleMenuItems = bk.menu()
-    check(battleMenuItems.contains { $0.title.hasPrefix("⚔ 배틀 중") } && battleMenuItems.first { $0.title.hasPrefix("코스") }?.children?.allSatisfy { $0.action == nil } == true,
-          "mid-battle the menu's jump-away actions wait (no one-click escape)")
+    let rightClick = bk.menu()
+    check(!rightClick.contains { m in ["코스", "함께 걷기", "가방", "진화의 돌"].contains { m.title.hasPrefix($0) } } && rightClick.contains { $0.title.hasPrefix("배틀 속도 · 빠르게") },
+          "the right-click is options only (the game is on the pane), 배틀 속도 빠르게 by default")
     let hider = Walker(state: Walk()); hider.persist = false; hider.screen = .say(["PP가 없다"], next: .moves(wild, sel: 0), since: Date())
     let midFight = hider.inBattle; hider.screen = .say(["샀다"], next: .shop(bp: false, sel: 0, qty: nil), since: Date())
     check(midFight && !hider.inBattle, "inBattle covers a fight's messages (so hiding to the menu bar keeps the fight), not a shop's")
@@ -614,7 +614,7 @@ import AppKit                                                                   
     v.screen = .menu(menuAt("도감")); v.press(1); check(on(v) { if case .dex = $0 { return true }; return false }, "menu 도감 opens the dex")
     let dexTaps = [v.touch(80, 30), v.touch(10, 30), v.touch(48, 30)]; let still = on(v) { if case .dex(_, _, false) = $0 { return true }; return false }; v.press(1)
     check(dexTaps == [false, false, false] && still && on(v) { if case .dex(_, _, true) = $0 { return true }; return false }, "LCD clicks don't step (they drag); ● opens the entry page")
-    v.screen = .say(["어라?"], next: .menu(menuAt("커넥트")), since: Date()); check(v.touch(10, 10) && on(v) { if case .menu(menuAt("커넥트")) = $0 { return true }; return false }, "… only a message goes on with a click on the LCD")
+    v.screen = .say(["어라?"], next: .menu(menuAt("코스")), since: Date()); check(v.touch(10, 10) && on(v) { if case .menu(menuAt("코스")) = $0 { return true }; return false }, "… only a message goes on with a click on the LCD")
 
     // the 도감 / 상자 grids on the pane
     let gv = Walker(state: { var s = Walk(); s.owned = [1, 4, 25]; s.seen = [1, 4, 7, 25, 94]
@@ -679,12 +679,7 @@ import AppKit                                                                   
     check(gv.state.box.map(\.dex) == [19, 25] && gv.boxOrder.first == 1, "함께: the old companion goes to the box's end, first on 최근")
 
     v.state.box = (1...120).map { Mon(dex: $0 * 4 % 493 + 1, level: 5, female: false, shiny: $0 % 17 == 0 ? true : nil) }
-    let walkMenu = v.menu().first { $0.title.hasPrefix("함께 걷기") }?.children
     v.state.box += (0..<40).map { Mon(dex: 29, level: 1 + $0 % 25, female: $0 % 2 == 0) }
-    let nido = v.menu().first { $0.title.hasPrefix("함께 걷기") }?.children?.compactMap(\.children).joined().first { $0.title.hasPrefix("니드런♀") }?.children
-    check((nido?.count ?? 99) <= 12 && nido?.contains { $0.title.hasPrefix("그 밖") } == true && nido?.last?.title.hasPrefix("중복 놓아주기") == true,
-          "40 니드런♀: ≤ 12 rows, the rest under 그 밖, and 중복 놓아주기", "\(nido?.count ?? -1)")
-        check((walkMenu?.count ?? 99) <= 26 && walkMenu?.contains { $0.title.hasPrefix("★ 이로치") } == true, "big box: 함께 걷기 stays short (recent, shinies, dex ranges)", "\(walkMenu?.count ?? -1)")
 
     // 7e 3V: radar chains, the menu's marks, 중복 놓아주기 by V
     let cv = Walker(state: Walk()); cv.persist = false; cv.rng = Seeded(s: 31); cv.state.watts = 100
@@ -704,24 +699,10 @@ import AppKit                                                                   
     dw.box.remove(at: 2); check(dw.duplicates(of: 16) == [0, 3], "no 3V: the 2V is the one kept over higher levels", "\(dw.duplicates(of: 16))")
     var ow = Walk(); ow.box = [Mon(dex: 16, level: 60, female: false), withIVs(16, [30, 30, 30, 30, 30, 30], level: 5)]
     check(ow.duplicates(of: 16) == [1], "same V: the higher level stays (an old Lv.60 isn't traded for a fresh catch's IV total)")
-    let mv = Walker(state: { var s = Walk(); s.box = [v3, v1]; s.companion = withIVs(25, [31, 31, 31, 31, 0, 0]); return s }()); mv.persist = false
-    let walkItems = mv.menu().first { $0.title.hasPrefix("함께 걷기") }?.children ?? []
-    let pidgey = walkItems.first { $0.title.hasPrefix("구구") }, rowsIn = pidgey?.children ?? []
-    let r3 = rowsIn.first { $0.title.contains("3V") }, r1 = rowsIn.first { $0.title.contains("1V") }
-    #if os(macOS)
-    let gold = r3.flatMap { WalkerView.nsMenu([$0]).items.first?.attributedTitle }.flatMap { $0.attribute(.foregroundColor, at: ($0.string as NSString).range(of: "3V").location, effectiveRange: nil) as? NSColor } == WalkerView.vColor   // the Mac's menu paints it
-    #else
-    let gold = true
-    #endif
-    check(r3?.strong == "3V" && gold && r1 != nil && r1?.strong == nil && pidgey?.title.contains("최고 3V") == true && walkItems.first?.title.hasSuffix("4V") == true,
-          "menu: 1V / 2V plain, 3V+ in gold, the species row flags its best, the companion shows its V", "\(walkItems.first?.title ?? "") \(rowsIn.map(\.title))")
     check(statLines({ var m = v1; m.hyper = [2]; return m }())[1].contains("방어 5→31") && statLines(v3)[1].hasPrefix("개체값 · 3V"), "the numbers stay; a 특훈 IV reads 5→31")
-    let bigV = Walker(state: { var s = Walk(); s.box = (1...14).map { Mon(dex: $0, level: 5, female: false) } + [withIVs(20, [31, 31, 31, 31, 0, 0])]; s.bag = []; return s }()); bigV.persist = false
-    let bigItems = bigV.menu().first { $0.title.hasPrefix("함께 걷기") }?.children ?? []
-    check(bigItems.contains { $0.title == "3V 이상 · 1" && $0.strong == "3V" } && bigItems.contains { $0.title.hasPrefix("No.001–050") && $0.title.hasSuffix("최고 4V") },
-          "big box: a 3V 이상 list, and the dex range flags its best", "\(bigItems.map(\.title))")
     // 7f the shops: in the walker's menu, several at once
-    check(!bigV.menu().contains { $0.title.hasPrefix("상점") || $0.title.hasPrefix("BP 교환소") || $0.title.hasPrefix("교환소") }, "the shops left the right-click menu")
+    let mv0 = Walker(state: Walk()); mv0.persist = false
+    check(!mv0.menu().contains { $0.title.hasPrefix("상점") || $0.title.hasPrefix("BP 교환소") || $0.title.hasPrefix("교환소") }, "the shops left the right-click menu")
     var sw = Walk(); sw.watts = 5000; sw.bp = 200; sw.companion = Mon(dex: 133, level: 20, female: false)             // 이브이: it has evolution items to sell
     let wW = sw.wares(bp: false, shells: []), wB = sw.wares(bp: true, shells: [(name: "배틀 골드", bp: 40)])
     check(wW.count == Walk.shop.count + sw.evolutionItems().count + 1 && wW.last?.kind == .legend(0) && wW.contains { $0.kind == .item("불꽃의돌") && $0.price == Walk.evoItemPrice }
@@ -845,9 +826,34 @@ import AppKit                                                                   
     _ = tp.key(.enter, held: true); let twHeld = tpick() != nil; tp.press(1); let twAfter = tdex(); _ = tp.key(.enter, held: true)
     check(twMoved?.sel == 2 && twMoved?.rows[safe: 2]?.name == monNames[7] && twHeld && twAfter == [25, 7, 16] && tp.state.watts == 500 && tp.paneContent(Date()).tower != nil && tpick() == nil,
           "… the cursor stays on its Pokémon when a level-up reorders the list; a held ● neither picks again nor pays into a fight", "\(String(describing: twMoved)) \(twAfter)")
+    // 1.3: the walker's team, the stickers, 코스, 배틀 속도, 특훈, 중복 놓아주기
+    let nw = Walker(state: { var s = Walk(); s.watts = 500; s.earned = 100_000; s.caught = [Mon(dex: 16, level: 12, female: false)]; s.box = [Mon(dex: 19, level: 8, female: false)]; return s }()); nw.persist = false; nw.rng = Seeded(s: 41)
+    nw.screen = .radar(bush: 1, cursor: 1, since: Date().addingTimeInterval(-2), chain: 0); nw.press(1)
+    let nwFight: Battle? = { if case .beats(let b, _, _, _) = nw.screen { return b }; return nil }()
+    check(nwFight?.mine.map(\.mon.dex) == [25, 16] && nwFight.map { nw.battleMenu($0) } == ["공격", "볼", "도구", "교체", "도망"] && nw.partyRefs.count == 2,
+          "a wild fight brings the walker's along: 공격 · 볼 · 도구 · 교체 · 도망")
+    if var b = nwFight { var up = b.mine[1].mon; _ = up.gainBattleExp(5_000); b.mine[1].mon = up; _ = nw.after(b, .won, Date()) }
+    check(nw.state.caught[0].level > 12, "… and what the walker's one earned goes back to it")
+    nw.screen = .home; let nwTap = nw.touch(9, 50)
+    check(nwTap && nw.state.companion.dex == 16 && nw.state.caught[0].dex == 25 && nw.stickerRects.count == 1 && !nw.touch(60, 50), "a tap on the walker's sticker on home walks with it (the companion takes its place)")
+    nw.screen = .menu(menuAt("코스")); nw.press(1); let cHere = nw.paneContent(Date()).course
+    nw.pageTap(5801); let cPick = nw.paneContent(Date()).course; nw.pageTap(5820)
+    check(cHere?.sel == 0 && cHere?.go == nil && cHere?.rows.first?.here == true && cPick?.sel == 1 && cPick?.go != nil && nw.state.course == 1 && nw.state.caught.count == 1,
+          "코스 (the menu's): the list, a click picks one, 가기 walks it (the walker's team stays)")
+    nw.state.earned = 0; nw.screen = .course(2); let cLocked = nw.paneContent(Date()).course; nw.press(1)
+    check(cLocked?.go == nil && cLocked?.rows[2].open == false && nw.state.course == 1, "… a locked one can't be walked")
+    nw.screen = .beats(Battle(wild: rat, companion: pika50), [.appear], since: Date().addingTimeInterval(-Beat.appear.length / 1.5 - 0.01), from: Battle(wild: rat, companion: pika50))
+    let fastEnd = nw.beatState(Date()) != nil; nw.tick(Date())
+    check(nw.battleSpeed == 1.5 && fastEnd && { if case .beats = nw.screen { return false }; return true }(), "배틀 속도 빠르게 (x1.5, the default) plays the beats faster")
+    nw.state.companion = { var m = Mon(dex: 25, level: 60, female: false); m.ivs = [10, 31, 31, 31, 31, 31]; return m }(); nw.state.bag = ["은색병뚜껑"]
+    nw.screen = .items(0); let capUse = nw.paneContent(Date()).items?.action; nw.press(1); let trainPage = nw.paneContent(Date()).train
+    nw.pageTap(5910)
+    check(capUse?.contains("고르기") == true && trainPage?.sel == 0 && trainPage?.go != nil && nw.state.companion.effectiveIVs[0] == 31 && nw.state.count("은색병뚜껑") == 0, "은색병뚜껑: 도구 → pick a stat → 특훈")
+    nw.state.box = [Mon(dex: 19, level: 8, female: false), Mon(dex: 19, level: 3, female: false), Mon(dex: 19, level: 5, female: false)]
+    nw.screen = .box(0, act: 0, confirm: true, detail: true); check(nw.paneContent(Date()).mon?.dupes == 2, "놓아줄까? also offers 중복 n마리 (that species' spares)")
     pt.screen = .menu(menuAt("포켓몬")); pt.press(1); let g0 = pt.paneContent(Date()).grid
     check(pts { if case .box(-1, nil, false, false) = $0 { return true }; return false } && g0?.party.map(\.dex) == [25, 16] && g0?.partySel == 0 && g0?.items == 1
-          && pt.paneContent(Date()).height == PaneContent.tallest, "포켓몬: the companion (picked first) and the walker's in a row over the box, then the items' chip")
+          && pt.paneContent(Date()).height == 472, "포켓몬: the companion (picked first) and the walker's in a row over the box, then the items' chip")
     pt.gridTap(4510); let itemsUp = pt.paneContent(Date()).items?.rows.map(\.name) == ["상처약"] && pts { if case .items = $0 { return true }; return false }; pt.press(3)
     pt.gridTap(4501); let walkerPage = pt.paneContent(Date()).mon?.place == 1; pt.gridTap(4400)
     check(itemsUp && walkerPage && pt.state.companion.dex == 16 && pt.state.caught.first?.dex == 25, "… the items' chip opens the 도구 page; on one of the walker's, 함께 걷기 makes it the companion")

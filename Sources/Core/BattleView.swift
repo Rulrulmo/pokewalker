@@ -6,7 +6,7 @@ extension Walker {
     /// hasn't had its faint yet (it stays on the stage through the recoil, drain, U-turn … beats in between).
     func beatState(_ now: Date) -> (hp: Battle, names: Battle, beat: Beat, u: Double, from: Battle, pending: Set<Side>)? {
         guard case .beats(let end, let beats, let since, let from) = screen else { return nil }
-        var u = now.timeIntervalSince(since), i = 0
+        var u = now.timeIntervalSince(since) * battleSpeed, i = 0                                  // 배틀 속도 runs the whole show faster
         while i < beats.count - 1, u >= beats[i].length { u -= beats[i].length; i += 1 }
         var hp = from; hp.turnNo = end.turnNo; hp.sky = end.sky; hp.skyTurns = end.skyTurns   // the weather on the stage: the battle's, from its first beat                                                    // the turn these beats belong to (the opening's is 0: only its send-out is the trainer's intro)
         for (k, bt) in beats.enumerated() where k < i { hp.apply(bt) }
@@ -60,7 +60,7 @@ extension Walker {
         }
         press(1)
     }
-    func battleMenu(_ b: Battle) -> [String] { b.trainer == nil ? ["공격", "볼", "도구", "도망"] : ["공격", "도구", "교체", "기권"] }
+    func battleMenu(_ b: Battle) -> [String] { b.trainer == nil ? ["공격", "볼", "도구"] + (b.mine.count > 1 ? ["교체"] : []) + ["도망"] : ["공격", "도구", "교체", "기권"] }   // wild: 교체 once the walker has someone
     /// Menu labels' x ranges (drawn and tapped from the same layout).
     func menuRanges(_ labels: [String]) -> [Range<Int>] {
         var x = 1, out: [Range<Int>] = []

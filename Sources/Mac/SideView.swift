@@ -11,7 +11,7 @@ final class SideView: NSView {
     var downOn = 0                                                         // the page a click began on: a double-click's 2nd click on another page is dropped
     var pageKind: Int {
         let c = content
-        return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.card != nil, c.learn != nil, c.tower != nil, c.items != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
+        return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.card != nil, c.learn != nil, c.tower != nil, c.items != nil, c.course != nil, c.train != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
     }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -26,7 +26,7 @@ final class SideView: NSView {
     }
     override func scrollWheel(with e: NSEvent) {                                                 // the shop list: a row per notch (or 6 pt of trackpad); a grid: a page (24 pt)
         let grid = content.grid != nil
-        guard content.shop != nil || content.tower?.pick != nil || grid else { return super.scrollWheel(with: e) }
+        guard content.shop != nil || content.tower?.pick != nil || content.course != nil || content.train != nil || grid else { return super.scrollWheel(with: e) }
         let notch: CGFloat = grid ? 24 : 6
         func step(_ d: Int) { if grid { walker?.gridStep(d * GridModel.perPage) } else { walker?.listRow(d) } }   // rows only, never the amount
         if !e.hasPreciseScrollingDeltas { if e.scrollingDeltaY != 0 { step(e.scrollingDeltaY > 0 ? -1 : 1) }; return }

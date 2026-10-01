@@ -140,6 +140,17 @@ extension Walker {
                 fb.text("\(top)", 94, 23, 1, right: true, small: true)
                 fb.text("합계 \(state.total)" + (state.bestChain.map { " · 최고 연쇄 \($0)" } ?? ""), 2, 14, 2, small: true)
             }
+        case .course(let i):                                                                       // 코스: the pick's picture and name (and what opens it)
+            let c = courses[i], open = state.unlocked(i)
+            header("코스")
+            fb.course(c.art, 22, 15, weather: i == state.course ? state.weather ?? .sunny : .sunny, t: t, hour: state.hour, season: state.season)
+            fb.text(c.name + (i == state.course ? " · 지금" : open ? "" : " · 잠김"), 48, 52, open ? 3 : 1, center: true, small: true)
+        case .train(let k):                                                                        // 대단한 특훈: the companion's IVs, the pick
+            header("대단한 특훈")
+            let c = state.companion, iv = c.effectiveIVs, names = ["HP", "공격", "방어", "특공", "특방", "스피드"]
+            fb.text(monNames[c.dex] + " Lv.\(c.level)", 2, 15)
+            for j in 0..<6 { let s = "\(names[j]) \(iv[j])"; fb.text(s, 2 + (j % 3) * 32, 30 + (j / 3) * 10, j == k ? 3 : 2, small: true); if j == k { fb.invert(1 + (j % 3) * 32, 29 + (j / 3) * 10, textWidth(s, small: true) + 2, 9) } }
+            fb.text("은색병뚜껑 ×\(state.count("은색병뚜껑"))", 2, 52, 2, small: true)
         case .items(let sel):                                                                        // 도구: the pick (the pane has the list and its use)
             header("도구")
             let rows = state.inventory
@@ -208,7 +219,7 @@ extension Walker {
         case .level: let parts = [e.level > 0 ? "Lv.\(e.level)" : nil, when, sex, place, e.item.map { $0 + " 소지" }, e.party.map { monNames[$0] + " 보유" }].compactMap { $0 }; return parts.isEmpty ? "레벨 업" : parts.joined(separator: " · ")
         case .friend: return (["친밀도(함께 1만 걸음)"] + [when].compactMap { $0 }).joined(separator: " · ")
         case .item: return e.item! + " 사용" + (sex.map { " · " + $0 } ?? "")
-        case .trade: return "커넥트(통신)" + (e.item.map { " · " + $0 + " 소지" } ?? "")
+        case .trade: return "통신 진화" + (e.item.map { " · " + $0 + " 소지" } ?? "")   // the companion's page has the button
         }
     }
     /// The pane's 도감 entry page (● on the grid); nil elsewhere.
@@ -258,7 +269,7 @@ extension Walker {
     /// A click on a page still up under its own message (산 뒤, 연승!, W가 부족하다 …): the message ends and the click counts.
     func throughSay() {
         guard case .say(_, let next, _) = screen else { return }
-        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card: screen = next; default: break }
+        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train: screen = next; default: break }
     }
     func gridTap(_ code: Int) {
         throughSay()
@@ -282,6 +293,7 @@ extension Walker {
         case (.box(let i, _, _, true), 4401) where i >= 0: screen = .box(i, act: 0, confirm: true, detail: true)     // 놓아줄까? 아니오 first
         case (.box(let i, _, _, true), 4402): screen = .box(i, act: nil, confirm: false, detail: true)
         case (.box(let i, _, true, true), 4403): screen = .box(i, act: 1, confirm: true, detail: true); press(1)
+        case (.box(let i, _, true, true), 4408) where state.box.indices.contains(i): askReleaseDupes(state.box[i].dex)            // 중복 n마리: asks (who stays) first
         case (_, 4200), (_, 4201): gridStep(code == 4200 ? -GridModel.perPage : GridModel.perPage, ends: true)
         default: return
         }
@@ -294,9 +306,9 @@ extension Walker {
         if let m = monModel() { return PaneContent(mon: m) }
         if case .items(let sel) = { () -> Screen in if case .say(_, let n, _) = screen { return n }; return screen }() { return PaneContent(items: itemsModel(sel)) }
         if let s = shopModel() { return PaneContent(shop: s) }
-        var sc = screen; if case .say(_, let next, _) = sc { sc = next }                       // a menu page's message (W가 부족하다, 커넥트): the list stays
+        var sc = screen; if case .say(_, let next, _) = sc { sc = next }                       // a menu page's message (W가 부족하다 …): the list stays
         if case .menu(let i) = sc {
-            let notes = ["포켓 레이더": "10W", "커넥트": "상자로 보내기", "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승"]
+            let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승"]
             return PaneContent(menu: MenuModel(rows: menuItems.map { .init(name: $0, note: notes[$0] ?? "") }, sel: i))
         }
         switch sc {                                                                               // the rest of the walker's pages: what you press is here, the LCD shows it
@@ -309,6 +321,22 @@ extension Walker {
             guard let (ref, id) = st.nextToLearn(), let m = state.mon(ref), let new = moveTable[id] else { break }
             func mv(_ x: MoveInfo) -> LearnModel.Move { .init(name: x.name, type: x.type, power: x.power, pp: x.pp) }
             return PaneContent(learn: LearnModel(who: monNames[m.dex], new: mv(new), known: m.moves.compactMap { moveTable[$0] }.map(mv), sel: sel))
+        case .course(let i):
+            let per = CourseModel.perPage, first = i / per * per
+            let rows = (first..<min(courses.count, first + per)).map { k -> CourseModel.Row in
+                let c = courses[k], open = state.unlocked(k)
+                return .init(name: c.name, note: open ? "" : c.dex > 0 ? "도감 \(c.dex)종" : "누적 \(c.watts.formatted())W", open: open, here: k == state.course)
+            }
+            let go = state.unlocked(i) && i != state.course ? josa(courses[i].name, "으로", "로") + " 가기" : nil
+            let lv = courses[i].all.map(\.level), about = "Lv.\(lv.min() ?? 1)–\(lv.max() ?? 1) · " + courses[i].types.map { typeKo[$0] ?? $0 }.joined(separator: " · ")
+            return PaneContent(course: CourseModel(rows: rows, sel: i, first: first, count: courses.count, opened: courses.indices.filter(state.unlocked).count, go: go, about: about))
+        case .train(let k):
+            let c = state.companion, iv = c.effectiveIVs, raw = c.ivs ?? Array(repeating: 15, count: 6), names = ["HP", "공격", "방어", "특공", "특방", "스피드"]
+            let ready = c.level >= Walk.hyperLevel, caps = state.count("은색병뚜껑")
+            let go = ready && iv[k] < 31 && caps > 0 ? "\(names[k]) \(iv[k]) → 31 특훈" : nil
+            let note = !ready ? "Lv.\(Walk.hyperLevel)부터 특훈할 수 있어요" : caps == 0 ? "은색병뚜껑이 없어요" : iv[k] >= 31 ? "이미 최고예요" : ""
+            return PaneContent(train: TrainModel(who: monNames[c.dex] + " Lv.\(c.level)", caps: caps, rows: (0..<6).map { .init(name: names[$0], iv: raw[$0], hyper: (c.hyper ?? []).contains($0)) },
+                                                 sel: k, go: go, note: note, v: c.perfectIVs))
         case .tower(let p):
             let party = state.party(), per = TowerModel.perPage
             let pick = p.map { p -> TowerModel.Pick in
@@ -333,6 +361,13 @@ extension Walker {
         case (.learn, 5300...5304): screen = .learn(sel: code - 5300); press(1)
         case (.items, 5600..<5700): screen = .items(code - 5600)
         case (.items, 5700): press(1)
+        case (.course(let i), 5800..<5805): screen = .course(i / CourseModel.perPage * CourseModel.perPage + code - 5800)   // a click picks one (its picture on the LCD); 가기 walks it
+        case (.course(let i), 5810...5811):
+            let per = CourseModel.perPage, pages = (courses.count + per - 1) / per
+            screen = .course(min(courses.count - 1, (i / per + (code == 5810 ? pages - 1 : 1)) % pages * per))
+        case (.course, 5820): press(1)
+        case (.train, 5900..<5906): screen = .train(code - 5900)
+        case (.train, 5910): press(1)
         case (.tower(nil), 5400): press(1)
         case (.tower(nil), 5401): press(3)
         case (.tower(nil), 5410...5412):
@@ -350,9 +385,9 @@ extension Walker {
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }
         guard case .box(let i, let act, let confirm, true) = sc, let m = state.mon(i) else { return nil }
         var p = monPage(m, act: act, confirm: confirm); p.place = i == -1 ? 0 : i < -1 ? 1 : 2
-        p.fetch = i >= 0 && state.caught.count < 3; p.sel = act.flatMap { $0 < boxActs(i).count - 1 ? $0 : nil }   // the LCD's pick = a button (닫기 has none)
+        p.fetch = i >= 0 && state.caught.count < 3; p.dupes = i >= 0 ? state.duplicates(of: state.box[i].dex).count : 0; p.sel = act.flatMap { $0 < boxActs(i).count - 1 ? $0 : nil }   // the LCD's pick = a button (닫기 has none)
         let mine = evolutions.filter { $0.from == m.dex }, targets = mine.map(\.to).reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } }
-        p.evos = targets.map { to in "→ " + monNames[to] + " · " + mine.filter { $0.to == to }.map { e in evoText(e).replacingOccurrences(of: "커넥트(통신)", with: "커넥트").replacingOccurrences(of: " 소지", with: "") + (e.item.map { state.count($0) > 0 ? " (있음)" : " (없음)" } ?? "") }.joined(separator: " / ") }
+        p.evos = targets.map { to in "→ " + monNames[to] + " · " + mine.filter { $0.to == to }.map { e in evoText(e).replacingOccurrences(of: " 소지", with: "") + (e.item.map { state.count($0) > 0 ? " (있음)" : " (없음)" } ?? "") }.joined(separator: " / ") }
         if p.evos.count > 2 { p.evos = [p.evos[0], "외 \(p.evos.count - 1)갈래"] }
         if p.evos.isEmpty { p.evos = ["더 진화하지 않아요"] }
         else if i != -1, mine.contains(where: { $0.way == .trade || $0.way == .item }) { p.evos.append("통신·도구 진화는 동료일 때 (함께 걷기 후)") }
@@ -382,9 +417,13 @@ extension Walker {
         case .sell(let p): return ("전부 팔기 +\((p * state.count(n)).formatted())W", "")
         case .evolution:
             if let e = state.stoneEvolutions(Date()).first(where: { $0.item == n }) { return ("\(monNames[e.to])(으)로 진화", "{동료}에게 써요") }
-            let uses = evolutions.filter { $0.item == n }.prefix(2).map { monNames[$0.from] + "→" + monNames[$0.to] + ($0.way == .trade ? " (커넥트)" : "") }
+            let uses = evolutions.filter { $0.item == n }.prefix(2).map { monNames[$0.from] + "→" + monNames[$0.to] + ($0.way == .trade ? " (통신 진화)" : "") }
             return (nil, uses.joined(separator: ", "))
-        case .bottleCap: return (nil, "우클릭 메뉴 › 가방에서 특훈")
+        case .bottleCap(let gold):
+            let iv = c.effectiveIVs, open = iv.contains { $0 < 31 }
+            if c.level < Walk.hyperLevel { return (nil, "Lv.\(Walk.hyperLevel)부터 특훈할 수 있어요 (지금 Lv.\(c.level))") }
+            if !open { return (nil, "이미 모든 능력이 최고예요") }
+            return gold ? ("\(monNames[c.dex]) 특훈 · 모두 31로", "지금 \(c.perfectIVs)V") : ("\(monNames[c.dex]) 특훈할 능력 고르기", "지금 \(c.perfectIVs)V")
         case .ball: return (nil, "배틀에서 좋은 볼부터 알아서")
         case .revive: return (nil, "쓰러지면 알아서")
         case .heal, .battle: return (nil, "배틀에서 도구로")
@@ -394,8 +433,9 @@ extension Walker {
     func monPage(_ m: Mon, act: Int? = nil, confirm: Bool = false) -> MonModel {
         let n = natures[m.nature ?? 0], neutral = n.up == n.down, name = ["HP", "공격", "방어", "특공", "특방", "스피드"]   // the chips' and hexagons' names: every note fits its line
         let note = neutral ? "능력치에 영향을 주지 않는 성격" : josa(name[n.up], "이", "가") + " 10% 높고 " + josa(name[n.down], "이", "가") + " 10% 낮은 성격"
-        return MonModel(nature: m.natureName, natureNote: note, ability: m.abilityName, abilityNote: abilityDescs[m.abilityID] ?? "", up: neutral ? nil : n.up, down: neutral ? nil : n.down,
+        var p = MonModel(nature: m.natureName, natureNote: note, ability: m.abilityName, abilityNote: abilityDescs[m.abilityID] ?? "", up: neutral ? nil : n.up, down: neutral ? nil : n.down,
                         ivs: m.effectiveIVs, evs: m.evs ?? Array(repeating: 0, count: 6), hyper: m.hyper ?? [], v: m.perfectIVs, evTotal: (m.evs ?? []).reduce(0, +), confirm: confirm && act != nil, sel: act.flatMap { $0 < 2 ? $0 : nil })
+        p.moves = m.moves.compactMap { moveTable[$0]?.name }; return p
     }
     /// 홈 (and the other screens): where, the companion, today, then egg / tower / totals / dex.
     func statusModel() -> StatusModel {

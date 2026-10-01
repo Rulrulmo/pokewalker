@@ -5,6 +5,7 @@ import AppKit
 
 final class WalkerView: NSView {
     let walker: Walker
+    var stickersShown: [CGRect] = []                                     // the walker's stickers the cursor rects were made for
     var fast: Timer?                                                       // the 30 fps frame timer while a fight or a show plays
     let page = SideView()                                                  // the pane's page: battle / 도감 / 상점 / 메뉴 / 상태
     var shown: FB? = nil                                                   // last composed frame; draw() only when it changes
@@ -39,7 +40,7 @@ final class WalkerView: NSView {
     // MARK: the walker's host (the banners and the step counter: Mac/MacHost.swift)
     func redraw(_ part: CardPart) {
         switch part {
-        case .all: shown = nil; needsDisplay = true
+        case .all: shown = nil; needsDisplay = true; window?.invalidateCursorRects(for: self)          // (the stickers' hands follow the screen)
         case .lcd: setNeedsDisplay(lcdRect)
         case .page: page.needsDisplay = true
         case .key: setNeedsDisplay(NSRect(x: 0, y: (Layout.seam - 16) * K, width: bounds.width, height: 32 * K))
@@ -55,6 +56,7 @@ final class WalkerView: NSView {
     /// The clock, 10 a second (main.swift's timer): the walker's rules, the menu-bar title, the frame; 30 fps while something plays.
     @objc func tick(_ sender: Any?) {
         walker.tick(Date())
+        let st = walker.stickerRects; if st != stickersShown { stickersShown = st; window?.invalidateCursorRects(for: self) }   // the hand over the stickers follows the screen
         updateStatus()
         frame(nil)
         let busy = walker.busy
@@ -82,7 +84,8 @@ final class WalkerView: NSView {
             if i == 1 || i == 4, e.clickCount > 1 { return }                                        // ● or 메뉴 twice fast: once (the 2nd would act on what the 1st opened)
             pressed = i; pressedAt = Date(); walker.press(i)
             perform(#selector(tick(_:)), with: nil, afterDelay: 0.15, inModes: [.common])
-        } else if lcdRect.contains(p), walker.touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needsDisplay = true }
+        } else if lcdRect.contains(p), e.clickCount == 1 || walker.stickerAt(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) == nil,   // a sticker's 2nd click would swap back
+                  walker.touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needsDisplay = true }
         else { window?.performDrag(with: e) }
     }
     override func keyDown(with e: NSEvent) {                                                  // ← → ↑ ↓, page up / down, tab, return / space, esc (= ↩ 뒤로), M (= 메뉴 / 홈): Walker.key
@@ -93,6 +96,7 @@ final class WalkerView: NSView {
     override var acceptsFirstResponder: Bool { true }
     override func resetCursorRects() {
         for b in buttons { addCursorRect(NSRect(x: b.c.x - b.r, y: b.c.y - b.r, width: 2 * b.r, height: 2 * b.r), cursor: .pointingHand) }
+        for r in walker.stickerRects { addCursorRect(r, cursor: .pointingHand) }                     // the walker's stickers on home: a tap walks with that one
     }
 
     override func menu(for event: NSEvent) -> NSMenu? { buildMenu() }
