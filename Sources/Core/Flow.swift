@@ -47,7 +47,7 @@ extension Walker {
         guard persist, notifyOn(kind) else { return }
         host?.notify(title, body)
     }
-    func save() { guard persist else { return }; Store.save(state); lastSave = Date() }
+    func save() { guard persist else { return }; Store.save(state); lastSave = Date(); if !savedSigned { savedSigned = true; settings.set("saveSigned", true) } }   // from now on an unsigned save here is an edited one
     /// Quitting: count the steps a fight held back (its copy is dropped on quit), then save.
     func quitSave() {
         if let h = host { let n = gate.pass(state.take(counter: h.counter(), boot: h.boot(), at: Date()), Date().timeIntervalSinceReferenceDate); state.walk(state.roomToday(n + heldSteps), at: Date()); heldSteps = 0 }
@@ -152,11 +152,17 @@ extension Walker {
             state.evolving = (state.evolving ?? []).filter { $0 != u } + [u]
         }
     }
-    /// At launch (1.7, once): a macro's save corrected (Walk.audit), and a message saying so.
-    func auditAtLaunch() {
-        guard let n = state.audit() else { return }
-        screen = .say(["자동 입력으로 쌓인 기록을", "보정했어요 · W 0" + (n > 0 ? " · 칠색조 \(n)마리" : "")], next: .home, since: Date().addingTimeInterval(30))   // (stays up a while)
-        notify("unlock", "기록을 보정했어요", "자동 입력(매크로)으로 쌓인 W를 0으로" + (n > 0 ? ", 칠색조 \(n)마리를 놓아줬어요" : "") + ". 1.6부터 자동 입력은 걸음으로 세지 않아요."); save()
+    /// At launch: a save changed outside the app came back as the last one the app made (tampered), and the once-only check (Walk.audit)
+    /// corrected a macro's or an edited file's gains; a message for each (they stay up a while).
+    func auditAtLaunch(tampered: Bool = false) {
+        var msgs: [[String]] = []
+        if tampered { msgs.append(["세이브 파일이 바뀌어 있어", "마지막 정상 기록으로 되돌렸어요"]); notify("unlock", "세이브를 되돌렸어요", "세이브 파일이 앱 밖에서 바뀌어 있어서 마지막 정상 기록으로 되돌렸어요.") }
+        if let r = state.audit() {
+            msgs.append([r.macro ? "자동 입력으로 쌓인 기록을" : "세이브에서 맞지 않는 기록을", "보정했어요 · W 0" + (r.gone > 0 ? " · 칠색조 \(r.gone)마리" : "")])
+            notify("unlock", "기록을 보정했어요", (r.macro ? "자동 입력(매크로)으로 쌓인 W를 0으로" : "세이브 파일에서 맞지 않는 기록을 고치고 W를 0으로") + (r.gone > 0 ? ", 칠색조 \(r.gone)마리를 놓아줬어요." : "했어요."))
+        }
+        guard !msgs.isEmpty else { return }
+        screen = msgs.reversed().reduce(Screen.home) { next, m in .say(m, next: next, since: Date().addingTimeInterval(30)) }; save()
     }
     /// At launch: the walker's ones already past their evolution (they levelled before the others could evolve) wait to evolve at home.
     func queueReadyEvolutions() {

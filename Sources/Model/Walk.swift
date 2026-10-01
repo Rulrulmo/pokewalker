@@ -206,24 +206,44 @@ struct Walk: Codable, Equatable {
     static let dayCap = 100_000                                        // steps a day at most: more than anyone types (a macro would; StepGate stops most)
     /// n steps, less whatever would take today past dayCap.
     func roomToday(_ n: Int) -> Int { max(0, min(n, Walk.dayCap - today)) }
-    /// 1.7, once: a save that earned more W than its days could (100,000 steps = 5,000 W a day, plus 2,000 for chains and sales) is a macro's.
-    /// Then W goes to 0 and the 칠색조 beyond what that budget buys (9,999 W each) go — the best stay (이로치, IVs, EXP); a 칠색조 companion hands over
-    /// to another first. Returns how many 칠색조 went (nil: the save was fine, or already checked).
-    mutating func audit() -> Int? {
-        guard audited == nil else { return nil }
-        audited = 1
-        let budget = days * Walk.dayCap / 20 + 2_000, price = Walk.legendShop[0].watts, dex = Walk.legendShop[0].dex
-        guard earned > budget else { return nil }
-        watts = 0; corrected = true
+    /// Once at launch (1.7: a macro's earnings; 1.8: an edited file's contradictions). A save that earned more W than its days allow (100,000 steps =
+    /// 5,000 W a day, + 2,000 for chains and sales) is a macro's; one that holds more W than it ever earned, more 칠색조 than its W could buy (9,999
+    /// each), or values no game makes (IVs over 31, EVs over 255 / 510, levels outside 1-100, unknown species) was edited. Then W goes to 0, the
+    /// 칠색조 beyond what was really paid for go (the best stay: 이로치, IVs, EXP; a 칠색조 companion hands over first) and impossible values are
+    /// put back in range. Returns how many 칠색조 went and whether it was a macro's (nil: the save was fine, or already checked).
+    mutating func audit() -> (gone: Int, macro: Bool)? {
+        let from = audited ?? 0
+        guard from < 2 else { return nil }
+        audited = 2
+        let price = Walk.legendShop[0].watts, dex = Walk.legendShop[0].dex, macroBudget = days * Walk.dayCap / 20 + 2_000
+        let macro = from < 1 && earned > macroBudget
+        let budget = macro ? macroBudget : earned + 2_000                                          // the W this save could really have spent
         let refs = ([-1] + caught.indices.map { -2 - $0 } + Array(box.indices)).filter { mon($0)?.dex == dex }
+        let fixed = repairValues()
+        guard macro || fixed || watts > earned + 3_000 || refs.count * price > budget else { return nil }
+        watts = 0; corrected = true
         func rank(_ m: Mon) -> (Int, Int, Int) { (m.shiny == true ? 1 : 0, m.perfectIVs, m.points) }
         let gone = refs.sorted { rank(mon($0)!) > rank(mon($1)!) }.dropFirst(budget / price)
         if gone.contains(-1) {                                                                    // the companion goes: the first other one walks
-            if let i = caught.indices.first(where: { !gone.contains(-2 - $0) }) { pair(i, onWalker: true); return audit(removing: gone.map { $0 == -1 ? -2 - i : $0 }) }
-            if let i = box.indices.first(where: { !gone.contains($0) }) { let m = box[i]; box[i] = companion; companion = m; return audit(removing: gone.map { $0 == -1 ? i : $0 }) }
-            return audit(removing: gone.filter { $0 != -1 })                                       // no one else: it stays
+            if let i = caught.indices.first(where: { !gone.contains(-2 - $0) }) { pair(i, onWalker: true); return (audit(removing: gone.map { $0 == -1 ? -2 - i : $0 }), macro) }
+            if let i = box.indices.first(where: { !gone.contains($0) }) { let m = box[i]; box[i] = companion; companion = m; return (audit(removing: gone.map { $0 == -1 ? i : $0 }), macro) }
+            return (audit(removing: gone.filter { $0 != -1 }), macro)                              // no one else: it stays
         }
-        return audit(removing: Array(gone))
+        return (audit(removing: Array(gone)), macro)
+    }
+    /// Values no game makes, back in range; true if any was out.
+    mutating func repairValues() -> Bool {
+        var out = false
+        func fix(_ m: inout Mon) {
+            if !(1...493).contains(m.dex) { m.dex = 25; out = true }
+            if !(1...100).contains(m.level) { m.level = max(1, min(100, m.level)); m.exp = nil; out = true }
+            if let iv = m.ivs, iv.count != 6 || iv.contains(where: { !(0...31).contains($0) }) { m.ivs = (0..<6).map { max(0, min(31, iv[safe: $0] ?? 0)) }; out = true }
+            if let ev = m.evs, ev.count != 6 || ev.contains(where: { !(0...255).contains($0) }) || ev.reduce(0, +) > 510 { m.evs = Array(repeating: 0, count: 6); out = true }
+            if let n = m.nature, !(0..<25).contains(n) { m.nature = 0; out = true }
+        }
+        fix(&companion); for i in caught.indices { fix(&caught[i]) }; for i in box.indices { fix(&box[i]) }
+        if watts > 9999 || watts < 0 { watts = max(0, min(9999, watts)); out = true }
+        return out
     }
     private mutating func audit(removing refs: [Int]) -> Int {
         for i in refs.filter({ $0 >= 0 }).sorted(by: >) { box.remove(at: i) }                     // from the back, so indices hold (no W for these)

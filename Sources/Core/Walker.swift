@@ -23,6 +23,7 @@ import Foundation
     var pane = PaneContent(), paneAt = Date.distantPast                    // the pane's page as shown, when it was last refreshed
     var cardH = Layout.idle                                                // the card's height now (card points): the page's
     var hud: SideModel? = nil                                              // a fight's HP boxes, drawn over the LCD
+    var savedSigned = settings.bool("saveSigned", false)                     // this machine has written a signed save (Store.loadChecked)
     var gate = StepGate(), heldSteps = 0                                   // the step filter; steps made during a fight, counted after it
     var statusOpen = settings.bool("homePanel", true)                     // the title row's ⌄: the status sheet under the band where no page is up (open unless folded)
     var battleSpeed: Double { Double(settings.int("battleSpeed", 3)) / 2 }     // 배틀 속도 (the right-click's): 보통 x1, 빠르게 x1.5 (the default), 아주 빠르게 x2

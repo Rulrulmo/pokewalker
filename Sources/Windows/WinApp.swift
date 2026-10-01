@@ -54,10 +54,11 @@ final class JSONSettings: Settings {
     _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT(bitPattern: -4))                      // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2: sharp on every monitor
     settings = JSONSettings(file: Store.dir.appendingPathComponent("settings.json"))
     let f = WinFonts(); fonts = f; textMasks = f
-    let walker = Walker(state: Store.load()), c = WinCard(walker: walker); card = c              // the card is the walker's host
+    let loaded = Store.loadChecked(signedBefore: settings.bool("saveSigned", false))           // a save changed by hand: the last one the app made
+    let walker = Walker(state: loaded.walk), c = WinCard(walker: walker); card = c              // the card is the walker's host
     walker.state.dex()
     walker.levelled = walker.state.sync(counter: c.counter(), boot: c.boot(), at: Date(), away: true)        // a new launch only baselines: steps while it was closed can't be seen
-    walker.auditAtLaunch()                                           // 1.7, once: a macro's save corrected
+    walker.auditAtLaunch(tampered: loaded.tampered)
     walker.queueReadyEvolutions()                                                                // the walker's ones past their evolution evolve at home
     walker.save()
     walker.refreshPane(Date(), force: true)                                                      // the page it opens on (the status sheet)

@@ -9,7 +9,8 @@ fonts = MacFonts()                                                              
 if CommandLine.arguments.contains("--selftest") { exit(selftest() ? 0 : 1) }
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
-let walker = Walker(state: Store.load()), view = WalkerView(walker: walker)                  // the view is the walker's host
+let loaded = Store.loadChecked(signedBefore: settings.bool("saveSigned", false))             // a save changed by hand: the last one the app made
+let walker = Walker(state: loaded.walk), view = WalkerView(walker: walker)                  // the view is the walker's host
 /// Opening the app again (Finder, Spotlight, Launchpad) brings a hidden walker back: macOS may hide the menu-bar icon (too many icons, the notch, 메뉴 막대 settings).
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -44,7 +45,7 @@ if let b = statusItem?.button {
 registerHideHotKey { view.toggleShown(nil) }                       // ⌃⌥P from anywhere
 walker.state.dex()
 walker.levelled = walker.state.sync(counter: view.counter(), boot: view.boot(), at: Date(), away: true)   // steps typed while the app was quit (same login) count
-walker.auditAtLaunch()                                           // 1.7, once: a macro's save corrected
+walker.auditAtLaunch(tampered: loaded.tampered)                  // an edited save restored; once: a macro's / an edited save corrected
 walker.queueReadyEvolutions()                                    // the walker's ones past their evolution (before 1.4 only the companion evolved) evolve at home
 walker.save()
 walker.refreshPane(Date(), force: true)                          // the page it opens on (the status sheet): no jump after it shows
