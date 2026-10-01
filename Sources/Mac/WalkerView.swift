@@ -56,7 +56,7 @@ final class WalkerView: NSView {
     /// The clock, 10 a second (main.swift's timer): the walker's rules, the menu-bar title, the frame; 30 fps while something plays.
     @objc func tick(_ sender: Any?) {
         walker.tick(Date())
-        let st = walker.stickerRects; if st != stickersShown { stickersShown = st; window?.invalidateCursorRects(for: self) }   // the hand over the stickers follows the screen
+        let st = walker.stickerRects + (walker.chevron != nil ? [chevronRect] : []); if st != stickersShown { stickersShown = st; window?.invalidateCursorRects(for: self) }   // the hands over the stickers / ⌄ follow the screen
         updateStatus()
         frame(nil)
         let busy = walker.busy
@@ -84,7 +84,8 @@ final class WalkerView: NSView {
             if i == 1 || i == 4, e.clickCount > 1 { return }                                        // ● or 메뉴 twice fast: once (the 2nd would act on what the 1st opened)
             pressed = i; pressedAt = Date(); walker.press(i)
             perform(#selector(tick(_:)), with: nil, afterDelay: 0.15, inModes: [.common])
-        } else if lcdRect.contains(p), e.clickCount == 1 || walker.stickerAt(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) == nil,   // a sticker's 2nd click would swap back
+        } else if chevronRect.contains(p), walker.chevron != nil { walker.toggleStatus() }
+        else if lcdRect.contains(p), e.clickCount == 1 || walker.stickerAt(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) == nil,   // a sticker's 2nd click would swap back
                   walker.touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needsDisplay = true }
         else { window?.performDrag(with: e) }
     }
@@ -96,7 +97,8 @@ final class WalkerView: NSView {
     override var acceptsFirstResponder: Bool { true }
     override func resetCursorRects() {
         for b in buttons { addCursorRect(NSRect(x: b.c.x - b.r, y: b.c.y - b.r, width: 2 * b.r, height: 2 * b.r), cursor: .pointingHand) }
-        for r in walker.stickerRects { addCursorRect(r, cursor: .pointingHand) }                     // the walker's stickers on home: a tap walks with that one
+        for r in walker.stickerRects { addCursorRect(r, cursor: .pointingHand) }
+        if walker.chevron != nil { addCursorRect(chevronRect, cursor: .pointingHand) }                     // the walker's stickers on home: a tap walks with that one
     }
 
     override func menu(for event: NSEvent) -> NSMenu? { buildMenu() }

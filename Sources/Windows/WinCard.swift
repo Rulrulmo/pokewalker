@@ -69,6 +69,7 @@ func put<T>(_ s: String, _ field: inout T) {
         noIME()
         taskbarCreated = wide("TaskbarCreated") { RegisterWindowMessageW($0) }
         icon = ballIcon(Int(GetSystemMetrics(SM_CXSMICON))); tray(DWORD(NIM_ADD))
+        _ = RegisterHotKey(hwnd, 1, UINT(MOD_CONTROL | MOD_ALT | MOD_NOREPEAT), UINT(0x50))      // Ctrl+Alt+P from anywhere: hide / show (taken by another app: just no shortcut)
         var devs = [RAWINPUTDEVICE(usUsagePage: 1, usUsage: 6, dwFlags: DWORD(RIDEV_INPUTSINK), hwndTarget: hwnd),   // keyboards, mice: counted, never read
                     RAWINPUTDEVICE(usUsagePage: 1, usUsage: 2, dwFlags: DWORD(RIDEV_INPUTSINK), hwndTarget: hwnd)]
         _ = RegisterRawInputDevices(&devs, UINT(devs.count), UINT(MemoryLayout<RAWINPUTDEVICE>.size))
@@ -260,7 +261,8 @@ func put<T>(_ s: String, _ field: inout T) {
             if i == 1 || i == 4, n > 1 { return }                                                  // ● or 메뉴 twice fast: once (the 2nd would act on what the 1st opened)
             pressed = i; pressedAt = Date(); walker.press(i)
             _ = SetTimer(hwnd, 3, 150, nil)                                                        // the key comes back up
-        } else if lcdRect.contains(p), n == 1 || walker.stickerAt(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) == nil,   // a sticker's 2nd click would swap back
+        } else if chevronRect.contains(p), walker.chevron != nil { walker.toggleStatus() }
+        else if lcdRect.contains(p), n == 1 || walker.stickerAt(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) == nil,   // a sticker's 2nd click would swap back
                   walker.touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needAll = true; post() }
         else { drag() }
     }
@@ -308,7 +310,7 @@ func put<T>(_ s: String, _ field: inout T) {
     /// Over a key or one of the page's buttons: the hand (the LCD is to look at).
     func cursorHand(_ p: CGPoint) -> Bool {
         if p.y >= pageTop { let q = CGPoint(x: p.x, y: p.y - pageTop); return page.hits.contains { $0.0.contains(q) } }
-        return buttons.contains { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r } || walker.stickerRects.contains { $0.contains(p) }
+        return buttons.contains { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r } || walker.stickerRects.contains { $0.contains(p) } || (walker.chevron != nil && chevronRect.contains(p))
     }
     func client(_ lp: LPARAM) -> CGPoint { CGPoint(x: CGFloat(lo(lp)) / sc, y: CGFloat(hi(lp)) / sc) }
 
@@ -367,6 +369,7 @@ func put<T>(_ s: String, _ field: inout T) {
         case taskbarCreated: tray(DWORD(NIM_ADD)); return 0                                       // Explorer restarted: the icon again
         case UINT(WM_QUERYENDSESSION): walker.save(); return 1
         case UINT(WM_ENDSESSION): if wp != 0 { walker.quitSave() }; return 0
+        case UINT(WM_HOTKEY): toggleShown(); return 0
         case UINT(WM_POWERBROADCAST): if wp == WPARAM(PBT_APMSUSPEND) { walker.save() }; return nil   // going to sleep
         case UINT(WM_CLOSE): quit(); return 0
         case UINT(WM_DESTROY): PostQuitMessage(0); return 0

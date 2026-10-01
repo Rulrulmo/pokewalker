@@ -20,11 +20,11 @@ struct MenuItem {
 extension Walker {
     func menu() -> [MenuItem] {
         #if os(Windows)
-        let hide = "알림 영역으로 숨기기"                                                                // the tray, where the Mac has its menu bar
+        let hide = "알림 영역으로 숨기기", hotKey = "Ctrl+Alt+P"                                    // the tray, where the Mac has its menu bar
         #else
-        let hide = "메뉴 막대로 숨기기"
+        let hide = "메뉴 막대로 숨기기", hotKey = "⌃⌥P"
         #endif
-        var m = [MenuItem(host?.windowHidden == true ? "워커 보이기" : hide, action: { self.host?.toggleShown() })]   // options only: the game is on the pane (코스, 포켓몬, 도구 …)
+        var m = [MenuItem((host?.windowHidden == true ? "워커 보이기" : hide) + " · " + hotKey, action: { self.host?.toggleShown() })]   // the shortcut works from anywhere   // options only: the game is on the pane (코스, 포켓몬, 도구 …)
         func sub(_ title: String, _ items: [(String, Int)], _ current: Int, fits: ((Int) -> Bool)? = nil, _ set: @escaping @MainActor (Int) -> Void) -> MenuItem {
             MenuItem("\(title) · \(items.first { $0.1 == current }?.0 ?? "")", items.map { t, tag in MenuItem(t, checked: tag == current, enabled: fits.map { $0(tag) }, action: { set(tag) }) })
         }

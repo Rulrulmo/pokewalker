@@ -39,8 +39,9 @@ if let b = statusItem?.button {
     b.imagePosition = .imageLeft
     b.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
     b.target = view; b.action = #selector(WalkerView.statusClick(_:)); b.sendAction(on: [.leftMouseUp, .rightMouseUp])
-    b.toolTip = "PokeWalker — 클릭: 보이기/숨기기 · 우클릭: 메뉴"
+    b.toolTip = "PokeWalker — 클릭: 보이기/숨기기 (⌃⌥P) · 우클릭: 메뉴"
 }
+registerHideHotKey { view.toggleShown(nil) }                       // ⌃⌥P from anywhere
 walker.state.dex()
 walker.levelled = walker.state.sync(counter: view.counter(), boot: view.boot(), at: Date())   // steps typed while the app was quit (same login) count
 walker.queueReadyEvolutions()                                    // the walker's ones past their evolution (before 1.4 only the companion evolved) evolve at home

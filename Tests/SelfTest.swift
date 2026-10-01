@@ -768,6 +768,7 @@ import AppKit                                                                   
     gk.screen = .menu(0); gk.refreshPane(Date(), force: true); let menuH = gk.cardH
     gk.screen = .dex(25, filter: 0, detail: false); gk.refreshPane(Date(), force: true); let gridH = gk.cardH
     gk.screen = .battle(wild, sel: 0); gk.refreshPane(Date(), force: true); let fightH = gk.cardH, hudUp = gk.hud == nil
+    gk.statusOpen = false; gk.screen = .home; gk.refreshPane(Date(), force: true); let foldH = gk.cardH, foldChev = gk.chevron; gk.statusOpen = true
     gk.screen = .home; gk.refreshPane(Date(), force: true)
     #if os(macOS)
     let viewed = gw.frame.size == CGSize(width: 216, height: 354) && gw.page.frame.minY == Layout.pane
@@ -776,6 +777,7 @@ import AppKit                                                                   
     #endif
     check(homeH == 354 && menuH == 354 && gridH == 422 && fightH == 311 && gk.cardH == 354 && viewed && hudUp,
           "the card grows down to the page: 홈's status sheet 354 and the menu the same (the 메뉴 / 홈 key never resizes it), battle 311, a grid 422 (the page under the band)", "\(homeH) \(menuH) \(gridH) \(fightH) \(gk.cardH)")
+    check(foldH == 199 && foldChev == false && gk.chevron == true, "⌄ folds home's status sheet: the idle card (199); open again: 354", "\(foldH)")
     SIZE = 3; check(PX == 3 && 422 * K < 850, "크게: 3 pt a dot, its tallest page still under a 13-inch screen's height"); SIZE = size0
     let pv = Walker(state: { var s = Walk(); s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); pv.persist = false; pv.rng = Seeded(s: 61)
     func kind(_ sc: Screen) -> String {
@@ -899,7 +901,8 @@ import AppKit                                                                   
     func pressTab() { _ = pt.key(.tab) }
     #endif
     pt.screen = .dex(1, filter: 0, detail: false); pressTab(); let tabbed = pts { if case .dex(_, 1, false) = $0 { return true }; return false }
-    check(tabbed, "Tab: a grid's next tab")
+    pt.screen = .home; pt.statusOpen = true; pressTab(); let folded = !pt.statusOpen && pt.chevron == false; pressTab()
+    check(tabbed && folded && pt.statusOpen, "Tab: a grid's next tab; on home, folds / unfolds the status sheet")
     let stm = pv.statusModel(); check(stm.level == "Lv.5" && stm.numbers.count == 3 && stm.rows.count == 3 && stm.exp >= 0 && stm.exp <= 1, "the status sheet: level, EXP to next, today / W / total, egg / tower / dex")
     #if os(macOS)
     let frameTimer = { (v: Walker) -> [(Bool, String)] in                                        // the frame timer is the Mac view's

@@ -23,6 +23,7 @@ import Foundation
     var pane = PaneContent(), paneAt = Date.distantPast                    // the pane's page as shown, when it was last refreshed
     var cardH = Layout.idle                                                // the card's height now (card points): the page's
     var hud: SideModel? = nil                                              // a fight's HP boxes, drawn over the LCD
+    var statusOpen = settings.bool("homePanel", true)                     // the title row's ⌄: the status sheet under the band where no page is up (open unless folded)
     var battleSpeed: Double { Double(settings.int("battleSpeed", 3)) / 2 }     // 배틀 속도 (the right-click's): 보통 x1, 빠르게 x1.5 (the default), 아주 빠르게 x2
     var titleShown = ""                                                    // the title row as last shown: a change redraws it
     var persist = true                                                     // false in --selftest: flows must never touch the real save (nor notify)
@@ -42,7 +43,7 @@ import Foundation
         let hb = sideOn ? c.battle : nil
         if hb != hud { hud = hb; host?.redraw(.lcd) }
         if homeKey() != keyShown { keyShown = homeKey(); host?.redraw(.key) }                   // the 메뉴 / 홈 key's face
-        let t = title(), key = t.title + "|" + t.meta
+        let t = title(), key = t.title + "|" + t.meta + "|" + "\(chevron.map { $0 ? 1 : 0 } ?? 2)"
         if key != titleShown { titleShown = key; host?.redraw(.title) }
     }
 
@@ -137,7 +138,7 @@ import Foundation
             switch screen {
             case .dex(_, let f, false): gridTap(4100 + (f + (shift ? 3 : 1)) % 4)
             case .box(_, .none, _, false): gridTap(4100 + (boxSort + (shift ? 3 : 1)) % 4)
-            default: break
+            default: if chevron != nil { toggleStatus() }                                   // where the status sheet is: fold / unfold it
             }
             return true
         }
@@ -145,6 +146,11 @@ import Foundation
         guard let i = [Key.left: 0, .enter: 1, .right: 2, .back: 3, .menu: 4][k] else { return false }
         press(i); return true
     }
+
+    /// The status sheet folded or open (the title row's ⌄, or Tab), kept for next time.
+    func toggleStatus() { statusOpen.toggle(); if persist { settings.set("homePanel", statusOpen) }; refreshPane(Date(), force: true) }
+    /// The title row's ⌄ / ⌃ where the pane has no page of its own (home and its messages): true = open; nil = none.
+    var chevron: Bool? { pane.status != nil || pane == PaneContent() ? statusOpen : nil }
 
     /// The title row for this screen: what it is, and one line of what the LCD doesn't show.
     func title() -> (title: String, meta: String) {

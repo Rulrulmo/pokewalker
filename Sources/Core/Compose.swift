@@ -298,7 +298,7 @@ extension Walker {
         default: return
         }
     }
-    /// What the pane's page shows: the battle, 도감 (grid or entry), 상자 (grid or one Pokémon), 상점 or 메뉴 page; elsewhere the status sheet.
+    /// What the pane's page shows: the battle, 도감 (grid or entry), 상자 (grid or one Pokémon), 상점 or 메뉴 page; elsewhere the status sheet, unless it's folded.
     func paneContent(_ now: Date) -> PaneContent {
         if let b = sideModel(now) { return PaneContent(battle: b) }
         if let d = dexModel() { return PaneContent(dex: d) }
@@ -348,7 +348,7 @@ extension Walker {
                                                  party: party.map { .init(dex: $0.mon.dex, name: monNames[$0.mon.dex], level: $0.mon.level) }, custom: state.towerPick != nil, pick: pick))
         default: break
         }
-        return PaneContent(status: statusModel())
+        return statusOpen ? PaneContent(status: statusModel()) : PaneContent()
     }
     /// A click on a walker page that isn't a grid: 5000 + k a radar bush, 5200 + p a card page, 5300 + k a move to forget (4 = don't),
     /// 5400 / 5401 the tower's 도전 / 나가기, 5410 + i its party row i (who goes there instead), 5420 추천으로, then its picker: 5430 + k a row of the page,

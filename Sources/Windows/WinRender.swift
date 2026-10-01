@@ -42,6 +42,7 @@ import Foundation
         if (try? r.png(crop).write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))) != nil { n += 1 }
     }
     take("home") { _ in }
+    take("home_folded") { v in v.statusOpen = false }
     take("home_night_kraft") { v in paperStyle = 3; v.state.total = 5750 }                       // 0 h
     take("home_size3", size: 3) { _ in }
     take("home_grey_original", lcd: true) { _ in lcdStyle = 1 }

@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import Carbon.HIToolbox
 // The menu on the Mac: the walker's MenuItem tree (Core/Menu.swift) as an NSMenu (right-click, the menu-bar item), the menu-bar item, showing and
 // hiding the card, the 크기 menu's screen.
 
@@ -54,5 +55,15 @@ extension WalkerView {
         guard let s else { return f }
         var g = f; g.origin.x = min(max(g.minX, s.minX), s.maxX - g.width); g.origin.y = min(max(g.minY, s.minY), s.maxY - g.height); return g
     }
+}
+/// ⌃⌥P anywhere: hide / show the card (a Carbon hot key: no accessibility permission). Carbon calls back on the main thread.
+@MainActor private var onHotKey: (@MainActor () -> Void)? = nil
+@MainActor func registerHideHotKey(_ f: @escaping @MainActor () -> Void) {
+    onHotKey = f
+    var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+    InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in MainActor.assumeIsolated { onHotKey?() }; return noErr }, 1, &spec, nil, nil)
+    var ref: EventHotKeyRef?
+    let st = RegisterEventHotKey(UInt32(kVK_ANSI_P), UInt32(controlKey | optionKey), EventHotKeyID(signature: 0x50574B52, id: 1), GetApplicationEventTarget(), 0, &ref)   // 'PWKR'
+    if st != noErr { NSLog("pokewalker: hot key ⌃⌥P failed %d", st) }                      // (another app may hold it)
 }
 #endif
