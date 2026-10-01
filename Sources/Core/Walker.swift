@@ -52,7 +52,8 @@ import Foundation
     func tick(_ now: Date) {
         let before = state.total
         if let h = host {                                                                          // keys + clicks, the way a person makes them (StepGate)
-            let n = gate.pass(state.take(counter: h.counter(), boot: h.boot(), at: now), now.timeIntervalSinceReferenceDate)
+            state.rollover(now)                                                                    // (a capped day still turns at midnight)
+            let n = state.roomToday(gate.pass(state.take(counter: h.counter(), boot: h.boot(), at: now), now.timeIntervalSinceReferenceDate) + heldSteps) - heldSteps   // (today's cap counts the fight's held ones)
             if inBattle { heldSteps += n }                                                         // mid-fight: the fight's copy would overwrite their EXP; they count once it's over
             else if n + heldSteps > 0 { if state.walk(n + heldSteps, at: now) { levelled = true }; heldSteps = 0 }
         }

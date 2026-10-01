@@ -47,6 +47,16 @@ import AppKit                                                                   
     w.sync(counter: 900, boot: 8, at: at(10)); check(w.total == 250 && w.boot == 8, "new boot => re-baseline")
     w.syncedAt = at(10).timeIntervalSinceReferenceDate - 3600; w.sync(counter: 10_900, boot: 8, at: at(10), away: true)
     check(w.total == 250 + 3000 && w.counter == 10_900, "typed while quit: at most 3,000 an hour count (a macro left on all night counts little)", "\(w.total)")
+    w.today = Walk.dayCap - 10; check(w.roomToday(500) == 10 && w.roomToday(5) == 5, "at most 100,000 steps a day count")
+    func hoOh(_ shiny: Bool = false, lv: Int = 50) -> Mon { Mon(dex: 250, level: lv, female: false, shiny: shiny ? true : nil) }
+    var au = Walk(); au.days = 2; au.earned = 31_000; au.watts = 4_000; au.box = [hoOh(), hoOh(true), Mon(dex: 16, level: 5, female: false), hoOh(lv: 51)]
+    let auGone = au.audit()
+    check(auGone == 2 && au.box.filter { $0.dex == 250 }.map { $0.shiny == true } == [true] && au.box.count == 2 && au.watts == 0 && au.corrected == true && au.audit() == nil,
+          "1.7's check: 3 칠색조 bought in 2 days (31,000 W earned) → the 이로치 stays, 2 go, W 0; only once", "\(String(describing: auGone)) \(au.box.map(\.dex))")
+    var fine = Walk(); fine.days = 40; fine.earned = 60_000; fine.watts = 900; fine.box = [hoOh()]
+    check(fine.audit() == nil && fine.box.count == 1 && fine.watts == 900 && fine.corrected == nil, "… a save its days could pay for is left alone")
+    var auc = Walk(); auc.days = 1; auc.earned = 20_000; auc.companion = hoOh(); auc.caught = [Mon(dex: 16, level: 5, female: false)]; auc.box = [hoOh()]
+    check(auc.audit() == 2 && auc.companion.dex == 16 && auc.caught.isEmpty && auc.box.isEmpty, "… a 칠색조 companion hands over to the walker's one first")
 
     // 5 the draw reproduces Serebii's bands (상쾌한 들판, A = 두두 70 %, B 75 %)
     w = Walk(); w.companion = Mon(dex: 7, level: 5, female: false)            // squirtle: water, no bonus here

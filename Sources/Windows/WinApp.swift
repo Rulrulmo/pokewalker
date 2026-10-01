@@ -57,6 +57,7 @@ final class JSONSettings: Settings {
     let walker = Walker(state: Store.load()), c = WinCard(walker: walker); card = c              // the card is the walker's host
     walker.state.dex()
     walker.levelled = walker.state.sync(counter: c.counter(), boot: c.boot(), at: Date(), away: true)        // a new launch only baselines: steps while it was closed can't be seen
+    walker.auditAtLaunch()                                           // 1.7, once: a macro's save corrected
     walker.queueReadyEvolutions()                                                                // the walker's ones past their evolution evolve at home
     walker.save()
     walker.refreshPane(Date(), force: true)                                                      // the page it opens on (the status sheet)

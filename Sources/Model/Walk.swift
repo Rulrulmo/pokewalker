@@ -32,6 +32,7 @@ struct Walk: Codable, Equatable {
     var bp: Int? = nil, towerStreak: Int? = nil, towerBest: Int? = nil   // Battle Tower points, current and best win streak
     var towerPick: [Int]? = nil                                        // the tower party the player chose (uids, the lead first); nil = the recommended one
     var evolving: [Int]? = nil                                         // uids of ours (not the companion) that levelled in a fight: they evolve once home
+    var audited: Int? = nil, corrected: Bool? = nil                    // 1.7's one-time check ran; it took back a macro's gains (the trainer card says so)
     var bought: [String]? = nil                                        // one-off BP buys (device colours)
 
     var here: Course { courses[course] }
@@ -200,7 +201,34 @@ struct Walk: Codable, Equatable {
     @discardableResult mutating func sync(counter c: UInt32, boot b: Double, at now: Date, away: Bool = false) -> Bool {
         let gap = syncedAt.map { now.timeIntervalSinceReferenceDate - $0 } ?? 3600
         let n = take(counter: c, boot: b, at: now)
-        return walk(away ? min(n, Int(max(0, gap) / 3600 * 3000)) : n, at: now)              // away = typed while the app was quit: at most 3,000 an hour count
+        return walk(roomToday(away ? min(n, Int(max(0, gap) / 3600 * 3000)) : n), at: now)   // away = typed while the app was quit: at most 3,000 an hour count
+    }
+    static let dayCap = 100_000                                        // steps a day at most: more than anyone types (a macro would; StepGate stops most)
+    /// n steps, less whatever would take today past dayCap.
+    func roomToday(_ n: Int) -> Int { max(0, min(n, Walk.dayCap - today)) }
+    /// 1.7, once: a save that earned more W than its days could (100,000 steps = 5,000 W a day, plus 2,000 for chains and sales) is a macro's.
+    /// Then W goes to 0 and the 칠색조 beyond what that budget buys (9,999 W each) go — the best stay (이로치, IVs, EXP); a 칠색조 companion hands over
+    /// to another first. Returns how many 칠색조 went (nil: the save was fine, or already checked).
+    mutating func audit() -> Int? {
+        guard audited == nil else { return nil }
+        audited = 1
+        let budget = days * Walk.dayCap / 20 + 2_000, price = Walk.legendShop[0].watts, dex = Walk.legendShop[0].dex
+        guard earned > budget else { return nil }
+        watts = 0; corrected = true
+        let refs = ([-1] + caught.indices.map { -2 - $0 } + Array(box.indices)).filter { mon($0)?.dex == dex }
+        func rank(_ m: Mon) -> (Int, Int, Int) { (m.shiny == true ? 1 : 0, m.perfectIVs, m.points) }
+        let gone = refs.sorted { rank(mon($0)!) > rank(mon($1)!) }.dropFirst(budget / price)
+        if gone.contains(-1) {                                                                    // the companion goes: the first other one walks
+            if let i = caught.indices.first(where: { !gone.contains(-2 - $0) }) { pair(i, onWalker: true); return audit(removing: gone.map { $0 == -1 ? -2 - i : $0 }) }
+            if let i = box.indices.first(where: { !gone.contains($0) }) { let m = box[i]; box[i] = companion; companion = m; return audit(removing: gone.map { $0 == -1 ? i : $0 }) }
+            return audit(removing: gone.filter { $0 != -1 })                                       // no one else: it stays
+        }
+        return audit(removing: Array(gone))
+    }
+    private mutating func audit(removing refs: [Int]) -> Int {
+        for i in refs.filter({ $0 >= 0 }).sorted(by: >) { box.remove(at: i) }                     // from the back, so indices hold (no W for these)
+        for r in refs.filter({ $0 <= -2 }).sorted() { caught.remove(at: -2 - r) }                 // -2 - i from the largest i down
+        return refs.count
     }
     /// The raw keys + clicks since the last poll (the baseline moves on); 0 after a reboot / a counter that went back.
     mutating func take(counter c: UInt32, boot b: Double, at now: Date) -> Int {

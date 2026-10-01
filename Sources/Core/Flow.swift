@@ -50,7 +50,7 @@ extension Walker {
     func save() { guard persist else { return }; Store.save(state); lastSave = Date() }
     /// Quitting: count the steps a fight held back (its copy is dropped on quit), then save.
     func quitSave() {
-        if let h = host { let n = gate.pass(state.take(counter: h.counter(), boot: h.boot(), at: Date()), Date().timeIntervalSinceReferenceDate); state.walk(n + heldSteps, at: Date()); heldSteps = 0 }
+        if let h = host { let n = gate.pass(state.take(counter: h.counter(), boot: h.boot(), at: Date()), Date().timeIntervalSinceReferenceDate); state.walk(state.roomToday(n + heldSteps), at: Date()); heldSteps = 0 }
         save()
     }
     /// The next move waiting in state.learning: straight in with a free slot, else the forget-one screen.
@@ -151,6 +151,12 @@ extension Walker {
             guard let l, let r = state.ref(uid: u), r != -1, let m = state.mon(r), m.level > l else { continue }
             state.evolving = (state.evolving ?? []).filter { $0 != u } + [u]
         }
+    }
+    /// At launch (1.7, once): a macro's save corrected (Walk.audit), and a message saying so.
+    func auditAtLaunch() {
+        guard let n = state.audit() else { return }
+        screen = .say(["자동 입력으로 쌓인 기록을", "보정했어요 · W 0" + (n > 0 ? " · 칠색조 \(n)마리" : "")], next: .home, since: Date().addingTimeInterval(30))   // (stays up a while)
+        notify("unlock", "기록을 보정했어요", "자동 입력(매크로)으로 쌓인 W를 0으로" + (n > 0 ? ", 칠색조 \(n)마리를 놓아줬어요" : "") + ". 1.6부터 자동 입력은 걸음으로 세지 않아요."); save()
     }
     /// At launch: the walker's ones already past their evolution (they levelled before the others could evolve) wait to evolve at home.
     func queueReadyEvolutions() {

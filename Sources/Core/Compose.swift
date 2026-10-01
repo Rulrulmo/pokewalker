@@ -130,6 +130,7 @@ extension Walker {
                 } else { fb.text("갖고 있지 않다", 0, 30, 2, center: true) }
             } else if p == 0 {
                 fb.text(state.here.name, 2, 14)
+                if state.corrected == true { fb.text("기록 보정됨", 94, 15, 1, right: true, small: true) }   // 1.7 took back a macro's gains
                 fb.text("오늘  \(state.today)걸음", 2, 26)
                 fb.text("\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · " + (state.hour < 4 || state.hour >= 20 ? "밤" : state.hour < 6 ? "새벽" : state.hour >= 17 ? "저녁" : "낮"), 2, 38)
                 let w = state.weather ?? .sunny
