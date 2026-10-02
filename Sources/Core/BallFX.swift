@@ -2,8 +2,8 @@ import Foundation
 // The balls: thrown, swallowing the foe, rocking, clicking shut or bursting open; sending a Pokémon out; the tower's trainers.
 
 // MARK: - pictures
-/// 몬스터볼 0, 슈퍼볼 and any other 볼 1, 하이퍼볼 2.
-func ballKind(_ item: String) -> Int { item == "하이퍼볼" ? 2 : item.hasSuffix("볼") && item != "몬스터볼" ? 1 : 0 }
+/// 몬스터볼 0, 슈퍼볼 and any other 볼 1, 하이퍼볼 2, 마스터볼 3.
+func ballKind(_ item: String) -> Int { item == "마스터볼" ? 3 : item == "하이퍼볼" ? 2 : item.hasSuffix("볼") && item != "몬스터볼" ? 1 : 0 }
 /// Each kind's top half (1 2 3 = the middle's light / base / shade, 4 5 6 = the sides': a 슈퍼볼's red, a 하이퍼볼's yellow; h = the shine),
 /// the lid's rim and its top seen open, and those colours.
 private let ballTops: [(rows: [String], rim: String, lid: String, pal: [Character: UInt32])] = [
@@ -13,11 +13,13 @@ private let ballTops: [(rows: [String], rim: String, lid: String, pal: [Characte
      ["1": rgb(112, 176, 255), "2": rgb(48, 112, 232), "3": rgb(32, 64, 168), "4": rgb(255, 128, 120), "5": rgb(232, 56, 56), "6": rgb(168, 32, 40)]),
     ([".....oooo.....", "...oo1223oo...", "..o4h122356o..", ".o5442223556o.", ".o555oooo556o.", "o556oLWWLo566o"], "o555522225556o", "..oo512235oo..",
      ["1": rgb(96, 96, 112), "2": rgb(56, 56, 68), "3": rgb(36, 36, 44), "4": rgb(255, 240, 128), "5": rgb(248, 204, 40), "6": rgb(192, 140, 24)]),
+    ([".....oooo.....", "...oo1222oo...", "..o4h1W2W56o..", ".o54h2WW2256o.", ".o552oooo256o.", "o556oLWWLo566o"], "o555222222566o", "..oo522225oo..",   // 마스터볼: violet, pink bumps, an M
+     ["1": rgb(196, 140, 255), "2": rgb(132, 72, 216), "3": rgb(84, 40, 150), "4": rgb(255, 170, 214), "5": rgb(236, 92, 168), "6": rgb(170, 48, 120)]),
 ]
 /// A ball at sprite resolution, 14 px across: frame 0 shut, 1 opening, 2 open (light pouring out), 3 the click (its button lit), 4 caught (gone dark).
 /// The open frames are taller (the lid up): 14, 16, 18, 14, 14 rows, all on the shut ball's bottom row.
 func ballPic(_ kind: Int, _ frame: Int) -> Pic {
-    let t = ballTops[min(max(kind, 0), 2)], o = rgb(40, 40, 48)
+    let t = ballTops[min(max(kind, 0), 3)], o = rgb(40, 40, 48)
     var pal: [Character: UInt32] = ["o": o, "k": rgb(72, 76, 88), "h": rgb(255, 255, 255), "W": rgb(255, 255, 255), "L": rgb(226, 226, 236), "G": rgb(176, 176, 196),
                                     "D": rgb(124, 124, 142), "Y": rgb(255, 250, 214), "y": rgb(255, 226, 120), "i": rgb(96, 40, 48)]
     pal.merge(t.pal) { $1 }
@@ -182,7 +184,7 @@ extension FB {
     let out = [Beat.sendOut(.me, 0), .sendOut(.it, 1), .sendOut(.it, 0)].allSatisfy { bt in let s = ballShot(bt, bt.length - 0.01, tb, ball: ""); return s.ball == nil && abs((s.glow?.scale ?? 0) - 1) < 1e-9 && s.glow?.white == 0 && s.trainer == nil }
     let intro = ballShot(.sendOut(.it, 0), 1.0, tb, ball: ""), back = ballShot(.sendOut(.it, 0), 1.0, later, ball: "")
     return [
-        (["몬스터볼", "슈퍼볼", "네트볼", "하이퍼볼", "상처약"].map(ballKind) == [0, 1, 1, 2, 0], "balls: 몬스터볼, 슈퍼볼 (and any other 볼), 하이퍼볼"),
+        (["몬스터볼", "슈퍼볼", "네트볼", "하이퍼볼", "마스터볼", "상처약"].map(ballKind) == [0, 1, 1, 2, 3, 0], "balls: 몬스터볼, 슈퍼볼 (and any other 볼), 하이퍼볼, 마스터볼"),
         ((0...4).map { ballPic($0 % 3, $0).w } == [14, 14, 14, 14, 14] && (0...4).map { ballPic(0, $0).h } == [14, 16, 18, 14, 14], "ball frames share the shut ball's width and bottom row"),
         (rests && ballShot(.thrown(shakes: 1), 1.9, wild, ball: "").ball?.angle != 0 && ballShot(.thrown(shakes: 1), 1.2, wild, ball: "").glow == nil, "a thrown ball swallows the foe, rocks, and ends upright on its pad"),
         (out, "a send-out ends with the fighter standing in its colours, the ball gone"),

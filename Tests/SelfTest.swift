@@ -167,8 +167,8 @@ import AppKit                                                                   
     w.evolve(nin); check(w.companion.dex == 291 && w.box.map(\.dex) == [292], "토중몬 -> 아이스크 leaves 껍질몬 (in the box)")
 
     // 6f items
-    check(ItemKind.of("상처약") == .heal(20) && ItemKind.of("풀회복약") == .heal(999) && ItemKind.of("기력의조각") == .revive(50) && ItemKind.of("하이퍼볼") == .ball(2)
-          && ItemKind.of("네트볼") == .ball(1.5) && ItemKind.of("라즈열매") == .berry && ItemKind.of("천둥의돌") == .evolution && ItemKind.of("금구슬") == .sell(100)
+    check(ItemKind.of("상처약") == .heal(20) && ItemKind.of("풀회복약") == .heal(999) && ItemKind.of("기력의조각") == .revive(50) && ItemKind.of("하이퍼볼") == .sell(100)
+          && ItemKind.of("힐볼") == .sell(40) && ItemKind.of("라즈열매") == .berry && ItemKind.of("천둥의돌") == .evolution && ItemKind.of("금구슬") == .sell(100)
           && ItemKind.of("기술머신68") == .sell(50), "item kinds")
     let allItems = Set(courses.flatMap { $0.items.map(\.item) })
     check(allItems.allSatisfy { if case .sell(let p) = ItemKind.of($0) { return p > 0 }; return true }, "every course item has a use or a price")
@@ -176,7 +176,15 @@ import AppKit                                                                   
     check(w.useHeal(missing: 40)! == ("좋은상처약", 40) && w.useHeal(missing: 300)! == ("고급상처약", 200) && w.useHeal(missing: 300)! == ("상처약", 20) && w.useHeal(missing: 1) == nil,
           "potions (Gen IV HP): smallest that fills the gap, else the biggest")
     w.bag = ["부활초", "기력의조각"]; check(w.useRevive()! == ("기력의조각", 50) && w.bag == ["부활초"], "revive: the cheaper one first (half HP)")
-    w.bag = ["슈퍼볼", "하이퍼볼"]; check(w.useBall()! == ("하이퍼볼", 2) && w.useBall()! == ("슈퍼볼", 1.5) && w.useBall() == nil, "best ball first")
+    var ballRng = Seeded(s: 77); var tally0: [String: Int] = [:], tally10: [String: Int] = [:]
+    for _ in 0..<20_000 { tally0[Walk.rollBall(chain: 0, &ballRng).name, default: 0] += 1; tally10[Walk.rollBall(chain: 10, &ballRng).name, default: 0] += 1 }
+    check((13_600...14_400).contains(tally0["몬스터볼"] ?? 0) && (60...150).contains(tally0["마스터볼"] ?? 0) && (7_600...8_400).contains(tally10["몬스터볼"] ?? 0) && (300...520).contains(tally10["마스터볼"] ?? 0),
+          "a throw's ball by chance: 몬스터볼 70 % · 마스터볼 0.5 %; at chain 10: 40 % · 2 %", "\(tally0) \(tally10)")
+    w.bag = ["슈퍼볼", "하이퍼볼", "힐볼", "상처약"]; w.watts = 0; let refund = w.refundBalls()
+    check(refund?.count == 3 && refund?.watts == 180 && w.watts == 180 && w.bag == ["상처약"] && w.refundBalls() == nil && !Walk.shop.contains { $0.item.hasSuffix("볼") } && !Walk.bpShop.contains { $0.item.hasSuffix("볼") },
+          "1.10: the balls one had go back as W, once; the shops sell no balls")
+    var mb = Battle(wild: Mon(dex: 150, level: 70, female: false), companion: Mon(dex: 25, level: 50, female: false)); let mbBeats = mb.turn(.capture, &r, ball: 255)
+    check(mbBeats.contains(.caught) && mb.over, "마스터볼: a sure catch, even a full-HP 뮤츠")
     w = Walk(); w.bag = ["이상한사탕"]; check(w.feedCandy() && w.companion.level == 6 && w.companion.points == 216 && !w.feedCandy(), "이상한사탕: exactly one level")
     w.bag = ["타우린", "타우린", "유석열매"]; w.companion.evs = [0, 95, 0, 0, 0, 0]
     check(w.feedVitamin("타우린") == 100 && w.feedVitamin("타우린") == nil && w.count("타우린") == 1 && w.feedVitamin("유석열매") == nil, "타우린: +10 up to 100, then no effect (kept); 유석열매 is HP")

@@ -157,6 +157,7 @@ extension Walker {
     func auditAtLaunch(tampered: Bool = false) {
         var msgs: [[String]] = []
         if tampered { msgs.append(["세이브 파일이 바뀌어 있어", "마지막 정상 기록으로 되돌렸어요"]); notify("unlock", "세이브를 되돌렸어요", "세이브 파일이 앱 밖에서 바뀌어 있어서 마지막 정상 기록으로 되돌렸어요.") }
+        if let r = state.refundBalls() { msgs.append(["볼은 이제 무료예요!", "가진 볼 \(r.count)개 → +\(r.watts)W"]) }   // (1.10, once)
         if let r = state.audit() {
             msgs.append([r.macro ? "자동 입력으로 쌓인 기록을" : "세이브에서 맞지 않는 기록을", "보정했어요 · W 0" + (r.gone > 0 ? " · 칠색조 \(r.gone)마리" : "")])
             notify("unlock", "기록을 보정했어요", (r.macro ? "자동 입력(매크로)으로 쌓인 W를 0으로" : "세이브 파일에서 맞지 않는 기록을 고치고 W를 0으로") + (r.gone > 0 ? ", 칠색조 \(r.gone)마리를 놓아줬어요." : "했어요."))
@@ -289,9 +290,8 @@ extension Walker {
             case "기권": screen = .forfeit(b, yes: false)                                            // 정말? — 아니오 first
             case "도구": screen = battleItems(b).isEmpty ? .say(["지금 쓸 수 있는", "도구가 없다"], next: .battle(b, sel: sel), since: now) : .bagBattle(b, sel: 0)
             case "볼":
-                var boost = 1.0; usedItem = "몬스터볼"
-                if let x = state.useBall() { boost = x.boost; usedItem = x.item }
-                let beats = b.turn(.capture, &rng, ball: boost); screen = .beats(b, beats, since: now, from: from)
+                let roll = Walk.rollBall(chain: b.chain, &rng); usedItem = roll.name                // free: which ball it turns out to be is luck (and the chain)
+                let beats = b.turn(.capture, &rng, ball: roll.boost); screen = .beats(b, beats, since: now, from: from)
             default: let beats = b.turn(.run, &rng); screen = .beats(b, beats, since: now, from: from)
             }
         case .moves(var b, let sel):

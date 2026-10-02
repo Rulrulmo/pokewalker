@@ -33,6 +33,7 @@ struct Walk: Codable, Equatable {
     var bp: Int? = nil, towerStreak: Int? = nil, towerBest: Int? = nil   // Battle Tower points, current and best win streak
     var towerPick: [Int]? = nil                                        // the tower party the player chose (uids, the lead first); nil = the recommended one
     var evolving: [Int]? = nil                                         // uids of ours (not the companion) that levelled in a fight: they evolve once home
+    var ballsRefunded: Bool? = nil                                     // 1.10's one-time refund of bought balls ran
     var audited: Int? = nil, corrected: Bool? = nil                    // 1.7's one-time check ran; it took back a macro's gains (the trainer card says so)
     var bought: [String]? = nil                                        // one-off BP buys (device colours)
 

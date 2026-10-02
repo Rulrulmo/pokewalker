@@ -6,7 +6,6 @@ enum ItemKind: Equatable {
     case heal(Int)                 // battle: restores this many HP (999 = all)
     case battle(ItemUse)           // battle: status cures, 회복약, PP, X items
     case revive(Int)               // used by itself when the last one faints: back up with this % of max HP
-    case ball(Double)              // thrown instead of the basic ball: catch chance x this
     case candy                     // 이상한사탕: +1 level
     case vitamin(Int, Int)         // fed: that stat's EVs ± 10 (영양제 up to 100, 노력치 내리는 열매 down)
     case evReset                   // 순백떡 (SV's Fresh Start Mochi): every EV back to 0
@@ -18,7 +17,7 @@ enum ItemKind: Equatable {
     /// One line on what it does (the bag list, the shops).
     var summary: String {
         switch self {
-        case .heal(let n): "배틀 HP +\(n)"; case .revive(let n): "쓰러지면 HP \(n)%로 부활"; case .ball(let x): "포획 ×\(x == 2 ? "2" : "1.5")"
+        case .heal(let n): "배틀 HP +\(n)"; case .revive(let n): "쓰러지면 HP \(n)%로 부활";
         case .candy: "레벨 +1"; case .evReset: "노력치 전부 0"; case .bottleCap(let gold): gold ? "특훈: 모든 개체값 → 31 (Lv.50부터)" : "특훈: 개체값 하나 → 31 (Lv.50부터)"
         case .vitamin(let k, let d): "\(["HP", "공격", "방어", "특공", "특방", "스피드"][k]) 노력치 \(d > 0 ? "+" : "−")10"; case .berry: "친밀도 +500걸음"; case .evolution: "진화 도구"; case .sell(let p): "팔면 \(p)W"
         case .battle(let u):
@@ -45,8 +44,8 @@ enum ItemKind: Equatable {
         if let n = heal[i] { return .heal(n) }
         if i == "기력의조각" { return .revive(50) }
         if i == "부활초" { return .revive(100) }
-        if i == "하이퍼볼" { return .ball(2) }
-        if i.hasSuffix("볼"), i != "몬스터볼" { return .ball(1.5) }
+        if i == "하이퍼볼" { return .sell(100) }                                                   // (1.10: every throw is free, the ball by chance: Walk.rollBall)
+        if i.hasSuffix("볼") { return .sell(40) }                                                  // 슈퍼볼, 힐볼 the companion finds …
         if i == "이상한사탕" { return .candy }
         if evolutions.contains(where: { $0.item == i }) { return .evolution }
         if i.hasSuffix("열매") { return .berry }

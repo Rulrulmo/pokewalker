@@ -21,10 +21,23 @@ extension Walk {
         guard let pick = r.first, take(pick.0) else { return nil }                              // the cheaper one first
         return pick
     }
-    mutating func useBall() -> (item: String, boost: Double)? {
-        let b = inventory.compactMap { i -> (String, Double)? in if case .ball(let x) = ItemKind.of(i) { return (i, x) }; return nil }.sorted { $0.1 > $1.1 }
-        guard let pick = b.first, take(pick.0) else { return nil }
-        return pick
+    /// The ball a throw turns out to be — all free (1.10): 몬스터볼 70 · 슈퍼볼 22 · 하이퍼볼 7.5 · 마스터볼 0.5 %, each radar chain link moving 3 points
+    /// from the 몬스터볼 to the better ones (10 links and up: 40 · 38 · 20 · 2). boost = the catch multiplier (마스터볼: a sure catch).
+    static func rollBall<R: RandomNumberGenerator>(chain: Int, _ r: inout R) -> (name: String, boost: Double) {
+        let c = Double(min(chain, 10)), w = [70 - 3 * c, 22 + 1.6 * c, 7.5 + 1.25 * c, 0.5 + 0.15 * c]
+        let balls: [(name: String, boost: Double)] = [("몬스터볼", 1), ("슈퍼볼", 1.5), ("하이퍼볼", 2), ("마스터볼", 255)]
+        var k = Double.random(in: 0..<100, using: &r)
+        for (b, x) in zip(balls, w) { if k < x { return b }; k -= x }
+        return balls[0]
+    }
+    /// 1.10, once: balls bought or found before throws were free go back as W (슈퍼볼 40, 하이퍼볼 100, 힐볼 & co. 40). Returns (balls, W).
+    mutating func refundBalls() -> (count: Int, watts: Int)? {
+        guard ballsRefunded != true else { return nil }
+        ballsRefunded = true
+        let balls = Array(Set(inventory.filter { $0.hasSuffix("볼") }))
+        guard !balls.isEmpty else { return nil }
+        let n = (bag + items).filter { $0.hasSuffix("볼") }.count
+        return (n, balls.reduce(0) { $0 + sell($1) })
     }
     mutating func feedCandy() -> Bool {
         guard companion.level < 100, take("이상한사탕") else { return false }
@@ -66,12 +79,12 @@ extension Walk {
     }
 
     // MARK: shops
-    static let shop: [(item: String, watts: Int)] = [("상처약", 20), ("좋은상처약", 60), ("고급상처약", 150), ("풀회복약", 300), ("회복약", 400), ("기력의조각", 200), ("슈퍼볼", 40), ("하이퍼볼", 100),
+    static let shop: [(item: String, watts: Int)] = [("상처약", 20), ("좋은상처약", 60), ("고급상처약", 150), ("풀회복약", 300), ("회복약", 400), ("기력의조각", 200), 
         ("해독제", 10), ("마비치료제", 20), ("잠깨는약", 25), ("화상치료제", 25), ("얼음상태치료제", 25), ("만병통치제", 60), ("PP에이드", 120),
         ("플러스파워", 50), ("디펜드업", 55), ("스페셜업", 35), ("스페셜가드", 35), ("스피드업", 35), ("잘-맞히기", 95), ("크리티컬커터", 65), ("이펙트가드", 70),
         ("맥스업", 100), ("타우린", 100), ("사포닌", 100), ("리보플라빈", 100), ("키토산", 100), ("알칼로이드", 100),
         ("유석열매", 20), ("시마열매", 20), ("파비열매", 20), ("로매열매", 20), ("또뽀열매", 20), ("토망열매", 20), ("순백떡", 200)]
-    static let bpShop: [(item: String, bp: Int)] = [("하이퍼볼", 2), ("고급상처약", 3), ("풀회복약", 5), ("회복약", 6), ("부활초", 6), ("PP에이더", 4), ("PP맥스", 8), ("이상한사탕", 8),
+    static let bpShop: [(item: String, bp: Int)] = [("고급상처약", 3), ("풀회복약", 5), ("회복약", 6), ("부활초", 6), ("PP에이더", 4), ("PP맥스", 8), ("이상한사탕", 8),
         ("맥스업", 1), ("타우린", 1), ("사포닌", 1), ("리보플라빈", 1), ("키토산", 1), ("알칼로이드", 1), ("은색병뚜껑", 25), ("금색병뚜껑", 120)]
     /// Two legends for the patient: 칠색조 for a full tank of watts (9,999 is the cap), 뮤츠 for 300 BP (~30 tower sets). As often as you can pay (a shiny, better IVs).
     static let legendShop: [(dex: Int, level: Int, watts: Int, bp: Int)] = [(250, 50, 9999, 0), (150, 70, 0, 300)]

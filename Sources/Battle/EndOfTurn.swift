@@ -100,6 +100,7 @@ extension Battle {
 
     // MARK: ball, escape, items, the other side's choice
     mutating func throwBall(_ ball: Double) -> Bool {
+        if ball >= 255 { out.append(.thrown(shakes: 3)); out.append(.caught); over = true; return true }   // 마스터볼
         let t = f(.it), bonus: Double = [.sleep, .freeze].contains(t.status) ? 2 : t.status != nil ? 1.5 : 1
         let a = Double((3 * t.maxHP - 2 * t.hp) * catchRate[t.mon.dex]) * ball * bonus / Double(3 * t.maxHP)
         let b = a >= 255 ? 65536 : 1048560 / sqrt(sqrt(16711680 / max(a, 0.1)))                 // Gen III-IV shake check

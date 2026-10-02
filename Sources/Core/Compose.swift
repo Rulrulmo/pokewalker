@@ -425,7 +425,6 @@ extension Walker {
             if c.level < Walk.hyperLevel { return (nil, "Lv.\(Walk.hyperLevel)부터 특훈할 수 있어요 (지금 Lv.\(c.level))") }
             if !open { return (nil, "이미 모든 능력이 최고예요") }
             return gold ? ("\(monNames[c.dex]) 특훈 · 모두 31로", "지금 \(c.perfectIVs)V") : ("\(monNames[c.dex]) 특훈할 능력 고르기", "지금 \(c.perfectIVs)V")
-        case .ball: return (nil, "배틀에서 좋은 볼부터 알아서")
         case .revive: return (nil, "쓰러지면 알아서")
         case .heal, .battle: return (nil, "배틀에서 도구로")
         }
