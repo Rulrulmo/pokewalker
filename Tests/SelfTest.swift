@@ -50,6 +50,8 @@ import AppKit                                                                   
 
     // 4 input counter
     w = Walk(); w.sync(counter: 1000, boot: 7, at: at(10)); check(w.total == 0, "first sync only baselines")
+    var ck = Walk(); ck.counter = 100; ck.boot = 7; ck.sync(counter: 5_000, boot: 7, at: at(10)); let ckFirst = ck.total; ck.sync(counter: 5_030, boot: 7, at: at(10))
+    check(ckFirst == 0 && ck.total == 30 && ck.counterKind == Walk.counterNow, "a save from before 1.9 (clicks counted once): its first poll only re-baselines")
     w.sync(counter: 1250, boot: 7, at: at(10)); check(w.total == 250, "counter growth = steps")
     w.sync(counter: 40, boot: 7, at: at(10)); check(w.total == 250 && w.counter == 40, "counter went backwards => re-baseline")
     w.sync(counter: 900, boot: 8, at: at(10)); check(w.total == 250 && w.boot == 8, "new boot => re-baseline")

@@ -304,8 +304,8 @@ func put<T>(_ s: String, _ field: inout T) {
             else { if keysDown[id].map({ now - $0 > 1000 }) ?? true { steps &+= 1 }; keysDown[id] = now }   // a key-up lost (lock screen, UAC): its next press still counts
         } else if raw.header.dwType == DWORD(RIM_TYPEMOUSE) {
             let f = raw.data.mouse.usButtonFlags
-            if f & UInt16(RI_MOUSE_LEFT_BUTTON_DOWN) != 0 { steps &+= 1 }
-            if f & UInt16(RI_MOUSE_RIGHT_BUTTON_DOWN) != 0 { steps &+= 1 }
+            if f & UInt16(RI_MOUSE_LEFT_BUTTON_DOWN) != 0 { steps &+= UInt32(Walk.clickSteps) }    // a click is worth 5 steps
+            if f & UInt16(RI_MOUSE_RIGHT_BUTTON_DOWN) != 0 { steps &+= UInt32(Walk.clickSteps) }
         }
     }
     /// Over a key or one of the page's buttons: the hand (the LCD is to look at).

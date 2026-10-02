@@ -27,7 +27,8 @@ extension WalkerView: Host {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
     }
     func counter() -> UInt32 {
-        [CGEventType.keyDown, .leftMouseDown, .rightMouseDown].reduce(UInt32(0)) { $0 &+ CGEventSource.counterForEventType(.hidSystemState, eventType: $1) }   // the keyboard's and mouse's own: what an app posts doesn't count
+        func n(_ t: CGEventType) -> UInt32 { CGEventSource.counterForEventType(.hidSystemState, eventType: t) }   // the keyboard's and mouse's own: what an app posts doesn't count
+        return n(.keyDown) &+ UInt32(Walk.clickSteps) &* (n(.leftMouseDown) &+ n(.rightMouseDown))
     }
     func boot() -> Double { var tv = timeval(), n = MemoryLayout<timeval>.size; sysctlbyname("kern.boottime", &tv, &n, nil, 0); return Double(tv.tv_sec) }
     // the window's: Mac/MenuBar.swift (toggleShown(_:), fits(size:))

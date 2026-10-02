@@ -14,7 +14,8 @@ protocol Settings {
 @MainActor protocol Host: AnyObject {
     /// A banner from the app: title over body.
     func notify(_ title: String, _ body: String)
-    /// Keys pressed + mouse clicks this login (it may wrap): the step counter Walk.sync reads.
+    /// Keys pressed + 5 × mouse clicks this login (it may wrap): the step counter Walk.sync reads. A click is worth 5 (Walk.clickSteps): people who work
+    /// with the mouse click far less often than others type.
     func counter() -> UInt32
     /// When this boot began (seconds since 1970): a new boot re-baselines the counter.
     func boot() -> Double

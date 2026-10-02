@@ -23,6 +23,7 @@ struct Walk: Codable, Equatable {
     var lastUID: Int? = nil
     var counter: UInt32 = 0, boot: Double = 0           // system input-event counter at the last poll, and the boot it belongs to
     var syncedAt: Double? = nil                          // when that poll was (seconds since 2001): the gap while the app was quit
+    var counterKind: Int? = nil                          // what the counter counts: 2 = keys + 5 x clicks (1.9); another (older saves) re-baselines once
     var seen: [Int]? = nil, owned: [Int]? = nil         // Pokédex, sorted; Optional so older saves decode (see `dex()`)
     var shinyOwned: [Int]? = nil                        // species ever owned as 이로치 (the dex shows those colours too)
     var weather: Weather? = nil, weatherAt: Int? = nil  // nil = sunny; total steps at the last roll
@@ -203,6 +204,7 @@ struct Walk: Codable, Equatable {
         let n = take(counter: c, boot: b, at: now)
         return walk(roomToday(away ? min(n, Int(max(0, gap) / 3600 * 3000)) : n), at: now)   // away = typed while the app was quit: at most 3,000 an hour count
     }
+    static let clickSteps = 5, counterNow = 2                          // a mouse click counts 5 steps (from 1.9: keys alone used to win)
     static let dayCap = 100_000                                        // steps a day at most: more than anyone types (a macro would; StepGate stops most)
     /// n steps, less whatever would take today past dayCap.
     func roomToday(_ n: Int) -> Int { max(0, min(n, Walk.dayCap - today)) }
@@ -252,8 +254,8 @@ struct Walk: Codable, Equatable {
     }
     /// The raw keys + clicks since the last poll (the baseline moves on); 0 after a reboot / a counter that went back.
     mutating func take(counter c: UInt32, boot b: Double, at now: Date) -> Int {
-        defer { counter = c; boot = b; syncedAt = now.timeIntervalSinceReferenceDate }
-        return b == boot && c >= counter ? Int(c - counter) : 0
+        defer { counter = c; boot = b; syncedAt = now.timeIntervalSinceReferenceDate; counterKind = Walk.counterNow }
+        return b == boot && c >= counter && counterKind == Walk.counterNow ? Int(c - counter) : 0   // a counter of another kind (clicks weighed differently): just a baseline
     }
 
     mutating func spend(_ w: Int) -> Bool { guard watts >= w else { return false }; watts -= w; return true }
