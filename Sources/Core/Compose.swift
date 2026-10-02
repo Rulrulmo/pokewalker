@@ -290,7 +290,7 @@ extension Walker {
     /// A click on a page still up under its own message (산 뒤, 연승!, W가 부족하다 …): the message ends and the click counts.
     func throughSay() {
         guard case .say(_, let next, _) = screen else { return }
-        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train: screen = next; default: break }
+        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn: screen = next; default: break }
     }
     func gridTap(_ code: Int) {
         throughSay()

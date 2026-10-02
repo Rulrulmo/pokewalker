@@ -268,12 +268,12 @@ func put<T>(_ s: String, _ field: inout T) {
     }
     var pageKind: Int {
         let c = walker.pane
-        return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.card != nil, c.learn != nil, c.tower != nil, c.items != nil, c.course != nil, c.train != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
+        return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.card != nil, c.learn != nil, c.tower != nil, c.items != nil, c.course != nil, c.train != nil, c.relearn != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
     }
     func pageDown(_ p: CGPoint, count n: Int) {
         let c = walker.pane
         guard let k = page.hits.first(where: { $0.0.contains(p) })?.1 else { drag(); return }    // not on a button: drag the whole card
-        if n == 1 { downOn = pageKind } else if c.battle != nil || c.shop?.ask != nil || c.mon != nil || c.tower != nil && !(5440...5441).contains(k) || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened: ignored
+        if n == 1 { downOn = pageKind } else if c.battle != nil || c.shop?.ask != nil || c.mon != nil || c.tower != nil && !(5440...5441).contains(k) || c.relearn != nil && !(5540...5541).contains(k) || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened: ignored
         if k >= 5000, k < 10000 { walker.pageTap(k) } else if k >= 4000 { walker.gridTap(k) } else if k >= 3000 { walker.menuTap(k - 3000) } else if k >= 2000 { walker.shopTap(k) } else { walker.sidePick(k) }
     }
     func drag() { _ = ReleaseCapture(); _ = SendMessageW(hwnd, UINT(WM_NCLBUTTONDOWN), WPARAM(HTCAPTION), 0) }

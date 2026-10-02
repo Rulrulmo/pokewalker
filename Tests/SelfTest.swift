@@ -442,7 +442,7 @@ import AppKit                                                                   
     lw.walk(expTable[growthRate[25]][next.0] - lw.companion.points, at: Date())
     check(lw.companion.level == next.0 && lw.companion.uid != nil && Array((lw.learning ?? []).prefix(2)) == [lw.companion.uid!, next.1], "a level-up by walking queues the new move", "\(lw.learning ?? [])")
     let lv = Walker(state: lw); lv.persist = false; lv.rng = Seeded(s: 12); lv.nextLearn(Date())
-    if case .learn = lv.screen { lv.press(1); check(lv.state.companion.known?[0] == next.1 && lv.state.companion.moves.count == 4, "forget move 1 for the new one") } else { check(false, "4 moves known: the forget-one screen") }
+    if case .learn(4) = lv.screen { lv.press(2); lv.press(1); check(lv.state.companion.known?[0] == next.1 && lv.state.companion.moves.count == 4, "forget move 1 for the new one (the cursor starts on 배우지 않는다)") } else { check(false, "4 moves known: the forget-one screen, on 배우지 않는다") }
     let before4 = lv.state.companion.known; lv.state.learning = [lv.state.id(-1)!, 85]; lv.screen = .learn(sel: 4); lv.press(1)
     check(lv.state.companion.known == before4 && lv.state.learning == [], "배우지 않는다 keeps the four")
     lv.state.companion.known = [84, 45]; lv.state.learning = [lv.state.id(-1)!, next.1]; lv.screen = .home; lv.nextLearn(Date())
@@ -915,6 +915,32 @@ import AppKit                                                                   
     check(evQueued && evShow && ev.state.caught[0].dex == 17 && ev.state.companion.dex == 25 && ev.state.evolving == nil, "a walker's 구구 that levels past 18 in a fight evolves once home (the companion stays)")
     ev.screen = .home; ev.queueReadyEvolutions(); let evLate = ev.state.evolving?.count == 1; ev.tick(Date())
     check(evLate && { if case .evolve(_, let t, _) = ev.screen { return t.dex == 20 }; return false }() && ev.state.caught[1].dex == 20, "at launch: a walker's 꼬렛 already past 20 evolves at home")
+    // 1.12: what a fight brought plays right after it, then where it was going — the tower's lobby, the chain's next bush (its clock from then)
+    let grw = Walker(state: { var s = Walk(); s.companion = Mon(dex: 147, level: 29, female: false); s.companion.known = [35, 43]; return s }()); grw.persist = false; grw.rng = Seeded(s: 5)
+    grw.partyRefs = [grw.state.id(-1)!]; grw.towerRun = true
+    var gB = Battle(party: [grw.state.companion], trainer: "트레이너", foes: [rat]); var gUp = gB.mine[0].mon; _ = gUp.gainBattleExp(expTable[growthRate[147]][30] - gUp.points); gB.mine[0].mon = gUp
+    grw.screen = grw.after(gB, .won, Date())
+    let gSay: Bool = { if case .say(_, .home, _) = grw.screen, case .tower(nil)? = grw.growthThen { return true }; return false }()
+    grw.press(1); let gEvo: Bool = { if case .evolve(let f, let t, _) = grw.screen { return f.dex == 147 && t.dex == 148 }; return false }()
+    grw.tick(Date() + 7)
+    check(gSay && gEvo && grw.state.companion.dex == 148 && { if case .tower(nil) = grw.screen { return true }; return false }() && grw.growthThen == nil && !grw.levelled,
+          "a tower win: 미뇽 that reached 30 evolves right after the fight, then the lobby (no 레벨 업! — the fight showed it)")
+    let gp = Walker(state: lw); gp.persist = false; gp.rng = Seeded(s: 5); gp.state.companion.level = next.0 - 1; gp.state.companion.exp = nil; gp.state.learning = nil
+    gp.state.companion.known = [84, 45, 39, 86].filter { $0 != next.1 }.prefix(4).map { $0 }; gp.partyRefs = [gp.state.id(-1)!]; gp.towerRun = true
+    var gpB = Battle(party: [gp.state.companion], trainer: "트레이너", foes: [rat]); var gpUp = gpB.mine[0].mon; _ = gpUp.gainBattleExp(expTable[growthRate[25]][next.0] - gpUp.points); gpB.mine[0].mon = gpUp
+    gp.screen = gp.after(gpB, .won, Date()); gp.press(1); let gpLearn: Bool = { if case .learn = gp.screen { return true }; return false }()
+    gp.press(3); gp.press(1); gp.press(1)
+    check(gpLearn && gp.state.companion.moves.count == 4 && { if case .tower(nil) = gp.screen { return true }; return false }(), "… a new move to learn: the forget-one screen comes first, then the lobby")
+    let ghk = Walker(state: grw.state); ghk.persist = false; ghk.growthThen = .tower(pick: nil); ghk.state.evolving = nil; ghk.state.learning = nil
+    ghk.screen = .say(["3연승!"], next: .home, since: Date()); ghk.press(4); let ghkHome: Bool = { if case .home = ghk.screen { return true }; return false }() && ghk.growthThen == nil
+    ghk.growthThen = .tower(pick: nil); ghk.lastInput = .distantPast; ghk.screen = .home; ghk.tick(Date()); ghk.tick(Date() + 1)
+    let ghkLobby: Bool = { if case .tower(nil) = ghk.screen { return true }; return false }()
+    ghk.state.companion.known = [84, 45, 39, 86]; ghk.state.learning = [ghk.state.id(-1)!, rlw.companion.relearnable.first { ![84, 45, 39, 86].contains($0) }!]; ghk.screen = .learn(sel: 0)
+    let ghkHeld = ghk.key(.enter, held: true) && { if case .learn(0) = ghk.screen { return true }; return false }()
+    check(ghkHome && ghkLobby && ghkHeld, "… 메뉴/홈 on the fight's message stays home; the lobby it hands over to doesn't time out at once; a held ● can't pick on the forget-one screen")
+    grw.growthThen = .radar(bush: 2, cursor: 0, since: .distantPast, chain: 3); grw.state.evolving = [grw.state.id(-1)!]; grw.state.companion = Mon(dex: 16, level: 18, female: false, uid: grw.state.companion.uid)
+    let gT = Date() + 100; grw.screen = .home; grw.tick(gT); let gEvo2: Bool = { if case .evolve = grw.screen { return true }; return false }(); grw.tick(gT + 7)
+    check(gEvo2 && { if case .radar(2, 0, let since, 3) = grw.screen { return since == gT + 7 }; return false }(), "… a chain: its next bush rustles after the evolution, its window starting then")
     pt.screen = .menu(menuAt("포켓몬")); pt.press(1); let g0 = pt.paneContent(Date()).grid
     check(pts { if case .box(-1, nil, false, false) = $0 { return true }; return false } && g0?.party.map(\.dex) == [25, 16] && g0?.partySel == 0 && g0?.items == 1
           && pt.paneContent(Date()).height == 472, "포켓몬: the companion (picked first) and the walker's in a row over the box, then the items' chip")

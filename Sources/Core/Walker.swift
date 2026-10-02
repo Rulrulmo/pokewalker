@@ -13,6 +13,7 @@ import Foundation
     var strollX = 54.0, strollRight = false, strollAt = Date(), strollTurnAt = Date(), stepRate = 0.0   // home: the walking sprite's middle in the course picture (half-dots), which way it goes, the pace
     var usedItem = "몬스터볼"                                                // the potion / ball / revive the current beat names
     var partyRefs: [Int] = [], towerRun = false                        // partyRefs: the uids of ours in the fight (written back after it)
+    var growthThen: Screen? = nil                                      // where a fight's end goes once its evolutions and new moves have played (settle)
     var sideOn = false                                                     // the pane carries the battle's text (the app; not --selftest): the LCD shows the stage only
     lazy var lastSeason = state.season
     var emote: (kind: Int, until: Date)? = nil                             // ♪ ♥ ! bubble over the companion
@@ -61,6 +62,18 @@ import Foundation
         perk(now, stepped: state.total != before)                                               // the companion's animation now and then
         if state.total != before { lastStep = now }
         stepRate = stepRate * 0.8 + Double(min(50, state.total - before)) * 10 * 0.2               // steps a second, smoothed (the tick is 10 Hz)
+        switch screen {
+        case .radar(_, _, let since, let chain) where now.timeIntervalSince(since) > 1.5 + radarWindow(chain):
+            screen = .say(chain > 0 ? ["...!", "연쇄가 끊겼다 (\(chain))"] : ["...!", "사라져버렸다"], next: .home, since: now)
+        case .beats(let bt, let beats, let since, _) where now.timeIntervalSince(since) * battleSpeed >= beats.map(\.length).reduce(0, +):
+            screen = beats.last!.ends ? after(bt, beats.last!, now) : bt.mustReplace ? .party(bt, sel: bt.mine.indices.first { bt.mine[$0].alive } ?? 0) : .battle(bt, sel: 0)
+        case .say(_, let next, let since) where now.timeIntervalSince(since) > 3: screen = next
+        case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
+        case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
+        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .relearn: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
+        default: break
+        }
+        settle(now)                                                                                // home: what a fight brought, then where it was going (before home's own news)
         if state.season != lastSeason {
             lastSeason = state.season
             notify("weather", state.season.name + "이 왔어요", ["꽃이 피었어요", "햇볕이 쨍쨍해요", "단풍이 들었어요", "눈이 쌓여요"][state.season.rawValue] + " · 게임 속 \(seasonDays)일마다 계절이 바뀌어요")
@@ -99,34 +112,6 @@ import Foundation
             rewarded = dexCount
             if let g = got.first { screen = .say(["도감 \(dexCount)종 달성!", g + " 해금"] + got.dropFirst().prefix(1), next: .home, since: now); notify("unlock", "도감 \(dexCount)종 달성!", got.joined(separator: " · ") + " 해금") }
         }
-        if levelled, case .home = screen {                                                    // shown when it's back home, not mid-menu
-            levelled = false
-            let name = monNames[state.companion.dex]
-            if let e = state.levelEvolution(now) { startEvolving(e, now); notify("grow", "어라...? " + josa(name, "의", "의") + " 모습이...!", josa(name, "이", "가") + " " + josa(monNames[e.to], "으로", "로") + " 진화했어요!") }
-            else {
-                screen = .say(["레벨 업!", name + " Lv.\(state.companion.level)"], next: .home, since: now)
-                if state.companion.level % 5 == 0 { notify("grow", "레벨 업!", name + " Lv.\(state.companion.level)") }
-            }
-        }
-        if case .home = screen, var q = state.evolving, !q.isEmpty {                                // ours that levelled in a fight: one at a time, home in between
-            let u = q.removeFirst(); state.evolving = q.isEmpty ? nil : q
-            if let r = state.ref(uid: u), let e = state.levelEvolution(now, ref: r) {
-                let name = monNames[state.mon(r)!.dex]
-                startEvolving(e, now, ref: r); notify("grow", "어라...? " + josa(name, "의", "의") + " 모습이...!", josa(name, "이", "가") + " " + josa(monNames[e.to], "으로", "로") + " 진화했어요!")
-            }
-        }
-        if case .home = screen, (state.learning ?? []).count >= 2 { nextLearn(now) }
-        switch screen {
-        case .radar(_, _, let since, let chain) where now.timeIntervalSince(since) > 1.5 + radarWindow(chain):
-            screen = .say(chain > 0 ? ["...!", "연쇄가 끊겼다 (\(chain))"] : ["...!", "사라져버렸다"], next: .home, since: now)
-        case .beats(let bt, let beats, let since, _) where now.timeIntervalSince(since) * battleSpeed >= beats.map(\.length).reduce(0, +):
-            screen = beats.last!.ends ? after(bt, beats.last!, now) : bt.mustReplace ? .party(bt, sel: bt.mine.indices.first { bt.mine[$0].alive } ?? 0) : .battle(bt, sel: 0)
-        case .say(_, let next, let since) where now.timeIntervalSince(since) > 3: screen = next
-        case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
-        case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
-        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .relearn: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
-        default: break
-        }
         if now.timeIntervalSince(lastSave) > 60 { save() }
     }
     /// Fights, shows and animations play at 30 fps; the rest (the walking sprite too: HGSS steps it every 0.15 s) at the tick's 10.
@@ -149,7 +134,7 @@ import Foundation
             }
             return true
         }
-        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, or pick a bush too early
+        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn, .learn: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, or pick a bush too early
         guard let i = [Key.left: 0, .enter: 1, .right: 2, .back: 3, .menu: 4][k] else { return false }
         press(i); return true
     }

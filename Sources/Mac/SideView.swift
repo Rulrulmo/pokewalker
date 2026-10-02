@@ -11,7 +11,7 @@ final class SideView: NSView {
     var downOn = 0                                                         // the page a click began on: a double-click's 2nd click on another page is dropped
     var pageKind: Int {
         let c = content
-        return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.card != nil, c.learn != nil, c.tower != nil, c.items != nil, c.course != nil, c.train != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
+        return [c.battle != nil, c.dex != nil, c.grid != nil, c.shop != nil, c.menu != nil, c.mon != nil, c.radar != nil, c.card != nil, c.learn != nil, c.tower != nil, c.items != nil, c.course != nil, c.train != nil, c.relearn != nil].firstIndex(of: true).map { $0 + 1 } ?? 0
     }
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -21,7 +21,7 @@ final class SideView: NSView {
     override func mouseDown(with e: NSEvent) {
         let p = convert(e.locationInWindow, from: nil), c = content
         guard let k = art.hits.first(where: { $0.0.contains(p) })?.1 else { window?.performDrag(with: e); return }   // not on a button: drag the whole body
-        if e.clickCount == 1 { downOn = pageKind } else if c.battle != nil || c.shop?.ask != nil || c.mon != nil || c.tower != nil && !(5440...5441).contains(k) || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened (a move, 예, 함께 under 아니오, a cell under 메뉴's tile, the tower's picker under its row): ignored
+        if e.clickCount == 1 { downOn = pageKind } else if c.battle != nil || c.shop?.ask != nil || c.mon != nil || c.tower != nil && !(5440...5441).contains(k) || c.relearn != nil && !(5540...5541).contains(k) || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened (a move, 예, 함께 under 아니오, a cell under 메뉴's tile, the tower's picker under its row): ignored
         if k >= 5000, k < 10000 { walker?.pageTap(k) } else if k >= 4000 { walker?.gridTap(k) } else if k >= 3000 { walker?.menuTap(k - 3000) } else if k >= 2000 { walker?.shopTap(k) } else { walker?.sidePick(k) }
     }
     override func scrollWheel(with e: NSEvent) {                                                 // the shop list: a row per notch (or 6 pt of trackpad); a grid: a page (24 pt)

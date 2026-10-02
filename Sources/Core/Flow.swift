@@ -3,6 +3,7 @@ import Foundation
 
 extension Walker {
     /// End of a fight. Wild: EXP goes to the companion; caught or beaten => maybe the grass rustles again (a chain). Tower: BP and the next trainer.
+    /// What the fight brought (an evolution, a move to learn) plays first, from home (settle), then the lobby or the next bush (growthThen).
     func after(_ b: Battle, _ end: Beat, _ now: Date) -> Screen {
         if end == .lost, let r = state.useRevive() {                                              // a revive in the bag: back up, the fight goes on
             var nb = b; let hp = max(1, nb.mine[nb.me].maxHP * r.pct / 100); usedItem = r.item
@@ -14,8 +15,13 @@ extension Walker {
             return .beats(nb, bs, since: now, from: from)
         }
         writeBackFight(b)
+        if heldSteps > 0 { if state.walk(heldSteps, at: now) { levelled = true }; heldSteps = 0 }   // the fight's held-back steps count now: a level they bring evolves before the next one too
+        let grows = growthDue(now)
         if b.trainer != nil {
-            if end == .won { let g = state.towerWin(); return .say(["\(state.towerStreak ?? 0)연승!", "+\(g) BP"], next: .tower(pick: nil), since: now) }
+            if end == .won {
+                let g = state.towerWin(); if grows { growthThen = .tower(pick: nil) }
+                return .say(["\(state.towerStreak ?? 0)연승!", "+\(g) BP"], next: grows ? .home : .tower(pick: nil), since: now)
+            }
             let s = state.towerStreak ?? 0; state.towerEnd(); towerRun = false
             return .say(["\(s)연승에서 끝났다", "BP \(state.bp ?? 0)"], next: .home, since: now)
         }
@@ -27,7 +33,9 @@ extension Walker {
             }
             let n = b.chain + 1, item = state.chainReward(n)
             chainNote = "+\(2 * n)W" + (item.map { " · " + $0 } ?? "")
-            return .radar(bush: Int.random(in: 0..<4, using: &rng), cursor: 0, since: now, chain: n)
+            let next = Screen.radar(bush: Int.random(in: 0..<4, using: &rng), cursor: 0, since: now, chain: n)
+            if grows { growthThen = next; return .home }                                          // its bush rustles once they're done (settle restarts its clock)
+            return next
         default: return .home
         }
     }
@@ -53,6 +61,37 @@ extension Walker {
         if let h = host { let n = gate.pass(state.take(counter: h.counter(), boot: h.boot(), at: Date()), Date().timeIntervalSinceReferenceDate); state.walk(state.roomToday(n + heldSteps), at: Date()); heldSteps = 0 }
         save()
     }
+    /// A fight brought something to play before what comes next: one of ours that levelled can evolve, or a move waits to be learned.
+    func growthDue(_ now: Date) -> Bool {
+        var s = state
+        return s.nextToLearn() != nil || levelled && state.levelEvolution(now) != nil || (state.evolving ?? []).contains { u in state.ref(uid: u).flatMap { state.levelEvolution(now, ref: $0) } != nil }
+    }
+    /// Home: the companion's level-up from walking (or its evolution), ours that levelled in a fight evolving one at a time, new moves;
+    /// once nothing is left, where the fight was going on to (growthThen: the lobby, the chain's bush, its clock restarted).
+    func settle(_ now: Date) {
+        guard case .home = screen else { return }
+        if levelled {
+            levelled = false
+            let name = monNames[state.companion.dex]
+            if let e = state.levelEvolution(now) { startEvolving(e, now); notify("grow", "어라...? " + josa(name, "의", "의") + " 모습이...!", josa(name, "이", "가") + " " + josa(monNames[e.to], "으로", "로") + " 진화했어요!") }
+            else {
+                screen = .say(["레벨 업!", name + " Lv.\(state.companion.level)"], next: .home, since: now)
+                if state.companion.level % 5 == 0 { notify("grow", "레벨 업!", name + " Lv.\(state.companion.level)") }
+            }
+        }
+        while case .home = screen, var q = state.evolving, !q.isEmpty {                            // one at a time: the next when its show is over
+            let u = q.removeFirst(); state.evolving = q.isEmpty ? nil : q
+            if let r = state.ref(uid: u), let e = state.levelEvolution(now, ref: r) {
+                let name = monNames[state.mon(r)!.dex]
+                startEvolving(e, now, ref: r); notify("grow", "어라...? " + josa(name, "의", "의") + " 모습이...!", josa(name, "이", "가") + " " + josa(monNames[e.to], "으로", "로") + " 진화했어요!")
+            }
+        }
+        if case .home = screen, (state.learning ?? []).count >= 2 { nextLearn(now) }
+        if case .home = screen, let t = growthThen {
+            growthThen = nil; lastInput = now                                                    // the lobby's idle time starts now, not at the fight's last press
+            if case .radar(let b, let c, _, let n) = t { screen = .radar(bush: b, cursor: c, since: now, chain: n) } else { screen = t }
+        }
+    }
     /// The next move waiting in state.learning: straight in with a free slot, else the forget-one screen.
     func nextLearn(_ now: Date) {
         while let (ref, id) = state.nextToLearn() {
@@ -62,7 +101,7 @@ extension Walker {
                 m.known = m.moves + [id]; state.setMon(ref, m); state.learned()
                 screen = .say([josa(monNames[m.dex], "은", "는") + " 새로", josa(moveTable[id]!.name, "을", "를") + " 배웠다!"], next: .home, since: now); return
             }
-            screen = .learn(sel: 0); return
+            screen = .learn(sel: 4); return                                                       // on 배우지 않는다: a reflex ● (skipping the fight's message) forgets nothing — it stays in 기술 바꾸기
         }
     }
     /// The 상점's (bp false) or BP 교환소's rows.
@@ -148,13 +187,12 @@ extension Walker {
         guard let from = state.mon(ref) else { return }
         state.evolve(e, ref: ref); screen = .evolve(from: from, to: state.mon(ref) ?? from, since: now); save()
     }
-    /// A fight's EXP, EVs and levels back to ours. The companion's level-up shows (and maybe evolves) at home; the others that levelled queue to evolve there.
+    /// A fight's EXP, EVs and levels back to ours. Those that levelled (the companion too: the fight showed its Lv.) queue to evolve right after it (settle).
     func writeBackFight(_ b: Battle) {
-        let before = partyRefs.map { u in state.ref(uid: u).flatMap { state.mon($0)?.level } }, lv = state.companion.level
+        let before = partyRefs.map { u in state.ref(uid: u).flatMap { state.mon($0)?.level } }
         state.writeBack(partyRefs, b.mine.map(\.mon))
-        if state.companion.level > lv { levelled = true }                                          // the home screen then checks its evolution
         for (u, l) in zip(partyRefs, before) {
-            guard let l, let r = state.ref(uid: u), r != -1, let m = state.mon(r), m.level > l else { continue }
+            guard let l, let r = state.ref(uid: u), let m = state.mon(r), m.level > l else { continue }
             state.evolving = (state.evolving ?? []).filter { $0 != u } + [u]
         }
     }
@@ -236,9 +274,9 @@ extension Walker {
         }
     }
     func press(_ k: Int) {                                    // 0 left, 1 enter, 2 right, 3 back (↩), 4 메뉴 / 홈
-        let now = Date(); lastInput = now; defer { save(); host?.redraw(.all) }
+        let now = Date(); lastInput = now; defer { settle(now); save(); host?.redraw(.all) }        // back home: what a fight brought goes on at once
         if k == 4 {                                           // one key both ways: home opens the menu (on the pane; the LCD stays home), anywhere else it goes home
-            if let open = homeKey() { screen = open ? .menu(0) : .home }
+            if let open = homeKey() { if !open { growthThen = nil }; screen = open ? .menu(0) : .home }   // home means home: what a fight brought still plays there, then it stays
             return
         }
         if k == 3 {                                           // ↩ 뒤로 (HGSS's B): one step up; where an answer is due only the cursor moves to the way out — nothing that can't be undone happens
