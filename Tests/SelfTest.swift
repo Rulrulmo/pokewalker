@@ -450,6 +450,23 @@ import AppKit                                                                   
     var bw = Walk(); bw.box = [Mon(dex: 16, level: 5, female: false), Mon(dex: 25, level: next.0, female: false)]; bw.box[1].known = [84, 45]
     bw.queueMoves(1, from: next.0 - 1); bw.box.remove(at: 0)
     check(bw.nextToLearn()?.ref == 0 && bw.nextToLearn()?.move == next.1, "a queued move follows its Pokémon when the box shifts")
+    // 7c 기술 바꾸기 (its page → a slot → a move): one passed on comes back, its own swap places, a free slot fills
+    var rlw = Walk(); rlw.companion = Mon(dex: 25, level: 50, female: false); rlw.companion.known = [84, 45, 39, 86]
+    let rl = Walker(state: rlw); rl.persist = false; let passed = rlw.companion.relearnable.first { !rlw.companion.moves.contains($0) }!
+    func rls(_ r: Int, _ s: Int, _ a: Int?) -> Bool { var sc = rl.screen; if case .say(_, let n, _) = sc { sc = n }; if case .relearn(r, s, a) = sc { return true }; return false }
+    rl.screen = .box(-1, act: nil, confirm: false, detail: true); rl.gridTap(4409); rl.pageTap(5501)
+    let rlOpened = rls(-1, 1, 45); _ = rl.compose(Date()); rl.screen = .relearn(ref: -1, slot: 1, at: passed); _ = rl.compose(Date()); rl.press(1)
+    check(rlOpened && rl.state.companion.moves == [84, passed, 39, 86] && rls(-1, 1, nil) && rlw.companion.relearnable.allSatisfy { rlw.companion.learnLevel($0).map { $0 <= 50 } ?? true },
+          "기술 바꾸기: a move it passed on (배우지 않는다) goes in the slot picked", "\(rl.state.companion.moves)")
+    rl.screen = .relearn(ref: -1, slot: 0, at: 86); rl.press(1)
+    check(rl.state.companion.moves == [86, passed, 39, 84] && { if case .relearn(-1, 0, nil) = rl.screen { return true }; return false }(), "… one of its own: the two swap places, no message")
+    rl.state.companion.known = [84]; rl.screen = .relearn(ref: -1, slot: 0, at: nil); rl.press(2); rl.press(2); let rlWrapped = rls(-1, 0, nil); rl.press(2); rl.press(1)
+    let fill = rl.state.companion.relearnable.first { $0 != 84 }; rl.press(1)
+    check(rlWrapped && rl.state.companion.moves == [84, fill!] && rl.paneContent(Date()).relearn?.slots.count == 2, "… a free slot: the slots go round it, and a move fills it", "\(rl.state.companion.moves)")
+    rl.screen = .relearn(ref: -1, slot: 1, at: 84); rl.press(3); let up1 = rls(-1, 1, nil); rl.press(3)
+    check(up1 && { if case .box(-1, nil, false, true) = rl.screen { return true }; return false }() && rl.homeKey() == false, "… ↩: the moves → the slots → its page")
+    rl.screen = .relearn(ref: -1, slot: 0, at: rl.state.companion.relearnable[0]); rl.listRow(1000); rl.pageTap(5541)
+    let rlPk = rl.paneContent(Date()).relearn?.pick; check(rlPk?.sel == 0 && rlPk?.first == 0 && rlPk?.rows.count == 5 && rlPk?.count == rl.state.companion.relearnable.count, "… the wheel stops at the end, ▶ goes round to the first page", "\(String(describing: rlPk))")
     bw.box.removeAll(); check(bw.nextToLearn() == nil && bw.learning == [], "released: its queued moves are dropped")
     let bv = Walker(state: { var s = Walk(); s.bag = ["마비치료제", "상처약"]; return s }()); bv.persist = false; bv.rng = Seeded(s: 13)
     var bb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); bb.mine[0].status = .paralysis

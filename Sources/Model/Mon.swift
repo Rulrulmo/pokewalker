@@ -69,6 +69,20 @@ extension Mon {
         for k in stride(from: 0, to: ls.count, by: 2) where ls[k] > a && ls[k] <= b && Moves.supported(ls[k + 1]) && !moves.contains(ls[k + 1]) && !out.contains(ls[k + 1]) { out.append(ls[k + 1]) }
         return out
     }
+    /// 기술 바꾸기: every move it could know now — its level-up ones up to its level (in the order it learns them), then any it knows from elsewhere.
+    var relearnable: [Int] {
+        let ls = learnsets[dex]; var out: [Int] = []
+        for k in stride(from: 0, to: ls.count, by: 2) where ls[k] <= level && Moves.supported(ls[k + 1]) && !out.contains(ls[k + 1]) { out.append(ls[k + 1]) }
+        return out + moves.filter { !out.contains($0) }
+    }
+    /// The level it learns move id at (nil = not by level).
+    func learnLevel(_ id: Int) -> Int? { let ls = learnsets[dex]; return stride(from: 0, to: ls.count, by: 2).first { ls[$0 + 1] == id }.map { ls[$0] } }
+    /// Move id into slot s (s = its move count: a new one in the free slot); one it already knows elsewhere swaps places with what's there.
+    mutating func setMove(_ id: Int, at s: Int) {
+        var ms = moves
+        if let j = ms.firstIndex(of: id) { if s < ms.count { ms.swapAt(j, s) } } else if s < ms.count { ms[s] = id } else if ms.count < 4 { ms.append(id) }
+        known = ms
+    }
     /// Battle EXP only (walking EXP also counts friendship steps). Returns true on a level-up.
     mutating func gainBattleExp(_ n: Int) -> Bool {
         let before = level, e = points + n

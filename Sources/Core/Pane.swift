@@ -61,12 +61,19 @@ struct LearnModel: Equatable {
     struct Move: Equatable { var name, type: String; var power, pp: Int }
     var who: String; var new: Move; var known: [Move]; var sel: Int
 }
+/// 기술 바꾸기: its moves (the slots; a free one after them while it knows fewer than 4), the one picked, and once picked what could go there, a page of five.
+struct RelearnModel: Equatable {
+    struct Row: Equatable { var move: LearnModel.Move; var level: Int?; var slot: Int? }   // level = when it learns it (nil: not by level); slot = where it is now
+    struct Pick: Equatable { var sel, count, first: Int; var rows: [Row] }
+    static let perPage = 5
+    var who: String; var slots: [LearnModel.Move]; var slot: Int; var pick: Pick?
+}
 /// 배틀 타워's lobby: the run, the party, the button.
 struct TowerModel: Equatable {
-    struct Member: Equatable { var dex: Int; var name: String; var level: Int }
+    struct Member: Equatable { var dex: Int; var name: String; var level: Int; var shiny = false }
     /// Picking who goes in party slot `slot`: count candidates, `rows` the page in view from `first` (slot = where that one is in the party now).
     struct Pick: Equatable {
-        struct Row: Equatable { var name: String; var level: Int; var slot: Int? }
+        struct Row: Equatable { var name: String; var level: Int; var slot: Int?; var shiny = false }
         var slot, sel, count, first: Int; var rows: [Row]
     }
     static let perPage = 5
@@ -91,13 +98,13 @@ struct ItemsModel: Equatable {
 /// Whatever the pane shows; all nil = no page (the card's idle height).
 struct PaneContent: Equatable {
     var battle: SideModel?; var dex: DexModel?; var shop: ShopModel?; var menu: MenuModel?; var status: StatusModel?; var grid: GridModel?; var mon: MonModel?
-    var radar: RadarModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var items: ItemsModel?; var course: CourseModel?; var train: TrainModel?
+    var radar: RadarModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var items: ItemsModel?; var course: CourseModel?; var train: TrainModel?; var relearn: RelearnModel?
 }
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
     static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
     var height: CGFloat {
         battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 406 : menu != nil ? 354
-            : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : status != nil ? 354 : Layout.idle
+            : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 353 : status != nil ? 354 : Layout.idle
     }
 }

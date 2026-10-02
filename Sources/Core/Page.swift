@@ -79,7 +79,8 @@ extension Canvas {
         if let d = p.dex { drawDex(d) } else if let g = p.grid { drawGrid(g) } else if let m = p.mon { drawMon(m) } else if let s = p.shop { drawShop(s) }
         else if let m = p.menu { drawMenu(m) } else if let m = p.battle { drawBattle(m) } else if let i = p.items { drawItems(i) } else if let r = p.radar { drawRadar(r) }
         else if let k = p.card { tabs(["트레이너 카드", "최근 7일", "알"], k.page, 198, code: 5200) } else if let l = p.learn { drawLearn(l) }
-        else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let s = p.status { drawStatus(s) }
+        else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let l = p.relearn { drawRelearn(l) }
+        else if let s = p.status { drawStatus(s) }
     }
     let X0: CGFloat = 9, X1: CGFloat = 207                                                         // the content column (card points): the bezel's edges
     /// A hairline across the column at y (page coordinates).
@@ -250,8 +251,9 @@ extension Canvas {
         c.say("진화", x(X0 + 2), y(yy + 6), font(9, .medium), Ink.sub)
         for (j, l) in m.evos.prefix(2).enumerated() { c.say(l, x(X0 + 34), y(yy + 6 + CGFloat(j) * 13), font(9, j == 0 ? .medium : .regular), l.hasPrefix("→") ? Ink.ink : Ink.sub, maxW: x(X1 - X0 - 36)) }
         yy += 30
-        c.say("기술", x(X0 + 2), y(yy + 6), font(9, .medium), Ink.sub)                            // its four moves, two a line (the right-click used to show them)
-        for (j, mv) in m.moves.enumerated() { c.say(mv, x(X0 + 34 + CGFloat(j % 2) * 84), y(yy + 6 + CGFloat(j / 2) * 13), font(9, .medium), Ink.ink, maxW: x(80)) }
+        let mrc = r(X0, yy - 2, X1 - X0, 29); c.fill(.rounded(mrc, 8 * K), Ink.tile); hits.append((mrc, 4409))   // its four moves, two a line; a click: 기술 바꾸기
+        c.say("기술", x(X0 + 5), y(yy + 6), font(9, .medium), Ink.sub); c.say("바꾸기", x(X0 + 5), y(yy + 19), font(8.5, .bold), Ink.red)
+        for (j, mv) in m.moves.enumerated() { c.say(mv, x(X0 + 36 + CGFloat(j % 2) * 82), y(yy + 6 + CGFloat(j / 2) * 13), font(9, .medium), Ink.ink, maxW: x(78)) }
         yy += 32
         if m.place == 0 {                                                                          // the companion: what evolves it now, if anything; else nothing to do
             let rc = r(X0, yy, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.evoAction == nil ? Ink.tile : Ink.red)
@@ -427,23 +429,52 @@ extension Page {
         }
     }
     /// A new move: it on top, then which to forget (or not learn it).
-    func drawLearn(_ m: LearnModel) {
-        func line(_ mv: LearnModel.Move, _ rc: CGRect, _ label: String? = nil) {                  // the numbers and type first: the name gets the rest
-            var xr = rc.maxX - x(9)
-            if !mv.type.isEmpty {
-                xr -= c.say(mv.power > 0 ? "위력 \(mv.power) · PP \(mv.pp)" : "PP \(mv.pp)", xr, rc.midY, font(8, .semibold), Ink.sub, 1) + x(5)
-                xr -= c.typePill(mv.type, xr, rc.midY, h: x(11), size: 7.5, right: true) + x(6)
-            }
-            c.say(label ?? mv.name, rc.minX + x(9), rc.midY, font(10, .bold), Ink.ink, maxW: xr - rc.minX - x(9))
+    /// A move in a row: the numbers and type first (from the right), the name gets the rest.
+    func moveLine(_ mv: LearnModel.Move, _ rc: CGRect, _ label: String? = nil) {
+        var xr = rc.maxX - x(9)
+        if !mv.type.isEmpty {
+            xr -= c.say(mv.power > 0 ? "위력 \(mv.power) · PP \(mv.pp)" : "PP \(mv.pp)", xr, rc.midY, font(8, .semibold), Ink.sub, 1) + x(5)
+            xr -= c.typePill(mv.type, xr, rc.midY, h: x(11), size: 7.5, right: true) + x(6)
         }
+        c.say(label ?? mv.name, rc.minX + x(9), rc.midY, font(10, .bold), Ink.ink, maxW: xr - rc.minX - x(9))
+    }
+    func drawLearn(_ m: LearnModel) {
         let head = r(X0, 198, X1 - X0, 26); c.fill(.rounded(head, 9 * K), Ink.tint(typeColor[m.new.type] ?? Ink.faint, 0.18))
-        line(m.new, head, "새 기술 · " + m.new.name)
+        moveLine(m.new, head, "새 기술 · " + m.new.name)
         c.say(m.who + "의 기술을 하나 잊는다", x(X0 + 2), y(236), font(9, .medium), Ink.sub)
         for (i, mv) in (m.known + [LearnModel.Move(name: "배우지 않는다", type: "", power: 0, pp: 0)]).enumerated() {
             let rc = r(X0, 246 + CGFloat(i) * 21.5, X1 - X0, 19)
             tile(rc, 7, on: i == m.sel)
-            line(mv, rc); hits.append((rc, 5300 + i))
+            moveLine(mv, rc); hits.append((rc, 5300 + i))
         }
+    }
+    /// 기술 바꾸기: its slots (the picked one ringed; a click: what goes there), or what could go in it, a page of five
+    /// (its own marked with their slot: picking one swaps the two; the rest with the level it learns them).
+    func drawRelearn(_ m: RelearnModel) {
+        guard let p = m.pick else {
+            c.say(m.who + " · 바꿀 기술을 고르세요", x(X0 + 2), y(206), font(11, .medium), Ink.ink, maxW: x(X1 - X0 - 4))
+            for i in 0..<min(4, m.slots.count + 1) {
+                let rc = r(X0, 216 + CGFloat(i) * 22, X1 - X0, 20); tile(rc, 7, on: i == m.slot)
+                if let mv = m.slots[safe: i] { moveLine(mv, rc) } else { c.say("빈 칸", rc.minX + x(9), rc.midY, font(10, .bold), Ink.faint) }
+                hits.append((rc, 5500 + i))
+            }
+            c.say("레벨업으로 배우는 기술은 언제든 다시 고를 수 있어요", x(X0 + 2), y(311), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
+            return
+        }
+        c.say(m.slots[safe: m.slot].map { "\(m.slot + 1)번 \($0.name) → 무엇으로?" } ?? "빈 칸 · 무엇을 배울까?", x(X0 + 2), y(206), font(11, .medium), Ink.ink, maxW: x(X1 - X0 - 4))
+        for (i, row) in p.rows.enumerated() {
+            let rc = r(X0, 216 + CGFloat(i) * 22, X1 - X0, 20); tile(rc, 7, on: p.first + i == p.sel)
+            var xr = rc.maxX - x(9)
+            if let s = row.slot {
+                let t = "\(s + 1)번", f = font(7.5, .bold), w = width(t, f) + x(8), mine = s == m.slot
+                c.pill(CGRect(x: xr - w, y: rc.midY - x(5.5), width: w, height: x(11)), mine ? Ink.red : Ink.tint(Ink.blue, 0.16)); c.say(t, xr - w / 2, rc.midY, f, mine ? .white : Ink.blue, 0.5)
+                xr -= w + x(5)
+            } else if let l = row.level { xr -= c.say("Lv.\(max(1, l))", xr, rc.midY, font(8, .semibold), Ink.faint, 1) + x(5) }
+            moveLine(row.move, CGRect(x: rc.minX, y: rc.minY, width: xr - rc.minX + x(9) - x(1), height: rc.height))
+            hits.append((rc, 5530 + i))
+        }
+        let per = RelearnModel.perPage, pages = (p.count + per - 1) / per
+        if pages > 1 { pager("\(p.first / per + 1) / \(pages)", 327, prev: true, next: true, codes: (5540, 5541)) }
     }
     /// 배틀 타워's lobby: the run, the three who go (a click: who goes there instead; 추천으로 once it's the player's own), then 도전 (or the next trainer) and 나가기.
     func drawTower(_ m: TowerModel) {
@@ -458,7 +489,8 @@ extension Page {
             let rc = r(X0, 220 + CGFloat(i) * 27.5, X1 - X0, 25); c.fill(.rounded(rc, 9 * K), Ink.tile)
             c.image(iconImage(p.dex), CGRect(x: snap(rc.minX + x(2)), y: snap(rc.midY - 16 * K - x(2)), width: 32 * K, height: 32 * K), alpha: 1)
             let hw = c.say("바꾸기", rc.maxX - x(9), rc.midY, hint, Ink.faint, 1)
-            c.say(p.name, rc.minX + x(38), rc.midY, font(10, .bold), Ink.ink); c.say("Lv.\(p.level)", rc.maxX - x(9) - hw - x(8), rc.midY, font(9, .semibold), Ink.sub, 1)
+            let nw = c.say(p.name, rc.minX + x(38), rc.midY, font(10, .bold), Ink.ink); if p.shiny { c.say("★", rc.minX + x(40) + nw, rc.midY, font(8, .bold), Ink.gold) }   // 이로치, as the box marks it
+            c.say("Lv.\(p.level)", rc.maxX - x(9) - hw - x(8), rc.midY, font(9, .semibold), Ink.sub, 1)
             hits.append((rc, 5410 + i))
         }
         let go = r(X0, 307, X1 - X0 - 64, 36), out = r(X1 - 59, 307, 59, 36)
@@ -478,7 +510,9 @@ extension Page {
                 xr -= w + x(6)
             }
             xr -= c.say("Lv.\(row.level)", xr, rc.midY, font(9, .semibold), Ink.sub, 1)
-            c.say(row.name, rc.minX + x(9), rc.midY, font(10, .bold), Ink.ink, maxW: xr - rc.minX - x(17))
+            let star = row.shiny ? width("★", font(8, .bold)) + x(2) : 0
+            let nw = c.say(row.name, rc.minX + x(9), rc.midY, font(10, .bold), Ink.ink, maxW: xr - rc.minX - x(17) - star)
+            if row.shiny { c.say("★", rc.minX + x(11) + nw, rc.midY, font(8, .bold), Ink.gold) }
             hits.append((rc, 5430 + i))
         }
         let per = TowerModel.perPage, pages = (p.count + per - 1) / per

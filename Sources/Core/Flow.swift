@@ -98,6 +98,12 @@ extension Walker {
         if case .tower(_?) = screen { towerStep(d); return }
         if case .course(let i) = screen { lastInput = Date(); host?.redraw(.all); screen = .course(max(0, min(courses.count - 1, i + d))); return }
         if case .train(let k) = screen { lastInput = Date(); host?.redraw(.all); screen = .train(max(0, min(5, k + d))); return }
+        if case .relearn(let r, let s, let at) = screen, let m = state.mon(r) {                 // 기술 바꾸기: its slots, or the moves for one
+            lastInput = Date(); host?.redraw(.all)
+            if let at { let all = m.relearnable, i = all.firstIndex(of: at) ?? 0; screen = .relearn(ref: r, slot: s, at: all[max(0, min(all.count - 1, i + d))]) }
+            else { screen = .relearn(ref: r, slot: max(0, min(min(3, m.moves.count), s + d)), at: nil) }
+            return
+        }
         let bp: Bool, sel: Int
         switch screen { case .shop(let b, let s, _), .shopConfirm(let b, let s, _): bp = b; sel = s; default: return }
         lastInput = Date(); host?.redraw(.all)
@@ -224,8 +230,8 @@ extension Walker {
     func homeKey() -> Bool? {
         switch screen {
         case .home: true
-        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train: false
-        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train: false; default: nil }
+        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn: false
+        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn: false; default: nil }
         default: nil
         }
     }
@@ -251,6 +257,7 @@ extension Walker {
             case .train: screen = .items(state.inventory.firstIndex(of: "은색병뚜껑") ?? 0)
             case .tower(let p): screen = p != nil ? .tower(pick: nil) : .menu(menuAt("배틀 타워"))                    // the picker → the lobby → the menu; a run stays on: ● in the lobby goes on
             case .learn: screen = .learn(sel: 4)                                                    // onto 배우지 않는다; ● decides
+            case .relearn(let r, let s, let at): screen = at != nil ? .relearn(ref: r, slot: s, at: nil) : .box(r, act: nil, confirm: false, detail: true)   // the moves → the slots → its page
             case .moves(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "공격") ?? 0)   // back to where it came from
             case .party(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "교체") ?? 0)
             case .bagBattle(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "도구") ?? 0)
@@ -407,6 +414,21 @@ extension Walker {
             } else if k == 1, detail, i == -1 { if let e = companionEvolution() { startEvolving(e, now) } else { screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷고 있다"], next: screen, since: now) } }
             else if k == 1 { screen = .box(i, act: detail ? 0 : nil, confirm: false, detail: true) }   // ● on the grid: its page; on its page: 함께 / 상자로 or 놓아주기 / 닫기
             else { gridStep(k == 0 ? -1 : 1, wrap: true) }
+        case .relearn(let r, let s, let at):                                                     // the slots: ◀ ▶ one (round), ● what goes there; then ◀ ▶ a move, ● puts it in
+            guard var m = state.mon(r) else { screen = .box(-1, act: nil, confirm: false); return }
+            let all = m.relearnable
+            guard let at else {
+                let n = min(4, m.moves.count + 1)
+                if k != 1 { screen = .relearn(ref: r, slot: (s + (k == 0 ? n - 1 : 1)) % n, at: nil); return }
+                screen = .relearn(ref: r, slot: s, at: m.moves[safe: s] ?? all.first { !m.moves.contains($0) } ?? all[0]); return
+            }
+            let i = all.firstIndex(of: at) ?? 0
+            if k != 1 { screen = .relearn(ref: r, slot: s, at: all[(i + (k == 0 ? all.count - 1 : 1)) % all.count]); return }
+            let id = all[i], old = m.moves[safe: s], knew = m.moves.contains(id), back = Screen.relearn(ref: r, slot: s, at: nil), new = moveTable[id]!.name
+            m.setMove(id, at: s); state.setMon(r, m)
+            screen = knew ? back                                                                  // one of its own: two swapped places (or nothing changed)
+                : old.map { .say(["1, 2, 짠!", josa(moveTable[$0]!.name, "을", "를") + " 잊고", josa(new, "을", "를") + " 배웠다!"], next: back, since: now) }
+                ?? .say([josa(monNames[m.dex], "은", "는") + " 새로", josa(new, "을", "를") + " 배웠다!"], next: back, since: now)
         case .beats, .evolve, .hatch: break
         }
     }

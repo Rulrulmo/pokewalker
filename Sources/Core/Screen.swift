@@ -27,4 +27,5 @@ indirect enum Screen {
     case dex(Int, filter: Int, detail: Bool)                           // the pick's dex number; filter = the grid's tab (전체 / 잡음 / 못 잡음 / 이 코스); detail = the entry page
     case box(Int, act: Int?, confirm: Bool, detail: Bool = false)      // 포켓몬: a ref (-1 the companion, -2-i caught[i], i box[i]; the grid shows boxOrder); act = the ● menu's selection; confirm = "release?"; detail = its page
     case hatch(Mon, since: Date)                                       // already kept; this is the show
+    case relearn(ref: Int, slot: Int, at: Int?)                        // 기술 바꾸기 from a Pokémon's page (ref as box's): slot = the one picked (its move count = the free one); at = choosing what goes there, the move under the cursor
 }

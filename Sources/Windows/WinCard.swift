@@ -280,7 +280,7 @@ func put<T>(_ s: String, _ field: inout T) {
     /// The wheel over the page: the shop list a row a notch, a grid a page.
     func wheel(_ delta: Int, at p: CGPoint) {
         let grid = walker.pane.grid != nil
-        guard p.y >= pageTop, walker.pane.shop != nil || walker.pane.tower?.pick != nil || walker.pane.course != nil || walker.pane.train != nil || grid else { return }
+        guard p.y >= pageTop, walker.pane.shop != nil || walker.pane.tower?.pick != nil || walker.pane.course != nil || walker.pane.train != nil || walker.pane.relearn != nil || grid else { return }
         scrolled += delta
         while abs(scrolled) >= 120 { let d = scrolled > 0 ? -1 : 1; if grid { walker.gridStep(d * GridModel.perPage) } else { walker.listRow(d) }; scrolled += d * 120 }
     }

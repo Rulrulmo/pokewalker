@@ -108,6 +108,26 @@ extension Walker {
                     if k == sel { fb.invert(0, y - 1, 96, 10) }
                 }
             }
+        case .relearn(let r, let s, let at):
+            guard let m = state.mon(r) else { break }
+            func note(_ mv: MoveInfo) -> String { (typeKo[mv.type] ?? "") + (mv.power > 0 ? " \(mv.power)" : "") }
+            if let at {                                                                            // what goes in slot s: five rows round the pick (its own marked with their slot)
+                let all = m.relearnable, i = all.firstIndex(of: at) ?? 0, top = max(0, min(all.count - 5, i - 2))
+                fb.text(m.moves[safe: s].map { "\(s + 1)번 " + moveTable[$0]!.name + " →" } ?? "빈 칸 →", 2, 1, 3, small: true); fb.fill(0, 10, 96, 1, 2)
+                for (k, id) in all[top..<min(all.count, top + 5)].enumerated() {
+                    let y = 13 + 10 * k, mv = moveTable[id]!
+                    fb.text(mv.name, 2, y, 3, small: true); fb.text(m.moves.firstIndex(of: id).map { "\($0 + 1)번" } ?? note(mv), 94, y, 2, right: true, small: true)
+                    if top + k == i { fb.invert(0, y - 1, 96, 10) }
+                }
+            } else {                                                                               // its slots (a free one while it knows fewer than 4)
+                fb.text(monNames[m.dex] + "의 기술", 2, 1, 3, small: true); fb.fill(0, 10, 96, 1, 2)
+                for k in 0..<min(4, m.moves.count + 1) {
+                    let y = 13 + 10 * k
+                    if let mv = m.moves[safe: k].flatMap({ moveTable[$0] }) { fb.text(mv.name, 2, y, 3, small: true); fb.text(note(mv), 94, y, 2, right: true, small: true) }
+                    else { fb.text("빈 칸", 2, y, 2, small: true) }
+                    if k == s { fb.invert(0, y - 1, 96, 10) }
+                }
+            }
         case .beats:
             let s = beatState(now)!
             stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), pending: s.pending, beat: (s.beat, s.u))
@@ -118,7 +138,7 @@ extension Walker {
             fb.text("배틀 타워", 2, 0); fb.text("\(state.bp ?? 0)BP", 94, 1, 2, right: true, small: true); fb.fill(0, 12, 96, 1, 2)
             fb.text(towerRun ? "\(state.towerStreak ?? 0)연승 중 · 최고 \(state.towerBest ?? 0)" : "최고 \(state.towerBest ?? 0)연승", 2, 14, 2, small: true)
             if sideOn { fb.towerHall(state.party().map(\.mon.dex), t); break }                        // the pane has the list and the buttons: the LCD shows the hall
-            for (k, p) in state.party().enumerated() { fb.text(monNames[p.mon.dex] + " Lv.\(p.mon.level)", 2, 24 + 9 * k, 3, small: true) }
+            for (k, p) in state.party().enumerated() { fb.text((p.mon.shiny == true ? "★" : "") + monNames[p.mon.dex] + " Lv.\(p.mon.level)", 2, 24 + 9 * k, 3, small: true) }
             fb.fill(0, 51, 96, 1, 2)
             fb.text(towerRun ? "● 다음 상대  ↩ 나가기" : "● 도전 \(Walk.towerFee)W", 0, 53, 3, center: true, small: true)
         case .card(let p):
@@ -266,7 +286,7 @@ extension Walker {
     }
     /// A click on a grid page: 10000 + k = the list's k-th (opens its page), 4100 + t = a tab, 4200 / 4201 = a page back / on;
     /// 포켓몬: 4500 + k the row above the box (the companion, the walker's), 4510 the items; a Pokémon's page: 4400 함께 걷기, 4404 상자로 보내기 (the walker's),
-    /// 4401 놓아주기 → 4402 아니오 / 4403 예 (the box's).
+    /// 4401 놓아주기 → 4402 아니오 / 4403 예 (the box's), 4409 기술 바꾸기 (anyone's).
     /// A click on a page still up under its own message (산 뒤, 연승!, W가 부족하다 …): the message ends and the click counts.
     func throughSay() {
         guard case .say(_, let next, _) = screen else { return }
@@ -294,6 +314,7 @@ extension Walker {
         case (.box(let i, _, _, true), 4401) where i >= 0: screen = .box(i, act: 0, confirm: true, detail: true)     // 놓아줄까? 아니오 first
         case (.box(let i, _, _, true), 4402): screen = .box(i, act: nil, confirm: false, detail: true)
         case (.box(let i, _, true, true), 4403): screen = .box(i, act: 1, confirm: true, detail: true); press(1)
+        case (.box(let i, _, _, true), 4409): screen = .relearn(ref: i, slot: 0, at: nil)                                          // 기술 바꾸기
         case (.box(let i, _, true, true), 4408) where state.box.indices.contains(i): askReleaseDupes(state.box[i].dex)            // 중복 n마리: asks (who stays) first
         case (_, 4200), (_, 4201): gridStep(code == 4200 ? -GridModel.perPage : GridModel.perPage, ends: true)
         default: return
@@ -322,6 +343,14 @@ extension Walker {
             guard let (ref, id) = st.nextToLearn(), let m = state.mon(ref), let new = moveTable[id] else { break }
             func mv(_ x: MoveInfo) -> LearnModel.Move { .init(name: x.name, type: x.type, power: x.power, pp: x.pp) }
             return PaneContent(learn: LearnModel(who: monNames[m.dex], new: mv(new), known: m.moves.compactMap { moveTable[$0] }.map(mv), sel: sel))
+        case .relearn(let r, let s, let at):
+            guard let m = state.mon(r) else { break }
+            func mv(_ id: Int) -> LearnModel.Move { let x = moveTable[id]!; return .init(name: x.name, type: x.type, power: x.power, pp: x.pp) }
+            let pick = at.map { at -> RelearnModel.Pick in
+                let all = m.relearnable, per = RelearnModel.perPage, sel = all.firstIndex(of: at) ?? 0, first = sel / per * per
+                return .init(sel: sel, count: all.count, first: first, rows: all[first..<min(all.count, first + per)].map { .init(move: mv($0), level: m.learnLevel($0), slot: m.moves.firstIndex(of: $0)) })
+            }
+            return PaneContent(relearn: RelearnModel(who: (m.shiny == true ? "★ " : "") + monNames[m.dex], slots: m.moves.map(mv), slot: s, pick: pick))
         case .course(let i):
             let per = CourseModel.perPage, first = i / per * per
             let rows = (first..<min(courses.count, first + per)).map { k -> CourseModel.Row in
@@ -343,17 +372,17 @@ extension Walker {
             let pick = p.map { p -> TowerModel.Pick in
                 let all = state.towerCandidates, sel = all.firstIndex(of: p.at) ?? 0, first = sel / per * per
                 return .init(slot: p.slot, sel: sel, count: all.count, first: first, rows: all[first..<min(all.count, first + per)].map { r in
-                    let m = state.mon(r)!; return .init(name: monNames[m.dex], level: m.level, slot: party.firstIndex { $0.ref == r }) })
+                    let m = state.mon(r)!; return .init(name: monNames[m.dex], level: m.level, slot: party.firstIndex { $0.ref == r }, shiny: m.shiny == true) })
             }
             return PaneContent(tower: TowerModel(run: towerRun, streak: state.towerStreak ?? 0, best: state.towerBest ?? 0, bp: state.bp ?? 0, fee: Walk.towerFee,
-                                                 party: party.map { .init(dex: $0.mon.dex, name: monNames[$0.mon.dex], level: $0.mon.level) }, custom: state.towerPick != nil, pick: pick))
+                                                 party: party.map { .init(dex: $0.mon.dex, name: monNames[$0.mon.dex], level: $0.mon.level, shiny: $0.mon.shiny == true) }, custom: state.towerPick != nil, pick: pick))
         default: break
         }
         return statusOpen ? PaneContent(status: statusModel()) : PaneContent()
     }
     /// A click on a walker page that isn't a grid: 5000 + k a radar bush, 5200 + p a card page, 5300 + k a move to forget (4 = don't),
     /// 5400 / 5401 the tower's 도전 / 나가기, 5410 + i its party row i (who goes there instead), 5420 추천으로, then its picker: 5430 + k a row of the page,
-    /// 5440 / 5441 the page before / after (round). One click does it, as ● would.
+    /// 5440 / 5441 the page before / after (round); 기술 바꾸기: 5500 + k a slot, then 5530 + k a move of the page, 5540 / 5541 its pages. One click does it, as ● would.
     func pageTap(_ code: Int) {
         throughSay(); lastInput = Date(); host?.redraw(.all)
         switch (screen, code) {
@@ -378,6 +407,12 @@ extension Walker {
             let per = TowerModel.perPage, all = state.towerCandidates, page = (all.firstIndex(of: p.at) ?? 0) / per, pages = (all.count + per - 1) / per
             if code >= 5440 { screen = .tower(pick: (p.slot, all[min(all.count - 1, (page + (code == 5440 ? pages - 1 : 1)) % pages * per)])) }
             else if let r = all[safe: page * per + code - 5430] { screen = .tower(pick: (p.slot, r)); press(1) }
+        case (.relearn(let r, _, nil), 5500...5503): screen = .relearn(ref: r, slot: code - 5500, at: nil); press(1)   // a slot: what goes there
+        case (.relearn(let r, let s, let at?), 5530..<5545):                                    // a move of the page in view (into the slot), or its ◀ ▶ (round)
+            guard let all = state.mon(r)?.relearnable else { return }
+            let per = RelearnModel.perPage, page = (all.firstIndex(of: at) ?? 0) / per, pages = (all.count + per - 1) / per
+            if code >= 5540 { screen = .relearn(ref: r, slot: s, at: all[min(all.count - 1, (page + (code == 5540 ? pages - 1 : 1)) % pages * per)]) }
+            else if let id = all[safe: page * per + code - 5530] { screen = .relearn(ref: r, slot: s, at: id); press(1) }
         default: return
         }
     }
