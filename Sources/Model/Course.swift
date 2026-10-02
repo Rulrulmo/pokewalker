@@ -15,6 +15,28 @@ struct Course {
     func group(_ g: Int) -> [Slot] { [slots[2 * g], slots[2 * g + 1], extra[2 * g], extra[2 * g + 1]] }   // A = 0, B = 1, C = 2
     func group(of s: Slot) -> Int? { (0..<3).first { group($0).contains { $0.dex == s.dex && $0.steps == s.steps && $0.level == s.level } } }
 }
+/// 1.14 (docs/plans/09 §5): wild levels by when a course opens — its W, or for an event course its dex count as the W you'd have then
+/// (the owner had 110 species around 5,000 W) — so a course still pays its EXP when you get there under the level-scaled formula.
+let courseBands: [String: ClosedRange<Int>] = [
+    "상쾌한 들판": 5...10, "웅성웅성 숲": 5...11, "울퉁불퉁 산길": 6...12, "아름다운 해변": 8...14, "교외": 10...16, "어둑어둑 동굴": 12...20, "푸른 호수": 15...25,
+    "마을 변두리": 18...28, "호연 들판": 22...34, "따뜻한 해변": 25...38, "화산 길": 28...42, "나무 위 집": 32...46, "무서운 동굴": 35...50, "신오 들판": 38...52,
+    "얼음 산길": 40...54, "커다란 숲": 42...56, "하얀 호수": 45...58, "거친 해변": 48...60, "리조트": 50...62, "고요한 동굴": 52...65,
+    "노란 숲": 12...20, "바다 건너편": 14...22, "밤하늘의 끝": 15...25, "랠리": 18...28, "쇼핑": 20...30, "챔피언의 길": 22...32, "우정의 초원": 22...34,
+    "전설의 새 둥지": 32...46, "방황하는 들판": 35...50, "고대 유적": 38...52, "호연의 하늘과 바다": 40...54, "신오 호수": 42...56, "시공의 틈": 45...58,
+    "환상의 숲": 48...62, "시작의 방": 52...65]
+extension Course {
+    /// Its slots' levels stretched over band b, keeping their order (a flat course, all one level: by group — A the top, B the middle, C the bottom).
+    func banded(_ b: ClosedRange<Int>) -> Course {
+        let lv = all.map(\.level), lo = lv.min() ?? 1, hi = lv.max() ?? 1
+        func move(_ s: Slot, _ group: Int) -> Slot {
+            let t = hi > lo ? Double(s.level - lo) / Double(hi - lo) : Double(2 - group) / 2
+            return Slot(dex: s.dex, level: b.lowerBound + Int((Double(b.upperBound - b.lowerBound) * t).rounded()), steps: s.steps, chance: s.chance, female: s.female)
+        }
+        return Course(name: name, watts: watts, dex: dex, legends: legends, types: types, art: art, slots: slots.enumerated().map { move($1, $0 / 2) },
+                      extra: extra.enumerated().map { move($1, $0 / 2) }, guests: guests, items: items)
+    }
+}
+let courses: [Course] = rawCourses.map { c in courseBands[c.name].map(c.banded) ?? c }
 let guestOdds = 0.10   // slots: A A B B C C, items rarest first; dex = Pokédex count (event courses)
 
 /// Gen IV evolution, mapped onto a walker (see tools/gen.py): level = on level-up at `level`+; friend = on level-up after `friendSteps` together;

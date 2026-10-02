@@ -75,6 +75,23 @@ extension Mon {
         for k in stride(from: 0, to: ls.count, by: 2) where ls[k] <= level && Moves.supported(ls[k + 1]) && !out.contains(ls[k + 1]) { out.append(ls[k + 1]) }
         return out + moves.filter { !out.contains($0) }
     }
+    /// The tower's 좋은 4개 (from 22 wins on, docs/plans/09 §2-3): the two best STAB attacks by power x accuracy (the right side — 물리 / 특수 —
+    /// and one-turn ones first), the best other type for coverage, then a heal, a real ailment or a boost; the rest by score. From what it learns by
+    /// level up to its level.
+    func towerMoves() -> [Int] {
+        let skip: Set<Int> = [120, 153, 264, 138, 173, 387, 248, 353, 252, 255, 256, 364]           // 자폭 대폭발 힘껏펀치 꿈먹기 코골기 비장의무기 미래예지 파멸의소원 속이기: only now and then; 토해내기 · 꿀꺽 need 비축하기, 페인트 only through 방어
+        let all = relearnable.compactMap { moveTable[$0] }.filter { !skip.contains($0.id) }, phys = baseStats[dex][1] >= baseStats[dex][3], types = monTypes[dex]
+        func score(_ m: MoveInfo) -> Double {                                                       // power 0 (카운터, 지구던지기, 안다리걸기 …) = 60, as the trainer AI counts it
+            Double(m.power > 0 ? m.power : 60) * Double(m.accuracy == 0 ? 100 : m.accuracy) / 100 * (types.contains(m.type) ? 1.5 : 1) * (m.physical == phys ? 1 : 0.5) * (m.recharge || m.charges ? 0.5 : 1)
+        }
+        let attacks = all.filter { !$0.isStatus }.sorted { score($0) > score($1) }, status = all.filter(\.isStatus)
+        let ailments: Set<String> = ["sleep", "paralysis", "burn", "poison", "confusion", "yawn", "leech-seed"]   // not 금제 · 꿰뚫어보기 · 헤롱헤롱 … (nothing here)
+        var out = attacks.filter { types.contains($0.type) }.prefix(2).map(\.id)
+        if let c = attacks.first(where: { !types.contains($0.type) }) { out.append(c.id) }
+        if let s = status.first(where: { $0.cat == 3 }) ?? status.first(where: { $0.cat == 1 && ailments.contains($0.ailment) && $0.onFoe }) ?? status.first(where: { $0.cat == 2 && $0.onSelf }) { out.append(s.id) }
+        for m in attacks + status where out.count < 4 && !out.contains(m.id) { out.append(m.id) }
+        return out.contains(where: { !moveTable[$0]!.isStatus }) ? Array(out.prefix(4)) : moves         // nothing that hits: its own (메타몽's 변신)
+    }
     /// The level it learns move id at (nil = not by level).
     func learnLevel(_ id: Int) -> Int? { let ls = learnsets[dex]; return stride(from: 0, to: ls.count, by: 2).first { ls[$0 + 1] == id }.map { ls[$0] } }
     /// Move id into slot s (s = its move count: a new one in the free slot); one it already knows elsewhere swaps places with what's there.

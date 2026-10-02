@@ -14,7 +14,7 @@ extension Walker {
             if let n = nb.foeNext { nb.foeNext = nil; nb.out = []; nb.switchIn(.it, n); bs += nb.out }   // a trainer's one KO'd that same turn: its next comes out now
             return .beats(nb, bs, since: now, from: from)
         }
-        writeBackFight(b)
+        if b.trainer == nil { writeBackFight(b) }                                                  // the tower's fight as Lv.50 copies, no EXP: nothing to write back (it would cut a Lv.70 to 50)
         if heldSteps > 0 { if state.walk(heldSteps, at: now) { levelled = true }; heldSteps = 0 }   // the fight's held-back steps count now: a level they bring evolves before the next one too
         let grows = growthDue(now)
         if b.trainer != nil {
@@ -41,7 +41,9 @@ extension Walker {
     }
     func startTower(_ now: Date) {
         partyRefs = state.party().map { state.id($0.ref)! }; let p = state.party()                  // uids first, so the fighters carry them
-        let f = state.towerFoes(&rng); var b = Battle(party: p.map(\.mon), trainer: f.trainer, foes: f.foes)
+        let ours = p.map { var m = $0.mon; if m.known == nil { m.known = m.moves }; m.level = min(m.level, Walk.towerLevel); return m }   // over 50: fights as 50 with the moves it has (copies — after() writes nothing back)
+        let f = state.towerFoes(&rng); var b = Battle(party: ours, trainer: f.trainer, foes: f.foes)
+        b.aiRandom = Walk.towerAIRandom[Walk.towerTier(state.towerStreak ?? 0)]
         freshFight(); let from = b, beats = b.begin(weather: nil, &rng)
         towerRun = true; screen = .beats(b, beats, since: now, from: from)
     }
@@ -314,7 +316,8 @@ extension Walker {
             let u = now.timeIntervalSince(since)
             if c == b, u >= 1.5 {
                 let s = state.encounter(&rng, chain: chain), l = state.legend(&rng, chain: chain)
-                var m = Mon.wild(l ?? s.dex, level: l == nil ? s.level : l == 493 ? 80 : 50, shiny: Int.random(in: 0..<Walk.chainShinyOdds(chain), using: &rng) == 0 ? true : nil,
+                let top = state.here.all.map(\.level).max() ?? 45                                      // legends: over the course's own (1.14 bands), 50 at least; 아르세우스 80
+                var m = Mon.wild(l ?? s.dex, level: l == nil ? min(100, s.level + Walk.chainLevel(chain)) : l == 493 ? 80 : max(50, top + 5), shiny: Int.random(in: 0..<Walk.chainShinyOdds(chain), using: &rng) == 0 ? true : nil,
                                  perfect: max(l == nil ? 0 : 3, Walk.chainPerfectIVs(chain)), &rng)   // chains raise 이로치 odds and sure 31s; legends have 3
                 if l == nil { m.female = s.female }                                                // the walker's slots fix the sex
                 partyRefs = ([-1] + state.caught.indices.map { -2 - $0 }).map { state.id($0)! }        // the companion, then the walker's: they can switch in
@@ -373,7 +376,6 @@ extension Walker {
         case .forfeit(let b, let yes):
             if k != 1 { screen = .forfeit(b, yes: !yes); return }
             if yes {
-                writeBackFight(b)                                                                  // what it earned this fight stays, as when it loses
                 let s = state.towerStreak ?? 0; state.towerEnd(); towerRun = false; screen = .say(["기권했다", "\(s)연승에서 끝"], next: .home, since: now)
             }
             else { screen = .battle(b, sel: battleMenu(b).firstIndex(of: "기권") ?? 0) }

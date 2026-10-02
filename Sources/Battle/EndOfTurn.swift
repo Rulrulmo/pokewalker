@@ -77,19 +77,30 @@ extension Battle {
         faints()
     }
 
-    /// KOs: EXP (and EVs) for ours, the next one out, or the end of the battle.
+    /// Walking leads the levels (docs/plans/09): a wild KO's EXP for one of ours at level lp — Gen V's scaled formula (more for the lower,
+    /// less for the higher: no sweeping with one strong one) x wildExpScale, split among those that faced it.
+    static let wildExpScale = 0.5
+    static func wildExp(base b: Int, foe lf: Int, mine lp: Int, share: Int) -> Int {
+        let raw = Double(b * lf) / 5 * pow(Double(2 * lf + 10) / Double(lf + lp + 10), 2.5) + 1
+        return max(1, Int(raw * wildExpScale) / max(1, share))
+    }
+    /// EXP for ours that faced the one in front, split among them, EVs in full — for a KO, and (Gen VI on) a catch. Wild only: the tower gives neither (BP only, as HGSS's).
+    mutating func award() {
+        let share = faced.filter { mine[$0].alive }.sorted()
+        guard trainer == nil, !share.isEmpty else { return }
+        let foe = f(.it).mon
+        for k in share {
+            let e = Battle.wildExp(base: baseExp[foe.dex], foe: foe.level, mine: mine[k].mon.level, share: share.count)
+            var probe = mine[k].mon; let up = probe.gainBattleExp(e)
+            out.append(.gained(exp: e, level: up ? probe.level : nil, foe: foe.dex, to: k)); apply(out.last!)
+        }
+    }
+    /// KOs: EXP (and EVs) for ours (wild only), the next one out, or the end of the battle.
     mutating func faints() {
         guard !over else { return }
         if !f(.it).alive, !f(.it).down {
             mod(.it) { $0.down = true }; out.append(.fainted(.it))
-            let share = faced.filter { mine[$0].alive }.sorted()                                  // Gen IV: EXP split among those that faced it, EVs in full
-            if !share.isEmpty {
-                let foe = f(.it).mon, e = max(1, baseExp[foe.dex] * foe.level / 7 * (trainer == nil ? 2 : 3) / 2 / share.count)
-                for k in share {
-                    var probe = mine[k].mon; let up = probe.gainBattleExp(e)
-                    out.append(.gained(exp: e, level: up ? probe.level : nil, foe: foe.dex, to: k)); apply(out.last!)
-                }
-            }
+            award()
             if let n = theirs.indices.first(where: { theirs[$0].alive }) { if inTurn { foeNext = n } else { switchIn(.it, n) } } else { out.append(.won); over = true; return }   // mid-turn: at its end
         }
         if !f(.me).alive, !f(.me).down {
@@ -100,14 +111,14 @@ extension Battle {
 
     // MARK: ball, escape, items, the other side's choice
     mutating func throwBall(_ ball: Double) -> Bool {
-        if ball >= 255 { out.append(.thrown(shakes: 3)); out.append(.caught); over = true; return true }   // 마스터볼
+        if ball >= 255 { out.append(.thrown(shakes: 3)); award(); out.append(.caught); over = true; return true }   // 마스터볼; a catch pays EXP too (1.14), before the end beat
         let t = f(.it), bonus: Double = [.sleep, .freeze].contains(t.status) ? 2 : t.status != nil ? 1.5 : 1
         let a = Double((3 * t.maxHP - 2 * t.hp) * catchRate[t.mon.dex]) * ball * bonus / Double(3 * t.maxHP)
         let b = a >= 255 ? 65536 : 1048560 / sqrt(sqrt(16711680 / max(a, 0.1)))                 // Gen III-IV shake check
         var shakes = 0
         while shakes < 4, Double(roll(65536)) < b { shakes += 1 }
         out.append(.thrown(shakes: min(shakes, 3)))
-        if shakes == 4 { out.append(.caught); over = true; return true }
+        if shakes == 4 { award(); out.append(.caught); over = true; return true }
         out.append(.broke); return false
     }
     /// Gen IV: sure if we're faster, else by the speed ratio and how many tries; trapping moves and abilities stop it.
@@ -148,7 +159,7 @@ extension Battle {
         if x.charging != 0 { return x.charging }; if x.lock > 0 { return x.lockMove }; if x.bide > 0 { return 117 }
         let ok = usable(.it)
         guard !ok.isEmpty else { return 165 }
-        if trainer == nil || roll(5) == 0 { return ok[roll(ok.count)] }
+        if trainer == nil || aiRandom > 0 && roll(aiRandom) == 0 { return ok[roll(ok.count)] }
         let d = f(.me)
         func score(_ id: Int) -> Double {
             let m = moveTable[id]!

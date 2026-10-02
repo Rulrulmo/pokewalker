@@ -6,6 +6,7 @@ struct Battle: Equatable {
     var me = 0, it = 0
     var trainer: String? = nil
     var chain = 0                                    // radar chain this fight belongs to
+    var aiRandom = 5                                 // a trainer picks at random 1 time in aiRandom (0 = never): the tower's higher tiers lower it
     var sides = [SideState(), SideState()]           // 0 ours, 1 theirs
     var sky = Sky.clear, skyTurns = 0                // skyTurns 0 with a sky = lasts (the course's weather, or an ability's)
     var trickRoom = 0, gravity = 0, mudSport = false, waterSport = false, lastUsed = 0, escapes = 0, turnNo = 0

@@ -270,6 +270,8 @@ struct Walk: Codable, Equatable {
     /// The draw: 10 % a habitat guest; else the walker's own order, rarest group first — "some of its candidates are far enough and
     /// rand(100) < their mean chance" picks the group — and then any candidate of it that's far enough, the weather's types 1.5x as likely.
     /// chain = radar chain length: +20 % per link on the A/B groups (up to 8 links), stopping at 90 % so no group shuts the rest out.
+    /// A radar chain's wild ones come stronger: +2 levels a link, up to +20 (10 links, where the 이로치 odds stop rising too).
+    static func chainLevel(_ chain: Int) -> Int { 2 * min(max(chain, 0), 10) }
     func encounter<R: RandomNumberGenerator>(_ r: inout R, chain: Int = 0, guests: Bool = true) -> Slot {
         if guests, !here.guests.isEmpty, Double.random(in: 0..<1, using: &r) < guestOdds {       // a visitor, at the C group's level + 2
             let d = here.guests.randomElement(using: &r)!

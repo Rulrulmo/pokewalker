@@ -99,6 +99,7 @@ extension Walker {
         case .fled: return .show(.it, dx: Int(70 * min(1, u / 0.6)), dy: 0, flash: false, visible: true)
         case .ran: return .show(.me, dx: Int(-70 * min(1, u / 0.6)), dy: 0, flash: false, visible: true)
         case .won where bt.trainer != nil: return .ball(b, u)                                       // the beaten trainer comes back
+        case .gained where bt.theirs[bt.it].alive: return .ball(.thrown(shakes: 0), Beat.thrown(shakes: 0).length)   // a catch's EXP (1.14): the ball rests shut on its pad, the caught one stays inside
         case .gained, .won, .lost: return .idle
         }
     }

@@ -198,17 +198,28 @@ extension Walk {
         return nil
     }
     mutating func learned() { if let q = learning, q.count >= 2 { learning = Array(q.dropFirst(2)) } }
-    /// The next trainer: 3 non-legends at the party's average level + streak / 3 (+0-2), fully evolved from Lv.30.
+    /// The tower is Lv.50 (docs/plans/09): ours over 50 fight as 50 (under it, as they are); its trainers' are 50, better every 7 wins.
+    static let towerLevel = 50
+    /// By wins so far, 7 a tier: 0 as caught · 1 IVs 15+ · 2 + EVs 252/252 · 3 3V, a fitting nature, 좋은 4개, AI less random · 4 5V, AI never random · 5 6V, base stats 450+.
+    static func towerTier(_ streak: Int) -> Int { min(5, streak / 7) }
+    static let towerAIRandom = [5, 5, 5, 10, 0, 0]                                                   // Battle.aiRandom per tier
+    /// The next trainer: 3 fully evolved non-legends at Lv.50, stronger by tier (towerTier).
     func towerFoes<R: RandomNumberGenerator>(_ r: inout R) -> (trainer: String, foes: [Mon]) {
-        let ps = party().map(\.mon), avg = ps.map(\.level).reduce(0, +) / max(1, ps.count)
+        let tier = Walk.towerTier(towerStreak ?? 0), lv = Walk.towerLevel
         let legends = Set(courses.flatMap(\.legends) + Walk.legendShop.map(\.dex))           // shop legends too: never a tower foe
         let names = ["엘리트 트레이너", "베테랑", "아가씨", "등산가", "연구원", "격투가", "사이킥", "드래곤 조련사", "모범 소년", "레인저"]
         let he = ["민수", "현우", "도윤", "준호", "태양"], she = ["지은", "서연", "하은", "유나", "보라"]      // a one-sex class gets a name to match (its sprite: trainerFrame)
+        let pool = (1...493).filter { d in !legends.contains(d) && d != 292 && !evolutions.contains { $0.from == d } && (tier < 5 || baseStats[d].reduce(0, +) >= 450) }   // fully evolved
         let foes = (0..<3).map { _ -> Mon in
-            let lv = min(100, max(5, avg + (towerStreak ?? 0) / 3 + Int.random(in: 0...2, using: &r)))
-            let pool = (1...493).filter { d in !legends.contains(d) && d != 292 && (stageOf[d] == 0 || stageOf[d] == 1 && lv >= 20 || stageOf[d] >= 2 && lv >= 35)
-                                              && (lv < 30 || !evolutions.contains { $0.from == d }) }
-            return Mon.wild(pool.randomElement(using: &r)!, level: lv, &r)
+            let d = pool.randomElement(using: &r)!, phys = baseStats[d][1] >= baseStats[d][3]           // 물리형 or 특수형
+            var m = Mon.wild(d, level: lv, perfect: [0, 0, 0, 3, 5, 6][tier], &r)
+            if (1...2).contains(tier) { m.ivs = (0..<6).map { _ in Int.random(in: 15...31, using: &r) } }
+            if tier >= 2 { var ev = [0, 0, 0, 0, 0, 0]; ev[phys ? 1 : 3] = 252; ev[5] = 252; if tier >= 3 { ev[0] = 6 }; m.evs = ev }
+            if tier >= 3 {
+                m.nature = (phys ? [3, 13] : [15, 10]).randomElement(using: &r)!                 // 고집 · 명랑 / 조심 · 겁쟁이
+                m.known = m.towerMoves()
+            }
+            return m
         }
         let cls = names.randomElement(using: &r)!, given = cls == "아가씨" ? she : ["등산가", "연구원", "드래곤 조련사", "모범 소년"].contains(cls) ? he : he + she
         return (cls + " " + given.randomElement(using: &r)!, foes)

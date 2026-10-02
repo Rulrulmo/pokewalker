@@ -479,7 +479,7 @@ extension Page {
     /// 배틀 타워's lobby: the run, the three who go (a click: who goes there instead; 추천으로 once it's the player's own), then 도전 (or the next trainer) and 나가기.
     func drawTower(_ m: TowerModel) {
         if let p = m.pick { drawTowerPick(p); return }
-        c.say(m.run ? "\(m.streak)연승 중 · 최고 \(m.best)연승" : "최고 \(m.best)연승 · \(m.bp)BP", x(X0 + 2), y(206), font(11, .medium), Ink.ink)
+        c.say((m.run ? "\(m.streak)연승 중" : "최고 \(m.best)연승") + " · Lv.50 맞춤", x(X0 + 2), y(206), font(11, .medium), Ink.ink)   // BP is on the title row
         if m.custom {
             let t = "추천으로", f = font(8.5, .bold), w = width(t, f) + x(14), rc = CGRect(x: x(X1) - w, y: y(206) - x(7.5), width: w, height: x(15))
             c.pill(rc, Ink.redTint); c.say(t, rc.midX, rc.midY, f, Ink.red, 0.5); hits.append((rc, 5420))
@@ -490,7 +490,7 @@ extension Page {
             c.image(iconImage(p.dex), CGRect(x: snap(rc.minX + x(2)), y: snap(rc.midY - 16 * K - x(2)), width: 32 * K, height: 32 * K), alpha: 1)
             let hw = c.say("바꾸기", rc.maxX - x(9), rc.midY, hint, Ink.faint, 1)
             let nw = c.say(p.name, rc.minX + x(38), rc.midY, font(10, .bold), Ink.ink); if p.shiny { c.say("★", rc.minX + x(40) + nw, rc.midY, font(8, .bold), Ink.gold) }   // 이로치, as the box marks it
-            c.say("Lv.\(p.level)", rc.maxX - x(9) - hw - x(8), rc.midY, font(9, .semibold), Ink.sub, 1)
+            c.say(p.level > Walk.towerLevel ? "Lv.\(p.level)→\(Walk.towerLevel)" : "Lv.\(p.level)", rc.maxX - x(9) - hw - x(8), rc.midY, font(9, .semibold), Ink.sub, 1)   // fights as Lv.50
             hits.append((rc, 5410 + i))
         }
         let go = r(X0, 307, X1 - X0 - 64, 36), out = r(X1 - 59, 307, 59, 36)

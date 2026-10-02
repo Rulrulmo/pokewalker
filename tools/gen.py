@@ -552,7 +552,7 @@ with open('Sources/Data/Data.swift', 'w') as f:
     f.write('let typeChart = typeRows()\n@_optimize(none) private func typeRows() -> [String: [String: Double]] {\n    var c: [String: [String: Double]] = [:]\n')   # a row a statement: quick to type-check
     for a, row in sorted(chart.items()): f.write(f'    c[{s(a)}] = [' + ', '.join(f'{s(b)}: {float(v)!r}' for b, v in sorted(row.items())) + ']\n')
     f.write('    return c\n}\n')
-    f.write('let courses: [Course] = [\n')
+    f.write('let rawCourses: [Course] = [\n')   # Model/Course.swift bands its levels into `courses`
     for c in courses:
         f.write(f'    Course(name: {s(c["name"])}, watts: {c["watts"]}, dex: {c["dex"]}, legends: [{", ".join(map(str, c.get("legends", [])))}], types: [{", ".join(s(x) for x in c["types"])}], art: .{c["art"]},\n')
         f.write('           slots: [' + ', '.join(f'Slot(dex: {d}, level: {l}, steps: {st}, chance: {ch:g}, female: {str(fe).lower()})' for d, l, st, ch, fe in c['slots']) + '],\n')

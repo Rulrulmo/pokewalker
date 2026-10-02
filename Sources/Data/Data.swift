@@ -327,8 +327,8 @@ let typeChart = typeRows()
     c["water"] = ["dragon": 0.5, "fire": 2.0, "grass": 0.5, "ground": 2.0, "rock": 2.0, "water": 0.5]
     return c
 }
-let courses: [Course] = _courses()
-@_optimize(none) private func _courses() -> [Course] {
+let rawCourses: [Course] = _rawCourses()
+@_optimize(none) private func _rawCourses() -> [Course] {
     var a: [Course] = []
     a.append(Course(name: "상쾌한 들판", watts: 0, dex: 0, legends: [], types: ["fire", "bug", "flying"], art: .field,
            slots: [Slot(dex: 84, level: 8, steps: 2000, chance: 70, female: true), Slot(dex: 115, level: 8, steps: 3000, chance: 50, female: true), Slot(dex: 29, level: 5, steps: 500, chance: 75, female: true), Slot(dex: 32, level: 5, steps: 500, chance: 75, female: false), Slot(dex: 16, level: 5, steps: 0, chance: 100, female: false), Slot(dex: 161, level: 5, steps: 0, chance: 100, female: true)],
