@@ -490,7 +490,7 @@ extension Page {
             c.image(iconImage(p.dex), CGRect(x: snap(rc.minX + x(2)), y: snap(rc.midY - 16 * K - x(2)), width: 32 * K, height: 32 * K), alpha: 1)
             let hw = c.say("바꾸기", rc.maxX - x(9), rc.midY, hint, Ink.faint, 1)
             let nw = c.say(p.name, rc.minX + x(38), rc.midY, font(10, .bold), Ink.ink); if p.shiny { c.say("★", rc.minX + x(40) + nw, rc.midY, font(8, .bold), Ink.gold) }   // 이로치, as the box marks it
-            c.say(p.level > Walk.towerLevel ? "Lv.\(p.level)→\(Walk.towerLevel)" : "Lv.\(p.level)", rc.maxX - x(9) - hw - x(8), rc.midY, font(9, .semibold), Ink.sub, 1)   // fights as Lv.50
+            c.say(p.level != Walk.towerLevel ? "Lv.\(p.level)→\(Walk.towerLevel)" : "Lv.\(p.level)", rc.maxX - x(9) - hw - x(8), rc.midY, font(9, .semibold), Ink.sub, 1)   // fights as Lv.50
             hits.append((rc, 5410 + i))
         }
         let go = r(X0, 307, X1 - X0 - 64, 36), out = r(X1 - 59, 307, 59, 36)

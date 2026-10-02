@@ -138,7 +138,7 @@ extension Walker {
             fb.text("배틀 타워", 2, 0); fb.text("\(state.bp ?? 0)BP", 94, 1, 2, right: true, small: true); fb.fill(0, 12, 96, 1, 2)
             fb.text(towerRun ? "\(state.towerStreak ?? 0)연승 중 · 최고 \(state.towerBest ?? 0)" : "최고 \(state.towerBest ?? 0)연승", 2, 14, 2, small: true)
             if sideOn { fb.towerHall(state.party().map(\.mon.dex), t); break }                        // the pane has the list and the buttons: the LCD shows the hall
-            for (k, p) in state.party().enumerated() { fb.text((p.mon.shiny == true ? "★" : "") + monNames[p.mon.dex] +  " Lv.\(p.mon.level)" + (p.mon.level > Walk.towerLevel ? "→\(Walk.towerLevel)" : ""), 2, 24 + 9 * k, 3, small: true) }
+            for (k, p) in state.party().enumerated() { fb.text((p.mon.shiny == true ? "★" : "") + monNames[p.mon.dex] +  " Lv.\(p.mon.level)" + (p.mon.level != Walk.towerLevel ? "→\(Walk.towerLevel)" : ""), 2, 24 + 9 * k, 3, small: true) }
             fb.fill(0, 51, 96, 1, 2)
             fb.text(towerRun ? "● 다음 상대  ↩ 나가기" : "● 도전 \(Walk.towerFee)W", 0, 53, 3, center: true, small: true)
         case .card(let p):

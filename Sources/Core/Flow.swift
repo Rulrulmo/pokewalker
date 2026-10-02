@@ -41,7 +41,7 @@ extension Walker {
     }
     func startTower(_ now: Date) {
         partyRefs = state.party().map { state.id($0.ref)! }; let p = state.party()                  // uids first, so the fighters carry them
-        let ours = p.map { var m = $0.mon; if m.known == nil { m.known = m.moves }; m.level = min(m.level, Walk.towerLevel); return m }   // over 50: fights as 50 with the moves it has (copies — after() writes nothing back)
+        let ours = p.map { var m = $0.mon; if m.known == nil { m.known = m.moves }; m.level = Walk.towerLevel; return m }   // everyone fights as Lv.50 (1.15, flat) with the moves it has (copies — after() writes nothing back)
         let f = state.towerFoes(&rng); var b = Battle(party: ours, trainer: f.trainer, foes: f.foes)
         b.aiRandom = Walk.towerAIRandom[Walk.towerTier(state.towerStreak ?? 0)]
         freshFight(); let from = b, beats = b.begin(weather: nil, &rng)

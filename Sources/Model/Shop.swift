@@ -198,7 +198,7 @@ extension Walk {
         return nil
     }
     mutating func learned() { if let q = learning, q.count >= 2 { learning = Array(q.dropFirst(2)) } }
-    /// The tower is Lv.50 (docs/plans/09): ours over 50 fight as 50 (under it, as they are); its trainers' are 50, better every 7 wins.
+    /// The tower is Lv.50 (docs/plans/09): ours all fight as 50 (1.15: under it too — a flat rule), its trainers' are 50, better every 7 wins.
     static let towerLevel = 50
     /// By wins so far, 7 a tier: 0 as caught · 1 IVs 15+ · 2 + EVs 252/252 · 3 3V, a fitting nature, 좋은 4개, AI less random · 4 5V, AI never random · 5 6V, base stats 450+.
     static func towerTier(_ streak: Int) -> Int { min(5, streak / 7) }

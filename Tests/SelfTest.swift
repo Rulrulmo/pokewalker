@@ -922,12 +922,12 @@ import AppKit                                                                   
     var b14r = Seeded(s: 21), b14 = Walk(); b14.companion = Mon.wild(150, level: 70, perfect: 3, &b14r); b14.caught = [Mon(dex: 129, level: 12, female: false)]
     let b14v = Walker(state: b14); b14v.persist = false; b14v.rng = Seeded(s: 7); b14v.startTower(Date())
     let b14B: Battle? = { if case .beats(let b, _, _, _) = b14v.screen { return b }; return nil }()
-    let b14Capped = b14B.map { b in b.mine.map(\.mon.level) == [50, 12] && b.theirs.allSatisfy { $0.mon.level == 50 && ($0.mon.evs ?? []).allSatisfy { $0 == 0 } } && b.aiRandom == 5 } ?? false
+    let b14Capped = b14B.map { b in b.mine.map(\.mon.level) == [50, 50] && b.theirs.allSatisfy { $0.mon.level == 50 && ($0.mon.evs ?? []).allSatisfy { $0 == 0 } } && b.aiRandom == 5 } ?? false
     var b14Won = b14B!; b14Won.theirs[b14Won.it].hp = 0; b14Won.out = []; b14Won.faints()
     let b14NoExp = !b14Won.out.contains { if case .gained = $0 { return true }; return false }
     let b14Before = b14v.state.companion; var b14End = b14B!; b14End.mine[0].mon.level = 50; b14End.mine[0].mon.evs = [252, 0, 0, 0, 0, 252]; _ = b14v.after(b14End, .won, Date())
     check(b14Capped && b14NoExp && b14v.state.companion == b14Before && b14v.state.towerStreak == 1,
-          "1.14: the tower fights a Lv.70 as 50 (a Lv.12 as 12), its foes Lv.50, no EXP for a KO, and the Lv.70 is still 70 after it (nothing written back)")
+          "1.15: the tower fights a Lv.70 and a Lv.12 both as 50 (flat), its foes Lv.50, no EXP for a KO, and the Lv.70 is still 70 after it (nothing written back)")
     var b14Tiers: [Bool] = []
     for (streak, check) in [(0, { (m: Mon) in m.evs == nil && m.known == nil }), (7, { (m: Mon) in m.evs == nil && (m.ivs ?? []).allSatisfy { $0 >= 15 } }),
                             (14, { (m: Mon) in (m.evs ?? []).reduce(0, +) == 504 && (m.ivs ?? []).allSatisfy { $0 >= 15 } && m.known == nil }),
