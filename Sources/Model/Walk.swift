@@ -66,6 +66,12 @@ struct Walk: Codable, Equatable {
         let w = remainder / 20; remainder %= 20
         watts = min(9999, watts + w); earned += w
         egg?.left -= n
+        let half = total / 2 - (total - n) / 2                                                     // the walker's: 1 EXP per 2 steps (by total's halves, so single steps add up); no friendship
+        for i in caught.indices where half > 0 {
+            let lv = caught[i].level
+            guard caught[i].gainBattleExp(half) else { continue }
+            queueMoves(-2 - i, from: lv); if let u = id(-2 - i), !(evolving ?? []).contains(u) { evolving = (evolving ?? []) + [u] }   // evolves / learns at home (settle)
+        }
         let lv = companion.level
         guard companion.gain(n) else { return false }
         queueMoves(-1, from: lv); return true

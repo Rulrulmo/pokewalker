@@ -915,6 +915,13 @@ import AppKit                                                                   
     check(evQueued && evShow && ev.state.caught[0].dex == 17 && ev.state.companion.dex == 25 && ev.state.evolving == nil, "a walker's 구구 that levels past 18 in a fight evolves once home (the companion stays)")
     ev.screen = .home; ev.queueReadyEvolutions(); let evLate = ev.state.evolving?.count == 1; ev.tick(Date())
     check(evLate && { if case .evolve(_, let t, _) = ev.screen { return t.dex == 20 }; return false }() && ev.state.caught[1].dex == 20, "at launch: a walker's 꼬렛 already past 20 evolves at home")
+    // 1.13: the walker's get 1 EXP per 2 steps (single steps add up), no friendship; a level-up queues its evolution (home plays it)
+    var wx = Walk(); wx.caught = [Mon(dex: 16, level: 17, female: false), Mon(dex: 19, level: 5, female: false)]
+    let wx0 = wx.caught.map(\.points), cw0 = wx.companion.points
+    wx.walk(1, at: Date()); wx.walk(1, at: Date()); wx.walk(1, at: Date()); wx.walk(5, at: Date()); wx.walk(2, at: Date())   // keys one by one, a click's 5 at once
+    let wxHalf = wx.caught.map(\.points) == wx0.map { $0 + 5 } && wx.companion.points == cw0 + 10 && wx.caught.allSatisfy { ($0.walked ?? 0) == 0 }
+    wx.walk(2 * (expTable[growthRate[16]][18] - wx.caught[0].points), at: Date())
+    check(wxHalf && wx.caught[0].level == 18 && wx.evolving?.first == wx.caught[0].uid && wx.caught[1].level > 5, "1.13: the walker's get 1 EXP per 2 steps (10 steps = 5), no friendship; 구구 reaching 18 queues its evolution", "\(wx.caught.map(\.points)) \(wx0)")
     // 1.12: what a fight brought plays right after it, then where it was going — the tower's lobby, the chain's next bush (its clock from then)
     let grw = Walker(state: { var s = Walk(); s.companion = Mon(dex: 147, level: 29, female: false); s.companion.known = [35, 43]; return s }()); grw.persist = false; grw.rng = Seeded(s: 5)
     grw.partyRefs = [grw.state.id(-1)!]; grw.towerRun = true
