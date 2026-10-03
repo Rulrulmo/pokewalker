@@ -14,10 +14,11 @@
 
 ## 다운로드 페이지
 
-`https://pokewalker.rulrulmo.work/`는 팀 배포 페이지다. 최신 버전의 Mac·Windows zip, 설치 방법, 패치 내역(`docs/patch-notes.txt`)을 보여 준다(`Sources/PokeCore/ServerPage.swift`).
+`https://pokewalker.rulrulmo.work/`는 팀 배포 페이지다. 게임 소개(실제 화면), 최신 버전의 Mac·Windows zip, 시작하기, 패치 내역(`docs/patch-notes.txt`, 최근 3개 + 이전 버전 접기)을 보여 준다(`Sources/PokeCore/ServerPage.swift`).
 - 팀 비밀번호 하나로 연다: `/etc/pokewalker/server.env`의 `DOWNLOAD_PASSWORD`. 바꾸면 `sudo systemctl restart pokewalker` 뒤 모두 다시 입력한다(쿠키는 비밀번호의 HMAC, 30일). 비어 있으면 페이지가 없다.
 - 앱 스프라이트가 닌텐도 저작물이라 공개하지 않는다. 검색 엔진도 막는다(`robots.txt`, `noindex`).
-- 페이지는 `RELEASE_DIR`(`/var/lib/pokewalker/release`)의 `release.json` · `patch-notes.txt` · zip 두 개를 그대로 보여 준다. 채우는 것은 `publish.sh`뿐이다.
+- 페이지는 `RELEASE_DIR`(`/var/lib/pokewalker/release`)의 `release.json` · `patch-notes.txt` · zip 두 개 · `shots/`를 그대로 보여 준다. 채우는 것은 `publish.sh`뿐이다.
+- `shots/`는 그 릴리스 커밋의 windows 워크플로가 그린 대표 화면(`PokeWalker-renders`, `Sources/Windows/WinRender.swift`)을 무손실 WebP로 바꾼 것이다(`python3-pil`, 22장 약 0.5 MB). 비밀번호 뒤에서만 `/shot/<이름>.webp`로 나간다. 렌더가 없으면 페이지는 그림 없이 나온다. 쓰는 화면은 `ServerPage.swift`의 `featureList`와 맨 위의 `home` · `battle_menu`다.
 
 **새 버전 올리기** (Info.plist 버전과 패치 내역을 커밋하고 push한 뒤) — 자동 업데이트가 받는 것과 같은, 서명된 릴리스다.
 - 릴리스 Mac에서 `./build.sh publish`: Mac dist와 그 커밋의 windows 워크플로 결과물을 zip으로 만들고, `manifest.json`(버전·빌드·커밋·zip마다 크기와 SHA-256)을 릴리스 키로 서명해(`manifest.sig`, `tools/release-key.swift`) GitHub release `v<버전>`에 네 파일을 올린다. 비밀 키는 그 Mac에만 있다(`~/.config/pokewalker/release-ed25519.key`, 백업 필수).
