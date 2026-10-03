@@ -293,3 +293,7 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     #expect(notesHTML(text, open: "1.1").contains("<details class=\"rel\" open><summary>1.1"))
     #expect(formFields("password=a+b%2Bc&x=") == ["password": "a b+c", "x": ""])
 }
+
+@Test func releaseSignatures() {
+    for (ok, name) in ed25519Checks() + signChecks() { #expect(ok, "\(name)") }                 // Model/Ed25519.swift on Linux: what publish.sh's check runs
+}
