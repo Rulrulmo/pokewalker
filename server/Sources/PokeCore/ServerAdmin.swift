@@ -48,10 +48,12 @@ func table(_ header: [String], _ rows: [[String]]) -> String {
     }.joined(separator: "\n")
 }
 
-/// A new trainer's save (08 §5): the app's Walk(), the one-time checks (1.7 audit, 1.10 ball refund) already done; the device's fields empty.
+/// A new trainer's save (08 §5): the app's Walk(), the one-time checks (1.7 audit, 1.10 ball refund) already done, the starter's issued uid;
+/// the device's fields empty.
 func sampleWalk() throws -> String {
     var w = Walk()
     w.audited = 2; w.ballsRefunded = true
+    w.companion.uid = firstUID; w.lastUID = firstUID                                             // the starter as 2.1's create issues it (10 §4.1)
     let enc = JSONEncoder(); enc.outputFormatting = .sortedKeys
     return String(decoding: try enc.encode(w), as: UTF8.self)
 }
