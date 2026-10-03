@@ -76,7 +76,7 @@ extension Canvas {
     func draw(on canvas: any Canvas) {
         hits = []; c = canvas; defer { c = nil }
         let p = content
-        if let d = p.dex { drawDex(d) } else if let g = p.grid { drawGrid(g) } else if let m = p.mon { drawMon(m) } else if let s = p.shop { drawShop(s) }
+        if let l = p.login { drawLogin(l) } else if let d = p.dex { drawDex(d) } else if let g = p.grid { drawGrid(g) } else if let m = p.mon { drawMon(m) } else if let s = p.shop { drawShop(s) }
         else if let m = p.menu { drawMenu(m) } else if let m = p.battle { drawBattle(m) } else if let i = p.items { drawItems(i) } else if let r = p.radar { drawRadar(r) }
         else if let k = p.card { tabs(["트레이너 카드", "최근 7일", "알"], k.page, 198, code: 5200) } else if let l = p.learn { drawLearn(l) }
         else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let l = p.relearn { drawRelearn(l) }
@@ -87,6 +87,15 @@ extension Canvas {
     func rule(_ yy: CGFloat, _ x0: CGFloat = 2, _ inset: CGFloat = 4) { c.fill(CGRect(x: x(X0 + x0), y: yy, width: x(X1 - X0 - inset), height: max(0.5, 0.5 * K)), Ink.line) }
     /// A rounded tile, ringed red when it's the pick (1.5 pt).
     func tile(_ rc: CGRect, _ radius: CGFloat, on: Bool, _ fill: Color? = nil) { let p = Path.rounded(rc, radius * K); c.fill(p, fill ?? (on ? Ink.redTint : Ink.tile)); if on { c.stroke(p, Ink.red, width: 1.5 * K) } }
+
+    // MARK: the save server holding the game (no ID yet, another PC has it, too old an app): what's up, its lines, the one button (5950)
+    func drawLogin(_ m: LoginModel) {
+        c.say(m.title, x(X0 + 2), y(206), font(14, .bold), Ink.ink, maxW: x(X1 - X0 - 4))
+        for (k, l) in m.lines.enumerated() { c.say(l, x(X0 + 2), y(232 + CGFloat(k) * 17), font(11, .medium), Ink.sub, maxW: x(X1 - X0 - 4)) }
+        guard let b = m.button else { return }
+        let rc = r(X0, 252 + CGFloat(m.lines.count) * 17, X1 - X0, 34)
+        c.fill(.rounded(rc, 12 * K), Ink.red); c.say(b, rc.midX, rc.midY, font(13, .bold), .white, 0.5); hits.append((rc, 5950))
+    }
 
     // MARK: battle: the message, then the choices (HP lives on the LCD)
     func drawBattle(_ m: SideModel) {

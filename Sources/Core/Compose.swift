@@ -142,7 +142,7 @@ extension Walker {
             fb.fill(0, 51, 96, 1, 2)
             fb.text(towerRun ? "● 다음 상대  ↩ 나가기" : "● 도전 \(Walk.towerFee)W", 0, 53, 3, center: true, small: true)
         case .card(let p):
-            header(["트레이너 카드", "최근 7일", "알"][p])
+            header(p == 0 ? cardTitle : ["트레이너 카드", "최근 7일", "알"][p])
             if p == 2 {
                 if let e = state.egg {
                     fb.cardEgg(close: e.left < 500, t: t)
@@ -323,6 +323,7 @@ extension Walker {
     }
     /// What the pane's page shows: the battle, 도감 (grid or entry), 상자 (grid or one Pokémon), 상점 or 메뉴 page; elsewhere the status sheet, unless it's folded.
     func paneContent(_ now: Date) -> PaneContent {
+        if let l = loginModel { return PaneContent(login: l) }
         if let b = sideModel(now) { return PaneContent(battle: b) }
         if let d = dexModel() { return PaneContent(dex: d) }
         if let g = gridModel(now) { return PaneContent(grid: g) }
@@ -385,6 +386,7 @@ extension Walker {
     /// 5400 / 5401 the tower's 도전 / 나가기, 5410 + i its party row i (who goes there instead), 5420 추천으로, then its picker: 5430 + k a row of the page,
     /// 5440 / 5441 the page before / after (round); 기술 바꾸기: 5500 + k a slot, then 5530 + k a move of the page, 5540 / 5541 its pages. One click does it, as ● would.
     func pageTap(_ code: Int) {
+        if code == 5950 { press(1); return }                                                     // the server's lock: its button (ID 입력 / 여기서 계속), as ●
         guard !frozen else { return }
         throughSay(); lastInput = Date(); host?.redraw(.all)
         switch (screen, code) {

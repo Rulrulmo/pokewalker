@@ -33,6 +33,7 @@ import Foundation
     lazy var unlockedAt = state.earned                                     // lifetime watts already announced
     var cloud: Cloud? = nil                                                // the save server (Core/Cloud.swift): set at launch (startCloud), never in the self-test's walkers
     var seen = Walk(), cloudAsked: Cloud.Phase? = nil, cloudAsking = false  // the state as the last tick left it (a change since = the player's); the question asked
+    var cloudShown: Cloud.Phase? = nil, idBoxShown = false                 // the server's state the LCD shows; the ID box opened by itself (once a launch)
 
     init(state: Walk) { self.state = state }
 

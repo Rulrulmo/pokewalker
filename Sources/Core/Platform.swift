@@ -31,6 +31,8 @@ protocol Settings {
     func beep()
     /// A yes / no question in front of everything (the one real confirmation: 중복 놓아주기); true = ok was chosen.
     func confirm(_ title: String, _ body: String, ok: String) -> Bool
+    /// A line of text asked for in front of everything (the trainer ID box: Korean input as the system has it, Return = 확인); nil = 취소.
+    func askText(title: String, message: String) -> String?
     func quit()
 }
 /// What a redraw covers: the LCD, the pane's page, the 메뉴 / 홈 key, the title row, or the whole card.

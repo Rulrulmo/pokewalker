@@ -38,6 +38,12 @@ extension Walker {
         m.append(.separator)
         m.append(MenuItem("알림", notifyKinds.enumerated().map { i, kn in MenuItem(kn.1, checked: notifyOn(kn.0), action: { self.toggleNotify(i) }) }
             + [.separator, MenuItem("테스트 알림 보내기", action: { self.testNotify() })]))
+        if let c = cloud {                                                                        // the save server (on: Core/Cloud.swift)
+            m.append(.separator)
+            m.append(MenuItem(cloudMenuTitle, enabled: false))
+            m.append(MenuItem("지금 저장", enabled: c.phase == .on, action: { self.cloud?.saveNow() }))
+            m.append(MenuItem("ID 바꾸기…", enabled: !cloudAsking, action: { self.askID(change: true) }))
+        }
         m.append(.separator)
         m.append(MenuItem("종료", key: "q", action: { self.host?.quit() }))
         return m

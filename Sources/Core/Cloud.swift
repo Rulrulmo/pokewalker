@@ -88,6 +88,18 @@ final class CloudInbox: @unchecked Sendable {
     func create() { if case .new = phase { ask(.create) } }
     /// After an action (a fight's end, a buy, …): up within 3 s, the actions of those 3 s in one save.
     func soon(_ now: Date) { if phase == .on, due == nil { due = now.addingTimeInterval(Cloud.gather) } }
+    /// 지금 저장: up at the next tick if anything changed, offline or not.
+    func saveNow() { if phase == .on { due = .distantPast; retryAt = .distantPast } }
+    /// 새 트레이너? / 가져올까요? answered no: back to the ID box (a trainer that doesn't exist isn't kept as this PC's ID).
+    func decline() {
+        switch phase {
+        case .new: seat.trainerID = nil; seat.session = nil; phase = .needsID
+        case .busy: phase = .needsID
+        default: break
+        }
+    }
+    /// The phases that hold the game: no ID yet, another PC has it, too old an app.
+    static func locks(_ p: Phase) -> Bool { p == .needsID || p == .replaced || p == .oldApp }
 
     /// The walker's tick: replies taken; the server's save taken once home allows (canTake); then what's due goes, if nothing is out.
     /// Non-nil: the server's save was taken (true = the companion levelled up walking ours on top).
@@ -178,7 +190,7 @@ final class CloudInbox: @unchecked Sendable {
         if j["exists"] as? Bool == false { phase = .new(seat.trainerID ?? ""); return }
         if j["busy"] as? Bool == true { phase = .busy(device: j["last_device"] as? String ?? "", at: j["updated_at"] as? Int ?? 0); return }
         guard let session = j["session"] as? String, let rev = j["rev"] as? Int else { asking = .login(force: resume, resume: resume); retryAt = now.addingTimeInterval(Cloud.period); return }
-        seat.session = session; phase = .on; nextSave = now
+        seat.session = session; phase = .on; nextSave = now; lastSaved = now                   // (in step with the server from here, but for what's changed)
         guard let text = j["walk"] as? String else { acked = nil; mustSave = true; return }   // made but never saved: ours goes up (base cloudRev ?? 0)
         guard let h = Cloud.walk(text) else {                                                // one this app can't read: don't write over it
             NSLog("pokewalker: cloud: the server's save doesn't decode"); phase = .login; asking = .login(force: resume, resume: resume); retryAt = now.addingTimeInterval(Cloud.period); return
@@ -245,9 +257,57 @@ extension Walker {
         if c.seat.legacyUploaded != true, let text = try? String(contentsOf: Store.preServer(file), encoding: .utf8) { c.legacy = text }
         c.start(); seen = state
     }
-    /// Another PC took the trainer (08 §2-1): no steps, no keys; ● is 여기서 계속.
-    var frozen: Bool { cloud?.phase == .replaced }
+    /// The server holds the game (08 §2): no ID yet, another PC took the trainer (§2-1), too old an app — no steps, no keys; ● is the lock's button.
+    var frozen: Bool { cloud.map { Cloud.locks($0.phase) } ?? false }
     func resumeCloud() { cloud?.resume(); screen = .home; host?.redraw(.all) }               // home: the server's save is taken there
+    /// ● (or the pane's button) while locked: ID 입력, 여기서 계속; nothing for too old an app.
+    func lockPress() { switch cloud?.phase { case .needsID?: askID(); case .replaced?: resumeCloud(); default: break } }
+    /// The ID box until an ID or 취소 (08 §2): log in with it, or (change, ID 바꾸기) switch to it. A non-ID asks again with the rule. false = 취소.
+    @discardableResult func askID(change: Bool = false) -> Bool {
+        guard let h = host, let c = cloud, !cloudAsking else { return false }
+        cloudAsking = true; defer { cloudAsking = false }
+        var note = "2–12자, 한글·영문·숫자·_ (대소문자는 같은 ID)"
+        while let raw = h.askText(title: change ? "ID 바꾸기" : "트레이너 ID를 입력해 주세요", message: note) {
+            if trainerID(raw) != nil { if change { switchID(raw) } else { c.login(raw) }; return true }
+            note = josa("'\(raw.trimmingCharacters(in: .whitespaces))'", "은", "는") + " ID로 쓸 수 없어요.\n2–12자, 한글·영문·숫자·_ 만 돼요."
+        }
+        return false
+    }
+    /// The LCD as the server's state changes: a lock's message (the pane has its button), home again once it lifts.
+    func showCloud(_ p: Cloud.Phase) {
+        let lines: [String]? = switch p {
+        case .needsID: ["로그인이", "필요해요", "●: ID 입력"]
+        case .replaced: ["다른 PC에서", "접속했어요", "●: 여기서 계속"]
+        case .oldApp: ["새 버전이 필요해요", "pokewalker.", "rulrulmo.work"]
+        default: nil
+        }
+        if let lines { towerRun = false; growthThen = nil; heldSteps = 0; screen = .say(lines, next: .home, since: .distantFuture) }   // (a fight going on is dropped)
+        else if cloudShown.map(Cloud.locks) == true { screen = .home }
+        refreshPane(Date(), force: true); host?.redraw(.all)
+    }
+    /// The pane while the server holds the game.
+    var loginModel: LoginModel? {
+        switch cloud?.phase {
+        case .needsID?: LoginModel(title: "로그인이 필요해요", lines: ["트레이너 ID로 서버의 세이브를 불러와요.", "2–12자, 한글·영문·숫자·_"], button: "ID 입력")
+        case .replaced?: LoginModel(title: "다른 PC에서 접속했어요", lines: ["그 PC가 하는 동안 여기선 걸음을 세지 않아요.", "여기서 하려면 아래를 눌러요."], button: "여기서 계속")
+        case .oldApp?: LoginModel(title: "새 버전이 필요해요", lines: ["서버가 이 버전(\(appVersion))을 받지 않아요.", "pokewalker.rulrulmo.work에서", "새 버전을 받아 주세요."], button: nil)
+        default: nil
+        }
+    }
+    /// The trainer card's first page heads with the trainer ID (08 §2), once there is one.
+    var cardTitle: String { cloud?.seat.trainerID ?? "트레이너 카드" }
+    /// The menu's info row: 트레이너: ID · n분 전 저장 (저장 안 됨 while offline).
+    var cloudMenuTitle: String {
+        guard let c = cloud else { return "" }
+        let when: String = switch c.phase {
+        case .on: c.backoff > 0 ? "저장 안 됨" : c.lastSaved.map { d in let m = Int(Date().timeIntervalSince(d) / 60); return m < 1 ? "방금 저장" : m < 60 ? "\(m)분 전 저장" : "\(m / 60)시간 전 저장" } ?? "저장 전"
+        case .needsID: "로그인이 필요해요"
+        case .replaced: "다른 PC에서 접속 중"
+        case .oldApp: "새 버전이 필요해요"
+        default: "서버에 연결하는 중"
+        }
+        return "트레이너: \(c.seat.trainerID ?? "-") · " + when
+    }
     /// Woken from sleep: what changed goes up (a stale reply brings the server's).
     func woke() { cloud?.soon(Date()) }
     /// ID 바꾸기 (step 3's box): what isn't up goes up first; another trainer's rev, total and hash don't carry over. false = not an ID.
@@ -261,22 +321,20 @@ extension Walker {
     func cloudTick(_ now: Date, acted: Bool) {
         guard let c = cloud else { return }
         if acted { c.soon(now) }
-        let was = c.phase, sent = state.sentHash, rev = state.cloudRev
+        let sent = state.sentHash, rev = state.cloudRev
         let home = { if case .home = screen { return true }; return false }()
         if let up = c.tick(&state, now, canTake: home && !towerRun && heldSteps == 0) {
             if up { levelled = true }
             rewarded = dexCount; unlockedAt = state.earned; lastSeason = state.season
             queueReadyEvolutions(); save()
         } else if state.sentHash != sent || state.cloudRev != rev { save() }                     // 08b §10 ②: the sent save's hash on disk before its reply
-        if c.phase != was {
-            if c.phase == .replaced { towerRun = false; growthThen = nil; screen = .say(["다른 PC에서", "접속했어요", "●: 여기서 계속"], next: .home, since: .distantFuture) }
-            host?.redraw(.all)
-        }
+        if c.phase != cloudShown { showCloud(c.phase); cloudShown = c.phase }
         seen = state
         cloudQuestion(c)
     }
     /// 새 트레이너? / 가져올까요? — once per answer the server gave (step 3 brings the ID box and the buttons). A tick may come during the question: not twice.
     func cloudQuestion(_ c: Cloud) {
+        if c.phase == .needsID, !idBoxShown, host != nil, !cloudAsking { idBoxShown = true; askID(); return }   // by itself once a launch; then ● / the pane's button
         guard let h = host, !cloudAsking, c.phase != cloudAsked else { return }
         let q: (title: String, body: String, ok: String)? = switch c.phase {
         case .new(let id): ("새 트레이너", josa("'\(id)'", "은", "는") + " 서버에 없는 ID예요. 이 ID로 새로 시작할까요?", "새로 시작")
@@ -287,7 +345,7 @@ extension Walker {
         cloudAsking = true; cloudAsked = c.phase
         let yes = h.confirm(q.title, q.body, ok: q.ok)
         cloudAsking = false
-        guard yes else { return }
+        guard yes else { c.decline(); return }
         if case .new = c.phase { c.create() } else if case .busy = c.phase { c.login(force: true) }
     }
     /// The title row's note while the server isn't plain sailing.
@@ -346,9 +404,10 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     }
 }
 
-/// A host for the self-test: a key counter the test moves, a scripted answer to confirm().
+/// A host for the self-test: a key counter the test moves, scripted answers to confirm() and the ID box (nil = 취소; none left = 취소).
 @MainActor final class TestHost: Host {
-    var keys: UInt32 = 0, answer = true, asked: [String] = []
+    var keys: UInt32 = 0, answer = true, asked: [String] = [], texts: [String?] = [], boxes: [String] = []
+    func askText(title: String, message: String) -> String? { boxes.append(message); return texts.isEmpty ? nil : texts.removeFirst() }
     func notify(_ title: String, _ body: String) {}
     func counter() -> UInt32 { keys }
     func boot() -> Double { 1 }
@@ -510,5 +569,36 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     let mc2 = Cloud(link: srv, dir: md, on: true), mw2 = Walker(state: Walk()); mw2.persist = false; mw2.startCloud(mc2, file: mf, bak: mb)
     c.append((!mc2.firstRun && fm.fileExists(atPath: mf.path) && mc2.legacy == nil && (try? String(contentsOf: Store.preServer(mf), encoding: .utf8)) == oldText,
               "cloud walker: only the first launch moves a save aside; the 옛 기록 isn't sent twice"))
+
+    // the UI (08 §2): the ID box, the locks, the menu, the card
+    let uh = TestHost(), uw = Walker(state: Walk()); uw.persist = false; uw.host = uh
+    let uc = Cloud(link: srv, dir: tmp.appendingPathComponent("u", isDirectory: true), on: true); uw.startCloud(uc)
+    uh.texts = [nil]; var ut = ticks(uw, t + 9000, 2)                                              // no ID: the box by itself, 취소
+    let saysLogin = { if case .say(let l, _, _) = uw.screen { return l.first == "로그인이" }; return false }()
+    uh.keys += 20; ut = ticks(uw, ut, 2); uw.press(4); uw.press(0)
+    let locked0 = uc.phase == .needsID && uh.boxes.count == 1 && saysLogin && uw.state.total == 0 && uw.pane.login?.button == "ID 입력" && { if case .say = uw.screen { return true }; return false }()
+    ut = ticks(uw, ut, 3); let once = uh.boxes.count == 1
+    uh.texts = ["민", " zz000005 "]; uw.pageTap(5950); ut = ticks(uw, ut, 3)                        // the pane's button: a one-letter ID asks again with the rule, then a good one
+    let reasked = uh.boxes.count == 3 && uh.boxes[2].contains("쓸 수 없어요") && uh.asked.last == "새 트레이너"
+    c.append((locked0 && once && reasked && uc.phase == .on && uc.seat.trainerID == "zz000005" && { if case .home = uw.screen { return true }; return false }() && uw.pane.login == nil,
+              "cloud UI: no ID → the box once by itself; 취소 → 로그인이 필요해요 on the LCD, ID 입력 on the pane, no steps, no keys; a non-ID asks again with the rule; then in"))
+    let plainWalker = Walker(state: Walk()), rows = uw.menu().map(\.title), plain = plainWalker.menu().map(\.title)
+    c.append((rows.contains { $0.hasPrefix("트레이너: zz000005 · ") } && rows.contains("지금 저장") && rows.contains("ID 바꾸기…") && !plain.contains { $0.hasPrefix("트레이너:") || $0 == "ID 바꾸기…" }
+              && uw.cardTitle == "zz000005" && plainWalker.cardTitle == "트레이너 카드",
+              "cloud UI: the right-click menu has 트레이너: ID · n분 전 저장, 지금 저장, ID 바꾸기… and the trainer card heads with the ID (only with the cloud)"))
+    uw.screen = .home; uw.state.walk(40, at: ut); ut = ticks(uw, ut, 4)
+    let upBefore = srv.rows["zz000005"]?.walk == text(uw.state.shared)
+    uw.state.watts += 7; n = sent(); uh.texts = ["zz000006"]; uw.askID(change: true)            // ID 바꾸기: ours goes up first, then the other trainer
+    let flushed = sent() == n + 1 && srv.rows["zz000005"]?.walk == text(uw.state.shared), cleared = uw.state.cloudRev == nil && uw.state.cloudTotal == nil && uw.state.sentHash == nil
+    uh.answer = false; ut = ticks(uw, ut, 3)                                                       // 새 트레이너? no → back to the box (by itself only once: not again)
+    c.append((upBefore && flushed && cleared && uc.phase == .needsID && uc.seat.trainerID == nil && uh.boxes.count == 4,
+              "cloud UI: ID 바꾸기 sends what isn't up, then forgets the old trainer's rev / total / hash; 새 트레이너? no → 로그인이 필요해요"))
+    uh.answer = true; uh.texts = ["zz000005"]; uw.press(1); ut = ticks(uw, ut, 3)                    // ● = ID 입력: back to the first, the server's save
+    c.append((uc.phase == .on && uc.seat.trainerID == "zz000005" && uw.state.cloudRev == srv.rows["zz000005"]?.rev && uw.state.watts == (Cloud.walk(srv.rows["zz000005"]?.walk ?? "")?.watts ?? -1),
+              "cloud UI: ● on 로그인이 필요해요 opens the box; the first trainer again: its save from the server"))
+    srv.old = "9.0"; uw.state.watts += 1; uw.cloud?.saveNow(); ut = ticks(uw, ut, 2); srv.old = nil
+    let oldSays = { if case .say(let l, _, _) = uw.screen { return l.joined().contains("rulrulmo.work") }; return false }()
+    c.append((uc.phase == .oldApp && uw.frozen && oldSays && uw.pane.login?.title == "새 버전이 필요해요" && uw.pane.login?.button == nil && uw.title().meta == "새 버전이 필요해요",
+              "cloud UI: 426 → 새 버전이 필요해요 on the LCD (the download page's address) and the pane; the game is held"))
     return c
 }

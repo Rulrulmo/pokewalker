@@ -280,7 +280,7 @@ extension Walker {
         }
     }
     func press(_ k: Int) {                                    // 0 left, 1 enter, 2 right, 3 back (↩), 4 메뉴 / 홈
-        if frozen { if k == 1 { resumeCloud() }; return }        // another PC has the trainer: ● = 여기서 계속, nothing else
+        if frozen { if k == 1 { lockPress() }; return }          // locked by the server (no ID, another PC has it, too old): ● is the lock's button, nothing else
         let now = Date(); lastInput = now; defer { settle(now); save(); host?.redraw(.all) }        // back home: what a fight brought goes on at once
         if k == 4 {                                           // one key both ways: home opens the menu (on the pane; the LCD stays home), anywhere else it goes home
             if let open = homeKey() { if !open { growthThen = nil }; screen = open ? .menu(0) : .home }   // home means home: what a fight brought still plays there, then it stays
