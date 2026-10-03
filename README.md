@@ -8,24 +8,36 @@ macOS 플로팅 포켓워커. 의존성 0, Swift 6 + AppKit, `swiftc`만 사용.
 open PokeWalker.app
 ```
 
-### 다른 Mac에 주기
+### 다른 사람에게 주기 (배포)
+
+팀 배포 페이지 **https://pokewalker.rulrulmo.work** (팀 비밀번호)에서 최신 Mac·Windows zip과 패치 내역을 받는다. 2.0부터는 앱이 스스로 업데이트한다(아래).
 
 ```sh
-./build.sh dist   # dist/PokeWalker.zip — Apple Silicon + Intel, macOS 13 이상
+./build.sh dist           # dist/PokeWalker.zip — Apple Silicon + Intel, macOS 13 이상 (이 Mac에서 쓸 때)
+./build.sh publish        # 릴리스: Mac zip + 그 커밋의 Windows 빌드 + 서명한 manifest를 GitHub release v<버전>에 (릴리스 Mac에서만, server/README.md)
 ```
 
-zip을 보내면 받는 사람은 압축을 풀고 `PokeWalker.app`을 응용 프로그램 폴더로 옮긴 뒤:
+Mac zip을 받은 사람은 압축을 풀고 `PokeWalker.app`을 **응용 프로그램 폴더**로 옮긴 뒤(다운로드 폴더에서 바로 실행하면 자동 업데이트가 안 됨):
 1. 처음 한 번은 **우클릭 → 열기 → 열기** (Apple 개발자 서명이 없어서 더블클릭하면 "확인되지 않은 개발자" 경고로 막힘).
    macOS 15 이상에서 우클릭 열기도 막히면: 한 번 실행 시도 → **시스템 설정 → 개인정보 보호 및 보안 → "그래도 열기"**.
    또는 터미널: `xattr -dr com.apple.quarantine /Applications/PokeWalker.app`
 2. 알림 허용 물어보면 허용.
 
-경고 없이 더블클릭으로 열리게 하려면 Apple Developer Program(연 $99)의 Developer ID 서명 + 공증(notarization)이 필요. 세이브는 사람마다 따로(`~/Library/Application Support/PokeWalker`).
+경고 없이 더블클릭으로 열리게 하려면 Apple Developer Program(연 $99)의 Developer ID 서명 + 공증(notarization)이 필요. 자동 업데이트는 앱이 직접 받으므로 이 경고가 다시 뜨지 않는다.
+
+## 서버 · 트레이너 ID · 자동 업데이트 (2.0)
+
+- **세이브는 서버에**(`server/`, 집 미니 PC). 처음 켜면 **트레이너 ID**(2~12자, 한글·영문·숫자·_, 대소문자 같음)를 묻고, 없는 ID면 새 트레이너로 시작할지 묻는다. 비밀번호는 없다(08 설계). 같은 ID로 Mac·Windows 어디서든 이어서 한다.
+- 저장: 2분마다 + 배틀·구매 같은 동작 직후(3초 모아서), 끌 때. 인터넷이 끊겨도 계속하고 다시 연결되면 올린다. 다른 PC가 같은 ID로 들어오면 먼저 PC는 멈추고 **●: 여기서 계속**.
+- 우클릭: 트레이너 ID · n분 전 저장 / 지금 저장 / ID 바꾸기…. 트레이너 카드 첫 쪽 제목이 ID.
+- 이 PC의 `state.json`은 서버 세이브의 캐시. 2.0을 처음 켜면 1.x 세이브는 `state.pre-server.json`으로 옮겨지고(게임은 다시 읽지 않음) 서버에 "옛 기록"으로 한 번 올라간다. 이 PC의 ID·세션은 같은 폴더의 `cloud.json`.
+- **자동 업데이트**: 켜고 30초 뒤, 그다음 6시간마다(서버가 "더 새 앱 필요"(426)라고 하면 바로) 새 버전을 확인해 조용히 받아 두고, **다음에 끄거나 켤 때** 바꿔 넣는다(로그아웃·종료 중엔 안 함). 릴리스 Mac의 Ed25519 키로 서명된 manifest와 zip의 SHA-256이 맞아야만 설치한다(`Sources/Model/Ed25519.swift`의 `releaseKey`, `Sources/Core/Update.swift`). 실패하면 원래 앱이 돌아오고 그 버전은 다시 시도하지 않는다. 저장소 안의 개발 빌드(`build.sh` 옆)는 업데이트하지 않는다.
+- 끄려면(1.x처럼, 서버·업데이트 없이): `defaults write dev.khmin.pokewalker cloud -bool false` (Windows: `settings.json`에 `"cloud": 0`).
 
 ## 윈도우 (Windows 10 / 11, x64)
 
-GitHub Actions(`.github/workflows/windows.yml`, `win-port` 브랜치에 push할 때)가 빌드·셀프테스트·렌더까지 하고 두 가지를 올림:
-- **`PokeWalker-windows-x64`** — 압축을 풀면 폴더 하나(`PokeWalker.exe` + Swift 런타임 DLL + `Resources/`). 폴더째 아무 데나 두고 `PokeWalker.exe` 실행. 설치·관리자 권한 필요 없음.
+GitHub Actions(`.github/workflows/windows.yml`, `gh workflow run windows.yml --ref main` 또는 `win-port` 브랜치 push)가 빌드·셀프테스트·렌더까지 하고 두 가지를 올림(`./build.sh publish`가 이 결과물로 Windows zip을 만든다):
+- **`PokeWalker-windows-x64`** — 압축을 풀면 폴더 하나(`PokeWalker.exe` + Swift 런타임 DLL + `Resources/`). 폴더째 쓰기 권한이 있는 곳(내 문서 등, Program Files는 자동 업데이트가 안 됨)에 두고 `PokeWalker.exe` 실행. 설치·관리자 권한 필요 없음.
 - **`PokeWalker-renders`** — 소프트웨어 캔버스로 그린 대표 화면 22장(PNG, Mac 골든과 같은 이름) — 윈도우에서 어떻게 보이는지 미리 확인용.
 
 처음 실행할 때 서명이 없어서 **SmartScreen**("Windows의 PC 보호")이 막음 → **추가 정보 → 실행**. (zip을 받은 뒤 파일 속성에서 "차단 해제"를 체크해도 됨.)
@@ -35,7 +47,7 @@ Mac과 다른 것:
 - **메뉴 막대 대신 알림 영역(트레이)** 의 몬스터볼 아이콘 — **클릭 = 보이기/숨기기**, 우클릭 = 메뉴, 마우스를 올리면 오늘 걸음·W. 알림은 트레이 풍선(윈도우 10/11에선 알림 센터 토스트)으로. 작업 표시줄 버튼은 없음(`PokeWalker.exe`를 다시 실행하면 숨긴 카드가 다시 나옴).
 - **앱을 꺼 둔 동안의 입력은 걸음으로 안 셈** — 윈도우엔 Mac의 시스템 입력 카운터가 없어서, 실행 중에만 키 누름(길게 눌러 반복되는 건 1번)·마우스 좌/우 클릭을 Raw Input으로 횟수만 셈(무엇을 눌렀는지는 안 봄, 권한 필요 없음). 로그인할 때 자동으로 켜 두려면 `Win+R` → `shell:startup` 폴더에 `PokeWalker.exe` 바로 가기를 넣기.
 - 글꼴은 **맑은 고딕**(한글은 크기의 0.9, 영문·숫자는 그대로; 보통·세미볼드는 레귤러를 굵혀서) — 줄 길이는 Mac과 거의 같지만 글자 모양은 다름. 카드 그림자는 없음.
-- 세이브: `%APPDATA%\PokeWalker\state.json`(+ `.bak`) — Mac의 `state.json`과 같은 형식이라 서로 복사해 옮길 수 있음(앱을 끈 뒤, `state.json.sig`도 함께). 설정(크기·기기·화면·알림·창 위치)은 같은 폴더의 `settings.json`.
+- 세이브는 서버에(같은 ID로 Mac과 이어짐). 이 PC의 캐시·`cloud.json`은 `%APPDATA%\PokeWalker\`, 설정(크기·기기·화면·알림·창 위치)은 같은 폴더의 `settings.json`.
 - `PokeWalker.exe --selftest > st.txt` 셀프테스트, `PokeWalker.exe --render <폴더>` 대표 화면 PNG(창 앱이라 콘솔에 바로 안 찍힘 — 파일로 받기).
 
 ## 메뉴 막대 · 알림
@@ -195,9 +207,9 @@ Mac엔 만보기가 없으니 **키 누름·마우스 클릭 1회 = 1걸음**. �
 | `Sources/App/main.swift` | 실행: `--selftest` 또는 메뉴 막대 앱 (윈도우: `windowsMain()`) |
 | `Sources/Data/` | **생성됨** (`tools/gen.py`) — `Data.swift` 493종 이름·타입·성장 곡선·4세대 종족값·레벨업 기술·상성·진화·35코스·알 풀 / `BattleData.swift` 기술 467개·특성·성격·노력치·몸무게·성비 |
 | `Resources/` | **생성됨** `hgss.bin`(493종 × 앞·뒤 80×80, 4bpp + 종별 일반/이로치 15색 팔레트) · `icons.bin`(4세대 박스 아이콘 32×32) · `frames.bin`(HGSS 알 + 4세대 트레이너 15명, Showdown) · `anims.bin`(493종 HGSS 등장 애니메이션, 종별 raw deflate) · `walk.bin`(493종 HGSS 필드 걷기 도트 좌·우·앞 × 4프레임, 일반·이로치) / `fonts/` Galmuri9·Galmuri7 (이민서, SIL OFL 1.1 — `fonts/OFL.md`) |
-| `Tests/SelfTest.swift` | `PokeWalker --selftest` (394 checks, 그림 파일마다 자체 검사 포함) — 규칙·배틀(데미지 공식은 Bulbapedia 예시 수치로, 특성·기술 20여 개는 한 기술씩) · 데이터 · 무작위 배틀 300판 + 실제 뷰를 버튼·패널 클릭·키로 조작하는 흐름 검사(세이브는 건드리지 않음). 빌드할 때마다 돌고, 실패하면 빌드 실패 |
+| `Tests/SelfTest.swift` | `PokeWalker --selftest` (약 460 checks, 그림 파일마다 자체 검사 포함) — 규칙·배틀(데미지 공식은 Bulbapedia 예시 수치로, 특성·기술 20여 개는 한 기술씩) · 데이터 · 무작위 배틀 300판 + 실제 뷰를 버튼·패널 클릭·키로 조작하는 흐름 검사(세이브는 건드리지 않음). 빌드할 때마다 돌고, 실패하면 빌드 실패 |
 | `tools/gen.py` | `Sources/Data/`·`Resources/`를 원본(위 "그림 · 데이터 출처")에서 재생성. Pillow 필요 |
 
-세이브: `~/Library/Application Support/PokeWalker/state.json` (+ `.bak`, 손상 시 `state.corrupt-*.json`). 창 위치·크기·색은 `defaults dev.khmin.pokewalker`.
+세이브: 서버(위 "서버 · 트레이너 ID"). 이 PC의 캐시는 `~/Library/Application Support/PokeWalker/state.json` (+ `.bak`, 불러오지 않은 파일은 `state.corrupt-*` / `state.rejected-*`로 남김, 1.x 세이브는 `state.pre-server.json`, ID·세션은 `cloud.json`, 받아 둔 업데이트는 `update/`). 창 위치·크기·색은 `defaults dev.khmin.pokewalker`.
 
 코스 한국어 이름은 번역(공식 한국판 명칭 아님). 스프라이트·데이터 저작권은 Nintendo / Game Freak / The Pokémon Company — 개인 소장용, 저장소는 비공개로.

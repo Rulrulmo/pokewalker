@@ -4,7 +4,7 @@ import FoundationNetworking                                                     
 #endif
 // The save server's client (docs/plans/08 §4, 08b §4 / §10): login, create, save and legacy, one request at a time. Replies land in a locked inbox
 // from URLSession's queue; tick (the walker's 10 Hz, on the main thread) takes them. No Task / MainActor hops: they may not run on Windows.
-// Off unless the `cloud` setting is on (2.0 flips it), and always with persist == false: then nothing goes out and the app is 1.x.
+// On from 2.0 (the `cloud` setting, default on; off = the app as 1.x was), never with persist == false (the self-test, renders): then nothing goes out.
 // The walker's hooks, the launch and the UI: P2 step 2b.
 
 /// The wire: POST json to path, or GET it (an update's zip: Core/Update.swift); done(status, body) on any thread. status 0 = no answer (network error, timeout).
@@ -77,7 +77,7 @@ final class CloudInbox: @unchecked Sendable {
         if seat.device == nil { seat.device = hex((0..<16).map { _ in UInt8.random(in: .min ... .max) }); writeSeat() }   // (no didSet inside init)
     }
     /// The app's: on with the `cloud` setting, never with persist == false (the self-test, renders).
-    static func app(persist: Bool) -> Cloud { Cloud(link: HTTPLink(), dir: Store.dir, on: persist && settings.bool("cloud", false)) }
+    static func app(persist: Bool) -> Cloud { Cloud(link: HTTPLink(), dir: Store.dir, on: persist && settings.bool("cloud", true)) }
 
     // MARK: what the walker and its UI call
     /// Launch: log in with this PC's ID, or ask for one.

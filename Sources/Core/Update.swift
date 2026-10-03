@@ -198,7 +198,7 @@ final class UpdateInbox: @unchecked Sendable {
     }
     /// The app's: never with persist == false (the self-test, renders), a dev build, an app it can't replace, or (until 2.0) the `cloud` setting off.
     static func app(persist: Bool) -> Updater? {
-        guard persist, settings.bool("cloud", false), let a = Update.appURL, Update.allowed(a) else { return nil }
+        guard persist, settings.bool("cloud", true), let a = Update.appURL, Update.allowed(a) else { return nil }
         return Updater(link: HTTPLink(), dir: Update.dir, app: a)
     }
     func tick(_ now: Date) {
