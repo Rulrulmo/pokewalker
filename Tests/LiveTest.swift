@@ -2,7 +2,8 @@ import Foundation
 // `PokeWalker --live-test <id> <pin>` (a dev build only: main.swift): the app's own logic — a Walker and its Cloud — against the real save server,
 // headless and in real time, the ID and PIN boxes answered by a TestHost. What the self-test does with FakeCloud, here with HTTPLink: a new ID
 // (or a login with its PIN), steps for W, the server's radar (a catch, a chain if it comes, a KO, a flight, a miss), and when the trainer has them
-// (an admin's `pokeserver set`) an egg's hatch, a legend bought, a 껍질몬. Everything in a temp folder: the save and the dev data are never touched.
+// (an admin's `pokeserver set`) an egg's hatch, a legend bought, a 껍질몬; then 10 §2's refusals (the server refuses for zz test IDs: a save and a
+// radar carrying W from nowhere). Everything in a temp folder: the save and the dev data are never touched.
 
 @MainActor func liveTest(_ id: String, _ pin: String) -> Bool {
     var failed = 0
@@ -107,6 +108,33 @@ import Foundation
     w.screen = .home; w0 = w.state.watts
     let missed = radar(hit: false); run(10, until: settled)
     check(missed == nil && w.radarMon == nil && w.state.watts == w0 - 10, "live radar: a wrong bush → missed, reported; its 10 W spent")
+
+    // 10 §2's reject mode (the server refuses for zz test IDs, CHECK_REJECT_TESTS): W from nowhere is refused; the server's save comes back
+    func says(_ l: [String]) -> Bool { if case .say(let s, _, _) = w.screen { return s == l }; return false }
+    toHome(); c.saveNow(); run(10) { c.inFlight == nil && c.due == nil }
+    let w1 = w.state.watts, rev1 = w.state.cloudRev
+    w.state.watts = min(9999, w1 + 5000); c.saveNow(); w.screen = .home
+    run(15) { c.refusals > 0 && c.head == nil }
+    if c.refusals == 0 {
+        check(false, "live refused: the server took W from nowhere (\(w.state.watts) W) — not in reject mode for \(id)?")
+        w.state.watts = w1
+    } else {
+        check(w.state.watts == w1 && w.state.cloudRev == rev1 && says(Walker.refusedLines), "live refused: W from nowhere → 422; the server's save (rev \(rev1 ?? 0), \(w1) W) taken as it is, said on the LCD")
+        toHome(); w.state.watts = min(9999, w1 + 5000); c.soon(Date()); let t2 = Date()
+        run(15) { c.refusals == 2 && c.head == nil }
+        let hold = c.retryAt.timeIntervalSince(t2)
+        check(c.refusals == 2 && w.state.watts == w1 && hold > 110 && hold < 130, "live refused: again → the server's save again; nothing goes for \(Int(hold)) s")
+        toHome(); let saved = c.lastSaved
+        run(5) { false }; h.keys &+= 40; run(5) { false }                                       // honest steps meanwhile
+        let quiet = c.lastSaved == saved
+        run(140) { c.refusals == 0 }
+        check(quiet && c.refusals == 0 && Date() >= c.retryAt && c.lastSaved != saved, "live refused: after the hold the next (honest) save is taken: 저장 거절됨 cleared")
+        toHome(); w.state.watts = min(9999, w.state.watts + 5000); w.radarMon = nil
+        w.screen = .menu(menuAt("포켓 레이더")); w.press(1); run(20) { w.mintWaiting == nil }
+        let radarNo = says(Walker.mintRefusedLines) && w.radarMon == nil
+        let w3 = c.head?.walk.watts; w.screen = .home; run(10) { c.head == nil }
+        check(radarNo && w3 != nil && w.state.watts == w3 && says(Walker.refusedLines), "live refused: a radar carrying W from nowhere → no find, no fee; home, the server's save (\(w3 ?? -1) W)")
+    }
 
     w.screen = .home; c.soon(Date()); run(10) { c.inFlight == nil && c.due == nil }; c.flush(&w.state)
     print("box: " + w.state.box.map { "\(monNames[$0.dex]) #\($0.uid ?? 0)" }.joined(separator: ", ") + " · \(w.state.watts) W · rev \(w.state.cloudRev ?? 0)")
