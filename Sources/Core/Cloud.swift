@@ -175,7 +175,7 @@ final class CloudInbox: @unchecked Sendable {
             var b: [String: Any] = ["id": id, "device": device, "device_name": deviceName, "app": appVersion, "force": force]
             if let t = seat.trust { b["trust"] = t }; if let p = pendingPIN { b["pin"] = p }                 // this PC's trust, else the PIN just typed
             post(a, "v1/login", b)
-        case .create: post(a, "v1/create", ["id": id, "device": device, "device_name": deviceName, "pin": pendingPIN ?? ""])
+        case .create: post(a, "v1/create", ["id": id, "device": device, "device_name": deviceName, "app": appVersion, "pin": pendingPIN ?? ""])   // app: the server asks 2.1 on for the PIN, and issues the starter
         case .setPin: post(a, "v1/pin", ["id": id, "session": seat.session ?? "", "pin": pendingPIN ?? ""])
         case .mint: break
         case .legacy: post(a, "v1/legacy", ["id": id, "device": device, "walk": legacy ?? ""])
@@ -577,9 +577,10 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         let token = String(format: "t%031x", clock), pin = j["pin"] as? String ?? ""
         guard var r = rows[id.key] else {
             if path == "v1/create" {
-                guard !pins || Cloud.validPIN(pin) else { return (400, ["error": "bad_pin"]) }
+                let asks = pins && (j["app"] as? String).flatMap { verCmp($0, "2.1") }.map { $0 >= 0 } == true   // as the server: 2.1 on (the request's app) asks for the PIN and issues the starter
+                guard !asks || Cloud.validPIN(pin) else { return (400, ["error": "bad_pin"]) }
                 rows[id.key] = Row(name: id.name, session: session, device: device, at: clock, pin: pins ? pin : nil, trusts: pins ? [device: token] : [:])
-                return (200, pins ? ["rev": 0, "session": session, "trust": token, "starter": 1_000_000] : ["rev": 0, "session": session])   // (pins: as a 2.1 app's create)
+                return (200, asks ? ["rev": 0, "session": session, "trust": token, "starter": 1_000_000] : ["rev": 0, "session": session])
             }
             return path == "v1/login" ? (200, ["exists": false]) : (404, ["error": "no_trainer"])
         }
