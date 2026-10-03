@@ -60,6 +60,7 @@ extension Walker {
         guard !frozen, waiting == nil else { return }
         if case .tower(_?) = screen { towerStep(d); return }
         if case .course(let i) = screen { lastInput = Date(); host?.redraw(.all); screen = .course(max(0, min(courses.count - 1, i + d))); return }
+        if case .items(let s) = screen { lastInput = Date(); host?.redraw(.all); screen = .items(max(0, min(state.inventory.count - 1, s + d))); return }   // 도구: a row (the wheel, ↑ ↓)
         if case .train(let k) = screen { lastInput = Date(); host?.redraw(.all); screen = .train(max(0, min(5, k + d))); return }
         if case .relearn(let r, let s, let at) = screen, let m = state.mon(r) {                 // 기술 바꾸기: its slots, or the moves for one
             lastInput = Date(); host?.redraw(.all)
@@ -113,13 +114,15 @@ extension Walker {
         act(e.way == .trade ? .mon(op: .trade) : .use(item: e.item ?? "", stat: nil), back: back, now) { _, _ in .home }
     }
     var seenList: [Int] { Array(Set((state.seen ?? []) + (state.owned ?? []))).sorted() }
+    /// What walks on course k (the radar's, its guests, its legends): the 도감's 이 코스 tab, and 코스's 잡음 n/m.
+    func courseSpecies(_ k: Int) -> [Int] { let c = courses[k]; return Set(c.slots.map(\.dex) + c.extra.map(\.dex) + c.guests + c.legends).sorted() }
     /// The 도감 grid's list for a tab: 전체 (1-493) / 잡음 / 못 잡음 (seen, not caught) / 이 코스 (what walks here, legends too).
     func dexList(_ f: Int) -> [Int] {
         let owned = Set(state.owned ?? []), c = state.here
         switch f {
         case 1: return owned.sorted()
         case 2: return seenList.filter { !owned.contains($0) }
-        case 3: return Set(c.slots.map(\.dex) + c.extra.map(\.dex) + c.guests + c.legends).sorted()
+        case 3: return courseSpecies(state.course)
         default: return Array(1...493)
         }
     }
@@ -379,11 +382,39 @@ extension Walker {
         host?.redraw(.all); return true
     }
     /// 함께: that one walks with us (the server swaps it in); a line on the LCD, or (a sticker's tap) just its ♥.
-    func pairWith(_ uid: Int, back: Screen, _ now: Date, quietly: Bool = false) {
+    func pairWith(_ uid: Int, back: Screen, _ now: Date, quietly: Bool = false, next: Screen = .home) {
         act(.mon(op: .pair(uid: uid)), back: back, now) { [weak self] _, now in
             guard let self else { return nil }
             if quietly { emote = (1, now.addingTimeInterval(2)); animOn = ("home", state.companion.dex, now); return back }
-            return .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: .home, since: now)
+            return .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: next, since: now)
+        }
+    }
+    // MARK: 포켓몬's grid: a Pokémon dragged between the walker's row and the box (the platform's mouse: press, move, release)
+    /// A press on `code` can drag: one of the walker's or the box's on the grid (the companion stays: it moves by 함께).
+    func dragsFrom(_ code: Int) -> Bool {
+        guard case .box(_, nil, false, false) = screen, waiting == nil, !frozen else { return false }
+        if (4501...4503).contains(code) { return state.mon(-1 - (code - 4500)) != nil }
+        return code >= 10000 && boxOrder.indices.contains(code - 10000)
+    }
+    /// The one a press on `code` picks: its ref.
+    func dragRef(_ code: Int) -> Int? { code >= 10000 ? boxOrder[safe: code - 10000] : (4500...4503).contains(code) ? -1 - (code - 4500) : nil }
+    /// Whether a drag from `from` does something dropped on `to`: the companion takes the walker's or the box's; the walker's row takes the box's;
+    /// the box takes the walker's.
+    func canDrop(_ from: Int, _ to: Int) -> Bool {
+        guard let r = dragRef(from) else { return false }
+        switch to { case 4500: return r != -1; case 4501...4503: return r >= 0 && state.caught.count < 3; case 4520: return r <= -2; default: return false }   // (the walker holds 3)
+    }
+    /// Dropped on `to` (a page's drop; nil = nowhere): on the companion = 함께; a box one on the walker's row = 워커로; a walker's one on
+    /// the box = 상자로 — the same acts as the buttons, their lines; anything else: back where it was.
+    func gridDrop(_ from: Int, _ to: Int?) {
+        drag = nil; host?.redraw(.all)
+        guard let to, canDrop(from, to), let r = dragRef(from), let m = state.mon(r), let u = state.id(r) else { return }
+        let now = Date(), grid = screen, name = monNames[m.dex]
+        if to == 4500 { pairWith(u, back: grid, now, next: .box(-1, act: nil, confirm: false)); return }   // (the grid again, the new companion picked)
+        if (4501...4503).contains(to) {
+            act(.mon(op: .fetch(uid: u)), back: grid, now) { [weak self] _, now in .say([josa(name, "을", "를"), "워커로 데려왔다"], next: .box(-1 - (self?.state.caught.count ?? 1), act: nil, confirm: false), since: now) }
+        } else {
+            act(.mon(op: .store(uid: u)), back: grid, now) { [weak self] _, now in .say([josa(name, "을", "를"), "상자로 보냈다"], next: .box((self?.state.box.count ?? 1) - 1, act: nil, confirm: false), since: now) }
         }
     }
     /// The walker's stickers on home, in card points: where the hand shows over the LCD.
@@ -434,7 +465,7 @@ extension Walker {
             return .say(["대단한 특훈!", josa(name, "의", "의") + " " + what, "최고가 되었다! (\(state.companion.perfectIVs)V)"], next: stat == nil ? back : .items(left ?? 0), since: now)
         }
     }
-    func sellAll() { act(.sellAll, back: .home) { o, now in .say(["전부 팔았다", "+\(o.watts ?? 0)W"], next: .home, since: now) } }
+    func sellAll(back: Screen = .home) { act(.sellAll, back: back) { o, now in .say(["전부 팔았다", "+\(o.watts ?? 0)W"], next: back, since: now) } }
     func useStone(_ i: Int) { let s = state.stoneEvolutions(Date()); guard s.indices.contains(i) else { return }; evolveNow(s[i], back: .home) }
     /// 중복 놓아주기, once the platform has asked: the box's spare ones of that species go.
     func releaseDupes(_ dex: Int) {

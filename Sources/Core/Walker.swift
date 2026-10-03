@@ -43,6 +43,7 @@ import Foundation
     var waiting: Waiting? = nil
     var news: [News] = []                                                  // the server's, shown at home one at a time (settle)
     var fight: Battle? = nil, fightEnd: BattleEnd? = nil                   // the fight as the server last sent it; its end, once its beats have played
+    var drag: (from: Int, at: CGPoint)? = nil                              // 포켓몬's grid: a Pokémon dragged (the page's code it began on, the pointer in page points)
     var chainNext: Int? = nil                                              // a chain holds (its length): its next bush is asked for once home's news are shown
 
     init(state: Walk) { self.state = state }
@@ -106,6 +107,7 @@ import Foundation
         if case .shop(_, _, let q) = screen, let d = [Key.up: -1, .down: 1][k] { shopStep(q == nil ? d : -10 * d); return true }
         if case .tower(_?) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -TowerModel.perPage, .pageDown: TowerModel.perPage][k] { towerStep(d); return true }   // the tower's picker: ↑ ↓ a row, page up / down a page
         switch screen { case .course, .train, .relearn: if let d = [Key.up: -1, .down: 1, .pageUp: -CourseModel.perPage, .pageDown: CourseModel.perPage][k] { listRow(d); return true }; default: break }   // the lists: the same
+        if case .items = screen, let d = [Key.up: -1, .down: 1, .pageUp: -6, .pageDown: 6][k] { listRow(d); return true }   // 도구: six rows in view
         switch screen { case .dex(_, _, false), .box(_, .none, _, false): if let d = [Key.up: -6, .down: 6, .pageUp: -30, .pageDown: 30][k] { gridStep(d, ends: abs(d) == 30); return true }; default: break }   // the grids: ↑ ↓ a row, page up / down a page
         if k == .tab {
             switch screen {

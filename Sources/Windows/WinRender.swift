@@ -50,6 +50,9 @@ import Foundation
     take("box_grid_party") { v in v.screen = .box(-1, act: nil, confirm: false) }
     take("page_box") { v in still(v, "box 0", 133); v.screen = .box(0, act: nil, confirm: false, detail: true) }
     take("items") { v in v.screen = .items(2) }
+    take("items_scrolled") { v in v.screen = .items(7) }                                         // 3.1: the header's 팔 것 모두 팔기, a row further down
+    take("course_list") { v in v.state.earned = 100_000; v.state.owned = Array(1...120); v.screen = .course(5) }   // 3.1: 잡음 n/m on the open ones
+    take("grid_drag") { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(T, force: true); v.drag = (10001, CGPoint(x: 150 * K, y: 30 * K)) }   // 3.1: one of the box carried onto the walker's row
     take("dex_grid") { v in v.screen = .dex(25, filter: 0, detail: false) }
     take("dex_entry") { v in still(v, "dex", 25); v.screen = .dex(25, filter: 0, detail: true) }
     take("shop_list") { v in v.screen = .shop(bp: false, sel: 3, qty: nil) }

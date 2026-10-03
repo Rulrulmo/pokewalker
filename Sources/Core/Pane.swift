@@ -94,6 +94,7 @@ struct TrainModel: Equatable {
 struct ItemsModel: Equatable {
     struct Row: Equatable { var name: String; var count, onWalker: Int }
     var rows: [Row]; var sel: Int; var walker, bag: Int; var action: String?; var hint: String
+    var sellAll: Int? = nil                                            // W for everything sellable at once (nil: nothing to sell)
 }
 /// The save server holding the game: what's up, a line or two, and the one button (ID 입력 / 여기서 계속; nil = none).
 struct LoginModel: Equatable { var title: String; var lines: [String]; var button: String? }

@@ -1,4 +1,7 @@
 import Foundation
+#if os(macOS)
+import AppKit
+#endif
 // The self-test's walkers on the fake server (Core/Cloud.swift's FakeCloud, the shared engine behind it): 3.0's walker changes nothing by
 // itself, so a test gives it a trainer there, logged in, and lets its acts come back (drain).
 
@@ -113,6 +116,47 @@ import Foundation
     let lockedOut = pv.frozen && !pv.inBattle && pv.fight == nil
     pv.press(1); drain(pv)
     check(lockedOut && !pv.frozen && !pv.inBattle && ps.rows[pk]?.play.battle == nil && isHome(pv), "3.0 session: another PC mid-fight → locked, the fight dropped; 여기서 계속: a new session, nothing going on")
+
+    // 포켓몬's grid: a Pokémon dragged between the walker's row and the box — what a press carries, where it lands, the act it makes
+    let dv = online({ var s = Walk(); s.caught = [Mon(dex: 16, level: 5, female: false)]; s.box = [Mon(dex: 19, level: 7, female: false), Mon(dex: 41, level: 9, female: false)]; return s }())
+    dv.screen = .box(-1, act: nil, confirm: false)
+    let carries = [4500, 4501, 4502, 10000, 10002].map(dv.dragsFrom), lands = [(10000, 4501), (10000, 4520), (4501, 4520), (4501, 4502), (4501, 4500), (10000, 4500)].map { dv.canDrop($0.0, $0.1) }
+    #if os(macOS)
+    let sideV = SideView(); sideV.walker = dv; sideV.frame = NSRect(x: 0, y: 0, width: Layout.w * K, height: 700); dv.refreshPane(Date(), force: true)
+    if let rep = sideV.bitmapImageRepForCachingDisplay(in: sideV.bounds) { sideV.cacheDisplay(in: sideV.bounds, to: rep) }
+    let dropCodes = sideV.art.drops.map(\.1)
+    #else
+    let dropCodes = [4500, 4501, 4502, 4503, 4520]
+    #endif
+    let toWalker = dv.state.box[dv.boxOrder[0]].dex, acts0 = server(dv).0.acts.count
+    dv.gridDrop(10000, nil); let nowhere = server(dv).0.acts.count == acts0 && dv.drag == nil
+    dv.gridDrop(10000, 4502); drain(dv); let fetched = dv.state.caught.contains { $0.dex == toWalker } && says(dv).last == "워커로 데려왔다"
+    dv.screen = .box(-1, act: nil, confirm: false); let k16 = dv.state.caught.firstIndex { $0.dex == 16 }!
+    dv.gridDrop(4501 + k16, 4520); drain(dv); let stored = dv.state.box.contains { $0.dex == 16 } && !dv.state.caught.contains { $0.dex == 16 } && says(dv).last == "상자로 보냈다"
+    dv.screen = .box(-1, act: nil, confirm: false); let j41 = dv.boxOrder.firstIndex { dv.state.box[$0].dex == 41 }!
+    dv.gridDrop(10000 + j41, 4500); drain(dv); let paired = dv.state.companion.dex == 41 && says(dv).last == "함께 걷는다!" && { if case .say(_, .box(-1, nil, false, false), _) = dv.screen { return true }; return false }()
+    check(carries == [false, true, false, true, false] && lands == [true, false, true, false, true, true] && dropCodes == [4500, 4501, 4502, 4503, 4520] && nowhere && fetched && stored && paired,
+          "포켓몬 drag: the walker's and the box's can be carried (not the companion); dropped on the walker's row = 워커로, on the box = 상자로, on the companion = 함께; nowhere = nothing",
+          "\(carries) \(lands) \(dropCodes) \(nowhere) \(fetched) \(stored) \(paired)")
+    serve(dv) { $0.caught = [Mon(dex: 16, level: 5, female: false), Mon(dex: 19, level: 5, female: false), Mon(dex: 21, level: 5, female: false)] }; dv.screen = .box(-1, act: nil, confirm: false)
+    check(!dv.canDrop(10000, 4501) && dv.canDrop(4501, 4520), "… the walker full (3): the box's can't land on its row")
+
+    // 도구: the wheel and ↑ ↓ move the row (as the shop's); 팔 수 있는 것 전부 팔기 from its header; 코스: 잡음 n/m on the open ones
+    let iv = online({ var s = Walk(); s.bag = ["상처약", "금구슬", "진주", "이상한사탕", "타우린", "해독제", "큰진주"]; s.owned = [16, 25]; return s }())
+    iv.screen = .items(0); iv.listRow(1); let wheel = { if case .items(1) = iv.screen { return true }; return false }()
+    _ = iv.key(.down); _ = iv.key(.down); let down2 = { if case .items(3) = iv.screen { return true }; return false }()
+    _ = iv.key(.pageDown); let paged = { if case .items(6) = iv.screen { return true }; return false }(); _ = iv.key(.up)
+    let ups = { if case .items(5) = iv.screen { return true }; return false }(); iv.listRow(-99); let top = { if case .items(0) = iv.screen { return true }; return false }()
+    let sellW = iv.paneContent(Date()).items?.sellAll ?? 0, iw0 = iv.state.watts
+    iv.pageTap(5711); drain(iv)
+    let soldAll = iv.state.watts == iw0 + sellW && ["금구슬", "진주", "큰진주"].allSatisfy { iv.state.count($0) == 0 } && iv.state.count("상처약") == 1 && says(iv) == ["전부 팔았다", "+\(sellW)W"]
+        && { if case .say(_, .items(0), _) = iv.screen { return true }; return false }() && iv.paneContent(Date()).items?.sellAll == nil
+    check(wheel && down2 && paged && ups && top && sellW > 0 && soldAll, "도구: the wheel and ↑ ↓ / page keys move the row; 팔 수 있는 것 전부 팔기 sells only those (W as shown), back to the list; none left: no button",
+          "\(wheel) \(down2) \(paged) \(ups) \(top) \(sellW) \(soldAll) \(iv.screen)")
+    iv.screen = .course(0); let rows = iv.paneContent(Date()).course?.rows ?? []
+    let first = iv.courseSpecies(0), mine = first.filter { [16, 25].contains($0) }.count
+    check(rows.first?.note == "잡음 \(mine)/\(first.count)" && rows.filter { !$0.open }.allSatisfy { !$0.note.hasPrefix("잡음") } && rows.contains { !$0.open },
+          "코스: an open course says 잡음 n/m (of what walks there, as the 도감's 이 코스 tab); a locked one still says what opens it", "\(rows.map(\.note))")
 
     // home's news: an egg found, its hatch, a new season
     let nv = online(Walk())

@@ -36,6 +36,7 @@ func put<T>(_ s: String, _ field: inout T) {
     var fast = false                                                       // the 30 fps frame timer is on
     var scrolled = 0                                                       // wheel delta not yet a row
     var downOn = 0, clicks = (time: 0, x: 0, y: 0, n: 0)                   // the page a click began on; the last click (for a double's count)
+    var pressed: (code: Int, at: CGPoint)? = nil                           // a press on a Pokémon of 포켓몬's grid (page points): a click at its release, or a drag once it moves
     var steps: UInt32 = 0, keysDown: [UInt16: UInt64] = [:]                // key downs + clicks since launch (Raw Input); keys held: their last make (ms), repeats aren't steps
     let started = Date().timeIntervalSince1970                             // "boot": each launch re-baselines the counter
     var memDC: HDC? = CreateCompatibleDC(nil), dib: HBITMAP? = nil, bits: UnsafeMutableRawPointer? = nil, dibSize = (w: 0, h: 0)
@@ -273,14 +274,30 @@ func put<T>(_ s: String, _ field: inout T) {
     func pageDown(_ p: CGPoint, count n: Int) {
         let c = walker.pane
         guard let k = page.hits.first(where: { $0.0.contains(p) })?.1 else { drag(); return }    // not on a button: drag the whole card
+        if n == 1, walker.dragsFrom(k) { downOn = pageKind; pressed = (k, p); _ = SetCapture(hwnd); return }   // 포켓몬's grid: decided at the release (a click) or as it moves (a drag)
         if n == 1 { downOn = pageKind } else if c.battle != nil || c.shop?.ask != nil || c.mon != nil || c.tower != nil && !(5440...5441).contains(k) || c.relearn != nil && !(5540...5541).contains(k) || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened: ignored
         if k >= 5000, k < 10000 { walker.pageTap(k) } else if k >= 4000 { walker.gridTap(k) } else if k >= 3000 { walker.menuTap(k - 3000) } else if k >= 2000 { walker.shopTap(k) } else { walker.sidePick(k) }
     }
     func drag() { _ = ReleaseCapture(); _ = SendMessageW(hwnd, UINT(WM_NCLBUTTONDOWN), WPARAM(HTCAPTION), 0) }
+    /// The pointer over the page while a grid press is held: past a hand's wobble it carries the Pokémon (the page draws it there).
+    func pressMoved(_ q: CGPoint) {
+        guard let pr = pressed else { return }
+        let p = CGPoint(x: q.x, y: q.y - pageTop)
+        if walker.drag == nil, hypot(p.x - pr.at.x, p.y - pr.at.y) < 4 { return }
+        walker.drag = (pr.code, p); redraw(.page)
+    }
+    /// The button up: a carried Pokémon lands where the page says (or goes back), else it was a click on it.
+    func pressUp(_ q: CGPoint?) {
+        guard let pr = pressed else { return }
+        pressed = nil; _ = ReleaseCapture()
+        if walker.drag != nil { walker.gridDrop(pr.code, q.flatMap { q in page.drops.first { $0.0.contains(CGPoint(x: q.x, y: q.y - pageTop)) }?.1 }) }
+        else if q != nil { walker.gridTap(pr.code) }
+        redraw(.all)
+    }
     /// The wheel over the page: the shop list a row a notch, a grid a page.
     func wheel(_ delta: Int, at p: CGPoint) {
         let grid = walker.pane.grid != nil
-        guard p.y >= pageTop, walker.pane.shop != nil || walker.pane.tower?.pick != nil || walker.pane.course != nil || walker.pane.train != nil || walker.pane.relearn != nil || grid else { return }
+        guard p.y >= pageTop, walker.pane.shop != nil || walker.pane.tower?.pick != nil || walker.pane.course != nil || walker.pane.train != nil || walker.pane.relearn != nil || walker.pane.items != nil || grid else { return }
         scrolled += delta
         while abs(scrolled) >= 120 { let d = scrolled > 0 ? -1 : 1; if grid { walker.gridStep(d * GridModel.perPage) } else { walker.listRow(d) }; scrolled += d * 120 }
     }
@@ -328,6 +345,9 @@ func put<T>(_ s: String, _ field: inout T) {
             clicks = (t, x, y, same ? clicks.n + 1 : 1)
             mouseDown(client(lp), count: clicks.n)
             return 0
+        case UINT(WM_MOUSEMOVE) where pressed != nil: pressMoved(client(lp)); return 0
+        case UINT(WM_LBUTTONUP) where pressed != nil: pressUp(client(lp)); return 0
+        case UINT(WM_CAPTURECHANGED) where pressed != nil && HWND(bitPattern: Int(lp)) != hwnd: pressUp(nil); return 0   // the capture taken away (a dialog, the task switcher): the drag is off
         case UINT(WM_RBUTTONUP): showMenu(); return 0
         case UINT(WM_COMMAND):
             let id = Int(wp & 0xFFFF)

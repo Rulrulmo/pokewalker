@@ -66,6 +66,7 @@ extension Canvas {
     var shopTop = 0, shopTitle = ""                                        // the list's first visible row: moves only when the pick leaves the window
     var itemTop = 0                                                        // the same for the battle's item list
     var hits: [(CGRect, Int)] = []                                         // clickable: battle index, 2000+ shop, 3000+ menu, 4000+ grid / box controls, 5000+ other pages, 10000+ grid cells
+    var drops: [(CGRect, Int)] = []                                        // 포켓몬's grid: where a dragged Pokémon can land (4500-4503 the companion and the walker's 3, 4520 the box)
     private var c: (any Canvas)! = nil                                     // while drawing
 
     /// Card coordinates → the page's (it starts at the pane's top, card y 189).
@@ -74,7 +75,7 @@ extension Canvas {
     func x(_ v: CGFloat) -> CGFloat { v * K }
 
     func draw(on canvas: any Canvas) {
-        hits = []; c = canvas; defer { c = nil }
+        hits = []; drops = []; c = canvas; defer { c = nil }
         let p = content
         if let l = p.login { drawLogin(l) } else if let d = p.dex { drawDex(d) } else if let g = p.grid { drawGrid(g) } else if let m = p.mon { drawMon(m) } else if let s = p.shop { drawShop(s) }
         else if let m = p.menu { drawMenu(m) } else if let m = p.battle { drawBattle(m) } else if let i = p.items { drawItems(i) } else if let r = p.radar { drawRadar(r) }
@@ -180,10 +181,11 @@ extension Canvas {
             for i in 0..<5 {
                 let rc = r(X0 + CGFloat(i) * (cw + 4), top, cw, 42), on = i == g.partySel
                 tile(rc, 10, on: on)
+                if i < 4 { drops.append((rc, 4500 + i)) }                                                 // (an empty walker slot too)
                 if i == 4 { pixelArt(gem, gemPal, CGPoint(x: rc.midX, y: rc.minY + x(15)), 3 * K); c.say("도구 \(n)", rc.midX, rc.maxY - x(7), font(8, .bold), Ink.sub, 0.5); hits.append((rc, 4510)) }
                 else if let e = g.party[safe: i] {
                     let lift = on && g.bob ? K : 0
-                    c.image(iconImage(e.dex), CGRect(x: snap(rc.midX - 16 * K), y: snap(rc.minY - x(3) - lift), width: 32 * K, height: 32 * K), alpha: 1)
+                    c.image(iconImage(e.dex), CGRect(x: snap(rc.midX - 16 * K), y: snap(rc.minY - x(3) - lift), width: 32 * K, height: 32 * K), alpha: walker?.drag?.from == 4500 + i ? 0.3 : 1)   // (carried away: faded)
                     c.say(i == 0 ? "함께" : "Lv.\(e.level)", rc.midX, rc.maxY - x(7), font(8, .bold), i == 0 ? Ink.red : Ink.sub, 0.5)
                     if e.shiny { c.say("★", rc.maxX - x(5), rc.minY + x(6), font(7, .bold), Ink.gold, 1) }
                     hits.append((rc, 4500 + i))
@@ -194,6 +196,7 @@ extension Canvas {
         tabs(g.tabs, g.tab, top)
         let board = r(X0, top + 28, X1 - X0, 5 * 33)
         c.fill(.rounded(board, 11 * K), Ink.board)
+        if g.items != nil { drops.append((board, 4520)) }
         if g.cells.isEmpty { c.say(g.empty, board.midX, board.midY, font(10, .medium), Ink.sub, 0.5) }
         let side = 32 * K, snap = { (v: CGFloat) in (v * scale).rounded() / scale }
         for (k, e) in g.cells.enumerated() {
@@ -202,7 +205,7 @@ extension Canvas {
             if e.look == 0 { c.say(String(format: "%03d", e.dex), cell.midX, cell.midY, font(8, .medium), Ink.faint, 0.5) }
             else {
                 let lift = k == g.sel && g.bob ? K : 0                                                    // the pick hops a pixel, twice a second
-                c.image(iconImage(e.dex, shadow: e.look == 1), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: 1)
+                c.image(iconImage(e.dex, shadow: e.look == 1), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: walker?.drag?.from == 10000 + g.first + k ? 0.3 : 1)
             }
             if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
             if e.v3 {                                                                                   // 3V and up: the amber diamond, as on the LCD
@@ -213,6 +216,10 @@ extension Canvas {
             hits.append((cell, 10000 + g.first + k))
         }
         pager("\(g.page) / \(g.pages)", top + 198, prev: g.pages > 1, next: g.pages > 1)   // the last page's ▶ goes round to #1
+        if let w = walker, let d = w.drag, let ref = w.dragRef(d.from), let m = w.state.mon(ref) {     // a drag: where it would land ringed red, the Pokémon under the pointer
+            if let t = drops.first(where: { $0.0.contains(d.at) }), w.canDrop(d.from, t.1) { c.stroke(.rounded(t.0.insetBy(dx: 1 * K, dy: 1 * K), 10 * K), Ink.red, width: 2 * K) }
+            c.image(iconImage(m.dex), CGRect(x: snap(d.at.x - 16 * K), y: snap(d.at.y - 20 * K), width: 32 * K, height: 32 * K), alpha: 0.85)
+        }
     }
     /// A pill track of tabs, the picked one solid red.
     func tabs(_ labels: [String], _ sel: Int, _ top: CGFloat, code: Int = 4100) {
@@ -535,7 +542,7 @@ extension Page {
             let rc = r(X0, 216 + CGFloat(i) * 22, X1 - X0, 20); tile(rc, 7, on: m.first + i == m.sel)
             var xr = rc.maxX - x(9)
             if row.here { let t = "지금", f = font(7.5, .bold), w = width(t, f) + x(8); c.pill(CGRect(x: xr - w, y: rc.midY - x(5.5), width: w, height: x(11)), Ink.red); c.say(t, xr - w / 2, rc.midY, f, .white, 0.5); xr -= w + x(6) }
-            if !row.note.isEmpty { xr -= c.say(row.note, xr, rc.midY, font(8.5, .semibold), Ink.faint, 1) + x(6) }
+            if !row.note.isEmpty { xr -= c.say(row.note, xr, rc.midY, font(8.5, .semibold), row.open ? Ink.sub : Ink.faint, 1) + x(6) }   // open: 잡음 n/m; locked: what opens it
             c.say(row.name, rc.minX + x(9), rc.midY, font(10, .bold), row.open ? Ink.ink : Ink.faint, maxW: xr - rc.minX - x(9))
             hits.append((rc, 5800 + i))
         }
@@ -560,7 +567,12 @@ extension Page {
     }
     /// 도구: everything carried, a row a kind (six in view, the pick kept there; a click picks it), then what the pick does and its button.
     func drawItems(_ m: ItemsModel) {
-        c.say("워커 \(m.walker)개 · 가방 \(m.bag)개", x(X0 + 2), y(206), font(9, .medium), Ink.sub)
+        var right = x(X1)
+        if let w = m.sellAll {                                                                     // everything sellable at once (5711), on the header's right: the list stays put
+            let t = "팔 것 모두 팔기 +\(w.formatted())W", f = font(8.5, .bold), pw = width(t, f) + x(14), rc = CGRect(x: x(X1) - pw, y: y(206) - x(8), width: pw, height: x(16))
+            c.pill(rc, Ink.red); c.say(t, rc.midX, rc.midY, f, .white, 0.5); hits.append((rc, 5711)); right = rc.minX - x(6)
+        }
+        c.say("워커 \(m.walker) · 가방 \(m.bag)", x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: right - x(X0 + 2))   // (never under the pill)
         if m.rows.isEmpty { c.say("없음", x(Layout.w / 2), y(260), font(10, .medium), Ink.sub, 0.5); return }
         let top = max(0, min(m.sel - 2, m.rows.count - 6))
         for (i, row) in m.rows.enumerated() where i >= top && i < top + 6 {

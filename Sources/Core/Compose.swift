@@ -360,8 +360,8 @@ extension Walker {
         case .course(let i):
             let per = CourseModel.perPage, first = i / per * per
             let rows = (first..<min(courses.count, first + per)).map { k -> CourseModel.Row in
-                let c = courses[k], open = state.unlocked(k)
-                return .init(name: c.name, note: open ? "" : c.dex > 0 ? "도감 \(c.dex)종" : "누적 \(c.watts.formatted())W", open: open, here: k == state.course)
+                let c = courses[k], open = state.unlocked(k), kinds = courseSpecies(k), owned = Set(state.owned ?? [])
+                return .init(name: c.name, note: open ? "잡음 \(kinds.filter(owned.contains).count)/\(kinds.count)" : c.dex > 0 ? "도감 \(c.dex)종" : "누적 \(c.watts.formatted())W", open: open, here: k == state.course)
             }
             let go = state.unlocked(i) && i != state.course ? josa(courses[i].name, "으로", "로") + " 가기" : nil
             let lv = courses[i].all.map(\.level), about = "Lv.\(lv.min() ?? 1)–\(lv.max() ?? 1) · " + courses[i].types.map { typeKo[$0] ?? $0 }.joined(separator: " · ")
@@ -399,6 +399,7 @@ extension Walker {
         case (.learn, 5300...5304): screen = .learn(sel: code - 5300); press(1)
         case (.items, 5600..<5700): screen = .items(code - 5600)
         case (.items, 5700): press(1)
+        case (.items, 5711): sellAll(back: .items(0))                                                // 팔 수 있는 것 전부 팔기
         case (.course(let i), 5800..<5805): screen = .course(i / CourseModel.perPage * CourseModel.perPage + code - 5800)   // a click picks one (its picture on the LCD); 가기 walks it
         case (.course(let i), 5810...5811):
             let per = CourseModel.perPage, pages = (courses.count + per - 1) / per
@@ -448,7 +449,9 @@ extension Walker {
         let rows = names.map { n in ItemsModel.Row(name: n, count: state.count(n), onWalker: state.items.filter { $0 == n }.count) }
         guard let n = names[safe: s] else { return ItemsModel(rows: [], sel: 0, walker: 0, bag: 0, action: nil, hint: "") }
         let (action, note) = itemUse(n)
-        return ItemsModel(rows: rows, sel: s, walker: state.items.count, bag: state.bag.count, action: action, hint: ItemKind.of(n).summary + (note.isEmpty ? "" : " · " + note).replacingOccurrences(of: "{동료}", with: me))
+        let sell = names.reduce(0) { sum, i in if case .sell(let p) = ItemKind.of(i) { return sum + p * state.count(i) }; return sum }
+        return ItemsModel(rows: rows, sel: s, walker: state.items.count, bag: state.bag.count, action: action, hint: ItemKind.of(n).summary + (note.isEmpty ? "" : " · " + note).replacingOccurrences(of: "{동료}", with: me),
+                          sellAll: sell > 0 ? sell : nil)
     }
     /// What 도구's button does for item n (nil = nothing here), and a note ({동료} = the companion's name).
     func itemUse(_ n: String) -> (String?, String) {
