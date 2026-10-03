@@ -95,7 +95,7 @@ enum Update {
     static func allowed(_ app: URL) -> Bool {
         let fm = FileManager.default, parent = app.deletingLastPathComponent()
         if app.path.contains("/AppTranslocation/") { return false }
-        if [parent, parent.deletingLastPathComponent()].contains(where: { fm.fileExists(atPath: $0.appendingPathComponent("build.sh").path) }) { return false }
+        if Store.devBuild(app) { return false }
         return fm.isWritableFile(atPath: parent.path) && fm.isWritableFile(atPath: app.path)
     }
 

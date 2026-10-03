@@ -3,10 +3,18 @@ import Foundation
 // MARK: - save
 enum Store {
     #if os(Windows)
-    static let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["APPDATA"] ?? NSTemporaryDirectory(), isDirectory: true).appendingPathComponent("PokeWalker", isDirectory: true)   // %APPDATA%\PokeWalker (Roaming, next to settings.json)
+    static let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["APPDATA"] ?? NSTemporaryDirectory(), isDirectory: true).appendingPathComponent(folder, isDirectory: true)   // %APPDATA%\PokeWalker (Roaming, next to settings.json)
     #else
-    static let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("PokeWalker", isDirectory: true)
+    static let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(folder, isDirectory: true)
     #endif
+    /// "PokeWalker"; a build run from the repository keeps its own, "PokeWalker Dev": developing on a PC with the real app installed never touches
+    /// its save, its trainer ID or its PIN (the settings are still shared).
+    static let folder = devBuild(Bundle.main.bundleURL) ? "PokeWalker Dev" : "PokeWalker"
+    /// A build run from the repository: build.sh beside the app (the Mac's .app; Windows' exe folder), or beside its dist/.
+    static func devBuild(_ app: URL) -> Bool {
+        let parent = app.deletingLastPathComponent()
+        return [parent, parent.deletingLastPathComponent()].contains { FileManager.default.fileExists(atPath: $0.appendingPathComponent("build.sh").path) }
+    }
     static let file = dir.appendingPathComponent("state.json")
     static let bak = dir.appendingPathComponent("state.json.bak")
 

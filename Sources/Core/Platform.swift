@@ -33,6 +33,8 @@ protocol Settings {
     func confirm(_ title: String, _ body: String, ok: String) -> Bool
     /// A line of text asked for in front of everything (the trainer ID box: Korean input as the system has it, Return = 확인); nil = 취소.
     func askText(title: String, message: String) -> String?
+    /// The same for a PIN: hidden as it's typed (Windows: digits only, 4 at most); nil = 취소.
+    func askPIN(title: String, message: String) -> String?
     func quit()
 }
 /// What a redraw covers: the LCD, the pane's page, the 메뉴 / 홈 key, the title row, or the whole card.
@@ -48,7 +50,7 @@ var resourceDir: URL? { Bundle.main.resourceURL }
 /// The app's version, platform and this PC's name, for the save server (Core/Cloud.swift). The Mac reads Info.plist's CFBundleShortVersionString; Windows has
 /// no bundle, so it uses windowsVersion — bump it with Info.plist (the Mac's self-test fails until they match). The name is the kernel's host name / Windows'
 /// COMPUTERNAME, never a DNS lookup (ProcessInfo.hostName can be one, and stall the main thread for seconds).
-let windowsVersion = "2.0"
+let windowsVersion = "2.1"
 #if os(Windows)
 let appVersion = windowsVersion, appPlatform = "windows", appDeviceName = ProcessInfo.processInfo.environment["COMPUTERNAME"] ?? "Windows"
 #else

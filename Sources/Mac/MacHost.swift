@@ -41,11 +41,13 @@ extension WalkerView: Host {
         a.addButton(withTitle: ok); a.addButton(withTitle: "취소")
         return a.runModal() == .alertFirstButtonReturn
     }
-    func askText(title: String, message: String) -> String? {
+    func askText(title: String, message: String) -> String? { ask(title, message, NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24)), placeholder: "예: 민수") }
+    func askPIN(title: String, message: String) -> String? { ask(title, message, NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24)), placeholder: "숫자 4자리") }
+    private func ask(_ title: String, _ message: String, _ f: NSTextField, placeholder: String) -> String? {
         NSApp.activate(ignoringOtherApps: true)                                                   // typing needs the app in front
         let a = NSAlert(); a.messageText = title; a.informativeText = message
         a.addButton(withTitle: "확인"); a.addButton(withTitle: "취소")                              // the first is the default: Return
-        let f = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24)); f.placeholderString = "예: 민수"
+        f.placeholderString = placeholder
         a.accessoryView = f; a.window.initialFirstResponder = f
         let ok = a.runModal() == .alertFirstButtonReturn
         a.window.makeFirstResponder(nil)                                                          // a Hangul syllable still being composed goes into the text first

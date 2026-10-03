@@ -1,7 +1,7 @@
 #if os(Windows)
 import Foundation
 import WinSDK
-// The ID box on Windows (Core/Platform.swift's askText; the Mac's is an NSAlert): a small modal window over the card — the message, an EDIT box
+// The ID box and the PIN box on Windows (Core/Platform.swift's askText / askPIN; the Mac's are NSAlerts): a small modal window over the card — the message, an EDIT box
 // (the IME as Windows has it), 확인 / 취소. Enter = 확인, Esc and the title bar's X = 취소 (IsDialogMessage turns them into IDOK / IDCANCEL).
 
 nonisolated(unsafe) private var inputAnswer: Int32 = 0                                          // IDOK / IDCANCEL once given; 0 while it's up
@@ -15,7 +15,10 @@ private let inputProc: WNDPROC = { hwnd, msg, wp, lp in
 }
 
 extension WinCard {
-    func askText(title: String, message: String) -> String? {
+    func askText(title: String, message: String) -> String? { input(title, message, pin: false) }
+    func askPIN(title: String, message: String) -> String? { input(title, message, pin: true) }
+    /// pin: the EDIT box hides what's typed, takes digits only, 4 at most.
+    private func input(_ title: String, _ message: String, pin: Bool) -> String? {
         let inst = GetModuleHandleW(nil), cls = "PokeWalkerInput"
         _ = wide(cls) { name -> ATOM in                                                          // once; a second time it's there already
             var wc = WNDCLASSEXW(); wc.cbSize = UINT(MemoryLayout<WNDCLASSEXW>.size); wc.lpfnWndProc = inputProc; wc.hInstance = inst
@@ -39,7 +42,8 @@ extension WinCard {
             return c
         }
         _ = child("STATIC", message.replacingOccurrences(of: "\n", with: "\r\n"), 0, pad, pad, cw - 2 * pad, px(40), 0)
-        let edit = child("EDIT", "", WS_TABSTOP | ES_AUTOHSCROLL, pad, pad + px(46), cw - 2 * pad, px(26), 100)
+        let edit = child("EDIT", "", WS_TABSTOP | ES_AUTOHSCROLL | (pin ? ES_PASSWORD | ES_NUMBER : 0), pad, pad + px(46), pin ? px(90) : cw - 2 * pad, px(26), 100)
+        if pin { _ = SendMessageW(edit, UINT(EM_LIMITTEXT), 4, 0) }
         let bw = px(88), bh = px(28), by = inner.bottom - pad - bh
         _ = child("BUTTON", "확인", WS_TABSTOP | BS_DEFPUSHBUTTON, cw - pad - 2 * bw - px(8), by, bw, bh, IDOK)
         _ = child("BUTTON", "취소", WS_TABSTOP, cw - pad - bw, by, bw, bh, IDCANCEL)
