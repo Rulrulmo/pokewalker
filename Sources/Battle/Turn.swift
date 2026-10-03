@@ -159,8 +159,10 @@ extension Battle {
         mod(s) { if let k = $0.moves.firstIndex(of: id) { $0.pp[k] = max(0, $0.pp[k] - cost); if $0.pp[k] == 0, $0.encore > 0, $0.encoreMove == id { $0.encore = 0 } } }   // 앙코르 ends with the PP
     }
 
-    /// The move itself: charging, callers, protection, accuracy, then damage or its effect.
-    mutating func execute(_ s: Side, _ id: Int, called: Bool) {
+    /// The move itself: charging, callers, protection, accuracy, then damage or its effect. depth = callers above it (흉내쟁이 → 따라하기 → 자연의힘 → 트라이어택 is 3);
+    /// past that a call fails rather than recursing on.
+    mutating func execute(_ s: Side, _ id: Int, called: Bool, depth: Int = 0) {
+        if depth > 3 { say(s, "그러나 실패했다!"); return }
         let m = moveTable[id]!, t = other(s), n = nm(s)
         if m.charges, f(s).charging != id, !(id == 76 && weatherOn == .sun) {                  // turn 1 of a two-turn move
             if !called { deductPP(s, id) }
@@ -181,14 +183,17 @@ extension Battle {
         switch id {                                                                                  // moves that pick another move
         case 118:
             let pool = moveTable.keys.filter { Moves.supported($0) && ![118, 165, 102, 144, 214, 119, 383, 267, 264, 182, 197, 203, 68, 243, 194].contains($0) }.sorted()
-            let pick = pool[roll(pool.count)]; say(s, "손가락흔들기로 " + josa(moveTable[pick]!.name, "이", "가") + " 나왔다!"); execute(s, pick, called: true); return
+            let pick = pool[roll(pool.count)]; say(s, "손가락흔들기로 " + josa(moveTable[pick]!.name, "이", "가") + " 나왔다!"); execute(s, pick, called: true, depth: depth + 1); return
         case 214:
-            let ok = f(s).moves.filter { ![214, 117, 118, 264, 253, 13, 19, 76, 91, 130, 143, 291, 340, 467].contains($0) }
+            let ok = f(s).moves.filter { ![214, 117, 118, 119, 383, 264, 253, 13, 19, 76, 91, 130, 143, 291, 340, 467].contains($0) }
             guard f(s).status == .sleep, !ok.isEmpty else { say(s, "그러나 실패했다!"); return }
-            execute(s, ok[roll(ok.count)], called: true); return
-        case 119: guard f(t).lastMove != 0, Moves.supported(f(t).lastMove), f(t).lastMove != 119 else { say(s, "그러나 실패했다!"); return }; execute(s, f(t).lastMove, called: true); return
-        case 383: guard before != 0, before != 383 else { say(s, "그러나 실패했다!"); return }; execute(s, before, called: true); return
-        case 267: say(s, "자연의힘은 트라이어택이 되었다!"); execute(s, 161, called: true); return
+            execute(s, ok[roll(ok.count)], called: true, depth: depth + 1); return
+        case 119:                                                                                    // only a move aimed at us: not 칼춤, nor 흉내쟁이 & co. (they target their user — 흉내쟁이 ↔ 따라하기 would call each other forever)
+            let last = f(t).lastMove
+            guard last != 0, Moves.supported(last), last != 119, moveTable[last]!.onFoe else { say(s, "그러나 실패했다!"); return }
+            execute(s, last, called: true, depth: depth + 1); return
+        case 383: guard before != 0, before != 383 else { say(s, "그러나 실패했다!"); return }; execute(s, before, called: true, depth: depth + 1); return
+        case 267: say(s, "자연의힘은 트라이어택이 되었다!"); execute(s, 161, called: true, depth: depth + 1); return
         default: break
         }
         if m.onFoe && m.protectable && f(t).protected && id != 364 { say(t, josa(nm(t), "은", "는") + " 공격으로부터 몸을 지켰다!"); crash(s, t, m); return }

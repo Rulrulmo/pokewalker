@@ -253,6 +253,12 @@ import AppKit                                                                   
           "cures, 회복약 and cure berries are battle items")
     var pz = Battle(wild: Mon(dex: 16, level: 20, female: false), companion: pika50); pz.theirs[0].status = .poison; pz.theirs[0].moves = [150]; pz.theirs[0].pp = [40]   // (its 날려버리기 would end a wild fight)
     let pzb = pz.turn(.fight(45), &r); check(pzb.contains(.hurt(.it, damage: pz.theirs[0].maxHP / 8, text: "야생 구구는 독의 데미지를 입었다!")), "poison: 1/8 at the end of the turn", "\(pzb)")
+    // 흉내쟁이 and a foe's 따라하기 called each other forever (the app crashed): 따라하기 copies only a move aimed at its user
+    var cm = Battle(wild: Mon(dex: 22, level: 40, female: false), companion: Mon(dex: 439, level: 40, female: false))   // 깨비드릴조 (faster) vs 흉내내
+    cm.mine[0].moves = [383]; cm.mine[0].pp = [20]; cm.theirs[0].moves = [119]; cm.theirs[0].pp = [20]
+    var cmDice = Seeded(s: 383)                                                                     // its own dice: the shared r's later draws stay as they were
+    let cmBeats = cm.turn(.fight(383), &cmDice) + cm.turn(.fight(383), &cmDice)
+    check(cmBeats.filter { $0 == .use(.it, move: 119) }.count == 2 && !cmBeats.contains(.use(.it, move: 383)), "흉내쟁이 then the foe's 따라하기: no endless calls, nothing copied", "\(cmBeats)")
     var gh = Battle(wild: Mon(dex: 94, level: 50, female: false), companion: lax50); gh.mine[0].moves = [89]; gh.mine[0].pp = [10]
     check(dealt(gh.turn(.fight(89), &r), .it, 89) == 0, "부유: 지진 can't touch 팬텀")
     var ib = Battle(wild: gyara50, companion: pika50); let ibeats = ib.begin(weather: .rain, &r)
