@@ -18,6 +18,7 @@ let usage = """
       legacy [<id>]                      pre-server saves
       suspects [<days>]                  trainers whose saves the checks flagged (docs/plans/10 §2), and the busiest walkers (default 7 days)
       flags <id> [<n>]                   one trainer's flagged saves, newest first (default 30)
+      pin-reset <id>                     forget the trainer's PIN and every PC's trust: the next login sets a new one
       prune                              drop old history now (the server does it hourly)
       sample                             a new save's JSON (Walk(), the one-time checks marked done)
       verify-release <dir>               a release folder: manifest.sig checks with the release key, each zip's size and SHA-256 (publish.sh)
@@ -161,6 +162,8 @@ extension SaveDB {
             try db.rows("UPDATE trainers SET key = :nk, name = :n, session = NULL, device = NULL WHERE key = :k", a.merging(["n": .text(n.name)]) { $1 })
             try db.rows("UPDATE history SET key = :nk WHERE key = :k", a)
             try db.rows("UPDATE OR IGNORE legacy SET key = :nk WHERE key = :k", a)
+            try db.rows("UPDATE pins SET key = :nk WHERE key = :k", a); try db.rows("UPDATE flags SET key = :nk WHERE key = :k", a)
+            for t in ["trust", "pin_fails"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
             return "\(k) → \(n.key) (\(n.name)); its PC gets no_trainer on its next save and asks for an ID"
         }
     }
@@ -175,8 +178,7 @@ extension SaveDB {
                 try Data(w.utf8).write(to: file, options: .atomic)
                 kept = "save kept as \(file.path)"
             }
-            try db.rows("DELETE FROM history WHERE key = :k", ["k": .text(k)])
-            try db.rows("DELETE FROM trainers WHERE key = :k", ["k": .text(k)])
+            for t in ["history", "trainers", "pins", "trust", "pin_fails"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
             return "\(k): deleted, \(kept)"
         }
     }
@@ -198,6 +200,13 @@ extension SaveDB {
             """)
         out += "\n\ntoday's walkers (a day's cap is \(SaveCheck.daySteps))\n" + table(["name", "key", "today", "total", "watts", "bp", "box"], w.map { r in ["name", "key", "today", "total", "watts", "bp", "box"].map(r.show) })
         return out
+    }
+    func pinReset(_ id: String) throws -> String {
+        let k = try key(id)
+        return try db.transaction {
+            for t in ["pins", "trust", "pin_fails"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
+            return "\(k): PIN and trusted PCs forgotten; the next login (app 2.1 on) sets a new PIN"
+        }
     }
     func flags(_ id: String, last n: Int) throws -> String {
         let k = try key(id)
@@ -281,6 +290,7 @@ public func run(_ arguments: [String]) async -> Int32 {
         case ("suspects", 0), ("suspects", 1):
             guard let days = rest.first.map({ Int($0) }) ?? 7 else { return fail("suspects: <days> is a number") }
             out = try await db.suspects(days: days, now: unixNow())
+        case ("pin-reset", 1): out = try await db.pinReset(rest[0])
         case ("flags", 1), ("flags", 2):
             guard let n = rest.count > 1 ? Int(rest[1]) : 30 else { return fail("flags: <n> is a number") }
             out = try await db.flags(rest[0], last: n)

@@ -11,8 +11,9 @@ let legacyKept = 4                       // legacy rows per trainer (one per PC)
 
 // MARK: - requests and replies
 
-struct LoginReq: Codable, Sendable { let id, device, device_name: String; let app: String?; let force: Bool? }
-struct CreateReq: Codable, Sendable { let id, device, device_name: String }
+struct LoginReq: Codable, Sendable { let id, device, device_name: String; let app: String?; let force: Bool?; var pin: String? = nil, trust: String? = nil }
+struct CreateReq: Codable, Sendable { let id, device, device_name: String; var app: String? = nil, pin: String? = nil }
+struct PinReq: Codable, Sendable { let id, session, pin: String }
 struct SaveReq: Codable, Sendable { let id, session, app: String; let base: Int; let walk: String }
 struct LegacyReq: Codable, Sendable { let id, device, walk: String }
 
@@ -51,6 +52,13 @@ func walkDecodes(_ text: String) -> Bool { (try? JSONDecoder().decode(Walk.self,
 func deviceOK(_ d: String) -> Bool { !d.isEmpty && d.count <= 64 }
 func newSession() -> String { hex((0..<16).map { _ in UInt8.random(in: 0...255) }) }
 
+// PINs (docs/plans/10 §3): 4 digits, salted and hashed; a PC that gave the right one gets a trust token (its hash kept) and isn't asked again.
+let pinTries = 5, pinWindow = 600                                         // wrong PINs: 5 in 10 minutes, then 429
+/// App 2.1 on asks for PINs; 2.0 has no PIN box, and a trainer without a PIN plays on there as before.
+func asksPIN(_ app: String?) -> Bool { app.flatMap { verCmp($0, "2.1") }.map { $0 >= 0 } ?? false }
+func pinOK(_ p: String?) -> Bool { p.map { $0.utf8.count == 4 && $0.utf8.allSatisfy { (48...57).contains($0) } } ?? false }
+func saltedPIN(_ key: String, _ pin: String, salt: String = newSession()) -> String { salt + ":" + hex(sha256(Array((salt + ":" + key + ":" + pin).utf8))) }
+
 /// The `trainers` row.
 struct Trainer {
     let key, name: String, rev: Int
@@ -76,6 +84,9 @@ let schema = """
     CREATE TABLE IF NOT EXISTS legacy (key TEXT NOT NULL, device TEXT NOT NULL, at INTEGER NOT NULL, walk TEXT NOT NULL, PRIMARY KEY (key, device));
     CREATE TABLE IF NOT EXISTS flags (key TEXT NOT NULL, rev INTEGER NOT NULL, at INTEGER NOT NULL, reasons TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS flags_key ON flags (key, at);
+    CREATE TABLE IF NOT EXISTS pins (key TEXT PRIMARY KEY, salted TEXT NOT NULL, at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS trust (key TEXT NOT NULL, device TEXT NOT NULL, token TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (key, device));
+    CREATE TABLE IF NOT EXISTS pin_fails (key TEXT NOT NULL, at INTEGER NOT NULL);
     """
 // `walk` is every table's last column: SQLite follows a big TEXT's overflow pages to read the columns after it.
 
@@ -110,6 +121,30 @@ actor SaveDB {
                     ["k": .text(key)]).first.map(Trainer.init)
     }
 
+    func hasPIN(_ key: String) throws -> Bool { try !db.rows("SELECT 1 AS n FROM pins WHERE key = :k", ["k": .text(key)]).isEmpty }
+    func pinMatches(_ key: String, _ pin: String) throws -> Bool {
+        guard let salted = try db.rows("SELECT salted FROM pins WHERE key = :k", ["k": .text(key)]).first?.text("salted"),
+              let salt = salted.split(separator: ":").first else { return false }
+        return saltedPIN(key, pin, salt: String(salt)) == salted
+    }
+    func trusted(_ key: String, _ device: String, _ token: String?) throws -> Bool {
+        guard let token else { return false }
+        return try db.rows("SELECT token FROM trust WHERE key = :k AND device = :d", ["k": .text(key), "d": .text(device)]).first?.text("token") == hex(sha256(Array(token.utf8)))
+    }
+    /// A new trust token for this PC (the old one replaced); only its hash is kept.
+    func trust(_ key: String, _ device: String, now: Int) throws -> String {
+        let token = newSession()
+        try db.rows("INSERT OR REPLACE INTO trust (key, device, token, at) VALUES (:k, :d, :t, :now)",
+                    ["k": .text(key), "d": .text(device), "t": .text(hex(sha256(Array(token.utf8)))), "now": .int(now)])
+        return token
+    }
+    /// Wrong PINs in the window: a lock until the oldest ages out (seconds), or nil.
+    func pinLock(_ key: String, now: Int) throws -> Int? {
+        let rows = try db.rows("SELECT at FROM pin_fails WHERE key = :k AND at > :since ORDER BY at", ["k": .text(key), "since": .int(now - pinWindow)])
+        guard rows.count >= pinTries, let first = rows.first?.int("at") else { return nil }
+        return max(1, first + pinWindow - now)
+    }
+
     /// A throw (an SQLite error, SQLITE_FULL at the page cap too) is a 500 with the error in the log.
     private func guarded(_ body: () throws -> Reply) -> Reply {
         do { return try body() } catch { return .error(500, "internal", note: "\(error)") }
@@ -125,14 +160,28 @@ actor SaveDB {
                 if let a = r.app, let need = t.app, verCmp(a, need) ?? 0 < 0 {                          // before the session moves
                     return .error(426, "old_app", ["need": .s(need)], note: "login with app \(a) < \(need)")
                 }
+                var token: String? = nil, pinNeeded = false                                             // 10 §3: the PIN (or this PC's trust) before anything else
+                if try hasPIN(id.key) {
+                    if try !trusted(id.key, r.device, r.trust) {
+                        if let wait = try pinLock(id.key, now: now) { return .error(429, "pin_locked", ["retry_after": .i(wait)], note: "PIN locked (\(wait) s)") }
+                        guard let p = r.pin, try pinMatches(id.key, p) else {
+                            try db.rows("INSERT INTO pin_fails (key, at) VALUES (:k, :now)", ["k": .text(id.key), "now": .int(now)])
+                            return .error(401, "pin", note: r.pin == nil ? nil : "wrong PIN from \(r.device_name.prefix(64))")
+                        }
+                        token = try trust(id.key, r.device, now: now)
+                    }
+                } else if asksPIN(r.app) { pinNeeded = true }                                             // a 2.0 trainer on 2.1: set one now (/v1/pin)
                 if r.force != true, let d = t.device, d != r.device, now - t.updatedAt < busySeconds {  // another PC saved a moment ago: the app asks first
                     return Reply(200, ["exists": .b(true), "busy": .b(true), "name": .s(t.name), "last_device": .str(t.lastDevice), "updated_at": .i(t.updatedAt)])
                 }
                 let session = newSession()
                 try db.rows("UPDATE trainers SET session = :s, device = :d, last_device = :n WHERE key = :k",
                             ["s": .text(session), "d": .text(r.device), "n": .text(String(r.device_name.prefix(64))), "k": .text(id.key)])
-                return Reply(200, ["exists": .b(true), "name": .s(t.name), "rev": .i(t.rev), "walk": .str(t.walk), "session": .s(session),
-                                   "last_device": .str(t.lastDevice), "updated_at": .i(t.updatedAt)],              // who had it, until when: before this login
+                var reply: [String: JSON] = ["exists": .b(true), "name": .s(t.name), "rev": .i(t.rev), "walk": .str(t.walk), "session": .s(session),
+                                             "last_device": .str(t.lastDevice), "updated_at": .i(t.updatedAt)]   // who had it, until when: before this login
+                if let token { reply["trust"] = .s(token) }
+                if pinNeeded { reply["pin_needed"] = .b(true) }
+                return Reply(200, reply,
                              note: t.device != nil && t.device != r.device ? "login from \(r.device_name.prefix(64)), took it from \(t.lastDevice ?? "?")" : nil)
             }
         }
@@ -141,13 +190,22 @@ actor SaveDB {
     func create(_ r: CreateReq, now: Int) -> Reply {
         guard let id = trainerID(r.id) else { return .error(400, "bad_id") }
         guard deviceOK(r.device) else { return .error(400, "bad_request") }
+        if let a = r.app, versionParts(a) == nil { return .error(400, "bad_app") }
+        if asksPIN(r.app) || r.pin != nil, !pinOK(r.pin) { return .error(400, "bad_pin") }              // 2.1 on: a new trainer comes with its PIN
         return guarded {
             try db.transaction {
                 if try trainer(id.key) != nil { return .error(409, "exists") }
                 let session = newSession()
+                var token: String? = nil
+                if let p = r.pin {
+                    try db.rows("INSERT OR REPLACE INTO pins (key, salted, at) VALUES (:k, :s, :now)", ["k": .text(id.key), "s": .text(saltedPIN(id.key, p)), "now": .int(now)])
+                    token = try trust(id.key, r.device, now: now)
+                }
                 try db.rows("INSERT INTO trainers (key, name, rev, session, device, last_device, created_at, updated_at) VALUES (:k, :n, 0, :s, :d, :dn, :now, :now)",
                             ["k": .text(id.key), "n": .text(id.name), "s": .text(session), "d": .text(r.device), "dn": .text(String(r.device_name.prefix(64))), "now": .int(now)])
-                return Reply(200, ["rev": .i(0), "session": .s(session)], note: "new trainer \(id.name) from \(r.device_name.prefix(64))")
+                var reply: [String: JSON] = ["rev": .i(0), "session": .s(session)]
+                if let token { reply["trust"] = .s(token) }
+                return Reply(200, reply, note: "new trainer \(id.name) from \(r.device_name.prefix(64))")
             }
         }
     }
@@ -164,6 +222,7 @@ actor SaveDB {
                     try conflict(id.key, base: r.base, walk: r.walk, now: now)
                     return .error(409, "conflict", ["reason": .s("replaced")], note: "replaced (base \(r.base), rev \(t.rev))")
                 }
+                if asksPIN(r.app), try !hasPIN(id.key) { return .error(403, "pin_needed") }           // 10 §3: 2.1 saves once the trainer has a PIN
                 let rev: Int
                 if r.base == t.rev { rev = t.rev + 1 }                                    // 10
                 else if r.base > t.rev { rev = r.base + 1 }                               // 11: the server lost saves (a restored backup)
@@ -188,6 +247,21 @@ actor SaveDB {
                             ["w": .text(r.walk), "r": .int(rev), "a": .text(app), "s": .text(r.session), "now": .int(now), "k": .text(id.key)])
                 try keep(id.key, rev: rev, walk: r.walk, now: now)
                 return Reply(200, ["rev": .i(rev)], note: flagNote)
+            }
+        }
+    }
+
+    /// 10 §3: a 2.0 trainer's PIN, set once from the session that logged in; this PC's trust comes back. Changing it: the admin's pin-reset.
+    func setPIN(_ r: PinReq, now: Int) -> Reply {
+        guard let id = trainerID(r.id) else { return .error(400, "bad_id") }
+        guard pinOK(r.pin) else { return .error(400, "bad_pin") }
+        return guarded {
+            try db.transaction {
+                guard let t = try trainer(id.key) else { return .error(404, "no_trainer") }
+                guard r.session == t.session, let device = t.device else { return .error(409, "conflict", ["reason": .s("replaced")]) }
+                if try hasPIN(id.key) { return .error(409, "pin_set") }
+                try db.rows("INSERT INTO pins (key, salted, at) VALUES (:k, :s, :now)", ["k": .text(id.key), "s": .text(saltedPIN(id.key, r.pin)), "now": .int(now)])
+                return Reply(200, ["trust": .s(try trust(id.key, device, now: now))], note: "PIN set")
             }
         }
     }
@@ -240,6 +314,7 @@ actor SaveDB {
                 try db.rows("DELETE FROM history WHERE reason = :r AND at < :t", ["r": .text(reason), "t": .int(now - age)])
                 n += db.changes
             }
+            try db.rows("DELETE FROM pin_fails WHERE at < :t", ["t": .int(now - pinWindow)])
             return n
         }
     }

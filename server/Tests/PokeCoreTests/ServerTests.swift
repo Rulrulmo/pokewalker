@@ -101,15 +101,15 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     #expect(r.status == 200 && number(r, "rev") == 4)
     // 8: an older app than the highest that saved here
     let v = try await make(db, "ver")
-    r = await save(db, "ver", v, base: 0, app: "2.1", now: 1_120)
+    r = await save(db, "ver", v, base: 0, app: "1.9", now: 1_120)                                   // (versions under 2.1: no PIN asked, pins() covers that)
     #expect(r.status == 200 && number(r, "rev") == 1)
-    r = await save(db, "ver", v, base: 1, app: "2.0", now: 1_130)
-    #expect(r.status == 426 && string(r, "error") == "old_app" && string(r, "need") == "2.1")
-    r = await login(db, "ver", device: "pc-a", app: "2.0", now: 1_140)
+    r = await save(db, "ver", v, base: 1, app: "1.8", now: 1_130)
+    #expect(r.status == 426 && string(r, "error") == "old_app" && string(r, "need") == "1.9")
+    r = await login(db, "ver", device: "pc-a", app: "1.8", now: 1_140)
     #expect(r.status == 426)
-    r = await save(db, "ver", v, base: 1, app: "2.10", now: 1_150)                                  // 2.10 > 2.1: taken, and the bar moves up
+    r = await save(db, "ver", v, base: 1, app: "1.10", now: 1_150)                                  // 1.10 > 1.9: taken, and the bar moves up
     let ver = try await db.trainer("ver")
-    #expect(r.status == 200 && ver?.app == "2.10")
+    #expect(r.status == 200 && ver?.app == "1.10")
     // 7, and 2–6 before the database
     r = await save(db, "nobody", "x", base: 0, now: 1_160)
     #expect(r.status == 404 && string(r, "error") == "no_trainer")
@@ -354,4 +354,56 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     r = await save(strict, "chk", s2, base: 1, walk: text(rich), now: 5_060)
     let kept = try await strict.trainer("chk")
     #expect(r.status == 422 && string(r, "error") == "implausible" && kept?.rev == 1)        // refused: the server keeps rev 1
+}
+
+@Test func pins() async throws {
+    let (db, _) = try tempDB()
+    func pinLogin(_ id: String, _ device: String, pin: String? = nil, trust: String? = nil, app: String = "2.1", now: Int) async -> Reply {
+        await db.login(LoginReq(id: id, device: device, device_name: device.uppercased(), app: app, force: true, pin: pin, trust: trust), now: now)
+    }
+    // 2.1 makes a trainer with its PIN; that PC gets a trust token and isn't asked again
+    var r = await db.create(CreateReq(id: "pinny", device: "mac", device_name: "MAC", app: "2.1", pin: nil), now: 6_000)
+    #expect(string(r, "error") == "bad_pin")                                                       // 2.1 on: no PIN, no trainer
+    r = await db.create(CreateReq(id: "pinny", device: "mac", device_name: "MAC", app: "2.1", pin: "12a4"), now: 6_000)
+    #expect(string(r, "error") == "bad_pin")
+    r = await db.create(CreateReq(id: "pinny", device: "mac", device_name: "MAC", app: "2.1", pin: "0420"), now: 6_000)
+    let macTrust = try #require(string(r, "trust"))
+    r = await pinLogin("pinny", "mac", trust: macTrust, now: 6_010)
+    #expect(r.status == 200 && string(r, "session") != nil && string(r, "trust") == nil)           // trusted: no PIN, no new token
+    // another PC: the PIN, then its own trust; the old app can't get round it
+    r = await pinLogin("pinny", "win", now: 6_020)
+    #expect(r.status == 401 && string(r, "error") == "pin")
+    r = await pinLogin("pinny", "win", trust: macTrust, now: 6_021)                                 // another PC's token isn't this one's
+    #expect(r.status == 401)
+    r = await pinLogin("pinny", "win", pin: "0420", now: 6_022)
+    #expect(r.status == 200 && string(r, "trust") != nil)
+    r = await pinLogin("pinny", "old", app: "2.0", now: 6_023)
+    #expect(r.status == 401)                                                                       // a PIN once set holds for 2.0 too
+    // 5 wrong PINs in 10 minutes: locked until the first ages out
+    for i in 0..<5 { r = await pinLogin("pinny", "evil", pin: "9999", now: 7_000 + i) }
+    #expect(r.status == 401)
+    r = await pinLogin("pinny", "evil", pin: "0420", now: 7_010)
+    #expect(r.status == 429 && string(r, "error") == "pin_locked" && number(r, "retry_after") == 590)
+    r = await pinLogin("pinny", "evil", pin: "0420", now: 7_601)
+    #expect(r.status == 200)
+    // a 2.0 trainer (no PIN) on 2.1: logged in with pin_needed, saves wait for /v1/pin; on 2.0 it plays on as before
+    let s = try await make(db, "older")
+    r = await save(db, "older", s, base: 0, app: "2.0", now: 8_000)
+    #expect(r.status == 200)
+    r = await pinLogin("older", "pc-a", now: 8_010)
+    let session = try #require(string(r, "session"))
+    #expect(flag(r, "pin_needed") == true)
+    r = await save(db, "older", session, base: 1, app: "2.1", now: 8_020)
+    #expect(r.status == 403 && string(r, "error") == "pin_needed")
+    r = await db.setPIN(PinReq(id: "older", session: "nope", pin: "1111"), now: 8_030)
+    #expect(r.status == 409)
+    r = await db.setPIN(PinReq(id: "older", session: session, pin: "1111"), now: 8_031)
+    #expect(r.status == 200 && string(r, "trust") != nil)
+    r = await db.setPIN(PinReq(id: "older", session: session, pin: "2222"), now: 8_032)
+    #expect(string(r, "error") == "pin_set")                                                       // once; the admin's pin-reset to change it
+    r = await save(db, "older", session, base: 1, app: "2.1", now: 8_040)
+    #expect(r.status == 200)
+    _ = try await db.pinReset("older")
+    let has = try await db.hasPIN("older")
+    #expect(!has)
 }

@@ -41,6 +41,7 @@ func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?, release: 
         return await db.save(r, now: unixNow())
     }
     post(router, "/v1/legacy", appKey: appKey, id: { (r: LegacyReq) in r.id }) { r in await db.legacy(r, now: unixNow()) }
+    post(router, "/v1/pin", appKey: appKey, id: { (r: PinReq) in r.id }) { r in await db.setPIN(r, now: unixNow()) }
 
     let app = Application(router: router, configuration: .init(address: .hostname("127.0.0.1", port: port), serverName: "pokeserver"))
     let log = app.logger

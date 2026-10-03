@@ -45,7 +45,7 @@ fi
 ID=zz$(printf '%06d' $(( $(date +%s) % 1000000 )))
 echo "$MODE $BASE · test ID $ID"
 login() { # login <device> [force]
-    jq -n --arg id "$ID" --arg d "$1" --argjson f "${2:-false}" '{id: $id, device: $d, device_name: ($d | ascii_upcase), app: "2.1", force: $f}' > "$TMP/req"
+    jq -n --arg id "$ID" --arg d "$1" --argjson f "${2:-false}" '{id: $id, device: $d, device_name: ($d | ascii_upcase), app: "2.1", force: $f, pin: "1234"}' > "$TMP/req"
     post login
 }
 save() {  # save <session> <base> [<app> [<walk file>]]
@@ -59,7 +59,7 @@ get ping;                                   ok "ping" is 200 .ok true
 CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' --data-binary '{"id":"zz0","device":"x","device_name":"x"}' "$BASE/v1/login")
 BODY=$(cat "$TMP/body");                    ok "no app key → 401" is 401 .error app_key
 login test-a;                               ok "login: no such ID yet" is 200 .exists false
-jq -n --arg id "$ID" '{id: $id, device: "test-a", device_name: "TEST-A"}' > "$TMP/req"
+jq -n --arg id "$ID" '{id: $id, device: "test-a", device_name: "TEST-A", app: "2.1", pin: "1234"}' > "$TMP/req"
 post create;                                ok "create → rev 0" is 200 .rev 0
 SA=$(printf '%s' "$BODY" | jq -r .session)
 post create;                                ok "create again → 409 exists" is 409 .error exists
