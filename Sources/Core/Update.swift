@@ -205,9 +205,9 @@ final class UpdateInbox: @unchecked Sendable {
     init(link: any CloudLink, dir: URL, app: URL, platform: String = appPlatform, now: Date = Date()) {
         self.link = link; self.dir = dir; self.app = app; self.platform = platform; nextCheck = now.addingTimeInterval(Updater.first)
     }
-    /// The app's: never with persist == false (the self-test, renders), a dev build, an app it can't replace, or (until 2.0) the `cloud` setting off.
+    /// The app's: never with persist == false (the self-test, renders), a dev build, or an app it can't replace. (3.0 has no server-off setting.)
     static func app(persist: Bool) -> Updater? {
-        guard persist, settings.bool("cloud", true), let a = Update.appURL, Update.allowed(a) else { return nil }
+        guard persist, let a = Update.appURL, Update.allowed(a) else { return nil }
         return Updater(link: HTTPLink(), dir: Update.dir, app: a)
     }
     func tick(_ now: Date) {
