@@ -80,7 +80,7 @@ final class FakeUpdates: CloudLink, @unchecked Sendable {
 
     let srv = FakeCloud(); srv.old = "9.0"                                                          // the save server answers 426
     let uw = Walker(state: Walk()); uw.persist = false
-    let uc = Cloud(link: srv, dir: tmp.appendingPathComponent("c"), on: true); uc.seat.trainerID = "zz000009"; uw.startCloud(uc)
+    let uc = Cloud(link: srv, dir: tmp.appendingPathComponent("c")); uc.seat.trainerID = "zz000009"; uw.startCloud(uc)
     let link3 = FakeUpdates(); link3.manifest = nil; link3.sig = nil
     uw.updater = Updater(link: link3, dir: tmp.appendingPathComponent("u5"), app: shipped, platform: "mac", now: t0)
     for k in 0..<4 { uw.tick(t0 + 0.5 * Double(k)) }

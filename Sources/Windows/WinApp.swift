@@ -61,9 +61,7 @@ final class JSONSettings: Settings {
     walker.startCloud(Cloud.app(persist: walker.persist))                                         // the save server, if on: a 1.x save goes aside first (08 §5)
     walker.updater = Updater.app(persist: walker.persist)
     walker.state.dex()
-    walker.levelled = walker.state.sync(counter: c.counter(), boot: c.boot(), at: Date(), away: true)        // a new launch only baselines: steps while it was closed can't be seen
-    walker.auditAtLaunch(tampered: loaded.tampered)
-    walker.queueReadyEvolutions()                                                                // the walker's ones past their evolution evolve at home
+    walker.awaySteps(counter: c.counter(), boot: c.boot())                                       // a new launch only baselines: steps while it was closed can't be seen
     if case .updated(let v) = launch { walker.announceUpdate(v) }
     walker.save()
     walker.refreshPane(Date(), force: true)                                                      // the page it opens on (the status sheet)

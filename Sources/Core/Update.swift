@@ -246,7 +246,7 @@ extension Walker {
     var installBlocker: String? {
         if inBattle || towerRun { return "배틀이 끝나면" }
         switch screen { case .beats, .evolve, .hatch, .radar: return "지금 하는 게 끝나면"; default: break }
-        return mintWaiting != nil ? "지금 하는 게 끝나면" : nil
+        return waiting != nil ? "지금 하는 게 끝나면" : nil
     }
     /// The menu's row (no question asked: the click is the consent): a staged one installs; else one click checks, downloads and installs
     /// (installWhenStaged); greyed while a check or a download is on, or with a fight or a show on.

@@ -293,7 +293,7 @@ extension Walker {
         switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn: screen = next; default: break }
     }
     func gridTap(_ code: Int) {
-        guard !frozen, mintWaiting == nil else { return }
+        guard !frozen, waiting == nil else { return }
         throughSay()
         lastInput = Date(); host?.redraw(.all)
         switch (screen, code) {
@@ -311,7 +311,7 @@ extension Walker {
         case (.box(let i, _, _, true), 4400) where i != -1: screen = .box(i, act: 0, confirm: false, detail: true); press(1)      // = ● 함께
         case (.box(let i, _, _, true), 4404) where i < -1: screen = .box(i, act: 1, confirm: false, detail: true); press(1)       // the walker's: 상자로 보내기
         case (.box(let i, _, _, true), 4407) where i >= 0: guard let a = boxActs(i).firstIndex(of: "워커로") else { return }; screen = .box(i, act: a, confirm: false, detail: true); press(1)   // the box's: back onto the walker
-        case (.box(-1, _, _, true), 4406): if let e = companionEvolution() { startEvolving(e, Date()) }                              // the companion: a stone / 통신 진화 now
+        case (.box(-1, _, _, true), 4406): if let e = companionEvolution() { evolveNow(e, back: screen) }                              // the companion: a stone / 통신 진화 now
         case (.box(let i, _, _, true), 4401) where i >= 0: screen = .box(i, act: 0, confirm: true, detail: true)     // 놓아줄까? 아니오 first
         case (.box(let i, _, _, true), 4402): screen = .box(i, act: nil, confirm: false, detail: true)
         case (.box(let i, _, true, true), 4403): screen = .box(i, act: 1, confirm: true, detail: true); press(1)
@@ -387,7 +387,7 @@ extension Walker {
     /// 5440 / 5441 the page before / after (round); 기술 바꾸기: 5500 + k a slot, then 5530 + k a move of the page, 5540 / 5541 its pages. One click does it, as ● would.
     func pageTap(_ code: Int) {
         if code == 5950 { press(1); return }                                                     // the server's lock: its button (ID 입력 / 여기서 계속), as ●
-        guard !frozen, mintWaiting == nil else { return }
+        guard !frozen, waiting == nil else { return }
         throughSay(); lastInput = Date(); host?.redraw(.all)
         switch (screen, code) {
         case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
@@ -406,7 +406,7 @@ extension Walker {
         case (.tower(nil), 5401): press(3)
         case (.tower(nil), 5410...5412):
             if let r = state.party()[safe: code - 5410]?.ref { screen = .tower(pick: (code - 5410, r)) }
-        case (.tower(nil), 5420): state.towerPick = nil; save()
+        case (.tower(nil), 5420): act(.towerReset, back: .tower(pick: nil)) { _, _ in .tower(pick: nil) }   // 추천으로
         case (.tower(let p?), 5430..<5445):                                                     // a row of the page in view, or its ◀ ▶ (round)
             let per = TowerModel.perPage, all = state.towerCandidates, page = (all.firstIndex(of: p.at) ?? 0) / per, pages = (all.count + per - 1) / per
             if code >= 5440 { screen = .tower(pick: (p.slot, all[min(all.count - 1, (page + (code == 5440 ? pages - 1 : 1)) % pages * per)])) }
@@ -491,7 +491,7 @@ extension Walker {
     }
     /// A click on a 메뉴 tile: open it (as ● on it would).
     func menuTap(_ i: Int) {
-        guard !frozen, mintWaiting == nil else { return }
+        guard !frozen, waiting == nil else { return }
         throughSay()
         guard case .menu = screen, menuItems.indices.contains(i) else { return }
         lastInput = Date(); host?.redraw(.all)

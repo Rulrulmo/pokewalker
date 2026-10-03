@@ -41,93 +41,71 @@ final class CloudInbox: @unchecked Sendable {
 }
 
 @MainActor final class Cloud {
-    /// off: 1.x, no network · needsID: the ID box is due · login: logging in (or to try again) · busy: another PC was on it until `at` (unix): take it
-    /// over? (login(force:)) · new: no such trainer: start one? (create()) · on: saving · replaced: another PC took it (no steps, no keys; resume())
-    /// · oldApp: the server wants a newer app.
-    enum Phase: Equatable { case off, needsID, login, busy(device: String, at: Int), new(String), on, replaced, oldApp, pin(PinAsk) }
+    /// needsID: the ID box is due · login: logging in (or to try again) · busy: another PC was on it until `at` (unix): take it over? (login(force:))
+    /// · new: no such trainer: start one? (create()) · on: playing · replaced: another PC took it (no steps, no keys; resume()) · oldApp: the server
+    /// wants a newer app · pin: the PIN box (docs/plans/10 §3).
+    enum Phase: Equatable { case needsID, login, busy(device: String, at: Int), new(String), on, replaced, oldApp, pin(PinAsk) }
     /// The PIN the server wants (docs/plans/10 §3): this trainer's (wrong: the last one wasn't), a new one (a 2.0 ID has none yet), or none for a while (too many wrong).
     enum PinAsk: Equatable { case enter(wrong: Bool), set, locked(until: Date) }
-    /// A request out, kept to read its reply by.
-    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, save(total: Int, hash: String), legacy, setPin, mint(MintAsk) }
-    /// The server's Pokémon (docs/plans/10 §4): a radar's find, its result (the chain), an egg's, a legend bought, an evolution (껍질몬).
-    enum MintAsk: Sendable, Equatable { case radar, result(uid: Int, result: String), hatch, buy(Int), evolve(uid: Int, to: Int, level: Int) }
-    /// This PC's, in cloud.json next to the save: the ID as typed, the server's session, a random id made once, whether the 1.x save went up, and the
-    /// server's trust token for this PC (the PIN goes in once a PC: 10 §3).
-    struct Seat: Codable, Equatable { var trainerID: String? = nil, session: String? = nil, device: String? = nil, legacyUploaded: Bool? = nil, trust: String? = nil }
-    /// How a save from the server is taken: with our steps it doesn't have walked on top (a login, stale), as it is (여기서 계속: our unsent ones
-    /// lose to the other PC's, 08 §2-1), as it is after the server refused ours (10 §2: the walker says so), or a new trainer's (create).
-    enum Take { case adopt, asIs, refused, fresh }
-    static let period: TimeInterval = 120, gather: TimeInterval = 3, slowest: TimeInterval = 1800
+    /// A request out, kept to read its reply by: an act carries its seq.
+    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, legacy, setPin, act(Int) }
+    /// This PC's, in cloud.json next to the save: the ID as typed, the server's session, a random id made once, whether the 1.x save went up, the
+    /// server's trust token for this PC (the PIN goes in once a PC: 10 §3), and steps walked here that haven't gone up yet (a quit while offline).
+    struct Seat: Codable, Equatable { var trainerID: String? = nil, session: String? = nil, device: String? = nil, legacyUploaded: Bool? = nil, trust: String? = nil, steps: Int? = nil }
+    static let period: TimeInterval = 120, stepsEvery: TimeInterval = 15, slowest: TimeInterval = 1800
 
     let link: any CloudLink, inbox = CloudInbox(), dir: URL
-    private(set) var phase: Phase
+    private(set) var phase: Phase = .needsID
     var seat = Seat() { didSet { if seat != oldValue { writeSeat() } } }
     private(set) var inFlight: Ask? = nil
-    var asking: Ask? = nil                                                 // a login / create to send once nothing is out
-    var acked: String? = nil                                               // the hash of the walk text the server holds, as far as we know; nil = anything goes up
-    var mustSave = false                                                   // up even unchanged: the server has none of ours yet, or lost some
-    var nextSave = Date.distantPast, due: Date? = nil                      // the 2-minute save; soon()'s, 3 s gathered
+    var asking: Ask? = nil                                                 // a login / create / PIN to send once nothing is out
     var retryAt = Date.distantPast, backoff: TimeInterval = 0              // offline: again in 2, 4, 8 … 30 minutes
-    var head: (walk: Walk, rev: Int, hash: String?, how: Take)? = nil      // the server's save, waiting for home to take it (mid-fight the fight's copy would write over it)
     var legacy: String? = nil                                              // the 1.x save's text, to go up once (2b: state.pre-server.json)
     var pendingPIN: String? = nil                                          // the PIN just typed: goes with the next login / create / pin until the server takes it (never stored)
-    var mints: [(ask: MintAsk, walk: String?)] = []                        // to send, before saves; their answers for the walker (status 0 = no answer, offline)
-    var minted: [(ask: MintAsk, status: Int, reply: [String: Any])] = []
-    var starterUID: Int? = nil                                             // create's: the new walker's companion, as the server issued it
-    private(set) var refusals = 0                                          // 422 implausible in a row (10 §2's reject mode); 0 once a save goes through
-    var refusedNews = false                                                // the server's save taken after a refusal: the walker says so once
-    private(set) var lastSaved: Date? = nil
+    private(set) var lastSaved: Date? = nil                                // the last act the server answered (the menu's "n분 전 저장")
     private(set) var firstRun = false                                      // no cloud.json before: the server's first launch on this PC (Walker.startCloud's 08 §5 move)
+    // docs/plans/11 (3.0): the server's save, and what the player did on its way to it
+    private(set) var base: Walk? = nil, rev = 0                            // the save as the server last sent it (the walker shows it, our unsent steps on top)
+    var rebased = false                                                    // base just came: the walker re-predicts (Walker.rebase)
+    private(set) var seq = 0                                               // the session's last act the server answered
+    private(set) var unsent = 0, sending = 0                               // steps not in any request yet; those in the one out
+    private(set) var queued: Act? = nil                                    // the walker's act, to go once nothing is out
+    private(set) var out: (seq: Int, act: Act, body: Data)? = nil          // the act out: sent again as it was (the same seq) after no answer
+    var answers: [(act: Act, reply: ActReply?)] = []                       // for the walker: each act's reply, nil = none (offline, dropped …)
+    var stepsAt = Date.distantPast                                         // the next steps-only act (every 15 s while there are some)
     var deviceName: String { String(appDeviceName.prefix(64)) }
     var seatFile: URL { dir.appendingPathComponent("cloud.json") }
 
-    init(link: any CloudLink, dir: URL, on: Bool) {
-        self.link = link; self.dir = dir; phase = on ? .needsID : .off
-        guard on else { return }
+    init(link: any CloudLink, dir: URL) {
+        self.link = link; self.dir = dir
         if let d = try? Data(contentsOf: seatFile), let s = try? JSONDecoder().decode(Seat.self, from: d) { seat = s } else { firstRun = !FileManager.default.fileExists(atPath: seatFile.path) }
         if seat.device == nil { seat.device = hex((0..<16).map { _ in UInt8.random(in: .min ... .max) }); writeSeat() }   // (no didSet inside init)
+        unsent = seat.steps ?? 0
     }
-    /// The app's: on with the `cloud` setting, never with persist == false (the self-test, renders).
-    static func app(persist: Bool) -> Cloud { Cloud(link: HTTPLink(), dir: Store.dir, on: persist && settings.bool("cloud", true)) }
+    /// The app's (3.0 is always on the server: docs/plans/11 §0); none with persist == false (the self-test's walkers bring their own, renders none).
+    static func app(persist: Bool) -> Cloud? { persist ? Cloud(link: HTTPLink(), dir: Store.dir) : nil }
 
     // MARK: what the walker and its UI call
     /// Launch: log in with this PC's ID, or ask for one.
-    func start() { guard phase != .off else { return }; if seat.trainerID == nil { phase = .needsID } else { ask(.login(force: false, resume: false)) } }
+    func start() { if seat.trainerID == nil { phase = .needsID } else { ask(.login(force: false, resume: false)) } }
     /// The ID box's answer (nil = this PC's ID again), or 가져올까요? answered yes (force). false = not an ID (2-12 of 가-힣 A-Z a-z 0-9 _).
     @discardableResult func login(_ raw: String? = nil, force: Bool = false) -> Bool {
-        guard phase != .off else { return false }
         if let raw {
             guard let id = trainerID(raw) else { return false }
-            if id.key != seat.trainerID.flatMap(trainerID)?.key { seat.session = nil; seat.trust = nil; pendingPIN = nil }
+            if id.key != seat.trainerID.flatMap(trainerID)?.key { seat.session = nil; seat.trust = nil; pendingPIN = nil; base = nil; unsent = 0; drop() }   // another trainer: nothing of this one's carries over
             seat.trainerID = id.name
         }
         guard seat.trainerID != nil else { return false }
         ask(.login(force: force, resume: false)); return true
     }
-    /// 여기서 계속, after replaced: the session back, and the server's save as it is.
+    /// 여기서 계속, after replaced: the session back, and the server's save.
     func resume() { if phase == .replaced { ask(.login(force: true, resume: true)) } }
-    /// 새 트레이너로 시작, after new, with its PIN: the server makes the ID and this PC starts a new walker (08 §5: new IDs start new).
+    /// 새 트레이너로 시작, after new, with its PIN: the server makes the ID and its first save (08 §5: new IDs start new).
     func create(pin: String) { if case .new = phase { pendingPIN = pin; ask(.create) } }
     /// The PIN box's answer: log in with it.
     func enterPIN(_ pin: String) { if case .pin(.enter) = phase { pendingPIN = pin; ask(.login(force: false, resume: false)) } }
-    /// A 2.0 ID's first PIN (pin_needed): set it on the server; saves wait for it.
+    /// A 2.0 ID's first PIN (pin_needed): set it on the server; acts wait for it.
     func setPIN(_ pin: String) { if phase == .pin(.set) { pendingPIN = pin; ask(.setPin) } }
-    /// Ask the server for a Pokémon (10 §4). Not logged in, or offline (its backoff): answered at once with no answer — the walker doesn't start
-    /// the radar, buy, or hatch. walk = the save as it is now (before paying).
-    func mint(_ m: MintAsk, walk: Walk?, now: Date) {
-        guard phase == .on, now >= retryAt else { minted.append((m, 0, [:])); return }
-        if walk != nil, head?.how == .refused { minted.append((m, 422, [:])); return }          // ours refused, the server's not taken yet: this save would be too
-        mints.append((m, walk.map { Cloud.text($0.shared) }))
-    }
-    /// The walker takes the answers in.
-    func takeMinted() -> [(ask: MintAsk, status: Int, reply: [String: Any])] { let t = minted; minted = []; return t }
-    static func text(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return (try? e.encode(w)).flatMap { String(data: $0, encoding: .utf8) } ?? "" }
-    static func mon(_ any: Any?) -> Mon? { (any as? String).flatMap { try? JSONDecoder().decode(Mon.self, from: Data($0.utf8)) } }
-    nonisolated static func validPIN(_ s: String) -> Bool { s.count == 4 && s.allSatisfy { $0.isASCII && $0.isNumber } }
-    /// After an action (a fight's end, a buy, …): up within 3 s, the actions of those 3 s in one save.
-    func soon(_ now: Date) { if phase == .on, due == nil { due = now.addingTimeInterval(Cloud.gather) } }
-    /// 지금 저장: up at the next tick if anything changed, offline or not.
-    func saveNow() { if phase == .on { due = .distantPast; retryAt = .distantPast } }
     /// 새 트레이너? / 가져올까요? answered no: back to the ID box (a trainer that doesn't exist isn't kept as this PC's ID).
     func decline() {
         switch phase {
@@ -136,197 +114,171 @@ final class CloudInbox: @unchecked Sendable {
         default: break
         }
     }
-    /// The phases that hold the game: no ID yet, another PC has it, too old an app.
+    /// The phases that hold the game: no ID yet, another PC has it, too old an app, a PIN due.
     static func locks(_ p: Phase) -> Bool { if case .pin = p { return true }; return p == .needsID || p == .replaced || p == .oldApp }
+    /// Acts can go now: logged in, and the last request didn't go unanswered.
+    var online: Bool { phase == .on && backoff == 0 }
+    /// Something the player did: it goes once nothing is out (after a resend), our unsent steps with it. false = not now (offline, or one already waiting).
+    func act(_ a: Act) -> Bool { guard online, queued == nil else { return false }; queued = a; return true }
+    /// Steps walked here (StepGate's): up with the next act, or on their own every 15 s.
+    func addSteps(_ n: Int) { if n > 0 { unsent += n } }
+    /// 지금 저장: the steps go up at the next tick, offline or not.
+    func saveNow() { if phase == .on { stepsAt = .distantPast; retryAt = .distantPast } }
+    /// Steps not yet in the server's save (unsent, and those in the request out): the walker walks them on top of base.
+    var ahead: Int { unsent + sending }
+    /// The walker's: what has come back (each act once).
+    func takeAnswers() -> [(act: Act, reply: ActReply?)] { let t = answers; answers = []; return t }
 
-    /// The walker's tick: replies taken; the server's save taken once home allows (canTake); then what's due goes, if nothing is out.
-    /// Non-nil: the server's save was taken (true = the companion levelled up walking ours on top).
-    @discardableResult func tick(_ w: inout Walk, _ now: Date, canTake: Bool = true) -> Bool? {
-        guard phase != .off else { return nil }
-        if case .pin(.locked(let until)) = phase, now >= until { phase = .pin(.enter(wrong: false)) }   // the lock's over: the box again
-        take(&w, now)
-        var took: Bool? = nil
-        if canTake, let h = head { head = nil; took = apply(h, &w, now) }
-        guard inFlight == nil, now >= retryAt, minted.isEmpty else { return took }              // a mint's answer not yet taken in: nothing goes (a save would miss its fee or grant)
-        if phase != .on, !mints.isEmpty { minted += mints.map { ($0.ask, 0, [:]) }; mints = [] }   // logged out / locked: they won't go
-        if let a = asking { asking = nil; send(a) }
-        else if phase == .on, !mints.isEmpty { let m = mints.removeFirst(); sendMint(m.ask, m.walk) }   // a Pokémon waits on these: before saves
-        else if phase == .on, head == nil {
-            if legacy != nil, seat.legacyUploaded != true { send(.legacy) }
-            else if mustSave || now >= nextSave || due.map({ now >= $0 }) == true { save(&w, now) }
-        }
-        return took
-    }
-    /// Quitting: what isn't up goes up (after the one out), waiting at most `timeout`. The reply comes on URLSession's queue, so the main thread can wait.
-    func flush(_ w: inout Walk, timeout: TimeInterval = 2) {
+    /// The walker's tick: replies taken; then what's due goes, if nothing is out: a login / create / PIN, an act sent again, the walker's act,
+    /// the 1.x save once, the steps every 15 s.
+    func tick(_ now: Date) {
+        take(now)
+        guard inFlight == nil, now >= retryAt else { return }
+        if let a = asking { asking = nil; send(a); return }
         guard phase == .on else { return }
-        let end = Date().addingTimeInterval(timeout); var sent = false
-        while true {
-            take(&w, Date())
-            if !minted.isEmpty { return }                                                       // the walker takes a mint's answer in first (quitSave), then flushes again
-            if inFlight == nil { if sent || head != nil || !save(&w, Date()) { return }; sent = true }
-            if Date() >= end { return }
-            Thread.sleep(forTimeInterval: 0.02)
-        }
+        if let o = out { post(.act(o.seq), "v2/act", o.body); return }                          // no answer last time: the same act, the same seq (the server may have it)
+        if let a = queued { queued = nil; sendAct(a, now); return }
+        if legacy != nil, seat.legacyUploaded != true { send(.legacy); return }
+        if unsent > 0 || base == nil, now >= stepsAt { sendAct(.steps, now) }                  // (no save yet: a new trainer's comes with its first act)
     }
+    /// Quitting: the steps go up (after the act out), waiting at most `timeout`. The reply comes on URLSession's queue, so the main thread can wait.
+    func flush(timeout: TimeInterval = 2) {
+        if phase == .on {
+            let end = Date().addingTimeInterval(timeout); var sent = false
+            while Date() < end {
+                take(Date())
+                if inFlight == nil {
+                    if let o = out, !sent { post(.act(o.seq), "v2/act", o.body); sent = true; continue }
+                    if unsent == 0 || sent { break }
+                    sendAct(.steps, Date()); sent = true
+                }
+                Thread.sleep(forTimeInterval: 0.02)
+            }
+        }
+        keepSteps()
+    }
+    /// The unsent steps as they stand, into cloud.json (the walker's save, the quit): a quit while offline keeps them for the next launch.
+    func keepSteps() { seat.steps = unsent > 0 ? unsent : nil }
 
     // MARK: requests
     private func ask(_ a: Ask) { phase = .login; asking = a; retryAt = .distantPast }
+    /// What an old session had going is gone with it (docs/plans/11 §0): its act out, the walker's waiting one.
+    private func drop() {
+        if let o = out { answers.append((o.act, nil)) }; if let q = queued { answers.append((q, nil)) }
+        out = nil; queued = nil; sending = 0; seq = 0
+    }
     private func send(_ a: Ask) {
         guard let id = seat.trainerID, let device = seat.device else { return }
         switch a {
         case .login(let force, _):
             var b: [String: Any] = ["id": id, "device": device, "device_name": deviceName, "app": appVersion, "force": force]
             if let t = seat.trust { b["trust"] = t }; if let p = pendingPIN { b["pin"] = p }                 // this PC's trust, else the PIN just typed
-            post(a, "v1/login", b)
-        case .create: post(a, "v1/create", ["id": id, "device": device, "device_name": deviceName, "app": appVersion, "pin": pendingPIN ?? ""])   // app: the server asks 2.1 on for the PIN, and issues the starter
-        case .setPin: post(a, "v1/pin", ["id": id, "session": seat.session ?? "", "pin": pendingPIN ?? ""])
-        case .mint: break
-        case .legacy: post(a, "v1/legacy", ["id": id, "device": device, "walk": legacy ?? ""])
-        case .save: break
+            post(a, "v1/login", json(b))
+        case .create: post(a, "v1/create", json(["id": id, "device": device, "device_name": deviceName, "app": appVersion, "pin": pendingPIN ?? ""]))
+        case .setPin: post(a, "v1/pin", json(["id": id, "session": seat.session ?? "", "pin": pendingPIN ?? ""]))
+        case .legacy: post(a, "v1/legacy", json(["id": id, "device": device, "walk": legacy ?? ""]))
+        case .act: break
         }
     }
-    /// Up if it changed since the server's (or must): the walk as a JSON string, shared's sorted-keys text, its hash kept as sentHash. false = nothing went.
-    @discardableResult func save(_ w: inout Walk, _ now: Date) -> Bool {
-        due = nil; nextSave = now.addingTimeInterval(Cloud.period)
-        guard phase == .on, inFlight == nil, let id = seat.trainerID, let session = seat.session else { return false }
-        let enc = JSONEncoder(); enc.outputFormatting = .sortedKeys
-        guard let d = try? enc.encode(w.shared), let text = String(data: d, encoding: .utf8) else { return false }
-        let hash = hex(sha256(Array(d)))
-        guard mustSave || hash != acked else { return false }
-        w.sentHash = hash
-        post(.save(total: w.total, hash: hash), "v1/save", ["id": id, "session": session, "app": appVersion, "base": w.cloudRev ?? 0, "walk": text])
-        return true
+    private func sendAct(_ a: Act, _ now: Date) {
+        guard let id = seat.trainerID, let session = seat.session else { answers.append((a, nil)); return }
+        let n = unsent, req = ActReq(id: id, session: session, seq: seq + 1, steps: n > 0 ? n : nil, act: a)
+        guard let body = try? JSONEncoder().encode(req) else { answers.append((a, nil)); return }
+        unsent = 0; sending = n; stepsAt = now.addingTimeInterval(Cloud.stepsEvery)
+        out = (req.seq, a, body); post(.act(req.seq), "v2/act", body)
     }
-    private func sendMint(_ m: MintAsk, _ walk: String?) {
-        guard let id = seat.trainerID, let session = seat.session else { minted.append((m, 0, [:])); return }
-        var b: [String: Any] = ["id": id, "session": session]; if let walk { b["walk"] = walk }
-        let path: String
-        switch m {
-        case .radar: path = "v1/radar"
-        case .result(let uid, let result): path = "v1/radar/result"; b["uid"] = uid; b["result"] = result
-        case .hatch: path = "v1/hatch"
-        case .buy(let i): path = "v1/buy"; b["index"] = i
-        case .evolve(let uid, let to, let level): path = "v1/evolve"; b["uid"] = uid; b["to"] = to; b["level"] = level
-        }
-        post(.mint(m), path, b)
-    }
-    private func post(_ a: Ask, _ path: String, _ body: [String: Any]) {
-        guard let d = try? JSONSerialization.data(withJSONObject: body) else { return }
+    private func json(_ b: [String: Any]) -> Data { (try? JSONSerialization.data(withJSONObject: b)) ?? Data() }
+    private func post(_ a: Ask, _ path: String, _ d: Data) {
         inFlight = a
         link.post(path, d) { [inbox] s, b in inbox.put((a, s, b)) }
     }
 
-    // MARK: replies (08b §10's table)
-    private func take(_ w: inout Walk, _ now: Date) {
+    // MARK: replies (08b §10's table; docs/plans/11 §3)
+    private func take(_ now: Date) {
         for (a, s, body) in inbox.take() {
             inFlight = nil
             guard s != 0, s < 500, let j = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else { offline(a, now); continue }
             backoff = 0
             switch (a, s) {
-            case (.mint(let m), _):                                                           // the walker reads it; the session's own answers act here too
-                let e = j["error"] as? String
-                if e == "no_trainer" { orphan(&w, now) } else if e == "pin_needed" { phase = .pin(.set) }
-                else if s == 409, j["reason"] as? String == "replaced" { phase = .replaced } else if s == 426 { phase = .oldApp }
-                else if s == 422, e == "implausible" { refused(j, now) }                         // (radar, hatch, buy: the walk they carried) the action's "no"
-                minted.append((m, s, j))
+            case (.act(let n), 200):
+                guard let o = out, o.seq == n else { continue }                                     // (an old session's: dropped already)
+                out = nil; sending = 0
+                guard let r = try? JSONDecoder().decode(ActReply.self, from: body) else {
+                    NSLog("pokewalker: cloud: act %ld's reply doesn't decode", n); answers.append((o.act, nil)); drop(); ask(.login(force: false, resume: true)); continue   // a new session sets it straight
+                }
+                seq = n; rev = r.rev; lastSaved = now
+                if let w = r.walk { base = w; rebased = true }
+                answers.append((o.act, r))
             case (_, 426): phase = .oldApp; NSLog("pokewalker: cloud: the server wants app %@ (this is %@)", j["need"] as? String ?? "?", appVersion)
-            case (.login(_, let resume), 200): loggedIn(j, resume: resume, &w, now)
+            case (.login(_, let resume), 200): loggedIn(j, resume: resume, now)
             case (.create, 200) where j["session"] is String:
-                seat.session = j["session"] as? String; seat.trust = j["trust"] as? String ?? seat.trust; pendingPIN = nil; phase = .on; head = (Walk(), 0, nil, .fresh)
-                starterUID = j["starter"] as? Int                                                // 10 §4.1: the starter is issued too
+                drop(); seat.session = j["session"] as? String; seat.trust = j["trust"] as? String ?? seat.trust; pendingPIN = nil
+                base = nil; phase = .on; lastSaved = now; stepsAt = now                                 // its first save (the starter's) comes with the first act
             case (.create, 400) where j["error"] as? String == "bad_pin": pendingPIN = nil; phase = .new(seat.trainerID ?? "")   // (the box checks: not met)
             case (.login, 401) where j["error"] as? String == "pin":                            // no trust for this PC, or the PIN wasn't it
                 seat.trust = nil; phase = .pin(.enter(wrong: pendingPIN != nil)); pendingPIN = nil
             case (.login, 429): pendingPIN = nil; phase = .pin(.locked(until: now.addingTimeInterval(Double(j["retry_after"] as? Int ?? 600))))
-            case (.setPin, 200): seat.trust = j["trust"] as? String ?? seat.trust; pendingPIN = nil; phase = .on; nextSave = now
-            case (.save, 403) where j["error"] as? String == "pin_needed": phase = .pin(.set)
+            case (.setPin, 200): seat.trust = j["trust"] as? String ?? seat.trust; pendingPIN = nil; phase = .on
+            case (.act, 403) where j["error"] as? String == "pin_needed": phase = .pin(.set)        // (the act stays out: it goes once the PIN is set)
             case (.create, 409): ask(.login(force: false, resume: false))                     // made already (our reply lost, or someone else's): log in to it
-            case (.save(let total, let hash), 200) where j["rev"] is Int:
-                w.cloudRev = j["rev"] as? Int; w.cloudTotal = total; acked = hash; mustSave = false; lastSaved = now; refusals = 0
-            case (.save, 409) where j["reason"] as? String == "replaced": phase = .replaced; NSLog("pokewalker: cloud: another PC took %@", seat.trainerID ?? "")
-            case (.save, 409) where j["rev"] is Int && j["walk"] is String:                    // stale: the server is ahead (an admin's rollback)
-                let text = j["walk"] as? String ?? "", rev = j["rev"] as? Int ?? 0
-                if let h = Cloud.walk(text) { head = (h, rev, hex(sha256(Array(text.utf8))), .adopt); NSLog("pokewalker: cloud: stale: the server's rev %ld taken", rev) }
-                else { retryAt = now.addingTimeInterval(Cloud.period); NSLog("pokewalker: cloud: stale, and the server's save doesn't decode") }
-            case (.save, 422) where j["error"] as? String == "implausible": refused(j, now)
+            case (.act, 409) where j["reason"] as? String == "replaced": drop(); phase = .replaced; NSLog("pokewalker: cloud: another PC took %@", seat.trainerID ?? "")
+            case (.act, 409) where j["error"] as? String == "seq":                              // out of step with the server: a new session, its save
+                NSLog("pokewalker: cloud: seq %ld out of step: logging in again", seq); drop(); ask(.login(force: false, resume: true))
             case (.legacy, 200): seat.legacyUploaded = true; legacy = nil                        // stored now or before: done either way
-            case (_, 404): orphan(&w, now)
+            case (_, 404): orphan(now)
             case (.login, 400) where j["error"] as? String == "bad_id": seat.trainerID = nil; phase = .needsID
             default:                                                                             // 400 / 401 / 413 (a bug, the build's key): logged, again next round
                 NSLog("pokewalker: cloud: %@ → %ld %@", "\(a)", s, String(data: body.prefix(200), encoding: .utf8) ?? "")
                 retryAt = now.addingTimeInterval(Cloud.period)
-                switch a { case .login, .create: asking = a; case .legacy: legacy = nil; case .save, .mint: break; case .setPin: pendingPIN = nil; phase = .pin(.set) }
+                switch a {
+                case .login, .create: asking = a
+                case .legacy: legacy = nil
+                case .act: if let o = out { answers.append((o.act, nil)) }; out = nil; sending = 0   // not one the server will take: dropped
+                case .setPin: pendingPIN = nil; phase = .pin(.set)
+                }
             }
         }
     }
-    /// The launch rules (08b §10 ①–④) on a login's answer.
-    private func loggedIn(_ j: [String: Any], resume: Bool, _ w: inout Walk, _ now: Date) {
+    /// The launch rules, 3.0's: the server's save is the save (docs/plans/11 §2); a new session starts over what was going on (§0).
+    private func loggedIn(_ j: [String: Any], resume: Bool, _ now: Date) {
         if j["exists"] as? Bool == false { phase = .new(seat.trainerID ?? ""); return }
         if let t = j["trust"] as? String { seat.trust = t }                                   // the PIN passed: this PC is trusted from now on
         if j["busy"] as? Bool == true { phase = .busy(device: j["last_device"] as? String ?? "", at: j["updated_at"] as? Int ?? 0); return }
         guard let session = j["session"] as? String, let rev = j["rev"] as? Int else { asking = .login(force: resume, resume: resume); retryAt = now.addingTimeInterval(Cloud.period); return }
-        seat.session = session; phase = .on; nextSave = now; lastSaved = now; pendingPIN = nil   // (in step with the server from here, but for what's changed)
-        if j["pin_needed"] as? Bool == true { phase = .pin(.set) }                             // a 2.0 ID: its PIN first, saves wait (its save is taken all the same)
-        guard let text = j["walk"] as? String else { acked = nil; mustSave = true; return }   // made but never saved: ours goes up (base cloudRev ?? 0)
-        guard let h = Cloud.walk(text) else {                                                // one this app can't read: don't write over it
-            NSLog("pokewalker: cloud: the server's save doesn't decode"); phase = .login; asking = .login(force: resume, resume: resume); retryAt = now.addingTimeInterval(Cloud.period); return
+        if let text = j["walk"] as? String {
+            guard let w = Cloud.walk(text) else {                                              // one this app can't read: nothing to show it with
+                NSLog("pokewalker: cloud: the server's save doesn't decode"); phase = .login; asking = .login(force: resume, resume: resume); retryAt = now.addingTimeInterval(Cloud.period); return
+            }
+            base = w; rebased = true
         }
-        let hash = hex(sha256(Array(text.utf8)))
-        if resume { head = (h, rev, hash, .asIs) }
-        else if hash == w.sentHash { w.cloudRev = rev; w.cloudTotal = h.total; acked = hash }  // ② it is our last save: only its reply was lost (adopting would walk it twice)
-        else if rev > (w.cloudRev ?? -1) { head = (h, rev, hash, .adopt) }                    // ③ the server's is newer: take it, ours on top
-        else if rev == w.cloudRev { acked = hash }                                            // ④ up if changed since (base = rev)
-        else { acked = nil; mustSave = true }                                                 // ④ the server lost ours: up even unchanged (base = cloudRev)
+        drop(); seat.session = session; self.rev = rev; phase = .on; lastSaved = now; pendingPIN = nil; stepsAt = now   // (the steps walked meanwhile go up first)
+        if j["pin_needed"] as? Bool == true { phase = .pin(.set) }                             // a 2.0 ID: its PIN first, acts wait
     }
-    private func apply(_ h: (walk: Walk, rev: Int, hash: String?, how: Take), _ w: inout Walk, _ now: Date) -> Bool {
-        acked = h.hash; nextSave = now
-        switch h.how {
-        case .adopt: return w.adopt(h.walk, rev: h.rev, at: now)
-        case .asIs, .refused: refusedNews = h.how == .refused                                // nothing of ours on top
-            w.cloudTotal = w.total; return w.adopt(h.walk, rev: h.rev, at: now)
-        case .fresh:                                                                          // 08 §5: a new save, 1.7's check and 1.10's refund already done
-            var f = Walk(); f.audited = 2; f.ballsRefunded = true
-            (f.counter, f.boot, f.syncedAt, f.counterKind, f.cloudRev, f.cloudTotal) = (w.counter, w.boot, w.syncedAt, w.counterKind, 0, 0)
-            if let u = starterUID { f.companion.uid = u; f.lastUID = max(f.lastUID ?? 0, u) }   // the server's uid for the first companion
-            f.rollover(now); f.dex(); w = f; mustSave = true; return false
-        }
-    }
-    /// 422 implausible (10 §2, the server in reject mode): that save never goes again. The server's comes back with the refusal and is taken as it
-    /// is, at home — our steps since the save it last took are dropped, as walking them on top would make the same refused save. Mints queued with
-    /// the refused walk get the same "no". Refused again (or nothing to take): nothing goes for 2, 4, 8, 16, then 30 minutes.
-    private func refused(_ j: [String: Any], _ now: Date) {
-        refusals += 1; mustSave = false
-        let text = j["walk"] as? String, h = text.flatMap(Cloud.walk)
-        if let h, let text, let rev = j["rev"] as? Int { head = (h, rev, hex(sha256(Array(text.utf8))), .refused) }
-        minted += mints.filter { $0.walk != nil }.map { ($0.ask, 422, [:]) }; mints.removeAll { $0.walk != nil }
-        if refusals > 1 || head?.how != .refused { retryAt = now.addingTimeInterval(min(Cloud.slowest, Cloud.period * pow(2, Double(max(0, refusals - 2))))) }
-        NSLog("pokewalker: cloud: the server refused the save (%ld in a row): %@", refusals, j["reasons"] as? String ?? "")
-    }
-    /// No answer, a 5xx, or not JSON (Cloudflare's own pages: 502, 530, a 403 challenge): offline, again in 2, 4, 8 … 30 minutes.
+    /// No answer, a 5xx, or not JSON (Cloudflare's own pages: 502, 530, a 403 challenge): offline, again in 2, 4, 8 … 30 minutes. An act out
+    /// stays to go again as it was; the walker hears none came (it stops waiting).
     private func offline(_ a: Ask, _ now: Date) {
         backoff = min(Cloud.slowest, backoff == 0 ? Cloud.period : backoff * 2); retryAt = now.addingTimeInterval(backoff)
         switch a {
         case .login(_, true): phase = .replaced                                               // 여기서 계속 again, once it's back
-        case .login where seat.session != nil: phase = .on                                     // logged in here before: play on, saves go with that session (08b §10)
+        case .login where seat.session != nil && base != nil: phase = .on; asking = a          // played here before: steps pile up, acts wait for the server
         case .login, .create: asking = a
-        case .save, .legacy: break
+        case .legacy: break
         case .setPin: phase = .pin(.set)                                                        // the button again, once it's back
-        case .mint(let m): minted.append((m, 0, [:])); minted += mints.map { ($0.ask, 0, [:]) }; mints = []   // no answer: nothing waits on the network
+        case .act: if let o = out { answers.append((o.act, nil)) }; if let q = queued { answers.append((q, nil)); queued = nil }
         }
     }
-    /// 404: the trainer is gone (an admin deleted or renamed it). The save is kept as state.orphan-<unix>.json; this PC's ID is cleared: the ID box.
-    private func orphan(_ w: inout Walk, _ now: Date) {
+    /// 404: the trainer is gone (an admin deleted or renamed it). The last save we had is kept as state.orphan-<unix>.json; this PC's ID is cleared: the ID box.
+    private func orphan(_ now: Date) {
         let fm = FileManager.default, stamp = "state.orphan-\(Int(now.timeIntervalSince1970))"
         var n = 0, to = dir.appendingPathComponent(stamp + ".json")
         while fm.fileExists(atPath: to.path) { n += 1; to = dir.appendingPathComponent("\(stamp)-\(n).json") }
         let enc = JSONEncoder(); enc.outputFormatting = .sortedKeys
-        try? fm.createDirectory(at: dir, withIntermediateDirectories: true); try? enc.encode(w).write(to: to, options: .atomic)
-        NSLog("pokewalker: cloud: %@ is gone from the server; the save is kept as %@", seat.trainerID ?? "", to.lastPathComponent)
-        seat.trainerID = nil; seat.session = nil; (w.cloudRev, w.cloudTotal, w.sentHash) = (nil, nil, nil)
-        acked = nil; mustSave = false; head = nil; asking = nil; phase = .needsID
+        if let b = base { try? fm.createDirectory(at: dir, withIntermediateDirectories: true); try? enc.encode(b).write(to: to, options: .atomic) }
+        NSLog("pokewalker: cloud: %@ is gone from the server; its last save is kept as %@", seat.trainerID ?? "", to.lastPathComponent)
+        seat.trainerID = nil; seat.session = nil; drop(); base = nil; unsent = 0; asking = nil; phase = .needsID
     }
-    static func walk(_ text: String) -> Walk? { (try? JSONDecoder().decode(Walk.self, from: Data(text.utf8))).flatMap { $0.version == Walk().version ? $0 : nil } }
+    nonisolated static func walk(_ text: String) -> Walk? { (try? JSONDecoder().decode(Walk.self, from: Data(text.utf8))).flatMap { $0.version == Walk().version ? $0 : nil } }
+    nonisolated static func validPIN(_ s: String) -> Bool { s.count == 4 && s.allSatisfy { $0.isASCII && $0.isNumber } }
     private func writeSeat() {
         let enc = JSONEncoder(); enc.outputFormatting = .sortedKeys
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -338,8 +290,8 @@ final class CloudInbox: @unchecked Sendable {
 extension Walker {
     /// Launch with the cloud on (main.swift, WinApp.swift): on the server's first launch here a 1.x save goes aside (Store.movePreServer, 08 §5) to go up
     /// once as 옛 기록, and the walker starts empty (this PC's counter kept) until the login brings the trainer's; then the login. Off: nothing, 1.x as ever.
-    func startCloud(_ c: Cloud, file: URL = Store.file, bak: URL = Store.bak) {
-        guard c.phase != .off else { return }
+    func startCloud(_ c: Cloud?, file: URL = Store.file, bak: URL = Store.bak) {
+        guard let c else { return }
         cloud = c
         if c.firstRun, Store.movePreServer(file: file, bak: bak) {
             var w = Walk(); w.audited = 2; w.ballsRefunded = true                                   // nothing for 1.7's check or 1.10's refund to do
@@ -347,7 +299,7 @@ extension Walker {
             w.rollover(Date()); w.dex(); state = w
         }
         if c.seat.legacyUploaded != true, let text = try? String(contentsOf: Store.preServer(file), encoding: .utf8) { c.legacy = text }
-        c.start(); seen = state
+        c.start()
     }
     /// The server holds the game (08 §2): no ID yet, another PC took the trainer (§2-1), too old an app — no steps, no keys; ● is the lock's button.
     var frozen: Bool { cloud.map { Cloud.locks($0.phase) } ?? false }
@@ -408,7 +360,7 @@ extension Walker {
         case .pin(.locked): ["PIN을 너무 많이", "틀렸어요", "잠시 뒤에 다시"]
         default: nil
         }
-        if let lines { towerRun = false; growthThen = nil; heldSteps = 0; mintWaiting = nil; radarMon = nil; screen = .say(lines, next: .home, since: .distantFuture) }   // (a fight going on is dropped)
+        if let lines { dropPlay(); screen = .say(lines, next: .home, since: .distantFuture) }   // (a fight going on: a new session ends it on the server)
         if p == .oldApp { updater?.checkNow() }                                                  // 426: a newer app is out — the updater asks now
         else if cloudShown.map(Cloud.locks) == true { screen = .home }
         refreshPane(Date(), force: true); host?.redraw(.all)
@@ -426,77 +378,17 @@ extension Walker {
         default: nil
         }
     }
-    // MARK: the server's Pokémon (docs/plans/10 §4)
-    /// Asked of the server: the LCD says so and waits (keys held, steps go on); back = where a "no" returns.
-    func askMint(_ m: Cloud.MintAsk, walk: Bool, lines: [String], back: Screen) {
-        guard let c = cloud else { return }
-        mintWaiting = m; mintBack = back; screen = .say(lines, next: back, since: .distantFuture)
-        c.mint(m, walk: walk ? state : nil, now: Date())
-    }
-    /// The radar's bushes went by (a wrong one, or too slow): the server's find is gone, its chain over.
-    func radarMissed(_ now: Date) {
-        if let c = cloud, let u = radarMon?.uid { c.mint(.result(uid: u, result: "missed"), walk: nil, now: now) }
-        radarMon = nil
-    }
-    /// The LCD's lines when the server refused our save (10 §2) and its last one was taken; a mint's own refusal.
-    static let refusedLines = ["서버가 기록을 받지 않아", "마지막 저장으로 돌아갔어요"], mintRefusedLines = ["서버가 기록을", "받지 않았다"]
     func notifyHatch(_ m: Mon) {
         notify("hatch", "알에서 " + josa(monNames[m.dex], "이", "가") + " 태어났어요!" + (m.shiny == true ? " ✦" : ""), m.shiny == true ? "이로치예요! 상자에 있어요" : "Lv.1 · 상자에 있어요")
     }
-    /// The server's answers: the radar's find (10 W unless the chain's), a chain going on (its W and item exactly) or not, an egg's, a legend
-    /// (paid now), a 껍질몬. No answer: the radar and the shop say "연결되면", the chain ends, the egg waits.
-    func mintTick(_ c: Cloud, _ now: Date, quitting: Bool = false) {
-        var changed = false
-        for (m, s, j) in c.takeMinted() {
-            switch m {
-            case .radar:
-                guard mintWaiting == .radar else { continue }
-                mintWaiting = nil
-                guard s == 200, let mon = Cloud.mon(j["mon"]) else {
-                    chainNote = nil; screen = .say(s == 402 ? ["W가 부족하다", "(10W 필요)"] : s == 422 ? Walker.mintRefusedLines : ["연결되면", "쓸 수 있어요"], next: mintBack ?? .home, since: now); continue
-                }
-                if j["free"] as? Bool != true { _ = state.spend(10); changed = true }
-                radarMon = mon
-                let next = Screen.radar(bush: Int.random(in: 0..<4, using: &rng), cursor: 0, since: now, chain: j["chain"] as? Int ?? 0)
-                if growthDue(now) { growthThen = next; screen = .home } else { screen = next }       // what the last fight brought plays first
-            case .result:
-                guard case .result? = mintWaiting else { continue }                                 // a missed or fled one: nothing waits on it
-                mintWaiting = nil
-                let n = s == 200 ? j["chain"] as? Int ?? 0 : 0
-                guard n > 0 else { screen = .say(chainWas > 0 ? ["풀숲이 조용해졌다", "연쇄 \(chainWas)에서 끝"] : ["풀숲이", "조용해졌다"], next: .home, since: now); continue }
-                let bonus = j["bonus"] as? Int ?? 0, reward = j["reward"] as? String
-                state.watts = min(9999, state.watts + bonus); state.bestChain = max(state.bestChain ?? 0, n); if let r = reward { _ = state.keep(r) }
-                chainNote = "+\(bonus)W" + (reward.map { " · " + $0 } ?? ""); changed = true
-                if !quitting { askMint(.radar, walk: true, lines: ["연쇄 \(n)!", "풀숲이 흔들린다"], back: .home) }   // (quitting: its W and item kept, no new radar)
-            case .hatch:
-                hatchAsked = false
-                guard s == 200, let mon = Cloud.mon(j["mon"]), state.egg != nil else { hatchAt = now.addingTimeInterval(Cloud.period); continue }
-                state.hatched(mon); changed = true
-                if case .home = screen { screen = .hatch(mon, since: now) }
-                notifyHatch(mon)
-            case .buy(let k):
-                guard mintWaiting == m else { continue }
-                mintWaiting = nil
-                let back = mintBack ?? .home
-                guard s == 200, let mon = Cloud.mon(j["mon"]), state.payLegend(k) else {
-                    screen = .say(s == 402 ? [Walk.legendShop[k].bp > 0 ? "BP가 부족하다" : "W가 부족하다"] : s == 422 ? Walker.mintRefusedLines : ["연결되면", "쓸 수 있어요"], next: back, since: now); continue
-                }
-                _ = state.keep(mon); changed = true
-                screen = .say(["전설의 " + monNames[mon.dex] + "!", "Lv.\(mon.level) · 상자에 왔다"], next: back, since: now)
-                notify("unlock", "전설의 \(monNames[mon.dex])", "Lv.\(mon.level)이 상자에 왔어요")
-            case .evolve:
-                if s == 200, let shed = Cloud.mon(j["shedinja"]) { _ = state.keep(shed); changed = true }
-            }
-        }
-        if changed { save(); c.soon(now) }
-    }
     /// The trainer card's first page heads with the trainer ID (08 §2), once there is one.
     var cardTitle: String { cloud?.seat.trainerID ?? "트레이너 카드" }
-    /// The menu's info row: 트레이너: ID · n분 전 저장 (저장 안 됨 while offline).
+    /// The menu's info row: 트레이너: ID · n분 전 저장 (offline: 연결 안 됨, and the steps waiting to go up).
     var cloudMenuTitle: String {
         guard let c = cloud else { return "" }
         let when: String = switch c.phase {
-        case .on: c.backoff > 0 ? "저장 안 됨" : c.refusals > 0 ? "저장 거절됨" : c.lastSaved.map { d in let m = Int(Date().timeIntervalSince(d) / 60); return m < 1 ? "방금 저장" : m < 60 ? "\(m)분 전 저장" : "\(m / 60)시간 전 저장" } ?? "저장 전"
+        case .on where !c.online: c.ahead > 0 ? "연결 안 됨 · 올릴 걸음 \(c.ahead.formatted())" : "연결 안 됨"
+        case .on: c.lastSaved.map { d in let m = Int(Date().timeIntervalSince(d) / 60); return m < 1 ? "방금 저장" : m < 60 ? "\(m)분 전 저장" : "\(m / 60)시간 전 저장" } ?? "저장 전"
         case .needsID: "로그인이 필요해요"
         case .replaced: "다른 PC에서 접속 중"
         case .oldApp: "새 버전이 필요해요"
@@ -505,37 +397,21 @@ extension Walker {
         }
         return "트레이너: \(c.seat.trainerID ?? "-") · " + when
     }
-    /// Woken from sleep: what changed goes up (a stale reply brings the server's).
-    func woke() { cloud?.soon(Date()) }
-    /// ID 바꾸기 (step 3's box): what isn't up goes up first; another trainer's rev, total and hash don't carry over. Home at once, a tower run over:
-    /// the other trainer's save is taken only there (a page left open, or a run, kept the old one up under the new ID). false = not an ID.
+    /// Woken from sleep: the steps go up now.
+    func woke() { cloud?.saveNow() }
+    /// ID 바꾸기 (step 3's box): this trainer's steps go up first; then home, what was going on dropped (the other trainer's save comes with the login).
+    /// false = not an ID.
     @discardableResult func switchID(_ raw: String) -> Bool {
         guard let c = cloud, let id = trainerID(raw) else { return false }
-        if c.seat.trainerID.flatMap(trainerID)?.key != id.key {
-            c.flush(&state); (state.cloudRev, state.cloudTotal, state.sentHash) = (nil, nil, nil)
-            towerRun = false; growthThen = nil; heldSteps = 0; screen = .home                    // (a fight going on is dropped: it was the other trainer's)
-        }
+        if c.seat.trainerID.flatMap(trainerID)?.key != id.key { c.flush(); dropPlay(); news = []; screen = .home }
         c.login(raw); save(); return true
     }
-    /// The tick's end: what the player did goes up soon; replies; the server's save taken at home (its news quiet: it happened elsewhere), saved at once,
-    /// as is a save's hash once it went; another PC taking over locks the walker; a question the server's answer raises.
-    func cloudTick(_ now: Date, acted: Bool) {
+    /// The tick's end: the server's answers (Core/Act.swift), a lock's change, a question the server's answer raises.
+    func cloudTick(_ now: Date) {
         guard let c = cloud else { return }
-        if acted { c.soon(now) }
-        let sent = state.sentHash, rev = state.cloudRev
-        let home = { if case .home = screen { return true }; return false }()
-        if let up = c.tick(&state, now, canTake: home && !towerRun && heldSteps == 0) {
-            if up { levelled = true }
-            rewarded = dexCount; unlockedAt = state.earned; lastSeason = state.season
-            queueReadyEvolutions(); save()
-            if c.refusedNews {                                                                   // 10 §2: back to the server's last save, and why
-                c.refusedNews = false; screen = .say(Walker.refusedLines, next: .home, since: now.addingTimeInterval(30))
-                notify("unlock", "서버가 기록을 받지 않았어요", "마지막으로 저장된 기록으로 돌아갔어요.")
-            }
-        } else if state.sentHash != sent || state.cloudRev != rev { save() }                     // 08b §10 ②: the sent save's hash on disk before its reply
-        mintTick(c, now)
+        c.tick(now)
+        actTick(c, now)
         if c.phase != cloudShown { showCloud(c.phase); cloudShown = c.phase; cloudAsked = nil }   // a new answer from the server: its question may come again
-        seen = state
         cloudQuestion(c)
     }
     /// 새 트레이너? / 가져올까요? — once per answer the server gave (step 3 brings the ID box and the buttons). A tick may come during the question: not twice.
@@ -572,29 +448,56 @@ extension Walker {
     }
 }
 
-// MARK: - the self-test's: a save server in a few lines (08b §4's 13 rows, as far as the app sees them)
+// MARK: - the self-test's: the save server in a few lines — v1's login, create and PIN (08b §4, 10 §3), 3.0's acts on the shared engine (docs/plans/11)
 /// One table of trainers. down = no answer; html = that status with a page (Cloudflare's); lose = the next reply lost after the server acted;
-/// hold = replies wait for release(); old = 426 with that need; pins = PINs asked (docs/plans/10 §3: the server does for apps ≥ 2.1);
-/// refuse = 10 §2's reject mode: why a walk sent (a save's, a mint's) is implausible, nil = it isn't.
+/// hold = replies wait for release(); old = 426 with that need; pins = PINs asked (10 §3). An act runs Engine.apply with the server's dice (rng)
+/// and clock (now: the real one unless a test sets it); the same seq again gets the stored reply; steps aren't capped here.
 final class FakeCloud: CloudLink, @unchecked Sendable {
     struct Row {
-        var name: String; var rev = 0; var walk: String? = nil; var session = ""; var writer: String? = nil; var device = ""; var at = 0
+        var name: String; var rev = 0; var walk: String? = nil; var session = ""; var device = ""; var at = 0
         var pin: String? = nil; var trusts: [String: String] = [:]; var fails: [Int] = []                  // its PIN, each PC's trust token, wrong PINs' times
+        var play = Play(), seq = 0, reply = Data()                                                         // what goes on between acts; the session's last act, its reply
     }
-    var rows: [String: Row] = [:], paths: [String] = [], held: [() -> Void] = [], clock = 10_000
-    var down = false, html: Int? = nil, lose = false, hold = false, old: String? = nil, pins = false, saves: [Int] = []   // saves: each save's W, in order
-    var refuse: ((Walk) -> String?)? = nil
-    var mintRng = Seeded(s: 77), nextUID = 1_000_001, pending: Int? = nil, chainN = 0, chainFree = false, chainCourse = 0, chainGoes = true   // 10 §4: the server's rolls
+    var rows: [String: Row] = [:], paths: [String] = [], acts: [Act] = [], steps: [Int] = [], held: [() -> Void] = [], clock = 10_000
+    var down = false, html: Int? = nil, lose = false, hold = false, old: String? = nil, pins = false
+    var rng = Seeded(s: 77), nextUID = 1_000_001, now: Date? = nil
     func release() { let h = held; held = []; h.forEach { $0() } }
-    func admin(_ key: String, _ walk: String) { rows[key]?.rev += 1; rows[key]?.walk = walk; rows[key]?.writer = "admin" }   // `pokeserver rollback`
+    static func text(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return (try? e.encode(w)).flatMap { String(data: $0, encoding: .utf8) } ?? "" }
+    /// The trainer's save as the server has it; an admin's `pokeserver set` (a new rev).
+    func walk(_ key: String) -> Walk? { rows[key]?.walk.flatMap(Cloud.walk) }
+    func set(_ key: String, _ w: Walk) { rows[key]?.rev += 1; rows[key]?.walk = FakeCloud.text(w) }
+    /// A trainer that exists already (logged into from elsewhere), with this save.
+    func add(_ key: String, _ w: Walk, rev: Int = 1) { rows[key] = Row(name: key, rev: rev, walk: FakeCloud.text(w), device: "elsewhere") }
     func post(_ path: String, _ json: Data, done: @escaping @Sendable (Int, Data) -> Void) {
         paths.append(path)
         if down { done(0, Data()); return }
         if let h = html { done(h, Data("<html><body>Bad gateway</body></html>".utf8)); return }          // Cloudflare's own: the server never saw it
-        var (s, body) = answer(path, (try? JSONSerialization.jsonObject(with: json)) as? [String: Any] ?? [:])
-        if lose { lose = false; s = 0; body = [:] }
-        let d = s == 0 ? Data() : (try? JSONSerialization.data(withJSONObject: body)) ?? Data(), st = s
-        if hold { held.append { done(st, d) } } else { done(st, d) }
+        var (s, d): (Int, Data)
+        if path == "v2/act" { (s, d) = act(json) }
+        else { let (st, body) = answer(path, (try? JSONSerialization.jsonObject(with: json)) as? [String: Any] ?? [:]); (s, d) = (st, (try? JSONSerialization.data(withJSONObject: body)) ?? Data()) }
+        if lose { lose = false; s = 0; d = Data() }
+        let st = s, dd = d
+        if hold { held.append { done(st, dd) } } else { done(st, dd) }
+    }
+    private func err(_ s: Int, _ b: [String: Any]) -> (Int, Data) { (s, (try? JSONSerialization.data(withJSONObject: b)) ?? Data()) }
+    /// POST /v2/act: the session's next act (a resend: its stored reply), run on the trainer's save and play.
+    func act(_ d: Data) -> (Int, Data) {
+        guard let q = try? JSONDecoder().decode(ActReq.self, from: d), let id = trainerID(q.id) else { return err(400, ["error": "bad_action"]) }
+        guard var r = rows[id.key] else { return err(404, ["error": "no_trainer"]) }
+        if let need = old { return err(426, ["error": "old_app", "need": need]) }
+        guard q.session == r.session else { return err(409, ["error": "conflict", "reason": "replaced"]) }
+        if pins, r.pin == nil { return err(403, ["error": "pin_needed"]) }
+        if q.seq == r.seq, r.seq > 0 { return (200, r.reply) }                                              // the reply was lost: the same one again
+        guard q.seq == r.seq + 1 else { return err(409, ["error": "seq"]) }
+        let first = r.walk == nil                                                                           // a new trainer's first act: the server makes its save
+        var w = r.walk.flatMap(Cloud.walk) ?? Engine.fresh(now: now ?? Date(), starter: 1_000_000)
+        var ids = Issued(next: max(nextUID, (w.lastUID ?? 0) + 1))
+        let o = Engine.apply(q.act, steps: q.steps ?? 0, walk: &w, play: &r.play, rng: &rng, now: now ?? Date(), ids: &ids)
+        nextUID = ids.next; acts.append(q.act); steps.append(q.steps ?? 0); clock += 1
+        if o.changed || first { r.rev += 1; r.walk = FakeCloud.text(w); r.at = clock }
+        let reply = (try? JSONEncoder().encode(ActReply(rev: r.rev, walk: o.changed || first ? w : nil, taken: q.steps, out: o))) ?? Data()
+        r.seq = q.seq; r.reply = reply; rows[id.key] = r
+        return (200, reply)
     }
     func answer(_ path: String, _ j: [String: Any]) -> (Int, [String: Any]) {
         guard let id = (j["id"] as? String).flatMap(trainerID) else { return (400, ["error": "bad_id"]) }
@@ -603,10 +506,9 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         let token = String(format: "t%031x", clock), pin = j["pin"] as? String ?? ""
         guard var r = rows[id.key] else {
             if path == "v1/create" {
-                let asks = pins && (j["app"] as? String).flatMap { verCmp($0, "2.1") }.map { $0 >= 0 } == true   // as the server: 2.1 on (the request's app) asks for the PIN and issues the starter
-                guard !asks || Cloud.validPIN(pin) else { return (400, ["error": "bad_pin"]) }
-                rows[id.key] = Row(name: id.name, session: session, device: device, at: clock, pin: pins ? pin : nil, trusts: pins ? [device: token] : [:])
-                return (200, asks ? ["rev": 0, "session": session, "trust": token, "starter": 1_000_000] : ["rev": 0, "session": session])
+                guard !pins || Cloud.validPIN(pin) else { return (400, ["error": "bad_pin"]) }
+                rows[id.key] = Row(name: id.name, session: session, device: device, at: clock, pin: pins ? pin : nil, trusts: pins ? [device: token] : [:])   // its save: at its first act
+                return (200, ["rev": 0, "session": session, "trust": token, "starter": 1_000_000])
             }
             return path == "v1/login" ? (200, ["exists": false]) : (404, ["error": "no_trainer"])
         }
@@ -628,7 +530,9 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             if j["force"] as? Bool != true, r.device != device, clock - r.at < 300 {
                 var b: [String: Any] = ["exists": true, "busy": true, "name": r.name, "last_device": r.device, "updated_at": r.at]; b["trust"] = trust; return (200, b)
             }
-            r.session = session; r.device = device; rows[id.key] = r
+            r.session = session; r.device = device; r.at = clock; r.play = Play(); r.seq = 0                       // a new session: what was going on is over (11 §0)
+            if var w = r.walk.flatMap(Cloud.walk) { for ref in [-1] + w.caught.indices.map({ -2 - $0 }) + Array(w.box.indices) { _ = w.id(ref) }; r.walk = FakeCloud.text(w) }   // every Pokémon a uid (3.0's first login)
+            rows[id.key] = r
             var b: [String: Any] = ["exists": true, "name": r.name, "rev": r.rev, "walk": (r.walk as Any?) ?? NSNull(), "session": session, "last_device": was.device, "updated_at": was.at]
             b["trust"] = trust; if pins, r.pin == nil { b["pin_needed"] = true }
             return (200, b)
@@ -637,49 +541,6 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             guard Cloud.validPIN(pin) else { return (400, ["error": "bad_pin"]) }
             r.pin = pin; r.trusts = [r.device: token]; rows[id.key] = r                                 // trusted: the PC holding the session
             return (200, ["trust": token])
-        case "v1/radar", "v1/radar/result", "v1/hatch", "v1/buy", "v1/evolve":
-            guard j["session"] as? String == r.session else { return (409, ["error": "conflict", "reason": "replaced"]) }
-            let w = (j["walk"] as? String).flatMap { try? JSONDecoder().decode(Walk.self, from: Data($0.utf8)) }
-            if let w, let why = refuse?(w) { return (422, ["error": "implausible", "reasons": why, "rev": r.rev, "walk": (r.walk as Any?) ?? NSNull()]) }   // the walk carried
-            func text(_ m: Mon) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return (try? e.encode(m)).map { String(decoding: $0, as: UTF8.self) } ?? "" }
-            func issue(_ m: Mon) -> String { var m = m; m.uid = nextUID; nextUID += 1; return text(m) }
-            switch path {
-            case "v1/radar":
-                guard let w else { return (400, ["error": "bad_walk"]) }
-                if pending != nil { pending = nil; chainN = 0; chainFree = false }                       // one left open: its chain is over
-                let free = chainFree && chainN > 0
-                if !free { guard w.watts >= 10 else { return (402, ["error": "watts"]) }; chainN = 0 }
-                let (m, legend) = w.radarMon(&mintRng, chain: chainN), t = issue(m)
-                pending = nextUID - 1; chainFree = false; chainCourse = w.course
-                return (200, ["mon": t, "legend": legend, "chain": chainN, "free": free])
-            case "v1/radar/result":
-                guard let u = j["uid"] as? Int, u == pending else { return (409, ["error": "no_radar"]) }
-                pending = nil
-                guard ["caught", "defeated"].contains(j["result"] as? String ?? ""), chainGoes else { chainN = 0; chainFree = false; return (200, ["chain": 0, "bonus": 0, "reward": NSNull()]) }
-                chainN += 1; chainFree = true
-                return (200, ["chain": chainN, "bonus": 2 * chainN, "reward": chainN % 5 == 0 ? courses[chainCourse].items[0].item : NSNull()])
-            case "v1/hatch":
-                guard let w, w.hatchDue, let m = w.eggMon(&mintRng) else { return (409, ["error": "no_egg"]) }
-                return (200, ["mon": issue(m)])
-            case "v1/buy":
-                let i = j["index"] as? Int ?? -1
-                guard let w, Walk.legendShop.indices.contains(i), w.watts >= Walk.legendShop[i].watts, (w.bp ?? 0) >= Walk.legendShop[i].bp else { return (402, ["error": "price"]) }
-                return (200, ["mon": issue(Walk.legendMon(i, &mintRng))])
-            default:                                                                                // v1/evolve: 토중몬 → 아이스크 brings a 껍질몬
-                guard j["to"] as? Int == 291 else { return (200, ["shedinja": NSNull()]) }
-                return (200, ["shedinja": issue(Walk.shedinja(from: Mon(dex: 291, level: j["level"] as? Int ?? 1, female: false), &mintRng))])
-            }
-        case "v1/save":
-            let base = j["base"] as? Int ?? -1, mine = j["session"] as? String
-            guard mine == r.session else { return (409, ["error": "conflict", "reason": "replaced"]) }                         // row 9
-            if pins, r.pin == nil { return (403, ["error": "pin_needed"]) }
-            guard base >= r.rev || r.writer == mine else { return (409, ["error": "conflict", "reason": "stale", "rev": r.rev, "walk": (r.walk as Any?) ?? NSNull()]) }   // 13
-            if let why = (j["walk"] as? String).flatMap({ try? JSONDecoder().decode(Walk.self, from: Data($0.utf8)) }).flatMap({ refuse?($0) }) {
-                return (422, ["error": "implausible", "reasons": why, "rev": r.rev, "walk": (r.walk as Any?) ?? NSNull()])   // not written; the server's comes back
-            }
-            r.rev = max(base, r.rev) + 1; r.walk = j["walk"] as? String; r.writer = mine; r.at = clock; rows[id.key] = r           // 10-12
-            saves.append(r.walk.flatMap { try? JSONDecoder().decode(Walk.self, from: Data($0.utf8)) }?.watts ?? -1)
-            return (200, ["rev": r.rev])
         default: return (200, ["stored": true])                                                                                 // v1/legacy
         }
     }
@@ -709,194 +570,162 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     var c: [(Bool, String)] = []
     let fm = FileManager.default, tmp = fm.temporaryDirectory.appendingPathComponent("pokewalker-cloud-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
     defer { try? fm.removeItem(at: tmp) }
-    let srv = FakeCloud(), t0 = Date(timeIntervalSinceReferenceDate: 812_000_000), key = "zz000001"
-    func pc(_ name: String, on: Bool = true) -> Cloud { Cloud(link: srv, dir: tmp.appendingPathComponent(name, isDirectory: true), on: on) }
-    func run(_ cl: Cloud, _ w: inout Walk, _ t: Date, canTake: Bool = true) -> Bool? { var took: Bool? = nil; for _ in 0..<3 { if let x = cl.tick(&w, t, canTake: canTake) { took = x } }; return took }
-    func text(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return (try? e.encode(w)).flatMap { String(data: $0, encoding: .utf8) } ?? "" }
-    func sent() -> Int { srv.paths.count }
     #if os(macOS)
     c.append(((Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String).map { $0 == windowsVersion } ?? true, "cloud: Windows' version (Core/Platform.swift) is Info.plist's"))
     #endif
+    func ticks(_ wk: Walker, _ from: Date, _ secs: Double) -> Date { var at = from; while at < from + secs { wk.tick(at); at += 0.5 }; return at }
+    func isHome(_ w: Walker) -> Bool { if case .home = w.screen { return true }; return false }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func chk(_ ok: Bool, _ name: String, _ why: String) { c.append((ok, ok ? name : name + " — " + why)) }
+    func beatsOut(_ w: Walker) { var n = 0; while n < 20, case .beats = w.screen { w.tick(Date() + 100); n += 1 } }
 
-    var w = Walk(); w.walk(700, at: t0)                                                          // a 1.x save
-    let off = pc("off", on: false); off.start(); _ = off.login(key); off.soon(t0); _ = run(off, &w, t0); off.flush(&w)
-    c.append((off.phase == .off && sent() == 0 && Cloud.app(persist: false).phase == .off && !fm.fileExists(atPath: off.seatFile.path),
-              "cloud: off (the setting, or persist == false: the self-test, renders) sends and writes nothing: the app is 1.x"))
+    // a new trainer: the ID box → 새 트레이너 → its PIN → made; its first act brings the server's save (docs/plans/11: the starter's)
+    let srv = FakeCloud(); srv.pins = true
+    let ah = TestHost(), aw = Walker(state: Walk()); aw.persist = false; aw.host = ah
+    let ac = Cloud(link: srv, dir: tmp.appendingPathComponent("a", isDirectory: true)); aw.startCloud(ac)
+    let noID = ac.phase == .needsID && srv.paths.isEmpty && Cloud.app(persist: false) == nil
+    ah.texts = ["민", "zz000001"]; ah.pins = ["2580", "2580"]
+    var t = ticks(aw, Date(), 3)
+    c.append((noID && ah.boxes.count == 2 && ah.asked == ["새 트레이너"] && ac.phase == .on && aw.state.companion.uid == 1_000_000 && Array(srv.paths.prefix(3)) == ["v1/login", "v1/create", "v2/act"]
+              && srv.acts.first == .steps && ac.seat.trust != nil && srv.rows["zz000001"]?.walk != nil,
+              "3.0 cloud: no ID → the box (one letter isn't one) → 새 트레이너 → its PIN → made; the first act brings the server's save: the starter, uid 1,000,000"))
+    for _ in 0..<8 { ah.keys += 4; t = ticks(aw, t, 0.5) }
+    let shown = aw.state.total, held = ac.ahead
+    t = ticks(aw, t + 16, 1)
+    chk(shown > 0 && held == shown && srv.walk("zz000001")?.total == shown && ac.ahead == 0 && aw.state.total == shown && srv.steps.last == shown,
+              "3.0 steps: shown at once (walk(n) on the server's save), up every 15 s; the save that comes back has them", "\(shown) \(held) \(srv.walk("zz000001")?.total ?? -1)")
 
-    let a = pc("a"); a.start()
-    let noID = a.phase == .needsID && sent() == 0, oneLetter = !a.login("민")
-    a.login(key); _ = run(a, &w, t0); let asked = a.phase == .new(key)
-    a.create(pin: "0000"); let fresh = run(a, &w, t0)
-    let seat = (try? Data(contentsOf: a.seatFile)).flatMap { try? JSONDecoder().decode(Cloud.Seat.self, from: $0) }
-    c.append((noID && oneLetter && asked && fresh == false && w.audited == 2 && w.ballsRefunded == true && w.owned == [25] && w.total == 0 && w.cloudRev == 1 && w.cloudTotal == 0
-              && srv.paths == ["v1/login", "v1/create", "v1/save"] && srv.rows[key]?.rev == 1 && srv.rows[key]?.walk == text(w.shared)
-              && seat?.trainerID == key && seat?.session == srv.rows[key]?.session && seat?.device?.count == 32,
-              "cloud: no ID → the ID box (one letter isn't one); a new ID → 새 트레이너? → create: a new walker (1.7's check, 1.10's refund done) up as rev 1; this PC's seat in cloud.json"))
+    // acts: the keys wait for the answer; its steps go with it; a reply lost → offline → the same act, the same seq, again → the stored answer
+    var shopW = Walk(); shopW.watts = 300
+    let v = online(shopW), (vs, vk) = server(v), potion = v.wares(false).firstIndex { if case .item("상처약") = $0.kind { return true }; return false }!
+    v.cloud!.addSteps(7); v.screen = .shop(bp: false, sel: potion, qty: 1); v.press(1)
+    let waits = v.waiting != nil; v.press(2); let heldKeys = v.waiting != nil
+    drain(v)
+    let price = v.wares(false)[potion].price
+    c.append((waits && heldKeys && says(v).first?.hasPrefix("상처약을") == true && v.state.count("상처약") == 1 && served(v)?.count("상처약") == 1 && v.state.watts == 300 - price
+              && vs.steps.last == 7 && v.state.total == 7,
+              "3.0 act: 상점's buy is the server's (keys wait meanwhile); the steps not up yet go with it; its line, the save it made"))
+    vs.lose = true; v.screen = .shop(bp: false, sel: potion, qty: 1); v.press(1); drain(v, max: 3)
+    let lostSays = says(v) == Walker.offlineLines, ranOnce = vs.acts.count, offlineNow = !v.cloud!.online
+    v.tick(Date() + 121); drain(v)
+    c.append((lostSays && offlineNow && ranOnce == 2 && vs.acts.count == 2 && v.state.count("상처약") == 2 && served(v)?.count("상처약") == 2 && v.cloud!.online,
+              "3.0 act: its reply lost → 연결되면 할 수 있어요 (offline); 2 minutes on the same act goes again (the same seq): the server's stored answer, bought once"))
+    vs.down = true; v.cloud!.addSteps(30); v.cloud!.saveNow(); v.tick(Date()); v.tick(Date())
+    v.screen = .menu(menuAt("포켓 레이더")); v.press(1)
+    let refused = says(v) == Walker.offlineLines && v.waiting == nil, row = v.cloudMenuTitle
+    vs.down = false; v.tick(Date() + 121); drain(v)
+    chk(refused && row.hasSuffix("연결 안 됨 · 올릴 걸음 30") && served(v)?.total == 37 && v.cloud!.ahead == 0,
+              "3.0 offline: acts say 연결되면 할 수 있어요 at once; steps pile up (the menu: 연결 안 됨 · 올릴 걸음 n); back, they go up", row)
+    let bo = Cloud(link: vs, dir: tmp.appendingPathComponent("bo", isDirectory: true)); bo.seat.trainerID = vk; bo.start(); var bt = Date(); bo.tick(bt); bo.tick(bt)
+    var waits2: [TimeInterval] = []; bo.addSteps(5)
+    for i in 0..<6 { vs.html = [403, 502][safe: i]; vs.down = i >= 2; bo.saveNow(); bo.tick(bt); bo.tick(bt); waits2.append(bo.backoff); bt = bo.retryAt }
+    vs.html = nil; vs.down = false; bo.tick(bt); bo.tick(bt)
+    c.append((waits2 == [120, 240, 480, 960, 1800, 1800] && bo.backoff == 0 && bo.ahead == 0, "3.0 offline (an HTML 403 / 502, then no answer): again in 2, 4, 8, 16, 30, 30 minutes; back, the steps go up"))
 
-    var n = sent(); w.walk(500, at: t0); _ = run(a, &w, t0 + 60); let early = sent() == n
-    _ = run(a, &w, t0 + 121); let periodic = sent() == n + 1 && w.cloudRev == 2 && w.cloudTotal == 500 && a.lastSaved == t0 + 121
-    _ = run(a, &w, t0 + 250)
-    c.append((early && periodic && sent() == n + 1, "cloud: every 2 minutes, only when something changed (steps too); the rev and the sent total noted"))
+    // the server's "not now" (out.cannot): its lines on the LCD, back where it was; nothing changed but the steps
+    serve(v) { w in var e = [0, 0, 0, 0, 0, 0]; e[0] = 100; w.companion.evs = e; w.bag = ["맥스업"] }
+    let vRev = vs.rows[vk]?.rev; v.screen = .items(0); v.press(1); drain(v)
+    c.append((says(v) == ["먹어도 효과가", "없을 것 같다"] && v.state.count("맥스업") == 1 && vs.rows[vk]?.rev == vRev, "3.0 act: the server's no (맥스업 at 100: 먹어도 효과가 / 없을 것 같다) on the LCD, nothing used"))
 
-    n = sent(); w.watts += 5; a.soon(t0 + 300); w.bag.append("상처약"); a.soon(t0 + 301); _ = run(a, &w, t0 + 302); let gathering = sent() == n
-    _ = run(a, &w, t0 + 303)
-    c.append((gathering && sent() == n + 1 && srv.rows[key]?.walk == text(w.shared), "cloud: soon() after an action: up within 3 s, two actions in one save"))
+    // the session: out of step (409 seq) → logged in again, its save; another PC took it → locked, 여기서 계속; 426; 404
+    vs.rows[vk]?.seq = 40; v.screen = .home; v.cloud!.addSteps(3); v.cloud!.saveNow(); drain(v); drain(v)
+    let reLogged = v.cloud!.phase == .on && v.cloud!.seq == 1 && served(v)?.total == 40
+    _ = vs.answer("v1/login", ["id": vk, "device": "another", "force": true]); v.cloud!.addSteps(2); v.cloud!.saveNow(); drain(v)
+    let locked = v.frozen && v.title().meta == "다른 PC에서 접속했어요" && v.cloud!.phase == .replaced
+    v.press(1); drain(v)
+    c.append((reLogged && locked && v.cloud!.phase == .on && !v.frozen && isHome(v) && v.state.total == 40,
+              "3.0 session: 409 seq → a new login, the server's save; another PC took it → locked; ● = 여기서 계속 (the steps walked meanwhile aren't sent)"))
+    vs.old = "9.0"; v.cloud!.addSteps(1); v.cloud!.saveNow(); drain(v); vs.old = nil
+    c.append((v.cloud!.phase == .oldApp && v.frozen && says(v).joined().contains("rulrulmo.work") && v.pane.login?.title == "새 버전이 필요해요", "3.0 session: 426 → 새 버전이 필요해요, the game held"))
+    let o = online(Walk()), (os, ok) = server(o); os.rows[ok] = nil; o.cloud!.addSteps(77); o.cloud!.saveNow(); drain(o)
+    let orphans = ((try? fm.contentsOfDirectory(atPath: o.cloud!.dir.path)) ?? []).filter { $0.hasPrefix("state.orphan-") }
+    c.append((orphans.count == 1 && o.cloud!.phase == .needsID && o.cloud!.seat.trainerID == nil && o.cloud!.ahead == 0, "3.0 session: 404 (deleted by an admin) → the last save kept as state.orphan-<unix>.json, the ID box"))
 
-    n = sent(); srv.hold = true; w.walk(10, at: t0); a.soon(t0 + 400); _ = run(a, &w, t0 + 403)
-    w.walk(10, at: t0); a.soon(t0 + 404); _ = run(a, &w, t0 + 408); _ = run(a, &w, t0 + 600)
-    let waited = sent() == n + 1 && a.inFlight != nil
-    srv.hold = false; srv.release(); _ = run(a, &w, t0 + 601)
-    c.append((waited && sent() == n + 2 && a.inFlight == nil && srv.rows[key]?.walk == text(w.shared), "cloud: one save at a time: the next waits for the reply (however long), then goes once"))
-
-    let rev = srv.rows[key]?.rev ?? 0
-    srv.lose = true; w.walk(30, at: t0); a.soon(t0 + 700); _ = run(a, &w, t0 + 703)
-    let lost = a.backoff == 120 && srv.rows[key]?.rev == rev + 1 && w.cloudRev == rev
-    n = sent(); _ = run(a, &w, t0 + 760); let waits = sent() == n
-    _ = run(a, &w, t0 + 823)
-    c.append((lost && waits && w.cloudRev == rev + 2 && a.backoff == 0 && srv.rows[key]?.walk == text(w.shared),
-              "cloud: a reply lost → offline; 2 minutes on, the resend (an older base, the same session) is taken"))
-
-    var t = t0 + 2000, waits2: [TimeInterval] = []; w.walk(5, at: t0); a.soon(t)
-    for i in 0..<6 { srv.html = [403, 502][safe: i]; srv.down = i >= 2; _ = run(a, &w, t); waits2.append(a.backoff); t = a.retryAt }
-    srv.html = nil; srv.down = false; _ = run(a, &w, t)
-    c.append((waits2 == [120, 240, 480, 960, 1800, 1800] && a.backoff == 0 && w.cloudTotal == w.total, "cloud: offline (an HTML 403 / 502, then no answer): again in 2, 4, 8, 16, 30, 30 minutes; back, it goes up"))
-
-    let b = pc("b"); var wb = Walk()                                                             // another PC, the same ID typed in capitals
-    b.login("ZZ000001"); _ = run(b, &wb, t); let busy = { if case .busy = b.phase { return true }; return false }()
-    b.login(force: true); _ = run(b, &wb, t); let bTook = wb.total == w.total && wb.cloudRev == srv.rows[key]?.rev && b.phase == .on
-    wb.walk(100, at: t0); b.soon(t); _ = run(b, &wb, t + 3)
-    w.walk(40, at: t0); a.soon(t + 10); _ = run(a, &w, t + 13); let replaced = a.phase == .replaced
-    n = sent(); a.soon(t + 20); _ = run(a, &w, t + 200); let quiet = sent() == n
-    a.resume(); _ = run(a, &w, t + 210)
-    c.append((busy && bTook && replaced && quiet && w.total == wb.total && w.cloudRev == srv.rows[key]?.rev && a.phase == .on,
-              "cloud: another PC asks (busy: ours saved just now), takes over; ours hears replaced and sends nothing; 여기서 계속 takes the other's save as it is (our 40 lost)"))
-
-    var mark = w.shared; mark.watts = 1; srv.admin(key, text(mark))                               // an admin puts an older one back
-    w.walk(25, at: t0); a.soon(t + 300); _ = run(a, &w, t + 303, canTake: false)
-    n = sent(); _ = run(a, &w, t + 500, canTake: false); let held = a.head != nil && w.watts != 1 && sent() == n
-    let took = run(a, &w, t + 501); var want = mark; want.walk(25, at: t + 501)
-    c.append((held && took != nil && w.total == mark.total + 25 && w.watts == want.watts && w.cloudRev == srv.rows[key]?.rev && srv.rows[key]?.writer != "admin" && srv.rows[key]?.walk == text(w.shared),
-              "cloud: stale (an admin's rollback) → the server's save waits for home (not mid-fight), then ours on top (25 steps), then up"))
-
-    srv.old = "9.0"; w.walk(5, at: t0); a.soon(t + 600); _ = run(a, &w, t + 603)
-    n = sent(); a.soon(t + 610); _ = run(a, &w, t + 900); srv.old = nil
-    c.append((a.phase == .oldApp && sent() == n, "cloud: 426 → 새 버전이 필요해요: nothing more goes up"))
-
-    let o = pc("o"); var wo = Walk()
-    o.login("zz000002"); _ = run(o, &wo, t); o.create(pin: "0000"); _ = run(o, &wo, t)
-    srv.rows["zz000002"] = nil; wo.walk(77, at: t0); o.soon(t + 1); _ = run(o, &wo, t + 4)
-    let orphans = ((try? fm.contentsOfDirectory(atPath: o.dir.path)) ?? []).filter { $0.hasPrefix("state.orphan-") }
-    let kept = orphans.count == 1 && (try? Data(contentsOf: o.dir.appendingPathComponent(orphans[0]))).flatMap { try? JSONDecoder().decode(Walk.self, from: $0) }?.total == 77
-    c.append((kept && o.phase == .needsID && o.seat.trainerID == nil && o.seat.session == nil && wo.cloudRev == nil && wo.total == 77,
-              "cloud: 404 (deleted by an admin) → the save kept as state.orphan-<unix>.json, this PC's ID cleared: the ID box"))
-
-    /// A launch on a PC with this save, the server holding rev / walk for zz000003.
-    func launch(_ name: String, _ w: inout Walk, rev: Int, walk: String?) -> Int {
-        srv.rows["zz000003"] = FakeCloud.Row(name: "zz000003", rev: rev, walk: walk, device: "elsewhere")
-        let cl = pc(name); cl.seat.trainerID = "zz000003"; let n = sent(); cl.start(); _ = run(cl, &w, t + 1000); return sent() - n
+    // home: the server's news one at a time, in order; the radar's find, a fight to its end, the chain's next bush (free), a late answer
+    let n = online({ var s = Walk(); s.egg = Egg(dex: 175, left: 900); return s }())
+    let nu = n.state.companion.uid!
+    n.news = [.find(item: "상처약"), .weather(to: .rain), .level(uid: nu, level: 6), .unlock(course: 1)]; n.screen = .home; n.tick(Date())
+    var seen: [[String]] = [says(n)]; for _ in 0..<3 { n.press(1); seen.append(says(n)) }
+    chk(seen.map { $0.first ?? "" } == [josa(monNames[25], "이", "가") + " 무언가를", "비가 내리기 시작했다!", "레벨 업!", "새 코스 해금!"] && n.news.isEmpty,
+              "3.0 home: the server's news one by one, in order (a find, the weather, a level, a course)", "\(seen)")
+    let rv = online({ var s = Walk(); s.watts = 200; s.companion = Mon(dex: 25, level: 60, female: false); return s }(), rng: 9)
+    let (rs, rk) = server(rv)
+    rv.screen = .menu(menuAt("포켓 레이더")); rv.press(1); drain(rv)
+    var radarUp = false, fought = false, caughtUID = 0
+    if case .radar(let b, _, _, let ch) = rv.screen {
+        radarUp = rv.state.watts == 190 && ch == 0
+        rv.screen = .radar(bush: b, cursor: b, since: Date().addingTimeInterval(-2), chain: ch); rv.press(1); drain(rv)
+        if case .beats(let f, _, _, _) = rv.screen { fought = true; caughtUID = f.wild.uid ?? 0 }
+        var k = 0
+        while rv.inBattle, k < 20 { beatsOut(rv); if case .battle(let x, _) = rv.screen { rv.screen = .battle(x, sel: rv.battleMenu(x).firstIndex(of: "볼")!); rv.press(1); drain(rv) }; k += 1 }
+        beatsOut(rv); rv.tick(Date()); drain(rv)
     }
-    var l1 = Walk(); l1.walk(300, at: t0); (l1.cloudRev, l1.cloudTotal) = (7, 100); let s1 = text(l1.shared); l1.sentHash = hex(sha256(Array(s1.utf8)))
-    let l1n = launch("l1", &l1, rev: 8, walk: s1)
-    c.append((l1n == 1 && l1.total == 300 && l1.cloudRev == 8 && l1.cloudTotal == 300, "cloud launch ②: the server holds our last save (its hash): only the reply was lost: the rev noted, nothing walked twice"))
-    var other = Walk(); other.walk(400, at: t0)
-    var l2 = Walk(); l2.walk(160, at: t0); (l2.cloudRev, l2.cloudTotal) = (3, 100)
-    let l2n = launch("l2", &l2, rev: 5, walk: text(other.shared))
-    c.append((l2n == 2 && l2.total == 460 && l2.cloudRev == 6 && srv.rows["zz000003"]?.walk == text(l2.shared), "cloud launch ③: the server is ahead: its save, our 60 not up yet on top, then up"))
-    var l3 = Walk(); l3.walk(200, at: t0); (l3.cloudRev, l3.cloudTotal) = (4, 200); let s3 = text(l3.shared); l3.walk(50, at: t0)
-    var l3s = Walk(); l3s.walk(200, at: t0); l3s.cloudRev = 4; l3s.cloudTotal = 200
-    let l3n = launch("l3", &l3, rev: 4, walk: s3), l3sn = launch("l3s", &l3s, rev: 4, walk: text(l3s.shared))
-    c.append((l3n == 2 && l3.cloudRev == 5 && l3.total == 250 && l3sn == 1 && l3s.cloudRev == 4, "cloud launch ④: the same rev: up only if changed since (base = rev)"))
-    var l4 = Walk(); l4.walk(90, at: t0); (l4.cloudRev, l4.cloudTotal) = (9, 90)
-    let l4n = launch("l4", &l4, rev: 6, walk: text(l4.shared))
-    var l5 = Walk(); l5.walk(20, at: t0)
-    let l5n = launch("l5", &l5, rev: 0, walk: nil)
-    c.append((l4n == 2 && l4.cloudRev == 10 && l5n == 2 && l5.cloudRev == 1 && l5.total == 20, "cloud launch ④: the server lost ours (rev under cloudRev): up even unchanged, base cloudRev; made but never saved (walk null): up as base 0"))
+    let kept = rv.state.box.contains { $0.uid == caughtUID }, chainHeld = rs.rows[rk]?.play.radar != nil
+    var chained = false
+    if chainHeld, case .radar(let b, _, _, let ch) = rv.screen { chained = ch == 1 && rv.state.watts == 192; rv.screen = .radar(bush: b, cursor: (b + 1) % 4, since: .distantPast, chain: ch); rv.press(1); drain(rv) }
+    chk(radarUp && fought && caughtUID > 1_000_000 && kept && (!chainHeld || chained) && rs.rows[rk]?.play.radar == nil && rs.rows[rk]?.play.chain == nil && !rv.inBattle,
+              "3.0 radar: the server's bush (10 W), its find in a fight (balls until it's in), kept; the chain's next bush asked for once home was done (free, +2 W), a wrong one gives it up",
+              "\(radarUp) \(fought) \(caughtUID) \(kept) \(chainHeld) \(chained)")
+    rs.lose = true; rv.screen = .menu(menuAt("포켓 레이더")); rv.press(1); drain(rv, max: 3)
+    let gaveUpSays = says(rv) == Walker.offlineLines
+    rv.tick(Date() + 121); drain(rv); drain(rv)
+    c.append((gaveUpSays && rs.acts.suffix(2) == [.radar, .radarPick(bush: -1)] && rs.rows[rk]?.play.radar == nil && !isRadar(rv.screen),
+              "3.0 late: a radar whose answer came after the walker gave up (offline) is given up at once (the server hears -1)"))
 
-    // the walker with the cloud on: 08 §5's move at the first launch, the question, the hooks, another PC taking over
+    // the walker with the server: 08 §5's move at the first launch, the 1.x save up once as 옛 기록
     let md = tmp.appendingPathComponent("m", isDirectory: true), mf = md.appendingPathComponent("state.json"), mb = md.appendingPathComponent("state.json.bak"), mid = "zz000004"
+    let t0 = Date(timeIntervalSinceReferenceDate: 812_000_000)
     var old = Walk(); old.walk(4_321, at: t0); (old.counter, old.boot, old.counterKind) = (99, 1, Walk.counterNow)
     Store.save(old, file: mf, bak: mb); old.watts += 1; Store.save(old, file: mf, bak: mb)                 // a 1.x save and its bak, signed
     let oldText = (try? String(contentsOf: mf, encoding: .utf8)) ?? ""
     let mh = TestHost(); mh.keys = 99
     let mw = Walker(state: Store.load(file: mf, bak: mb)); mw.persist = false; mw.host = mh
-    let mc = Cloud(link: srv, dir: md, on: true); mc.seat.trainerID = mid; mw.startCloud(mc, file: mf, bak: mb)
+    let mc = Cloud(link: srv, dir: md); mc.seat.trainerID = mid; mw.startCloud(mc, file: mf, bak: mb)
     let names = Set((try? fm.contentsOfDirectory(atPath: md.path)) ?? [])
     let moved = !names.contains("state.json") && !names.contains("state.json.bak") && names.isSuperset(of: ["state.pre-server.json", "state.pre-server.json.sig", "state.pre-server.bak.json", "state.pre-server.bak.json.sig"])
         && (try? String(contentsOf: Store.preServer(mf), encoding: .utf8)) == oldText
     let blank = mw.state.total == 0 && mw.state.audited == 2 && mw.state.counter == 99 && mc.legacy == oldText
-    func ticks(_ wk: Walker, _ from: Date, _ secs: Double) -> Date { var at = from; while at < from + secs { wk.tick(at); at += 0.5 }; return at }
-    mh.pins = ["1234", "1234"]; var mt = ticks(mw, t + 5000, 5)                                      // 새 트레이너 → its PIN, twice
-    c.append((moved && blank && mh.asked == ["새 트레이너"] && mc.phase == .on && srv.paths.contains("v1/legacy") && mc.seat.legacyUploaded == true && mc.legacy == nil
-              && srv.rows[mid]?.walk == text(mw.state.shared) && mw.state.audited == 2,
-              "cloud walker: the first launch moves the 1.x save and its bak aside (state.pre-server.json, .sig too) and starts empty; 새 트레이너? yes → create; the old save goes up once as 옛 기록"))
-
-    mw.state.bag = ["금구슬"]; mt = ticks(mw, mt, 5); n = sent()
-    mh.keys += 10; mt = ticks(mw, mt, 1); let stepsQuiet = mc.due == nil && mw.state.total == 10 && sent() == n
-    mw.sellOne("금구슬"); mw.screen = .home; mt = ticks(mw, mt, 0.5); let soonSet = mc.due != nil   // (its message times out by the real clock)
-    mt = ticks(mw, mt, 3.5)
-    c.append((stepsQuiet && soonSet && sent() == n + 1 && srv.rows[mid]?.walk == text(mw.state.shared),
-              "cloud walker: steps wait for the 2-minute save; a menu action (not through press) goes up within 3 s"))
-    mw.state.egg = Egg(dex: 175, left: 5); mt = ticks(mw, mt, 5)
-    let boxed = mw.state.box.count; mh.keys += 10; mw.tick(mt); mt += 0.5; mw.tick(mt); mt += 0.5   // (the server's egg: a round trip)
-    c.append((mw.state.box.count == boxed + 1 && mc.due != nil, "cloud walker: what the tick itself does (an egg hatching) goes up soon too"))
-
-    mt = ticks(mw, mt, 5); _ = srv.answer("v1/login", ["id": mid, "device": "another", "force": true])   // another PC takes it
-    mw.state.bag.append("상처약"); mt = ticks(mw, mt, 5)
-    let locked = mw.frozen && mw.title().meta == "다른 PC에서 접속했어요", total = mw.state.total
-    mh.keys += 30; mt = ticks(mw, mt, 3); mw.press(4); mw.press(0); let still = { if case .say = mw.screen { return true }; return false }()
-    let frozenOK = locked && still && mw.state.total == total && mw.state.counter == mh.keys
-    mw.press(1); mt = ticks(mw, mt, 3)
-    c.append((frozenOK && mc.phase == .on && !mw.frozen && Cloud.walk(srv.rows[mid]?.walk ?? "") == mw.state.shared && { if case .home = mw.screen { return true }; return false }(),
-              "cloud walker: another PC took it → locked: steps don't walk (the counter's baseline follows), keys do nothing; ● = 여기서 계속: the server's save as it is"))
-
-    Store.save(Walk(), file: mf, bak: mb)                                                         // the next launch: a save with no cloudRev (never logged in) stays
-    let mc2 = Cloud(link: srv, dir: md, on: true), mw2 = Walker(state: Walk()); mw2.persist = false; mw2.startCloud(mc2, file: mf, bak: mb)
+    mh.pins = ["1234", "1234"]; t = ticks(mw, t + 5000, 5)                                       // 새 트레이너 → its PIN, twice
+    c.append((moved && blank && mh.asked == ["새 트레이너"] && mc.phase == .on && srv.paths.contains("v1/legacy") && mc.seat.legacyUploaded == true && mc.legacy == nil && mw.state.companion.uid == 1_000_000,
+              "3.0 walker: the first launch moves the 1.x save and its bak aside (state.pre-server.json, .sig too) and starts empty; 새 트레이너? yes → create; the old save goes up once as 옛 기록"))
+    Store.save(Walk(), file: mf, bak: mb)
+    let mc2 = Cloud(link: srv, dir: md), mw2 = Walker(state: Walk()); mw2.persist = false; mw2.startCloud(mc2, file: mf, bak: mb)
     c.append((Store.folder == "PokeWalker Dev" && Store.dir.lastPathComponent == "PokeWalker Dev", "a build run from the repository (this self-test) keeps its own data folder: PokeWalker Dev, not the installed app's"))
     c.append((!mc2.firstRun && fm.fileExists(atPath: mf.path) && mc2.legacy == nil && (try? String(contentsOf: Store.preServer(mf), encoding: .utf8)) == oldText,
-              "cloud walker: only the first launch moves a save aside; the 옛 기록 isn't sent twice"))
+              "3.0 walker: only the first launch moves a save aside; the 옛 기록 isn't sent twice"))
+    mc2.addSteps(12); mc2.keepSteps(); let mc3 = Cloud(link: srv, dir: md)
+    c.append((mc3.ahead == 12, "3.0 walker: steps not up yet when the app quits (offline) stay in cloud.json for the next launch"))
 
     // the UI (08 §2): the ID box, the locks, the menu, the card
     let uh = TestHost(), uw = Walker(state: Walk()); uw.persist = false; uw.host = uh
-    let uc = Cloud(link: srv, dir: tmp.appendingPathComponent("u", isDirectory: true), on: true); uw.startCloud(uc)
+    let uc = Cloud(link: srv, dir: tmp.appendingPathComponent("u", isDirectory: true)); uw.startCloud(uc)
     uh.texts = [nil]; var ut = ticks(uw, t + 9000, 2)                                              // no ID: the box by itself, 취소
-    let saysLogin = { if case .say(let l, _, _) = uw.screen { return l.first == "로그인이" }; return false }()
+    let saysLogin = says(uw).first == "로그인이"
     uh.keys += 20; ut = ticks(uw, ut, 2); uw.press(4); uw.press(0)
-    let locked0 = uc.phase == .needsID && uh.boxes.count == 1 && saysLogin && uw.state.total == 0 && uw.pane.login?.button == "ID 입력" && { if case .say = uw.screen { return true }; return false }()
+    let locked0 = uc.phase == .needsID && uh.boxes.count == 1 && saysLogin && uw.state.total == 0 && uw.pane.login?.button == "ID 입력" && !says(uw).isEmpty
     ut = ticks(uw, ut, 3); let once = uh.boxes.count == 1
     uh.texts = ["민", " zz000005 "]; uh.pins = ["2580", "2580"]; uw.pageTap(5950); ut = ticks(uw, ut, 3)                        // the pane's button: a one-letter ID asks again with the rule, then a good one
     let reasked = uh.boxes.count == 3 && uh.boxes[2].contains("쓸 수 없어요") && uh.asked.last == "새 트레이너"
-    c.append((locked0 && once && reasked && uc.phase == .on && uc.seat.trainerID == "zz000005" && { if case .home = uw.screen { return true }; return false }() && uw.pane.login == nil,
+    c.append((locked0 && once && reasked && uc.phase == .on && uc.seat.trainerID == "zz000005" && isHome(uw) && uw.pane.login == nil,
               "cloud UI: no ID → the box once by itself; 취소 → 로그인이 필요해요 on the LCD, ID 입력 on the pane, no steps, no keys; a non-ID asks again with the rule; then in"))
     let plainWalker = Walker(state: Walk()), rows = uw.menu().map(\.title), plain = plainWalker.menu().map(\.title)
     c.append((rows.contains { $0.hasPrefix("트레이너: zz000005 · ") } && rows.contains("지금 저장") && rows.contains("ID 바꾸기…") && !plain.contains { $0.hasPrefix("트레이너:") || $0 == "ID 바꾸기…" }
               && uw.cardTitle == "zz000005" && plainWalker.cardTitle == "트레이너 카드",
-              "cloud UI: the right-click menu has 트레이너: ID · n분 전 저장, 지금 저장, ID 바꾸기… and the trainer card heads with the ID (only with the cloud)"))
-    uw.screen = .home; uw.state.walk(40, at: ut); ut = ticks(uw, ut, 4)
-    let upBefore = srv.rows["zz000005"]?.walk == text(uw.state.shared)
-    uw.state.watts += 7; n = sent(); uh.texts = ["zz000006"]; uw.towerRun = true; uw.screen = .card(0); uw.askID(change: true)   // ID 바꾸기 (in a tower run, a page up): ours goes up first, then the other trainer
-    let flushed = sent() == n + 1 && srv.rows["zz000005"]?.walk == text(uw.state.shared), cleared = uw.state.cloudRev == nil && uw.state.cloudTotal == nil && uw.state.sentHash == nil
-        && !uw.towerRun && { if case .home = uw.screen { return true }; return false }()
+              "cloud UI: the right-click menu has 트레이너: ID · n분 전 저장, 지금 저장, ID 바꾸기… and the trainer card heads with the ID (only with the server)"))
+    for _ in 0..<5 { uh.keys += 4; ut = ticks(uw, ut, 0.5) }
+    let ahead5 = uc.ahead; uh.texts = ["zz000006"]; uw.towerRun = true; uw.screen = .card(0); uw.askID(change: true)   // ID 바꾸기 (in a tower run, a page up): ours goes up first, then the other trainer
+    let flushed = ahead5 > 0 && srv.walk("zz000005")?.total == uw.state.total && !uw.towerRun && isHome(uw)
     uh.answer = false; ut = ticks(uw, ut, 3)                                                       // 새 트레이너? no → back to the box (by itself only once: not again)
-    c.append((upBefore && flushed && cleared && uc.phase == .needsID && uc.seat.trainerID == nil && uh.boxes.count == 4,
-              "cloud UI: ID 바꾸기 sends what isn't up, then forgets the old trainer's rev / total / hash, goes home (a tower run ends: the new save is taken there); 새 트레이너? no → 로그인이 필요해요"))
+    c.append((flushed && uc.phase == .needsID && uc.seat.trainerID == nil && uh.boxes.count == 4,
+              "cloud UI: ID 바꾸기 sends the steps not up yet, goes home (a tower run ends); 새 트레이너? no → 로그인이 필요해요"))
     uh.answer = true; uh.texts = ["zz000005"]; uw.press(1); ut = ticks(uw, ut, 3)                    // ● = ID 입력: back to the first, the server's save
-    c.append((uc.phase == .on && uc.seat.trainerID == "zz000005" && uw.state.cloudRev == srv.rows["zz000005"]?.rev && uw.state.watts == (Cloud.walk(srv.rows["zz000005"]?.walk ?? "")?.watts ?? -1),
-              "cloud UI: ● on 로그인이 필요해요 opens the box; the first trainer again: its save from the server"))
-    srv.old = "9.0"; uw.state.watts += 1; uw.cloud?.saveNow(); ut = ticks(uw, ut, 2); srv.old = nil
-    let oldSays = { if case .say(let l, _, _) = uw.screen { return l.joined().contains("rulrulmo.work") }; return false }()
-    c.append((uc.phase == .oldApp && uw.frozen && oldSays && uw.pane.login?.title == "새 버전이 필요해요" && uw.pane.login?.button == nil && uw.title().meta == "새 버전이 필요해요",
-              "cloud UI: 426 → 새 버전이 필요해요 on the LCD (the download page's address) and the pane; the game is held"))
-    let xh = TestHost(), xw = Walker(state: Walk()); xw.persist = false; xw.host = xh
-    let xc = Cloud(link: srv, dir: tmp.appendingPathComponent("x", isDirectory: true), on: true); xw.startCloud(xc)
-    (xw.state.cloudRev, xw.state.cloudTotal, xw.state.sentHash) = (9, 40, "ab"); xh.texts = ["zz000012"]; xw.askID()   // what another trainer left here (an admin's bad_id, a hand-edited seat)
-    c.append((xc.seat.trainerID == "zz000012" && xw.state.cloudRev == nil && xw.state.cloudTotal == nil && xw.state.sentHash == nil,
-              "cloud UI: an ID typed at 로그인이 필요해요 starts clean too — the rev / total / hash left here never go up as that trainer's"))
+    c.append((uc.phase == .on && uc.seat.trainerID == "zz000005" && uw.state.total == srv.walk("zz000005")?.total, "cloud UI: ● on 로그인이 필요해요 opens the box; the first trainer again: its save from the server"))
 
     // PINs (docs/plans/10 §3), against a server that asks for them
     let ps = FakeCloud(); ps.pins = true
     func pinPC(_ name: String, _ id: String? = nil) -> (Walker, Cloud, TestHost) {
         let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
-        let c = Cloud(link: ps, dir: tmp.appendingPathComponent(name, isDirectory: true), on: true); c.seat.trainerID = id; w.startCloud(c); return (w, c, h)
+        let c = Cloud(link: ps, dir: tmp.appendingPathComponent(name, isDirectory: true)); c.seat.trainerID = id; w.startCloud(c); return (w, c, h)
     }
     func seatText(_ c: Cloud) -> String { (try? String(contentsOf: c.seatFile, encoding: .utf8)) ?? "" }
     let (p1, c1, h1) = pinPC("p1"); h1.texts = ["zz000010"]; h1.pins = ["12a4", "2580", "2580"]
@@ -909,7 +738,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     c.append((c2.phase == .on && h2.pinBoxes.count == 2 && h2.pinBoxes[1].contains("맞지 않아요") && c2.seat.trust != nil && c2.seat.trust != c1.seat.trust && h2.asked == ["다른 PC에서 하고 있었어요"],
               "cloud PIN: another PC — the PIN box; a wrong one asks again (PIN이 맞지 않아요); the right one, then 가져올까요? (after the PIN), in with its own trust"))
     let h3 = TestHost(), w3 = Walker(state: Walk()); w3.persist = false; w3.host = h3
-    let c3 = Cloud(link: ps, dir: tmp.appendingPathComponent("p2", isDirectory: true), on: true); w3.startCloud(c3); pt = ticks(w3, pt, 3)
+    let c3 = Cloud(link: ps, dir: tmp.appendingPathComponent("p2", isDirectory: true)); w3.startCloud(c3); pt = ticks(w3, pt, 3)
     c.append((c3.phase == .on && h3.pinBoxes.isEmpty, "cloud PIN: that PC again (its trust in cloud.json): no PIN box"))
     ps.rows["zz000010"]?.fails = []                                                                  // (p2's wrong one was within the 10 minutes too)
     let (p4, c4, h4) = pinPC("p4", "zz000010"); h4.pins = ["0001", "0002", "0003", "0004", "0005"]
@@ -920,120 +749,16 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     c.append((pinLocked && boxesThen == 5 && lockedLines?.title == "PIN을 너무 많이 틀렸어요" && lockedLines?.lines.first?.hasSuffix("분 뒤에 다시 넣을 수 있어요.") == true && p4.frozen
               && h4.pinBoxes.count == 6 && c4.phase == .pin(.enter(wrong: false)),
               "cloud PIN: 5 wrong → locked (429): no box, the pane says how long; after it, the box again"))
-    ps.rows["zz000011"] = FakeCloud.Row(name: "zz000011", rev: 1, walk: text(Walk().shared), device: "elsewhere")   // a 2.0 ID: no PIN
+    ps.add("zz000011", Walk())                                                                       // a 2.0 ID: no PIN
     let (p5, c5, h5) = pinPC("p5", "zz000011"); pt = ticks(p5, pt, 3)                                  // its box 취소'd: the button stays
-    func psSaves() -> Int { ps.paths.filter { $0 == "v1/save" }.count }
-    let saves5 = psSaves(); p5.state.watts += 3; pt = ticks(p5, pt, 5); let pinWaits = c5.phase == .pin(.set) && psSaves() == saves5
-    h5.pins = ["4321", "4321"]; p5.press(1); pt = ticks(p5, pt, 2); p5.state.watts += 1; pt = ticks(p5, pt, 5)
-    c.append((pinWaits && h5.pinBoxes.count == 3 && ps.rows["zz000011"]?.pin == "4321" && c5.seat.trust != nil && c5.phase == .on && ps.rows["zz000011"]?.walk == text(p5.state.shared),
-              "cloud PIN: a 2.0 ID (pin_needed) — its save taken, then held until a PIN is set (취소: the button; ● = PIN 정하기, twice); then saves go"))
+    let acts5 = ps.acts.count; c5.addSteps(3); pt = ticks(p5, pt + 20, 5); let pinWaits = c5.phase == .pin(.set) && ps.acts.count == acts5
+    h5.pins = ["4321", "4321"]; p5.press(1); pt = ticks(p5, pt + 20, 5)
+    c.append((pinWaits && h5.pinBoxes.count == 3 && ps.rows["zz000011"]?.pin == "4321" && c5.seat.trust != nil && c5.phase == .on && ps.walk("zz000011")?.total == 3,
+              "cloud PIN: a 2.0 ID (pin_needed) — its save taken, acts held until a PIN is set (취소: the button; ● = PIN 정하기, twice); then they go"))
     ps.rows["zz000010"]?.pin = nil; ps.rows["zz000010"]?.trusts = [:]                               // `pokeserver pin-reset`
-    h3.pins = []; w3.state.watts += 1; pt = ticks(w3, pt, 5)                                         // (w3 holds that PC's session now)
+    h3.pins = []; c3.addSteps(1); pt = ticks(w3, pt + 20, 5)                                        // (w3 holds that PC's session now)
     let reset = c3.phase == .pin(.set); _ = c3.login("zz000099")
-    c.append((reset && c3.seat.trust == nil && c3.seat.session == nil, "cloud PIN: a PIN reset by the admin → 403 pin_needed at the next save → PIN 정하기; another ID drops this PC's trust"))
-
-    // the server's Pokémon (docs/plans/10 §4), against a server that issues them
-    let ms = FakeCloud(); ms.pins = true
-    let bh = TestHost(), bw = Walker(state: Walk()); bw.persist = false; bw.host = bh
-    let bc = Cloud(link: ms, dir: tmp.appendingPathComponent("bm", isDirectory: true), on: true); bw.startCloud(bc)
-    bh.texts = ["zz000020"]; bh.pins = ["2468", "2468"]
-    var bt = ticks(bw, t + 30000, 4)
-    c.append((bc.phase == .on && bw.state.companion.uid == 1_000_000 && bw.state.lastUID == 1_000_000, "cloud mint: a new trainer's first companion has the server's uid (1,000,000)"))
-    bw.state.watts = 30; bw.screen = .menu(menuAt("포켓 레이더")); bw.press(1)
-    let asking = bw.mintWaiting == .radar && bw.state.watts == 30; bw.press(3); let keysHeld = bw.mintWaiting == .radar
-    bt = ticks(bw, bt, 1)
-    var bush = -1, since = Date.distantPast; if case .radar(let b0, _, let s0, 0) = bw.screen { bush = b0; since = s0 }
-    let found = bw.radarMon
-    c.append((asking && keysHeld && bush >= 0 && (found?.uid ?? 0) > 1_000_000 && bw.state.watts == 20 && ms.paths.last == "v1/radar",
-              "cloud mint: the radar asks the server first (keys held meanwhile), then its find on the bushes; 10 W once it answered"))
-    bw.screen = .radar(bush: bush, cursor: bush, since: since, chain: 0); bw.press(1)
-    var fight: Battle? = nil; if case .beats(let b0, _, _, _) = bw.screen { fight = b0 }
-    ms.chainGoes = true
-    if let f = fight { bw.screen = bw.after(f, .caught, Date()) }
-    bt = ticks(bw, bt, 2)
-    let caughtKept = bw.state.box.contains { $0.uid == found?.uid && $0.dex == found?.dex }
-    var chain1 = false; if case .radar(_, _, _, 1) = bw.screen { chain1 = true }
-    c.append((fight?.wild.uid == found?.uid && caughtKept && chain1 && bw.state.watts == 22 && bw.state.bestChain == 1 && bw.chainNote == "+2W" && ms.paths.contains("v1/radar/result") && ms.paths.last == "v1/radar",
-              "cloud mint: the fight is the server's Pokémon; caught → its result; the server's chain: +2 W exactly, the next radar free"))
-    if case .radar(let b0, _, let s0, let ch) = bw.screen { bw.screen = .radar(bush: b0, cursor: (b0 + 1) % 4, since: s0, chain: ch); bw.press(1) }
-    bt = ticks(bw, bt, 1)
-    c.append((bw.radarMon == nil && ms.paths.last == "v1/radar/result" && ms.pending == nil && ms.chainN == 0, "cloud mint: a wrong bush → missed: the server ends the chain"))
-    ms.down = true; let w0 = bw.state.watts; bw.screen = .menu(menuAt("포켓 레이더")); bw.press(1); bt = ticks(bw, bt, 2)
-    let refused = { if case .say(let l, _, _) = bw.screen { return l == ["연결되면", "쓸 수 있어요"] }; return false }()
-    c.append((refused && bw.state.watts == w0 && bw.mintWaiting == nil, "cloud mint: offline the radar doesn't start, and costs nothing"))
-    bw.screen = .home; bw.state.egg = Egg(dex: 175, left: 0); bt = ticks(bw, bt, 2)
-    let eggWaits = bw.state.egg != nil
-    ms.down = false; bt = ticks(bw, bt + 600, 2)
-    let hatchedOne = bw.state.box.last
-    c.append((eggWaits && bw.state.egg == nil && hatchedOne?.dex == 175 && (hatchedOne?.uid ?? 0) > 1_000_000 && { if case .hatch = bw.screen { return true }; return false }(),
-              "cloud mint: offline the egg waits (no hatch); back, the server's Pokémon hatches"))
-    bw.screen = .home; bw.state.watts = 9999; let boxBefore = bw.state.box.count
-    if let k = bw.wares(false).firstIndex(where: { if case .legend = $0.kind { return true }; return false }) { bw.buyWare(bw.wares(false)[k], 1, bp: false, sel: k, Date()) }
-    let buyHeld = bw.mintWaiting != nil && bw.state.watts == 9999
-    bt = ticks(bw, bt, 2)
-    let legendOne = bw.state.box.last
-    c.append((buyHeld && bw.state.watts == 0 && bw.state.box.count == boxBefore + 1 && legendOne?.dex == 250 && (legendOne?.uid ?? 0) > 1_000_000 && bw.state.legendBought(250),
-              "cloud mint: the legend shop asks the server, then pays (9,999 W) and keeps its 칠색조"))
-    var tz = Mon(dex: 290, level: 20, female: false); tz.uid = 1_000_090; bw.state.box.append(tz)
-    let toNinjask = evolutions.first { $0.from == 290 && $0.to == 291 }!, boxN = bw.state.box.count
-    bw.startEvolving(toNinjask, Date(), ref: bw.state.box.count - 1); let noLocal = bw.state.box.count == boxN
-    bt = ticks(bw, bt + 10, 2)
-    let shed = bw.state.box.last
-    var tz2 = Mon(dex: 290, level: 20, female: false); tz2.uid = 1_000_091; bw.state.box.append(tz2); ms.down = true
-    bw.startEvolving(toNinjask, Date(), ref: bw.state.box.count - 1); bt = ticks(bw, bt + 10, 2)
-    c.append((noLocal && shed?.dex == 292 && (shed?.uid ?? 0) > 1_000_000 && bw.state.box.last?.dex == 291 && ms.paths.contains("v1/evolve"),
-              "cloud mint: 토중몬 → 아이스크: the 껍질몬 is the server's (none rolled here); offline, none"))
-    ms.down = false
-    bw.screen = .home; bw.state.watts = 40; bt = ticks(bw, bt + 600, 4); ms.saves = []                 // (settled, offline's backoff over)
-    bw.state.bag.append("상처약"); bc.due = .distantPast; bw.screen = .menu(menuAt("포켓 레이더")); bw.press(1)   // a save due as the radar's answer comes in
-    bt = ticks(bw, bt, 2)
-    c.append((bw.state.watts == 30 && !ms.saves.isEmpty && !ms.saves.contains(40) && ms.saves.last == 30,
-              "cloud mint: no save goes between a mint's answer and the walker taking it in (the fee is in every save after it)"))
-
-    // 10 §2's reject mode: a refused walk never goes again; the server's comes back and is taken as it is; refused again, saves wait
-    func says(_ w: Walker, _ l: [String]) -> Bool { if case .say(let s, _, _) = w.screen { return s == l }; return false }
-    func saveCount() -> Int { ms.paths.filter { $0 == "v1/save" }.count }
-    /// Home with nothing to play first (an evolution's show, a move to learn: the server's save waits for home).
-    func settle(_ w: Walker, _ from: Date) -> Date {
-        var at = from
-        for _ in 0..<400 {
-            switch w.screen {
-            case .home where !w.growthDue(at) && w.state.learning?.isEmpty != false: return at
-            case .learn: w.screen = .learn(sel: 4); w.press(1)
-            case .say: w.press(1)
-            case .home, .evolve, .hatch: break
-            default: w.screen = .home
-            }
-            w.tick(at); at += 0.5
-        }
-        return at
-    }
-    bt = settle(bw, bt + 600); bt = ticks(bw, bt, 4)
-    let srvWatts = Cloud.walk(ms.rows["zz000020"]?.walk ?? "")?.watts ?? -1, rev0 = ms.rows["zz000020"]?.rev ?? -1
-    ms.refuse = { $0.watts >= 5000 ? "W \($0.watts)" : nil }
-    bw.state.watts = 6000; n = saveCount(); bw.cloud?.saveNow(); bt = ticks(bw, bt, 2)
-    let back = bw.state.watts == srvWatts && bw.state.cloudRev == rev0 && ms.rows["zz000020"]?.rev == rev0 && says(bw, Walker.refusedLines) && bc.refusals == 1
-    let rowSays = bw.cloudMenuTitle.hasSuffix("저장 거절됨"); bw.screen = .home; bt = ticks(bw, bt + 300, 4)
-    c.append((back && rowSays && saveCount() == n + 1 && bw.state.watts == srvWatts && (Walker.refusedLines + Walker.mintRefusedLines).allSatisfy { textWidth($0) <= 96 },
-              "cloud refused: a 422 → the server's save as it is (W back), said on the LCD and in the menu; that save never again"))
-    bw.state.watts = 7000; let t2 = bt; bw.cloud?.saveNow(); bt = ticks(bw, bt, 2)
-    let again = bc.refusals == 2 && bw.state.watts == srvWatts && abs(bc.retryAt.timeIntervalSince(t2) - 120) < 2
-    bw.screen = .home; n = saveCount(); bw.state.watts += 1; bc.soon(bt); bt = ticks(bw, bt, 60); let waited2 = saveCount() == n
-    bt = ticks(bw, t2 + 125, 4)
-    c.append((again && waited2 && saveCount() == n + 1 && bc.refusals == 0 && bw.state.watts == srvWatts + 1 && !bw.cloudMenuTitle.hasSuffix("저장 거절됨"),
-              "cloud refused: again in a row → nothing goes for 2 minutes (then 4, 8 … 30); the next save taken clears it"))
-    bw.screen = .home; bw.radarMon = nil; bw.state.watts = 6000; let radarAsks = ms.paths.filter { $0 == "v1/radar" }.count
-    bw.screen = .menu(menuAt("포켓 레이더")); bw.press(1); bt = ticks(bw, bt, 1)
-    let radarNo = says(bw, Walker.mintRefusedLines) && bw.radarMon == nil && bw.mintWaiting == nil && ms.paths.filter { $0 == "v1/radar" }.count == radarAsks + 1
-    bw.screen = .home; bt = ticks(bw, bt, 1)
-    c.append((radarNo && bw.state.watts == srvWatts + 1 && says(bw, Walker.refusedLines) && bc.refusals == 1,
-              "cloud refused: a mint's walk refused (the radar) → no find, no fee; home, the server's save as it is"))
-    ms.refuse = nil
-    srv.rows["zz000030"] = FakeCloud.Row(name: "zz000030", rev: 0, walk: nil, device: "elsewhere"); srv.refuse = { $0.total >= 50 ? "steps" : nil }
-    let r1 = pc("r1"); var wr = Walk(); wr.walk(80, at: t0); r1.seat.trainerID = "zz000030"; r1.start(); let tr = t + 40000; _ = run(r1, &wr, tr)
-    n = sent(); _ = run(r1, &wr, tr + 60); let quietR = sent() == n
-    srv.refuse = nil
-    c.append((r1.refusals == 1 && wr.total == 80 && r1.head == nil && quietR && abs(r1.retryAt.timeIntervalSince(tr) - 120) < 1,
-              "cloud refused: nothing on the server to take (never saved) → ours kept, nothing goes for 2 minutes"))
+    c.append((reset && c3.seat.trust == nil && c3.seat.session == nil, "cloud PIN: a PIN reset by the admin → 403 pin_needed at the next act → PIN 정하기; another ID drops this PC's trust"))
     return c
 }
+@MainActor private func isRadar(_ s: Screen) -> Bool { if case .radar = s { return true }; return false }

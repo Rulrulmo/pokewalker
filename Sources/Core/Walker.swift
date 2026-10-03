@@ -6,16 +6,15 @@ import Foundation
     var state: Walk
     var screen = Screen.home
     weak var host: (any Host)?
-    var lastInput = Date(), lastStep = Date.distantPast, lastSave = Date(), levelled = false
+    var lastInput = Date(), lastStep = Date.distantPast, lastSave = Date()
     var boxSort = 0                                                        // the 상자 grid's order: 번호순 / 레벨순 / V순 / 최근
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
     var keyShown: Bool?? = .none                                           // the 메뉴 / 홈 key as last shown (see homeKey)
     var strollX = 54.0, strollRight = false, strollAt = Date(), strollTurnAt = Date(), stepRate = 0.0   // home: the walking sprite's middle in the course picture (half-dots), which way it goes, the pace
     var usedItem = "몬스터볼"                                                // the potion / ball / revive the current beat names
-    var partyRefs: [Int] = [], towerRun = false                        // partyRefs: the uids of ours in the fight (written back after it)
-    var growthThen: Screen? = nil                                      // where a fight's end goes once its evolutions and new moves have played (settle)
+    var towerRun = false                                                   // a tower run is on (the server's: it ends with the session)
+    var growthThen: Screen? = nil                                      // where a fight's end goes once home's news have played (settle): the lobby
     var sideOn = false                                                     // the pane carries the battle's text (the app; not --selftest): the LCD shows the stage only
-    lazy var lastSeason = state.season
     var emote: (kind: Int, until: Date)? = nil                             // ♪ ♥ ! bubble over the companion
     var animOn: (who: String, dex: Int, since: Date)? = nil                // the entry animation playing (Anim.swift): home's companion or a page's Pokémon
     lazy var rewarded = dexCount                                           // dex count already celebrated (no fanfare for old progress)
@@ -25,23 +24,26 @@ import Foundation
     var cardH = Layout.idle                                                // the card's height now (card points): the page's
     var hud: SideModel? = nil                                              // a fight's HP boxes, drawn over the LCD
     var savedSigned = settings.bool("saveSigned", false)                     // this machine has written a signed save (Store.loadChecked)
-    var gate = StepGate(), heldSteps = 0                                   // the step filter; steps made during a fight, counted after it
+    var gate = StepGate()                                                  // the step filter
     var statusOpen = settings.bool("homePanel", true)                     // the title row's ⌄: the status sheet under the band where no page is up (open unless folded)
     var battleSpeed: Double { Double(settings.int("battleSpeed", 3)) / 2 }     // 배틀 속도 (the right-click's): 보통 x1, 빠르게 x1.5 (the default), 아주 빠르게 x2
     var titleShown = ""                                                    // the title row as last shown: a change redraws it
     var persist = true                                                     // false in --selftest: flows must never touch the real save (nor notify)
-    lazy var unlockedAt = state.earned                                     // lifetime watts already announced
-    var cloud: Cloud? = nil                                                // the save server (Core/Cloud.swift): set at launch (startCloud), never in the self-test's walkers
-    var seen = Walk(), cloudAsked: Cloud.Phase? = nil, cloudAsking = false  // the state as the last tick left it (a change since = the player's); the question asked
+    var cloud: Cloud? = nil                                                // the save server (Core/Cloud.swift): set at launch (startCloud); the self-test's walkers get a fake's
+    var cloudAsked: Cloud.Phase? = nil, cloudAsking = false                // the question asked
     var cloudShown: Cloud.Phase? = nil, idBoxShown = false                 // the server's state the LCD shows; the ID box opened by itself (once a launch)
     var updater: Updater? = nil, shuttingDown = false                      // auto-update (Core/Update.swift): set at launch; a logout / shutdown puts nothing in at quit
     var relaunchAfterQuit = false, notedUpdate: String? = nil, updateNotices = 0   // the menu's 업데이트 설치: the quit starts the new version; the version a banner said was ready
     var installWhenStaged = false, installAt: Date? = nil                  // 업데이트 확인 · 설치 clicked: what it finds goes in; the install's moment (after the LCD says so)
     /// What the quit runs to put a staged update in (relaunch: start it after); the self-test's stub records it instead.
     var installUpdate: @MainActor (_ relaunch: Bool) -> Bool = { r in Update.appURL.map { Update.install(dir: Update.dir, app: $0, relaunch: r) } ?? false }
-    var mintWaiting: Cloud.MintAsk? = nil, mintBack: Screen? = nil         // a Pokémon asked of the server (10 §4): the LCD waits, keys held; where a "no" goes back to
-    var radarMon: Mon? = nil, chainWas = 0                                 // the server's radar find on the bushes now; the chain a result was asked at
-    var hatchAsked = false, hatchAt = Date.distantPast                     // an egg's hatch asked of the server; not before (offline: the egg waits)
+    /// An act out (docs/plans/11, Core/Act.swift): keys held until the server answers; `then` = the screen its answer brings, `back` = where a
+    /// "not now" goes; quiet: the act shows its own level-ups.
+    struct Waiting { var act: Act; var back: Screen; var since: Date; var quiet: Bool; var then: @MainActor (Outcome, Date) -> Screen? }
+    var waiting: Waiting? = nil
+    var news: [News] = []                                                  // the server's, shown at home one at a time (settle)
+    var fight: Battle? = nil, fightEnd: BattleEnd? = nil                   // the fight as the server last sent it; its end, once its beats have played
+    var chainNext = false                                                  // a chain holds: its next bush is asked for once home's news are shown
 
     init(state: Walk) { self.state = state }
 
@@ -61,76 +63,34 @@ import Foundation
         if key != titleShown { titleShown = key; host?.redraw(.title) }
     }
 
-    /// The clock (the host's, 10 a second): steps, the companion's finds, weather, unlocks, level-ups; screens that time out; the minute's save.
+    /// The clock (the host's, 10 a second): steps (up to the server, shown at once), screens that time out, home's news, the server's answers.
     func tick(_ now: Date) {
-        let acted = cloud != nil && state != seen                                                  // between ticks only the player changes the save: up soon (steps come here)
         let before = state.total
         if let h = host {                                                                          // keys + clicks, the way a person makes them (StepGate)
             state.rollover(now)                                                                    // (a capped day still turns at midnight)
             let taken = state.take(counter: h.counter(), boot: h.boot(), at: now)
-            if frozen { heldSteps = 0 }                                                            // another PC has the trainer: the baseline follows, nothing walks (08 §2-1)
-            else {
-                let n = state.roomToday(gate.pass(taken, now.timeIntervalSinceReferenceDate) + heldSteps) - heldSteps   // (today's cap counts the fight's held ones)
-                if inBattle { heldSteps += n }                                                     // mid-fight: the fight's copy would overwrite their EXP; they count once it's over
-                else if n + heldSteps > 0 { if state.walk(n + heldSteps, at: now) { levelled = true }; heldSteps = 0 }
+            if !frozen {                                                                           // another PC has the trainer: the baseline follows, nothing walks (08 §2-1)
+                let n = state.roomToday(gate.pass(taken, now.timeIntervalSinceReferenceDate))
+                if n > 0 { cloud?.addSteps(n); if !inBattle { _ = state.walk(n, at: now) } }        // mid-fight the server holds them till its end
             }
         }
-        let stepped: Walk? = cloud == nil ? nil : state                                            // what the rest of the tick changes (a fight's end, a find, a hatch …) goes up soon too
         perk(now, stepped: state.total != before)                                               // the companion's animation now and then
         if state.total != before { lastStep = now }
         stepRate = stepRate * 0.8 + Double(min(50, state.total - before)) * 10 * 0.2               // steps a second, smoothed (the tick is 10 Hz)
         switch screen {
         case .radar(_, _, let since, let chain) where now.timeIntervalSince(since) > 1.5 + radarWindow(chain):
-            radarMissed(now); screen = .say(chain > 0 ? ["...!", "연쇄가 끊겼다 (\(chain))"] : ["...!", "사라져버렸다"], next: .home, since: now)
+            giveUpRadar(); screen = .say(chain > 0 ? ["...!", "연쇄가 끊겼다 (\(chain))"] : ["...!", "사라져버렸다"], next: .home, since: now)
         case .beats(let bt, let beats, let since, _) where now.timeIntervalSince(since) * battleSpeed >= beats.map(\.length).reduce(0, +):
-            screen = beats.last!.ends ? after(bt, beats.last!, now) : bt.mustReplace ? .party(bt, sel: bt.mine.indices.first { bt.mine[$0].alive } ?? 0) : .battle(bt, sel: 0)
+            screen = beatsDone(bt, beats.last!, now)
         case .say(_, let next, let since) where now.timeIntervalSince(since) > 3: screen = next
         case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
         case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .relearn: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
         default: break
         }
-        settle(now)                                                                                // home: what a fight brought, then where it was going (before home's own news)
-        if state.season != lastSeason {
-            lastSeason = state.season
-            notify("weather", state.season.name + "이 왔어요", ["꽃이 피었어요", "햇볕이 쨍쨍해요", "단풍이 들었어요", "눈이 쌓여요"][state.season.rawValue] + " · 게임 속 \(seasonDays)일마다 계절이 바뀌어요")
-            if case .home = screen { screen = .say([state.season.name + "이 왔다!"], next: .home, since: now) }
-        }
-        if state.weatherDue, state.rollWeather(&rng) {
-            let w = state.weather ?? .sunny
-            notify("weather", w.news, w.types.map { typeKo[$0] ?? $0 }.joined(separator: "·") + " 타입이 자주 나와요 · " + state.here.name)
-            if case .home = screen { screen = .say([w.news], next: .home, since: now) }
-        }
-        if case .home = screen, state.eventDue {
-            switch state.petEvent(&rng) {
-            case .item(let item):
-                screen = .say([josa(monNames[state.companion.dex], "이", "가") + " 무언가를", "주워왔다!", item], next: .home, since: now)
-                notify("pet", josa(monNames[state.companion.dex], "이", "가") + " 무언가를 주워왔어요", item)
-            case .egg:
-                screen = .say([josa(monNames[state.companion.dex], "이", "가") + " 무언가를", "주워왔다!", "포켓몬의 알"], next: .home, since: now)
-                notify("pet", josa(monNames[state.companion.dex], "이", "가") + " 알을 주워왔어요", "앞으로 \(state.egg?.left ?? 0)걸음 걸으면 태어나요")
-            case nil: if state.total > 0 { emote = (Int.random(in: 0..<3, using: &rng), now.addingTimeInterval(3)) }
-            }
-        }
-        if case .home = screen, state.hatchDue {
-            if let c = cloud { if !hatchAsked, now >= hatchAt { hatchAsked = true; c.mint(.hatch, walk: state, now: now) } }   // the server's egg (10 §4); offline it waits
-            else { let m = state.hatch(&rng); screen = .hatch(m, since: now); save(); notifyHatch(m) }
-        }
-        if state.earned > unlockedAt {                                                           // lifetime watts opened a course
-            let new = courses.enumerated().filter { $0.element.watts > unlockedAt && $0.element.watts <= state.earned && state.unlocked($0.offset) }.map(\.element.name)
-            unlockedAt = state.earned
-            if let n = new.first {
-                notify("unlock", "새 코스가 열렸어요", n + " · 메뉴 → 코스")
-                if case .home = screen { screen = .say(["새 코스 해금!", n], next: .home, since: now) }
-            }
-        }
-        if case .home = screen, dexCount > rewarded {                                            // Pokédex milestones: event courses and two shells
-            let got = courses.filter { (rewarded + 1...dexCount).contains($0.dex) }.map { $0.name + " 코스" } + shells.filter { (rewarded + 1...dexCount).contains($0.dex) }.map { $0.name + " 기기" }
-            rewarded = dexCount
-            if let g = got.first { screen = .say(["도감 \(dexCount)종 달성!", g + " 해금"] + got.dropFirst().prefix(1), next: .home, since: now); notify("unlock", "도감 \(dexCount)종 달성!", got.joined(separator: " · ") + " 해금") }
-        }
+        cloudTick(now)                                                                             // the server's answers (their screens, the save) …
+        settle(now)                                                                                // … and at home its news, then where a fight was going on to
         if now.timeIntervalSince(lastSave) > 60 { save() }
-        if cloud != nil { cloudTick(now, acted: acted || stepped != state) }
         updater?.tick(now); updateTick(now)
     }
     /// Fights, shows and animations play at 30 fps; the rest (the walking sprite too: HGSS steps it every 0.15 s) at the tick's 10.
@@ -142,7 +102,7 @@ import Foundation
     /// (shift: the one before). false = not the walker's (the platform passes it on).
     func key(_ k: Key, shift: Bool = false, held: Bool = false) -> Bool {
         if frozen { if k == .enter, !held { press(1) }; return true }                              // another PC has it: ● = 여기서 계속, nothing else
-        if mintWaiting != nil { return true }                                                      // the server's Pokémon on the way
+        if waiting != nil { return true }                                                          // an act's answer on the way
         if case .shop(_, _, let q) = screen, let d = [Key.up: -1, .down: 1][k] { shopStep(q == nil ? d : -10 * d); return true }
         if case .tower(_?) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -TowerModel.perPage, .pageDown: TowerModel.perPage][k] { towerStep(d); return true }   // the tower's picker: ↑ ↓ a row, page up / down a page
         switch screen { case .course, .train, .relearn: if let d = [Key.up: -1, .down: 1, .pageUp: -CourseModel.perPage, .pageDown: CourseModel.perPage][k] { listRow(d); return true }; default: break }   // the lists: the same

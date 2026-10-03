@@ -49,7 +49,7 @@ extension Walker {
     }
     func card(_ f: Fighter, out: Bool) -> SideModel.Card { .init(name: monNames[f.mon.dex], level: f.mon.level, hp: f.hp, max: f.maxHP, out: out, status: f.status?.badge) }
     func sidePick(_ k: Int) {                                                                   // a click on the side panel = selecting that row, then ●
-        guard !frozen, mintWaiting == nil else { return }
+        guard !frozen, waiting == nil else { return }
         lastInput = Date()
         switch screen {
         case .battle(let b, _): screen = .battle(b, sel: k)

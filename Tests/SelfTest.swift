@@ -317,10 +317,10 @@ import AppKit                                                                   
     var lb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: Mon(dex: 25, level: 5, female: false)); lb.mine[0].hp = 10
     let lmax = lb.mine[0].maxHP; lb.apply(.gained(exp: 5000, level: nil, foe: 16, to: 0))
     check(lb.mine[0].mon.level > 5 && lb.mine[0].hp == 10 + lb.mine[0].maxHP - lmax && lb.mine[0].mon.known != nil, "a level-up mid-fight raises current HP by the same amount (and freezes the moveset)")
-    let fv = Walker(state: { var s = Walk(); s.bag = ["기력의조각"]; return s }()); fv.persist = false; fv.rng = Seeded(s: 11)
+    var fvRun = EngineRun(w: { var s = Walk(); s.bag = ["기력의조각"]; return s }(), p: Play(), r: Seeded(s: 11), now: Date(), ids: Issued(next: 1))   // (the server's after(): Model/EngineRules.swift)
     var fainted = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); fainted.mine[0].hp = 0; fainted.mine[0].down = true; fainted.over = true
-    if case .beats(let nb, let rbeats, _, let from) = fv.after(fainted, .lost, Date()), case .heal(.me, let h, _)? = rbeats.first {
-        check(nb.mine[0].hp == h && h == pika50.stats[0] / 2 && from.mine[0].hp == 0 && !nb.over && !nb.mine[0].down, "a revive leaves the fight at the revived HP (not 0)")
+    if case .heal(.me, let h, _)? = fvRun.ended(&fainted, .lost).first {
+        check(fainted.mine[0].hp == h && h == pika50.stats[0] / 2 && !fainted.over && !fainted.mine[0].down && fvRun.w.bag.isEmpty, "a revive leaves the fight at the revived HP (not 0)")
     } else { check(false, "a revive leaves the fight at the revived HP (not 0)") }
     var tb = Battle(party: [pika50, lax50], trainer: "베테랑 민수", foes: [Mon(dex: 16, level: 3, female: false), Mon(dex: 19, level: 3, female: false)])
     check(tb.turn(.swap(1), &r).first == .sendOut(.me, 1) && tb.me == 1, "switching sends the other one in")
@@ -453,8 +453,9 @@ import AppKit                                                                   
     check(rvIce.theirs[0].hp > rvIceHP, "아이스바디 heals in hail")
     var rvLost = Battle(party: [pika50], trainer: "x", foes: [Mon(dex: 19, level: 2, female: false), rat]); rvLost.mine[0].moves = [33]; rvLost.mine[0].pp = [35]; rvLost.mine[0].lockOn = 2
     rvLost.theirs[0].moves = [150]; rvLost.theirs[0].pp = [40]; rvLost.mine[0].hp = 1; rvLost.mine[0].status = .poison
-    let rvLostBeats = rvLost.turn(.fight(33), &r), rvWv = Walker(state: { var s = Walk(); s.items = ["기력의조각"]; return s }()); rvWv.persist = false
-    let rvAfter = rvWv.after(rvLost, .lost, Date()), rvBack: [Beat] = { if case .beats(_, let bs, _, _) = rvAfter { return bs }; return [] }()
+    let rvLostBeats = rvLost.turn(.fight(33), &r)
+    var rvRun = EngineRun(w: { var s = Walk(); s.items = ["기력의조각"]; return s }(), p: Play(tower: true), r: Seeded(s: 1), now: Date(), ids: Issued(next: 1))
+    let rvBack = rvRun.ended(&rvLost, .lost)
     check(rvLostBeats.last == .lost && rvBack.contains(.sendOut(.it, 1)), "ours KO'd in the turn it beat the trainer's one: revived, the next foe still comes out", "\(rvBack)")
     var rvAsleep = Battle(party: [Mon(dex: 19, level: 5, female: false)], trainer: "x", foes: [Mon(dex: 101, level: 100, female: false), rat]); rvAsleep.theirs[0].moves = [262]; rvAsleep.theirs[0].pp = [10]
     rvAsleep.mine[0].moves = [33]; rvAsleep.mine[0].pp = [35]; rvAsleep.mine[0].status = .sleep; rvAsleep.mine[0].sleep = 3; _ = rvAsleep.turn(.fight(33), &r)
@@ -496,14 +497,18 @@ import AppKit                                                                   
     // 7b new moves: the forget-one choice
     let ls25 = learnsets[25], pairs25: [(Int, Int)] = stride(from: 0, to: ls25.count, by: 2).map { (ls25[$0], ls25[$0 + 1]) }, next = pairs25.first { $0.0 > 12 && Moves.supported($0.1) }!
     var lw = Walk(); lw.companion = Mon(dex: 25, level: next.0 - 1, female: false); lw.companion.known = [84, 45, 39, 86].filter { $0 != next.1 }.prefix(4).map { $0 }
-    lw.walk(expTable[growthRate[25]][next.0] - lw.companion.points, at: Date())
+    let lw0 = lw, lwSteps = expTable[growthRate[25]][next.0] - lw.companion.points
+    lw.walk(lwSteps, at: Date())
     check(lw.companion.level == next.0 && lw.companion.uid != nil && Array((lw.learning ?? []).prefix(2)) == [lw.companion.uid!, next.1], "a level-up by walking queues the new move", "\(lw.learning ?? [])")
-    let lv = Walker(state: lw); lv.persist = false; lv.rng = Seeded(s: 12); lv.nextLearn(Date())
-    if case .learn(4) = lv.screen { lv.press(2); lv.press(1); check(lv.state.companion.known?[0] == next.1 && lv.state.companion.moves.count == 4, "forget move 1 for the new one (the cursor starts on 배우지 않는다)") } else { check(false, "4 moves known: the forget-one screen, on 배우지 않는다") }
-    let before4 = lv.state.companion.known; lv.state.learning = [lv.state.id(-1)!, 85]; lv.screen = .learn(sel: 4); lv.press(1)
-    check(lv.state.companion.known == before4 && lv.state.learning == [], "배우지 않는다 keeps the four")
-    lv.state.companion.known = [84, 45]; lv.state.learning = [lv.state.id(-1)!, next.1]; lv.screen = .home; lv.nextLearn(Date())
-    check(lv.state.companion.known == [84, 45, next.1], "a free slot: learned straight away")
+    let lv = online(lw0); lv.cloud!.addSteps(lwSteps); lv.cloud!.saveNow(); drain(lv)            // the server walks them: the level, the move waiting (4 known)
+    var lvSaid: [String] = []; for _ in 0..<4 { if case .say(let l, _, _) = lv.screen { lvSaid += l; lv.press(1); drain(lv) } }
+    if case .learn(4) = lv.screen, lvSaid.first == "레벨 업!" { lv.press(2); lv.press(1); drain(lv); check(lv.state.companion.known?[0] == next.1 && lv.state.companion.moves.count == 4 && served(lv)?.companion.known?[0] == next.1, "forget move 1 for the new one (the cursor starts on 배우지 않는다)") } else { check(false, "4 moves known: the level-up, then the forget-one screen, on 배우지 않는다", "\(lvSaid) \(lv.screen)") }
+    let before4 = lv.state.companion.known, lvUID = lv.state.companion.uid!; serve(lv) { $0.learning = [lvUID, 85] }; lv.screen = .learn(sel: 4); lv.press(1); drain(lv)
+    check(lv.state.companion.known == before4 && (lv.state.learning ?? []).isEmpty, "배우지 않는다 keeps the four")
+    var lfRun = EngineRun(w: { var s = lw; s.companion.known = [84, 45]; return s }(), p: Play(), r: Seeded(s: 12), now: Date(), ids: Issued(next: 1_000_001)); lfRun.learnQueue(); lfRun.finish()
+    check(lfRun.w.companion.known == [84, 45, next.1] && lfRun.out.news.contains(.learn(uid: lw.companion.uid!, move: next.1, learned: true)), "a free slot: learned straight away (news: learned)")
+    lv.screen = .home; lv.news = [.learn(uid: lvUID, move: next.1, learned: true)]; lv.tick(Date())
+    check({ if case .say(let l, _, _) = lv.screen { return l.last?.hasSuffix("배웠다!") == true }; return false }(), "… and home says so")
     var bw = Walk(); bw.box = [Mon(dex: 16, level: 5, female: false), Mon(dex: 25, level: next.0, female: false)]; bw.box[1].known = [84, 45]
     bw.queueMoves(1, from: next.0 - 1); bw.box.remove(at: 0)
     check(bw.nextToLearn()?.ref == 0 && bw.nextToLearn()?.move == next.1, "a queued move follows its Pokémon when the box shifts")
@@ -943,50 +948,56 @@ import AppKit                                                                   
     check(twMoved?.sel == 2 && twMoved?.rows[safe: 2]?.name == monNames[7] && twHeld && twAfter == [25, 7, 16] && tp.state.watts == 500 && tp.paneContent(Date()).tower != nil && tpick() == nil,
           "… the cursor stays on its Pokémon when a level-up reorders the list; a held ● neither picks again nor pays into a fight", "\(String(describing: twMoved)) \(twAfter)")
     // 1.3: the walker's team, the stickers, 코스, 배틀 속도, 특훈, 중복 놓아주기
-    let nw = Walker(state: { var s = Walk(); s.watts = 500; s.earned = 100_000; s.caught = [Mon(dex: 16, level: 12, female: false)]; s.box = [Mon(dex: 19, level: 8, female: false)]; return s }()); nw.persist = false; nw.rng = Seeded(s: 41)
-    nw.screen = .radar(bush: 1, cursor: 1, since: Date().addingTimeInterval(-2), chain: 0); nw.press(1)
-    let nwFight: Battle? = { if case .beats(let b, _, _, _) = nw.screen { return b }; return nil }()
-    check(nwFight?.mine.map(\.mon.dex) == [25, 16] && nwFight.map { nw.battleMenu($0) } == ["공격", "볼", "도구", "교체", "도망"] && nw.partyRefs.count == 2,
-          "a wild fight brings the walker's along: 공격 · 볼 · 도구 · 교체 · 도망")
-    if var b = nwFight { var up = b.mine[1].mon; _ = up.gainBattleExp(5_000); b.mine[1].mon = up; _ = nw.after(b, .won, Date()) }
-    check(nw.state.caught[0].level > 12, "… and what the walker's one earned goes back to it")
-    nw.screen = .home; let nwTap = nw.touch(9, 50)
+    let nwSave: Walk = { var s = Walk(); s.watts = 500; s.earned = 100_000; s.caught = [Mon(dex: 16, level: 12, female: false)]; s.box = [Mon(dex: 19, level: 8, female: false)]; return s }()
+    let nf = online(nwSave, rng: 41); nf.screen = .menu(menuAt("포켓 레이더")); nf.press(1); drain(nf)
+    if case .radar(let b, _, _, let ch) = nf.screen { nf.screen = .radar(bush: b, cursor: b, since: Date().addingTimeInterval(-2), chain: ch) }
+    nf.press(1); drain(nf)
+    let nwFight: Battle? = { if case .beats(let b, _, _, _) = nf.screen { return b }; return nil }()
+    check(nwFight?.mine.map(\.mon.dex) == [25, 16] && nwFight.map { nf.battleMenu($0) } == ["공격", "볼", "도구", "교체", "도망"] && server(nf).0.rows[server(nf).1]?.play.party?.count == 2 && nf.state.watts == 490,
+          "a wild fight (the server's radar: 10 W) brings the walker's along: 공격 · 볼 · 도구 · 교체 · 도망")
+    if var b = nwFight, var e = Optional(EngineRun(w: nf.state, p: Play(battle: b, party: [nf.state.companion.uid!, nf.state.caught[0].uid!]), r: Seeded(s: 1), now: Date(), ids: Issued(next: 2_000_000))) {
+        var up = b.mine[1].mon; _ = up.gainBattleExp(5_000); b.mine[1].mon = up; _ = e.ended(&b, .won)
+        check(e.w.caught[0].level > 12, "… and what the walker's one earned goes back to it (the server's after())")
+    }
+    let nw = online(nwSave, rng: 41)
+    nw.screen = .home; let nwTap = nw.touch(9, 50); drain(nw)
     check(nwTap && nw.state.companion.dex == 16 && nw.state.caught[0].dex == 25 && nw.stickerRects.count == 1 && !nw.touch(60, 50), "a tap on the walker's sticker on home walks with it (the companion takes its place)")
     nw.screen = .menu(menuAt("코스")); nw.press(1); let cHere = nw.paneContent(Date()).course
-    nw.pageTap(5801); let cPick = nw.paneContent(Date()).course; nw.pageTap(5820)
+    nw.pageTap(5801); let cPick = nw.paneContent(Date()).course; nw.pageTap(5820); drain(nw)
     check(cHere?.sel == 0 && cHere?.go == nil && cHere?.rows.first?.here == true && cPick?.sel == 1 && cPick?.go != nil && nw.state.course == 1 && nw.state.caught.count == 1,
           "코스 (the menu's): the list, a click picks one, 가기 walks it (the walker's team stays)")
-    nw.state.earned = 0; nw.screen = .course(2); let cLocked = nw.paneContent(Date()).course; nw.press(1)
+    serve(nw) { $0.earned = 0 }; nw.screen = .course(2); let cLocked = nw.paneContent(Date()).course; nw.press(1); drain(nw)
     check(cLocked?.go == nil && cLocked?.rows[2].open == false && nw.state.course == 1, "… a locked one can't be walked")
     nw.screen = .beats(Battle(wild: rat, companion: pika50), [.appear], since: Date().addingTimeInterval(-Beat.appear.length / nw.battleSpeed - 0.01), from: Battle(wild: rat, companion: pika50))
     let fastEnd = nw.beatState(Date()) != nil; nw.tick(Date())
     check(nw.battleSpeed >= 1 && fastEnd && { if case .beats = nw.screen { return false }; return true }(), "배틀 속도 runs the beats' clock (x\(nw.battleSpeed))")
-    nw.state.companion = { var m = Mon(dex: 25, level: 60, female: false); m.ivs = [10, 31, 31, 31, 31, 31]; return m }(); nw.state.bag = ["은색병뚜껑"]
+    serve(nw) { w in var m = Mon(dex: 25, level: 60, female: false, uid: w.companion.uid); m.ivs = [10, 31, 31, 31, 31, 31]; w.companion = m; w.bag = ["은색병뚜껑"] }
     nw.screen = .items(0); let capUse = nw.paneContent(Date()).items?.action; nw.press(1); let trainPage = nw.paneContent(Date()).train
-    nw.pageTap(5910)
+    nw.pageTap(5910); drain(nw)
     check(capUse?.contains("고르기") == true && trainPage?.sel == 0 && trainPage?.go != nil && nw.state.companion.effectiveIVs[0] == 31 && nw.state.count("은색병뚜껑") == 0, "은색병뚜껑: 도구 → pick a stat → 특훈")
-    nw.state.box = [Mon(dex: 19, level: 8, female: false), Mon(dex: 19, level: 3, female: false), Mon(dex: 19, level: 5, female: false)]
+    serve(nw) { $0.box = [Mon(dex: 19, level: 8, female: false), Mon(dex: 19, level: 3, female: false), Mon(dex: 19, level: 5, female: false)] }
     nw.screen = .box(0, act: 0, confirm: true, detail: true); check(nw.paneContent(Date()).mon?.dupes == 2, "놓아줄까? also offers 중복 n마리 (that species' spares)")
     // 1.4: the walker's ones evolve too (after a fight they levelled in; at launch if they're already past it)
-    let ev = Walker(state: { var s = Walk(); s.caught = [Mon(dex: 16, level: 17, female: false), Mon(dex: 19, level: 25, female: false)]; return s }()); ev.persist = false; ev.rng = Seeded(s: 5)
-    ev.partyRefs = [ev.state.id(-1)!, ev.state.id(-2)!]
-    var evB = Battle(wild: rat, party: [ev.state.companion, ev.state.caught[0]]); var evUp = evB.mine[1].mon; _ = evUp.gainBattleExp(evUp.points); evB.mine[1].mon = evUp
-    _ = ev.after(evB, .won, Date()); ev.screen = .home; let evQueued = ev.state.evolving?.count == 1; ev.tick(Date())
-    let evShow: Bool = { if case .evolve(let f, let t, _) = ev.screen { return f.dex == 16 && t.dex == 17 }; return false }()
-    check(evQueued && evShow && ev.state.caught[0].dex == 17 && ev.state.companion.dex == 25 && ev.state.evolving == nil, "a walker's 구구 that levels past 18 in a fight evolves once home (the companion stays)")
-    ev.screen = .home; ev.queueReadyEvolutions(); let evLate = ev.state.evolving?.count == 1; ev.tick(Date())
-    check(evLate && { if case .evolve(_, let t, _) = ev.screen { return t.dex == 20 }; return false }() && ev.state.caught[1].dex == 20, "at launch: a walker's 꼬렛 already past 20 evolves at home")
+    var evW = Walk(); evW.caught = [Mon(dex: 16, level: 17, female: false), Mon(dex: 19, level: 15, female: false)]; let evU = [evW.id(-1)!, evW.id(-2)!, evW.id(-3)!]
+    var evB = Battle(wild: rat, party: [evW.companion, evW.caught[0]]); var evUp = evB.mine[1].mon; _ = evUp.gainBattleExp(evUp.points); evB.mine[1].mon = evUp
+    var evRun = EngineRun(w: evW, p: Play(battle: evB, party: [evU[0], evU[1]]), r: Seeded(s: 5), now: Date(), ids: Issued(next: 2_000_000)); _ = evRun.ended(&evB, .won); evRun.finish()
+    check(evRun.w.caught[0].dex == 17 && evRun.w.companion.dex == 25 && evRun.out.news.contains(.evolve(uid: evU[1], from: 16, to: 17, shed: nil)),
+          "a walker's 구구 that levels past 18 in a fight evolves at its end (the server's; the companion stays)", "\(evRun.out.news)")
+    let ev = online({ var s = evW; s.caught[1].level = 25; return s }()); ev.cloud!.addSteps(1); ev.cloud!.saveNow(); drain(ev)
+    let evShow: Bool = { if case .evolve(let f, let t, _) = ev.screen { return f.dex == 19 && t.dex == 20 }; return false }()
+    check(evShow && ev.state.caught[1].dex == 20 && ev.state.caught[0].dex == 16, "a walker's 꼬렛 already past 20 evolves with the next steps, home shows it")
     // 1.14 (docs/plans/09): wild EXP = Gen V's scaled formula x 0.5; the tower gives no EXP / EVs, fights ours as Lv.50 copies, its trainers Lv.50 and better every 7 wins
     check([15, 30, 44, 70].map { Battle.wildExp(base: 150, foe: 30, mine: $0, share: 1) } == [822, 450, 285, 145] && Battle.wildExp(base: 150, foe: 30, mine: 30, share: 2) == 225,
           "1.14: wild EXP by level difference (Lv.30 foe, base 150: Lv.15 822 · 30 450 · 44 285 · 70 145), split among those that faced it")
     var b14r = Seeded(s: 21), b14 = Walk(); b14.companion = Mon.wild(150, level: 70, perfect: 3, &b14r); b14.caught = [Mon(dex: 129, level: 12, female: false)]
-    let b14v = Walker(state: b14); b14v.persist = false; b14v.rng = Seeded(s: 7); b14v.startTower(Date())
+    b14.watts = 100; let b14v = online(b14, rng: 7); b14v.screen = .tower(pick: nil); b14v.press(1); drain(b14v)
     let b14B: Battle? = { if case .beats(let b, _, _, _) = b14v.screen { return b }; return nil }()
     let b14Capped = b14B.map { b in b.mine.map(\.mon.level) == [50, 50] && b.theirs.allSatisfy { $0.mon.level == 50 && ($0.mon.evs ?? []).allSatisfy { $0 == 0 } } && b.aiRandom == 5 } ?? false
     var b14Won = b14B!; b14Won.theirs[b14Won.it].hp = 0; b14Won.out = []; b14Won.faints()
     let b14NoExp = !b14Won.out.contains { if case .gained = $0 { return true }; return false }
-    let b14Before = b14v.state.companion; var b14End = b14B!; b14End.mine[0].mon.level = 50; b14End.mine[0].mon.evs = [252, 0, 0, 0, 0, 252]; _ = b14v.after(b14End, .won, Date())
-    check(b14Capped && b14NoExp && b14v.state.companion == b14Before && b14v.state.towerStreak == 1,
+    let b14Before = b14v.state.companion; var b14End = b14B!; b14End.mine[0].mon.level = 50; b14End.mine[0].mon.evs = [252, 0, 0, 0, 0, 252]
+    var b14Run = EngineRun(w: b14v.state, p: Play(battle: b14End, tower: true), r: Seeded(s: 7), now: Date(), ids: Issued(next: 2_000_000)); _ = b14Run.ended(&b14End, .won)
+    check(b14Capped && b14NoExp && b14Run.w.companion == b14Before && b14Run.w.towerStreak == 1 && b14v.state.watts == 50 && b14v.towerRun,
           "1.15: the tower fights a Lv.70 and a Lv.12 both as 50 (flat), its foes Lv.50, no EXP for a KO, and the Lv.70 is still 70 after it (nothing written back)")
     var b14Tiers: [Bool] = []
     for (streak, check) in [(0, { (m: Mon) in m.evs == nil && m.known == nil }), (7, { (m: Mon) in m.evs == nil && (m.ivs ?? []).allSatisfy { $0 >= 15 } }),
@@ -1001,7 +1012,7 @@ import AppKit                                                                   
     let wobb = Mon(dex: 202, level: 50, female: false).towerMoves(), arbok = Mon(dex: 24, level: 50, female: false).towerMoves(), blast = Mon(dex: 9, level: 50, female: false).towerMoves()
     check(wobb.contains { !moveTable[$0]!.isStatus } && !arbok.contains(256) && blast.filter { moveTable[$0]!.type == "water" && !moveTable[$0]!.isStatus }.count >= 2,
           "1.14: 좋은 4개 — 마자용 keeps 카운터 / 미러코트, 아보크 no 꿀꺽 without 비축하기, 거북왕 two water STAB", "\(wobb) \(arbok) \(blast)")
-    let b14Mew = Mon.wild(150, level: 70, &b14r); let b14Mewv = Walker(state: { var s = Walk(); s.companion = b14Mew; return s }()); b14Mewv.persist = false; b14Mewv.startTower(Date())
+    let b14Mew = Mon.wild(150, level: 70, &b14r); let b14Mewv = online({ var s = Walk(); s.companion = b14Mew; s.watts = 50; return s }()); b14Mewv.screen = .tower(pick: nil); b14Mewv.press(1); drain(b14Mewv)
     check({ if case .beats(let b, _, _, _) = b14Mewv.screen { return b.mine[0].moves == b14Mew.moves && b.mine[0].mon.level == 50 }; return false }(), "1.14: a Lv.70 whose moves were never set fights as 50 with the moves it has at 70")
     check(b14Moves.count == 4 && Set(b14Moves.compactMap { moveTable[$0]?.type }).count >= 3 && b14Moves.allSatisfy { ![120, 153, 264].contains($0) }, "1.14: 좋은 4개 (망나뇽): four, three types or more, no 자폭 / 힘껏펀치", "\(b14Moves.compactMap { moveTable[$0]?.name })")
     // 1.14: wild levels banded by when a course opens (W, or the dex count), each course's order kept; chains +2 a link up to +20
@@ -1027,32 +1038,35 @@ import AppKit                                                                   
     let wxHalf = wx.caught.map(\.points) == wx0.map { $0 + 5 } && wx.companion.points == cw0 + 10 && wx.caught.allSatisfy { ($0.walked ?? 0) == 0 }
     wx.walk(2 * (expTable[growthRate[16]][18] - wx.caught[0].points), at: Date())
     check(wxHalf && wx.caught[0].level == 18 && wx.evolving?.first == wx.caught[0].uid && wx.caught[1].level > 5, "1.13: the walker's get 1 EXP per 2 steps (10 steps = 5), no friendship; 구구 reaching 18 queues its evolution", "\(wx.caught.map(\.points)) \(wx0)")
-    // 1.12: what a fight brought plays right after it, then where it was going — the tower's lobby, the chain's next bush (its clock from then)
-    let grw = Walker(state: { var s = Walk(); s.companion = Mon(dex: 147, level: 29, female: false); s.companion.known = [35, 43]; return s }()); grw.persist = false; grw.rng = Seeded(s: 5)
-    grw.partyRefs = [grw.state.id(-1)!]; grw.towerRun = true
-    let gB = Battle(party: [grw.state.companion], trainer: "트레이너", foes: [rat]); grw.heldSteps = expTable[growthRate[147]][30] - grw.state.companion.points   // 1.14: no tower EXP — the fight's held steps level it
-    grw.screen = grw.after(gB, .won, Date())
-    let gSay: Bool = { if case .say(_, .home, _) = grw.screen, case .tower(nil)? = grw.growthThen { return true }; return false }()
+    // 1.12 (3.0: the server's news): what a fight brought plays right after it, then where it was going — the tower's lobby, the chain's next bush (its clock from then)
+    var grS = Walk(); grS.companion = Mon(dex: 148, level: 30, female: false); grS.companion.known = [35, 43]; let grU = grS.id(-1)!
+    let grw = online(grS); grw.towerRun = true
+    grw.news = [.level(uid: grU, level: 30), .evolve(uid: grU, from: 147, to: 148, shed: nil)]; grw.fightEnd = BattleEnd(result: "won", streak: 1, bp: 3)
+    grw.screen = grw.endOfFight(Battle(party: [grw.state.companion], trainer: "트레이너", foes: [rat]), Date())
+    let gSay: Bool = { if case .say(let l, .home, _) = grw.screen, l.first == "1연승!", case .tower(nil)? = grw.growthThen { return true }; return false }()
     grw.press(1); let gEvo: Bool = { if case .evolve(let f, let t, _) = grw.screen { return f.dex == 147 && t.dex == 148 }; return false }()
     grw.tick(Date() + 7)
-    check(gSay && gEvo && grw.state.companion.dex == 148 && { if case .tower(nil) = grw.screen { return true }; return false }() && grw.growthThen == nil && !grw.levelled,
-          "a tower win: 미뇽 that reached 30 (the fight's held steps) evolves right after the fight, then the lobby")
-    let gp = Walker(state: lw); gp.persist = false; gp.rng = Seeded(s: 5); gp.state.companion.level = next.0 - 1; gp.state.companion.exp = nil; gp.state.learning = nil
-    gp.state.companion.known = [84, 45, 39, 86].filter { $0 != next.1 }.prefix(4).map { $0 }; gp.partyRefs = [gp.state.id(-1)!]; gp.towerRun = true
-    let gpB = Battle(party: [gp.state.companion], trainer: "트레이너", foes: [rat]); gp.heldSteps = expTable[growthRate[25]][next.0] - gp.state.companion.points
-    gp.screen = gp.after(gpB, .won, Date()); gp.press(1); gp.press(1); let gpLearn: Bool = { if case .learn = gp.screen { return true }; return false }()
-    gp.press(3); gp.press(1); gp.press(1)
-    check(gpLearn && gp.state.companion.moves.count == 4 && { if case .tower(nil) = gp.screen { return true }; return false }(), "… a new move to learn: the forget-one screen comes first, then the lobby")
-    let ghk = Walker(state: grw.state); ghk.persist = false; ghk.growthThen = .tower(pick: nil); ghk.state.evolving = nil; ghk.state.learning = nil
+    check(gSay && gEvo && { if case .tower(nil) = grw.screen { return true }; return false }() && grw.growthThen == nil,
+          "a tower win: 미뇽 that reached 30 (the fight's held steps, the server's news) evolves right after the fight's line, then the lobby")
+    var gpS = Walk(); gpS.companion = Mon(dex: 25, level: next.0, female: false); gpS.companion.known = [84, 45, 39, 86].filter { $0 != next.1 }.prefix(4).map { $0 }; let gpU = gpS.id(-1)!; gpS.learning = [gpU, next.1]
+    let gp = online(gpS); gp.towerRun = true
+    gp.news = [.learn(uid: gpU, move: next.1, learned: false)]; gp.fightEnd = BattleEnd(result: "won", streak: 1, bp: 3)
+    gp.screen = gp.endOfFight(Battle(party: [gp.state.companion], trainer: "트레이너", foes: [rat]), Date()); gp.press(1); let gpLearn: Bool = { if case .learn = gp.screen { return true }; return false }()
+    gp.press(3); gp.press(1); drain(gp); gp.press(1); drain(gp)
+    check(gpLearn && gp.state.companion.moves.count == 4 && (gp.state.learning ?? []).isEmpty && { if case .tower(nil) = gp.screen { return true }; return false }(), "… a new move to learn: the forget-one screen comes first, then the lobby")
+    let ghk = Walker(state: grS); ghk.persist = false; ghk.growthThen = .tower(pick: nil)
     ghk.screen = .say(["3연승!"], next: .home, since: Date()); ghk.press(4); let ghkHome: Bool = { if case .home = ghk.screen { return true }; return false }() && ghk.growthThen == nil
     ghk.growthThen = .tower(pick: nil); ghk.lastInput = .distantPast; ghk.screen = .home; ghk.tick(Date()); ghk.tick(Date() + 1)
     let ghkLobby: Bool = { if case .tower(nil) = ghk.screen { return true }; return false }()
     ghk.state.companion.known = [84, 45, 39, 86]; ghk.state.learning = [ghk.state.id(-1)!, rlw.companion.relearnable.first { ![84, 45, 39, 86].contains($0) }!]; ghk.screen = .learn(sel: 0)
     let ghkHeld = ghk.key(.enter, held: true) && { if case .learn(0) = ghk.screen { return true }; return false }()
     check(ghkHome && ghkLobby && ghkHeld, "… 메뉴/홈 on the fight's message stays home; the lobby it hands over to doesn't time out at once; a held ● can't pick on the forget-one screen")
-    grw.growthThen = .radar(bush: 2, cursor: 0, since: .distantPast, chain: 3); grw.state.evolving = [grw.state.id(-1)!]; grw.state.companion = Mon(dex: 16, level: 18, female: false, uid: grw.state.companion.uid)
-    let gT = Date() + 100; grw.screen = .home; grw.tick(gT); let gEvo2: Bool = { if case .evolve = grw.screen { return true }; return false }(); grw.tick(gT + 7)
-    check(gEvo2 && { if case .radar(2, 0, let since, 3) = grw.screen { return since == gT + 7 }; return false }(), "… a chain: its next bush rustles after the evolution, its window starting then")
+    let gch = online(grS); let (gchSrv, gchKey) = server(gch); gchSrv.rows[gchKey]?.play.chain = 3
+    gch.news = [.evolve(uid: grU, from: 147, to: 148, shed: nil)]; gch.chainNext = true
+    gch.screen = .home; gch.tick(Date()); let gEvo2: Bool = { if case .evolve = gch.screen { return true }; return false }()
+    let gT = Date(); gch.tick(gT + 7); drain(gch)
+    check(gEvo2 && { if case .radar(_, 0, let since, 3) = gch.screen { return since >= gT }; return false }() && gchSrv.rows[gchKey]?.play.radar?.chain == 3 && gch.state.watts == grS.watts,
+          "… a chain: its next bush is asked for after the evolution (free), its window starting then")
     pt.screen = .menu(menuAt("포켓몬")); pt.press(1); let g0 = pt.paneContent(Date()).grid
     check(pts { if case .box(-1, nil, false, false) = $0 { return true }; return false } && g0?.party.map(\.dex) == [25, 16] && g0?.partySel == 0 && g0?.items == 1
           && pt.paneContent(Date()).height == 472, "포켓몬: the companion (picked first) and the walker's in a row over the box, then the items' chip")
