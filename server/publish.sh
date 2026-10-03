@@ -40,7 +40,8 @@ if [ -z "$RUN" ]; then
 fi
 echo "Windows: run $RUN"
 gh run download "$RUN" -n PokeWalker-windows-x64 -D "$TMP/PokeWalker"
-(cd "$TMP" && zip -qr PokeWalker-windows-x64.zip PokeWalker && rm -rf PokeWalker)
+(cd "$TMP" && find PokeWalker -exec touch -h -d "@$(git -C "$OLDPWD" log -1 --format=%ct "$SHA")" {} + \
+    && find PokeWalker -type f | LC_ALL=C sort | zip -qX -@ PokeWalker-windows-x64.zip && rm -rf PokeWalker)   # the commit's time, sorted, no extra fields: the same build zips the same
 
 # Mac: the zip given, else the release's (its version must be this one), else the page's current one when it's this version
 if [ -z "$MAC" ] && gh release view "v$VERSION" --json assets -q '.assets[].name' 2>/dev/null | grep -qx PokeWalker-mac.zip; then
