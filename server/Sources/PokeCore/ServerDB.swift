@@ -246,7 +246,9 @@ actor SaveDB {
                     if !reasons.isEmpty {
                         try db.rows("INSERT INTO flags (key, rev, at, reasons) VALUES (:k, :r, :now, :why)",
                                     ["k": .text(id.key), "r": .int(rev), "now": .int(now), "why": .text(reasons.joined(separator: "; "))])
-                        if reject { return .error(422, "implausible", ["reasons": .s(reasons.joined(separator: "; "))], note: "refused: \(reasons.joined(separator: "; "))") }
+                        if reject {                                                                       // refused: the server's save comes back (as stale's does), to take as it is
+                            return .error(422, "implausible", ["reasons": .s(reasons.joined(separator: "; ")), "rev": .i(t.rev), "walk": .str(t.walk)], note: "refused: \(reasons.joined(separator: "; "))")
+                        }
                         flagNote = "flagged: \(reasons.joined(separator: "; "))"
                     }
                 }

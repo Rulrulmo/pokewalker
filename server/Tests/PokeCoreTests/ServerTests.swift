@@ -356,6 +356,7 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     r = await save(strict, "chk", s2, base: 1, walk: text(rich), now: 5_060)
     let kept = try await strict.trainer("chk")
     #expect(r.status == 422 && string(r, "error") == "implausible" && kept?.rev == 1)        // refused: the server keeps rev 1
+    #expect(number(r, "rev") == 1 && string(r, "walk") == text(w) && string(r, "reasons")?.hasPrefix("W ") == true)   // and hands its save back
 }
 
 @Test func pins() async throws {

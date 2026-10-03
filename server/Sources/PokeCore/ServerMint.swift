@@ -84,7 +84,7 @@ extension SaveDB {
                     return try trainer(key.key)?.session == session ? .error(400, "bad_walk") : .error(409, "conflict", ["reason": .s("replaced")])
                 }
                 if reject, !reasons.isEmpty {                                                     // refused, the flag kept (a reply, not a throw: it commits)
-                    return .error(422, "implausible", ["reasons": .s(reasons.joined(separator: "; "))], note: "mint refused: \(reasons.joined(separator: "; "))")
+                    return .error(422, "implausible", ["reasons": .s(reasons.joined(separator: "; ")), "rev": .i(t.rev), "walk": .str(t.walk)], note: "mint refused: \(reasons.joined(separator: "; "))")
                 }
                 return try body(key, t, w)
             }
