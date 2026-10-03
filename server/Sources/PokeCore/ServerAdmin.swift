@@ -18,6 +18,7 @@ let usage = """
       legacy [<id>]                      pre-server saves
       prune                              drop old history now (the server does it hourly)
       sample                             a new save's JSON (Walk(), the one-time checks marked done)
+      verify-release <dir>               a release folder: manifest.sig checks with the release key, each zip's size and SHA-256 (publish.sh)
     --db: else $DB_PATH, else /var/lib/pokewalker/pokewalker.db
     """
 
@@ -218,7 +219,12 @@ public func run(_ arguments: [String]) async -> Int32 {
             let db = try SaveDB(path: path)
             let release = URL(fileURLWithPath: env["RELEASE_DIR"].flatMap { $0.isEmpty ? nil : $0 } ?? "/var/lib/pokewalker/release", isDirectory: true)
             let site = env["DOWNLOAD_PASSWORD"].flatMap { $0.isEmpty ? nil : DownloadSite(dir: release, password: $0) }
-            try await serve(db: db, appKey: appKey, port: port, site: site)
+            try await serve(db: db, appKey: appKey, port: port, site: site, release: release)
+            return 0
+        case "verify-release":                                                            // publish.sh: before anything goes up
+            guard rest.count == 1 else { return fail("verify-release <dir>") }
+            let m = try ReleaseFiles.verify(URL(fileURLWithPath: rest[0], isDirectory: true))
+            print("release \(m.version) (build \(m.build), \(m.commit.prefix(7))): signed by the release key; " + [("mac", m.mac), ("windows", m.windows)].compactMap { k, e in e.map { "\(k) \($0.size) bytes ok" } }.joined(separator: ", "))
             return 0
         case "-h", "--help", "help":
             print(usage)

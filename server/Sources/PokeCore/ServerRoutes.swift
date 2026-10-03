@@ -15,7 +15,7 @@ func respond(_ r: Reply) -> Response {
 func post<R: Decodable & Sendable>(_ router: Router<BasicRequestContext>, _ path: String, appKey: String, id: @escaping @Sendable (R) -> String,
                                    _ handle: @escaping @Sendable (R) async -> Reply) {
     router.post(RouterPath(path)) { request, context -> Response in
-        guard request.headers.first(where: { $0.name.canonicalName == "x-app-key" })?.value == appKey else { return respond(.error(401, "app_key")) }
+        guard hasAppKey(request, appKey) else { return respond(.error(401, "app_key")) }
         var request = request
         let body: ByteBuffer
         do { body = try await request.collectBody(upTo: bodyLimit) }
@@ -28,10 +28,11 @@ func post<R: Decodable & Sendable>(_ router: Router<BasicRequestContext>, _ path
     }
 }
 
-func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?) async throws {
+func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?, release: URL) async throws {
     let router = Router()
     router.addMiddleware { LogRequestsMiddleware(.info) }
     if let site { addDownloadPage(router, site) }                                         // GET / (ServerPage.swift); none without DOWNLOAD_PASSWORD
+    addUpdates(router, ReleaseFiles(dir: release), appKey: appKey)                        // the app's updates (ServerUpdate.swift)
     router.get("/v1/ping") { _, _ in respond(Reply(200, ["ok": .b(true)])) }
     post(router, "/v1/login", appKey: appKey, id: { (r: LoginReq) in r.id }) { r in await db.login(r, now: unixNow()) }
     post(router, "/v1/create", appKey: appKey, id: { (r: CreateReq) in r.id }) { r in await db.create(r, now: unixNow()) }

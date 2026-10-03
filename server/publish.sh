@@ -1,66 +1,29 @@
 #!/bin/sh
-# server/publish.sh [--ref <commit>] [<PokeWalker.zip>] — a new release on the download page (server/README.md: 다운로드 페이지), run on the server:
-#   the version and the patch notes of <commit> (default: origin/main), the Windows zip from the windows workflow's successful run on that commit
-#   (on origin/main's head with none yet, it's started and waited for), and the Mac zip: the one given, else the asset PokeWalker-mac.zip of the
-#   GitHub release v<version> (./build.sh publish on the Mac puts it there), else the page's current one if it's the same version, else 준비 중.
+# server/publish.sh [v<version>] — a release on the download page and in the app's updates (server/README.md), run on the server.
+#   The release Mac makes and signs it (./build.sh publish: both zips, manifest.json, manifest.sig on the GitHub release v<version>); this
+#   only mirrors it: the four files are downloaded, `pokeserver verify-release` checks the signature with the release key and each zip's size and
+#   SHA-256 — anything off and nothing changes — and the page's patch notes come from the manifest's commit. Default version: origin/main's.
 # All files land in RELEASE_DIR at once, as the pokewalker user (sudo).
 set -eu
 cd "$(dirname "$0")/.."
-REF=origin/main
-[ "${1:-}" = --ref ] && { REF=${2:?--ref needs a commit}; shift 2; }
-MAC=${1:-}
 DIR=${RELEASE_DIR:-/var/lib/pokewalker/release}
 SUDO="sudo -u pokewalker"
+PS=${PS:-/usr/local/bin/pokeserver}
 
 git fetch -q origin
-SHA=$(git rev-parse --verify "$REF^{commit}")
-plist() { git show "$SHA:Info.plist" | sed -n "s|.*<key>$1</key><string>\([^<]*\)</string>.*|\1|p"; }
-VERSION=$(plist CFBundleShortVersionString); BUILD=$(plist CFBundleVersion)
-[ -n "$VERSION" ] || { echo "no version in $SHA:Info.plist"; exit 1; }
-echo "release $VERSION (build $BUILD) from $(git log -1 --format='%h %s' "$SHA" | cut -c1-90)"
+TAG=${1:-v$(git show origin/main:Info.plist | sed -n 's|.*<key>CFBundleShortVersionString</key><string>\([^<]*\)</string>.*|\1|p')}
+IN=$(mktemp -d); trap 'rm -rf "$IN"' EXIT
+chmod 755 "$IN"                                                        # the pokewalker user copies from it
+gh release download "$TAG" -D "$IN" -p PokeWalker-mac.zip -p PokeWalker-windows-x64.zip -p manifest.json -p manifest.sig \
+    || { echo "$TAG: not a signed release (on the release Mac: ./build.sh publish)"; exit 1; }
+"$PS" verify-release "$IN"                                             # the signature, then each zip; non-zero (and nothing changes) when off
 
-TMP=$(mktemp -d); IN=$(mktemp -d); trap 'rm -rf "$TMP" "$IN"' EXIT             # TMP: what the page gets; IN: what comes in
-chmod 755 "$TMP"                                                       # the pokewalker user copies from it
-git show "$SHA:docs/patch-notes.txt" > "$TMP/patch-notes.txt"
-
-# Windows: the artifact of the windows workflow's successful run on this commit
-run_on() { gh run list --workflow windows.yml --commit "$SHA" ${1:+--status "$1"} -L 1 --json databaseId -q '.[0].databaseId // empty'; }
-RUN=$(run_on success)
-if [ -z "$RUN" ]; then
-    [ "$SHA" = "$(git rev-parse origin/main)" ] || { echo "no successful Windows build of $SHA (the workflow runs on main's head: gh workflow run windows.yml --ref main)"; exit 1; }
-    RUN=$(run_on in_progress); [ -n "$RUN" ] || RUN=$(run_on queued)
-    if [ -z "$RUN" ]; then
-        echo "no Windows build of $SHA yet: starting the windows workflow"
-        gh workflow run windows.yml --ref main
-        for _ in $(seq 30); do sleep 5; RUN=$(run_on); [ -n "$RUN" ] && break; done
-        [ -n "$RUN" ] || { echo "the workflow run didn't show up"; exit 1; }
-    fi
-    echo "waiting for Windows build run $RUN (about 10 minutes)"
-    gh run watch "$RUN" --exit-status --interval 30 > /dev/null
-fi
-echo "Windows: run $RUN"
-gh run download "$RUN" -n PokeWalker-windows-x64 -D "$TMP/PokeWalker"
-(cd "$TMP" && find PokeWalker -exec touch -h -d "@$(git -C "$OLDPWD" log -1 --format=%ct "$SHA")" {} + \
-    && find PokeWalker -type f | LC_ALL=C sort | zip -qX -@ PokeWalker-windows-x64.zip && rm -rf PokeWalker)   # the commit's time, sorted, no extra fields: the same build zips the same
-
-# Mac: the zip given, else the release's (its version must be this one), else the page's current one when it's this version
-if [ -z "$MAC" ] && gh release view "v$VERSION" --json assets -q '.assets[].name' 2>/dev/null | grep -qx PokeWalker-mac.zip; then
-    gh release download "v$VERSION" -p PokeWalker-mac.zip -D "$IN"; MAC=$IN/PokeWalker-mac.zip; echo "Mac: the GitHub release v$VERSION's zip"
-fi
-if [ -n "$MAC" ]; then
-    MACV=$(unzip -p "$MAC" PokeWalker.app/Contents/Info.plist | sed -n 's|.*<key>CFBundleShortVersionString</key><string>\([^<]*\)</string>.*|\1|p')
-    [ "$MACV" = "$VERSION" ] || { echo "the Mac zip is version '${MACV:-?}', $SHA is $VERSION"; exit 1; }
-    cp "$MAC" "$TMP/PokeWalker-mac.zip"
-elif $SUDO test -f "$DIR/PokeWalker-mac.zip" && [ "$($SUDO jq -r .version "$DIR/release.json" 2>/dev/null)" = "$VERSION" ]; then
-    $SUDO cat "$DIR/PokeWalker-mac.zip" > "$TMP/PokeWalker-mac.zip"; echo "Mac: the page's current $VERSION zip stays"
-else
-    echo "Mac: none for $VERSION yet (the page says 준비 중)"
-fi
-build() { [ -f "$TMP/$1" ] && jq -n --arg f "$1" --argjson s "$(stat -c %s "$TMP/$1")" --arg h "$(sha256sum "$TMP/$1" | cut -d' ' -f1)" '{file: $f, size: $s, sha256: $h}' || echo null; }
-jq -n --arg v "$VERSION" --arg b "$BUILD" --arg c "$SHA" --argjson t "$(date +%s)" --argjson mac "$(build PokeWalker-mac.zip)" --argjson win "$(build PokeWalker-windows-x64.zip)" \
-    '{version: $v, build: $b, commit: $c, published: $t, mac: $mac, windows: $win}' > "$TMP/release.json"
-chmod 644 "$TMP"/*
+COMMIT=$(jq -r .commit "$IN/manifest.json")
+git cat-file -e "$COMMIT^{commit}" 2>/dev/null || git fetch -q origin "$COMMIT"
+git show "$COMMIT:docs/patch-notes.txt" > "$IN/patch-notes.txt"
+jq --argjson t "$(date +%s)" '{version, build, commit, published: $t, mac, windows}' "$IN/manifest.json" > "$IN/release.json"   # the page's
+chmod 644 "$IN"/*
 
 # in place at once: a new folder renamed over the old one
-$SUDO sh -c "rm -rf '$DIR.new' '$DIR.old' && mkdir -p '$DIR.new' && cp '$TMP'/* '$DIR.new/' && { [ ! -d '$DIR' ] || mv '$DIR' '$DIR.old'; } && mv '$DIR.new' '$DIR' && rm -rf '$DIR.old'"
-echo "published $VERSION: $(jq -c '{mac: (.mac.size // "none"), windows: .windows.size}' "$TMP/release.json") → https://pokewalker.rulrulmo.work/"
+$SUDO sh -c "rm -rf '$DIR.new' '$DIR.old' && mkdir -p '$DIR.new' && cp '$IN'/* '$DIR.new/' && { [ ! -d '$DIR' ] || mv '$DIR' '$DIR.old'; } && mv '$DIR.new' '$DIR' && rm -rf '$DIR.old'"
+echo "published $(jq -r .version "$IN/manifest.json") (signed): $(jq -c '{mac: .mac.size, windows: .windows.size}' "$IN/manifest.json") → https://pokewalker.rulrulmo.work/ and the app's updates"

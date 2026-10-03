@@ -19,10 +19,11 @@
 - 앱 스프라이트가 닌텐도 저작물이라 공개하지 않는다. 검색 엔진도 막는다(`robots.txt`, `noindex`).
 - 페이지는 `RELEASE_DIR`(`/var/lib/pokewalker/release`)의 `release.json` · `patch-notes.txt` · zip 두 개를 그대로 보여 준다. 채우는 것은 `publish.sh`뿐이다.
 
-**새 버전 올리기** (Info.plist 버전과 패치 내역을 커밋하고 push한 뒤)
-- Mac에서 `./build.sh publish`: dist를 만들어 GitHub release `v<버전>`(그 커밋, 패치 내역)에 `PokeWalker-mac.zip`으로 올린다(Mac의 gh 로그인).
-- 서버에서 `server/publish.sh [--ref <commit>]`: 그 커밋의 버전·패치 내역, release의 Mac zip, Windows 빌드(windows 워크플로의 성공한 실행, 없으면 돌리고 기다림 약 10분)를 붙여 페이지를 한 번에 교체한다. Mac zip 경로를 직접 줄 수도 있다. Mac zip이 없으면 같은 버전의 기존 Mac zip을 두고, 그것도 없으면 Mac 버튼이 "준비 중"이 된다.
-- 둘 사이는 Claude 세션끼리 Remote Control 메시지로 잇는다: Mac의 Claude가 release에 올린 뒤 서버의 Claude에게 알리고, 서버의 Claude가 publish.sh를 돌려 결과를 돌려준다. 파일은 메시지로 못 보내서 GitHub release가 통로다.
+**새 버전 올리기** (Info.plist 버전과 패치 내역을 커밋하고 push한 뒤) — 자동 업데이트가 받는 것과 같은, 서명된 릴리스다.
+- 릴리스 Mac에서 `./build.sh publish`: Mac dist와 그 커밋의 windows 워크플로 결과물을 zip으로 만들고, `manifest.json`(버전·빌드·커밋·zip마다 크기와 SHA-256)을 릴리스 키로 서명해(`manifest.sig`, `tools/release-key.swift`) GitHub release `v<버전>`에 네 파일을 올린다. 비밀 키는 그 Mac에만 있다(`~/.config/pokewalker/release-ed25519.key`, 백업 필수).
+- 서버에서 `server/publish.sh [v<버전>]`: 네 파일을 받아 `pokeserver verify-release`로 서명(공개 키 `Sources/Model/Ed25519.swift`의 `releaseKey`)·크기·SHA-256을 확인하고, 통과해야만 페이지와 업데이트를 한 번에 바꾼다. 서버가 뚫려도 서명 없는 업데이트는 앱이 설치하지 않는다.
+- 앱의 업데이트: `POST /v1/update`(앱 키) → 서명된 manifest 그대로와 서명, `GET /v1/download/mac|windows`(앱 키) → zip. 앱이 서명과 해시를 직접 확인한다(`Sources/PokeCore/ServerUpdate.swift`).
+- 둘 사이는 Claude 세션끼리 Remote Control 메시지로 잇는다: Mac의 Claude가 release를 올리고 서버의 Claude에게 알리면, 서버의 Claude가 publish.sh를 돌려 결과를 돌려준다.
 - Mac은 Apple 하드웨어에서만 빌드한다(macOS SDK 라이선스). Windows 빌드는 GitHub Actions(비공개 저장소: 1분이 2분으로 차감)다.
 
 ## 빌드와 테스트

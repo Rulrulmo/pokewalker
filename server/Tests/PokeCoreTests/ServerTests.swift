@@ -297,3 +297,22 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
 @Test func releaseSignatures() {
     for (ok, name) in ed25519Checks() + signChecks() { #expect(ok, "\(name)") }                 // Model/Ed25519.swift on Linux: what publish.sh's check runs
 }
+
+@Test func releaseFolders() throws {
+    // the release Mac's signature of its test file checks; a release folder is refused unless its manifest is signed and each zip matches
+    #expect(ReleaseFiles.signed("pokewalker test 2.0\n\n", "f3ed48409038bcdc51ca4ccccacbda9c7e1dd299e05ea3e86fcc7e01de2416bd3333754b4ace0512f2d28f1c9c490833cad6993118db4ae0ea6f769168427507"))
+    #expect(!ReleaseFiles.signed("pokewalker test 2.1\n\n", "f3ed48409038bcdc51ca4ccccacbda9c7e1dd299e05ea3e86fcc7e01de2416bd3333754b4ace0512f2d28f1c9c490833cad6993118db4ae0ea6f769168427507"))
+    #expect(!ReleaseFiles.signed("anything", "not hex"))
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pokeserver-release-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    #expect(throws: (any Error).self) { try ReleaseFiles.verify(dir) }                             // empty
+    let zip = Data("zip".utf8)
+    try zip.write(to: dir.appendingPathComponent("PokeWalker-mac.zip"))
+    let manifest = "{\"build\":\"17\",\"commit\":\"\(String(repeating: "a", count: 40))\",\"mac\":{\"file\":\"PokeWalker-mac.zip\",\"sha256\":\"\(hex(sha256(Array(zip))))\",\"size\":3},\"version\":\"2.0\"}"
+    try Data(manifest.utf8).write(to: dir.appendingPathComponent("manifest.json"))
+    try Data((String(repeating: "0", count: 128) + "\n").utf8).write(to: dir.appendingPathComponent("manifest.sig"))
+    #expect(throws: (any Error).self) { try ReleaseFiles.verify(dir) }                             // well formed, sizes right, but not signed by the release key
+    #expect(ReleaseFiles.parse(manifest)?.mac?.size == 3 && ReleaseFiles.parse(manifest)?.windows == nil)
+    #expect(ReleaseFiles(dir: dir).signature == String(repeating: "0", count: 128))                // trimmed
+}
