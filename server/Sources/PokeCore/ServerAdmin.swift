@@ -5,7 +5,8 @@ import Foundation
 
 let usage = """
     usage: pokeserver <command> [--db <path>]
-      serve                              the API on 127.0.0.1:$PORT (env APP_KEY, PORT=8787, DB_PATH)
+      serve                              the API on 127.0.0.1:$PORT (env APP_KEY, PORT=8787, DB_PATH), and with DOWNLOAD_PASSWORD
+                                         the team's download page at / (RELEASE_DIR=/var/lib/pokewalker/release, server/publish.sh fills it)
       init                               make the database file and its tables (the only command that creates it)
       list                               every trainer, today's steps first
       show <id>                          one trainer: the row, its history and legacy copies
@@ -215,7 +216,9 @@ public func run(_ arguments: [String]) async -> Int32 {
             guard let appKey = env["APP_KEY"], !appKey.isEmpty else { return fail("APP_KEY is empty (/etc/pokewalker/server.env)") }
             let port = env["PORT"].flatMap { Int($0) } ?? 8787
             let db = try SaveDB(path: path)
-            try await serve(db: db, appKey: appKey, port: port)
+            let release = URL(fileURLWithPath: env["RELEASE_DIR"].flatMap { $0.isEmpty ? nil : $0 } ?? "/var/lib/pokewalker/release", isDirectory: true)
+            let site = env["DOWNLOAD_PASSWORD"].flatMap { $0.isEmpty ? nil : DownloadSite(dir: release, password: $0) }
+            try await serve(db: db, appKey: appKey, port: port, site: site)
             return 0
         case "-h", "--help", "help":
             print(usage)

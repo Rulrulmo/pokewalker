@@ -12,6 +12,18 @@
 - `APP_KEY`: `/etc/pokewalker/server.env`에 있다. 커밋하지 않는다. 앱의 `Cloud.swift`에는 `sudo cat /etc/pokewalker/server.env`로 본 값을 넣는다.
 - 트레이너 ID는 2~12자다. 08·08b의 예시 ID "민"은 한 글자라서 서버가 `bad_id`로 거절한다. 앱 테스트에는 "민수"처럼 두 글자 이상을 쓴다.
 
+## 다운로드 페이지
+
+`https://pokewalker.rulrulmo.work/`는 팀 배포 페이지다. 최신 버전의 Mac·Windows zip, 설치 방법, 패치 내역(`docs/patch-notes.txt`)을 보여 준다(`Sources/PokeCore/ServerPage.swift`).
+- 팀 비밀번호 하나로 연다: `/etc/pokewalker/server.env`의 `DOWNLOAD_PASSWORD`. 바꾸면 `sudo systemctl restart pokewalker` 뒤 모두 다시 입력한다(쿠키는 비밀번호의 HMAC, 30일). 비어 있으면 페이지가 없다.
+- 앱 스프라이트가 닌텐도 저작물이라 공개하지 않는다. 검색 엔진도 막는다(`robots.txt`, `noindex`).
+- 페이지는 `RELEASE_DIR`(`/var/lib/pokewalker/release`)의 `release.json` · `patch-notes.txt` · zip 두 개를 그대로 보여 준다. 채우는 것은 `publish.sh`뿐이다.
+
+**새 버전 올리기** (Info.plist 버전과 패치 내역을 커밋하고 push한 뒤)
+- Mac에서 `PW_SSH=rulmo@192.168.219.106 ./build.sh publish`: dist를 만들어 서버에 올리고, 서버의 `publish.sh`가 그 커밋의 패치 내역과 Windows 빌드(windows 워크플로의 성공한 실행, 없으면 돌리고 기다림 약 10분)를 붙여 한 번에 교체한다.
+- 서버에서 직접: `server/publish.sh [--ref <commit>] [<Mac zip>]`. Mac zip이 없으면 같은 버전의 기존 Mac zip을 두고, 없으면 Mac 버튼이 "준비 중"이 된다.
+- Mac은 Apple 하드웨어에서만 빌드한다(macOS SDK 라이선스). Windows 빌드는 GitHub Actions(비공개 저장소: 1분이 2분으로 차감)다.
+
 ## 빌드와 테스트
 
 Swift 6.1.2는 swiftly로 설치되어 있다(`server/.swift-version`). `build.sh`는 매번 `../Sources/{Model,Data,Battle}`을 `Sources/PokeCore/Game/`에 새로 복사한다(커밋하지 않음).

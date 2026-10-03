@@ -282,3 +282,14 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     let list = try await db.list()
     #expect(list.hasSuffix("0 trainer(s)"))
 }
+
+@Test func patchNotesPage() {
+    let text = "PokeWalker 패치 내역\n최신 버전이 맨 위에 있어요.\n\n\n■ 1.2 · 2026-10-02\n\n[바뀐 점] 타워 <Lv.50>\n- 하나\n  · 둘\n    이어지는 줄\n- 셋\n\n■ 1.1 · 2026-10-01\n\n- 넷\n"
+    let h = notesHTML(text, open: nil)
+    #expect(h.contains("<p class=\"intro\">최신 버전이 맨 위에 있어요.</p>") && !h.contains("PokeWalker 패치 내역"))
+    #expect(h.contains("<details class=\"rel\" open><summary>1.2<span class=\"date\">2026-10-02</span>") && h.contains("<details class=\"rel\"><summary>1.1"))
+    #expect(h.contains("<h4><span class=\"tag\">바뀐 점</span>타워 &lt;Lv.50&gt;</h4>"))
+    #expect(h.contains("<li>하나<ul><li>둘<br>이어지는 줄</li></ul></li><li>셋</li>"))
+    #expect(notesHTML(text, open: "1.1").contains("<details class=\"rel\" open><summary>1.1"))
+    #expect(formFields("password=a+b%2Bc&x=") == ["password": "a b+c", "x": ""])
+}

@@ -28,9 +28,10 @@ func post<R: Decodable & Sendable>(_ router: Router<BasicRequestContext>, _ path
     }
 }
 
-func serve(db: SaveDB, appKey: String, port: Int) async throws {
+func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?) async throws {
     let router = Router()
     router.addMiddleware { LogRequestsMiddleware(.info) }
+    if let site { addDownloadPage(router, site) }                                         // GET / (ServerPage.swift); none without DOWNLOAD_PASSWORD
     router.get("/v1/ping") { _, _ in respond(Reply(200, ["ok": .b(true)])) }
     post(router, "/v1/login", appKey: appKey, id: { (r: LoginReq) in r.id }) { r in await db.login(r, now: unixNow()) }
     post(router, "/v1/create", appKey: appKey, id: { (r: CreateReq) in r.id }) { r in await db.create(r, now: unixNow()) }
