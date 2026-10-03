@@ -300,15 +300,17 @@ extension Walker {
         throughSay()
         lastInput = Date(); host?.redraw(.all)
         switch (screen, code) {
-        case (.dex(_, let f, _), 10000...):
+        case (.dex(let pick, let f, _), 10000...):                                                 // a cell: the first click picks it (the LCD shows it), a click on the pick opens its entry
             guard let n = dexList(f)[safe: code - 10000] else { return }
-            screen = .dex(n, filter: f, detail: true)
+            screen = .dex(n, filter: f, detail: n == pick)
         case (.dex(let d, _, _), 4100...4103):
             let f = code - 4100, l = dexList(f); screen = .dex(l.contains(d) ? d : l.first ?? d, filter: f, detail: false)   // the pick stays if it's on the new tab
-        case (.box, 10000...):
+        case (.box(let pick, _, _, _), 10000...):                                                  // the same: picked first, its page on a second click
             guard let j = boxOrder[safe: code - 10000] else { return }
-            screen = .box(j, act: nil, confirm: false, detail: true)
-        case (.box, 4500...4503): guard state.mon(-1 - (code - 4500)) != nil else { return }; screen = .box(-1 - (code - 4500), act: nil, confirm: false, detail: true)   // the row above: -1 the companion, then the walker's
+            screen = .box(j, act: nil, confirm: false, detail: j == pick)
+        case (.box(let pick, _, _, _), 4500...4503):                                               // the row above: -1 the companion, then the walker's
+            let ref = -1 - (code - 4500); guard state.mon(ref) != nil else { return }
+            screen = .box(ref, act: nil, confirm: false, detail: ref == pick)
         case (.box, 4510): screen = .items(0)
         case (.box(let i, _, _, _), 4100...4103): boxSort = code - 4100; screen = .box(i, act: nil, confirm: false)
         case (.box(let i, _, _, true), 4400) where i != -1: screen = .box(i, act: 0, confirm: false, detail: true); press(1)      // = ● 함께

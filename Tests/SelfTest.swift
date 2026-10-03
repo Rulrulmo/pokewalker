@@ -755,7 +755,8 @@ import AppKit                                                                   
     let pg = gv.paneContent(Date()).grid
     check(pg?.page == 17 && pg?.pages == 17 && pg?.cells.count == 13 && pg?.sel == 12 && pg?.cells.first?.dex == 481, "the last page: 481-493, the pick in its cell")
     gv.gridTap(4101); check(gs { if case .dex(1, 1, false) = $0 { return true }; return false }, "a tab: the pick moves onto it when it isn't on it")
-    gv.gridTap(10002); check(gv.paneContent(Date()).dex?.num == 25, "a click on a cell opens its entry page")
+    gv.gridTap(10002); let dexPicked = gs { if case .dex(25, 1, false) = $0 { return true }; return false } && gv.paneContent(Date()).grid?.sel == 2
+    gv.gridTap(10002); check(dexPicked && gv.paneContent(Date()).dex?.num == 25, "a click on a cell picks it (the LCD shows it, the grid stays); a click on the pick opens its entry page")
     gv.press(2); check(gs { if case .dex(1, 1, true) = $0 { return true }; return false }, "▶ on the entry page: the next on the tab, wrapping")
     gv.press(3); let toGrid = gs { if case .dex(1, 1, false) = $0 { return true }; return false }; gv.press(3)
     check(toGrid && gs { if case .menu(menuAt("도감")) = $0 { return true }; return false }, "↩: the entry page → the grid → the menu")
@@ -770,9 +771,10 @@ import AppKit                                                                   
     gv.boxSort = 3; check(gv.boxOrder == [2, 1, 0], "최근: the last to arrive first"); gv.boxSort = 1
     gv.boxSort = 2; gv.state.box[1].ivs = [31, 31, 31, 0, 0, 0]; check(gv.boxOrder.first == 1 && gv.paneContent(Date()).grid?.cells.first?.v3 == true, "V순: 3V first, marked"); gv.state.box[1].ivs = nil; gv.boxSort = 1
     let shinyCell = gv.paneContent(Date()).grid?.cells[1].shiny == true
-    gv.gridTap(10001); gv.gridTap(10001)
-    check(shinyCell && gs { if case .box(2, nil, false, true) = $0 { return true }; return false } && gv.paneContent(Date()).mon != nil,
-          "a click on a cell opens its page and stays there (★ = 이로치)")
+    gv.gridTap(10001); let boxPicked = gs { if case .box(2, nil, false, false) = $0 { return true }; return false } && gv.paneContent(Date()).grid != nil
+    gv.gridTap(10001)
+    check(shinyCell && boxPicked && gs { if case .box(2, nil, false, true) = $0 { return true }; return false } && gv.paneContent(Date()).mon != nil,
+          "포켓몬: a click on a cell picks it (★ = 이로치), a click on the pick opens its page")
     gv.state.box[2].nature = 3; gv.state.box[2].ivs = [31, 20, 31, 0, 12, 31]; gv.state.box[2].evs = [252, 0, 6, 0, 0, 252]; gv.state.box[2].hyper = [3]
     let mm = gv.paneContent(Date()).mon
     check(mm?.nature == natures[3].name && mm?.up == natures[3].up && mm?.down == natures[3].down && mm?.natureNote.contains("10% 높고") == true && mm?.ivs == [31, 20, 31, 31, 12, 31]
@@ -1076,7 +1078,7 @@ import AppKit                                                                   
     check(pts { if case .box(-1, nil, false, false) = $0 { return true }; return false } && g0?.party.map(\.dex) == [25, 16] && g0?.partySel == 0 && g0?.items == 1
           && pt.paneContent(Date()).height == 472, "포켓몬: the companion (picked first) and the walker's in a row over the box, then the items' chip")
     pt.gridTap(4510); let itemsUp = pt.paneContent(Date()).items?.rows.map(\.name) == ["상처약"] && pts { if case .items = $0 { return true }; return false }; pt.press(3)
-    pt.gridTap(4501); let walkerPage = pt.paneContent(Date()).mon?.place == 1; pt.gridTap(4400); drain(pt)
+    pt.gridTap(4501); let walkerPicked = pt.paneContent(Date()).grid?.partySel == 1; pt.gridTap(4501); let walkerPage = walkerPicked && pt.paneContent(Date()).mon?.place == 1; pt.gridTap(4400); drain(pt)
     check(itemsUp && walkerPage && pt.state.companion.dex == 16 && pt.state.caught.first?.dex == 25, "… the items' chip opens the 도구 page; on one of the walker's, 함께 걷기 makes it the companion")
     pt.screen = .box(-1, act: nil, confirm: false, detail: true); pt.gridTap(4400); let idle = pt.state.companion.dex == 16 && pt.paneContent(Date()).mon?.place == 0
     pt.screen = .box(-2, act: nil, confirm: false, detail: true); pt.gridTap(4404); drain(pt)
