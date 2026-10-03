@@ -316,3 +316,42 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     #expect(ReleaseFiles.parse(manifest)?.mac?.size == 3 && ReleaseFiles.parse(manifest)?.windows == nil)
     #expect(ReleaseFiles(dir: dir).signature == String(repeating: "0", count: 128))                // trimmed
 }
+
+@Test func saveChecks() async throws {
+    let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+    var g = Seeded(s: 7), a = Walk(); a.audited = 2; a.bag = ["금구슬", "상처약", "상처약"]
+    a.box = [Mon.wild(16, level: 10, &g), Mon.wild(19, level: 7, &g)]; for i in a.box.indices { a.box[i].uid = i + 1 }; a.lastUID = 2
+    #expect(SaveCheck.values(a).isEmpty, "\(SaveCheck.values(a))")
+    // play: 3,000 steps in 10 minutes, sell the 금구슬 (100 W), release one, buy two 상처약 in the shop
+    var b = a; _ = b.walk(3000, at: t0); _ = b.sell("금구슬"); _ = b.release(0); b.watts -= 40; b.bag += ["상처약", "상처약"]
+    #expect(SaveCheck.changes(from: a, to: b, seconds: 600).isEmpty, "\(SaveCheck.changes(from: a, to: b, seconds: 600))")
+    // made up: W from nowhere, steps faster than hands, IVs over 31, an item no one sells, the same uid twice, BP out of thin air
+    var c = b; c.watts = 9999
+    #expect(SaveCheck.changes(from: b, to: c, seconds: 60).contains { $0.hasPrefix("W ") })
+    var d = b; _ = d.walk(20_000, at: t0)
+    #expect(SaveCheck.changes(from: b, to: d, seconds: 60).contains { $0.contains("steps in 60 s") })
+    var e = b; e.box[0].ivs = [31, 31, 31, 31, 31, 40]; e.bag.append("치트도구"); e.box.append(e.box[0]); e.bp = 500
+    let ev = SaveCheck.values(e), ec = SaveCheck.changes(from: b, to: e, seconds: 60)
+    #expect(ev.contains { $0.hasPrefix("IVs") } && ev.contains("item 치트도구") && ev.contains("a uid twice") && ec.contains { $0.hasPrefix("BP") })
+    var f = b; f.earned += 500
+    #expect(SaveCheck.changes(from: b, to: f, seconds: 3600).contains { $0.contains("earned W") })
+}
+
+@Test func checkModes() async throws {
+    let (db, _) = try tempDB()
+    let s = try await make(db, "chk")
+    var w = Walk(); w.audited = 2; w.ballsRefunded = true
+    func text(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return String(decoding: try! e.encode(w), as: UTF8.self) }
+    var r = await save(db, "chk", s, base: 0, walk: text(w), now: 5_000)
+    #expect(r.status == 200 && r.note == nil)
+    var rich = w; rich.watts = 9999                                                                // W from nowhere: taken, but recorded (log mode)
+    r = await save(db, "chk", s, base: 1, walk: text(rich), now: 5_060)
+    let flagged = try await db.count("SELECT count(*) AS n FROM flags WHERE key = 'chk'")
+    #expect(r.status == 200 && r.note?.hasPrefix("flagged") == true && flagged == 1)
+    let strict = try SaveDB(path: FileManager.default.temporaryDirectory.appendingPathComponent("pokeserver-strict-\(UUID().uuidString).db").path, create: true, reject: true)
+    let s2 = try await make(strict, "chk")
+    _ = await save(strict, "chk", s2, base: 0, walk: text(w), now: 5_000)
+    r = await save(strict, "chk", s2, base: 1, walk: text(rich), now: 5_060)
+    let kept = try await strict.trainer("chk")
+    #expect(r.status == 422 && string(r, "error") == "implausible" && kept?.rev == 1)        // refused: the server keeps rev 1
+}

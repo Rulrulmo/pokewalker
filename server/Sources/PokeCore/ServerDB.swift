@@ -74,6 +74,8 @@ let schema = """
     CREATE TABLE IF NOT EXISTS history (key TEXT NOT NULL, rev INTEGER NOT NULL, reason TEXT NOT NULL, at INTEGER NOT NULL, walk TEXT NOT NULL,
       PRIMARY KEY (key, rev, reason));
     CREATE TABLE IF NOT EXISTS legacy (key TEXT NOT NULL, device TEXT NOT NULL, at INTEGER NOT NULL, walk TEXT NOT NULL, PRIMARY KEY (key, device));
+    CREATE TABLE IF NOT EXISTS flags (key TEXT NOT NULL, rev INTEGER NOT NULL, at INTEGER NOT NULL, reasons TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS flags_key ON flags (key, at);
     """
 // `walk` is every table's last column: SQLite follows a big TEXT's overflow pages to read the columns after it.
 
@@ -82,14 +84,15 @@ let schema = """
 actor SaveDB {
     let db: SQLite
     let path: String
+    let reject: Bool                                                       // CHECK_MODE=reject: an implausible save is refused (422), else only recorded
 
     /// create: only `pokeserver init` and the tests make the file; anything else on a missing file throws (a wrong DB_PATH must not start an empty server).
-    init(path: String, create: Bool = false) throws {
+    init(path: String, create: Bool = false, reject: Bool = false) throws {
         guard create || FileManager.default.fileExists(atPath: path) else { throw ServerError(description: "\(path): no database (pokeserver init makes it)") }
         let c = try SQLite(path: path, create: create)
         try c.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000; PRAGMA max_page_count = 2621440;")   // 4 KiB × 2621440 = 10 GiB
-        if create { try c.exec(schema) }
-        db = c; self.path = path
+        if create || FileManager.default.fileExists(atPath: path) { try c.exec(schema) }   // tables added since (flags) come in on any open: IF NOT EXISTS
+        db = c; self.path = path; self.reject = reject
     }
 
     /// 판정 2–6, no database needed: the route runs it before awaiting the actor (a 2 MB decode doesn't hold the DB up).
@@ -152,6 +155,7 @@ actor SaveDB {
     /// Call after `precheck`. 판정 7–13: the first row that matches decides.
     func save(_ r: SaveReq, now: Int) -> Reply {
         guard let id = trainerID(r.id) else { return .error(400, "bad_id") }
+        var flagNote: String? = nil
         return guarded {
             try db.transaction {
                 guard let t = try trainer(id.key) else { return .error(404, "no_trainer") }                                       // 7
@@ -168,11 +172,22 @@ actor SaveDB {
                     try conflict(id.key, base: r.base, walk: r.walk, now: now)
                     return .error(409, "conflict", ["reason": .s("stale"), "rev": .i(t.rev), "walk": .str(t.walk)], note: "stale (base \(r.base), rev \(t.rev), writer \(t.writer == "admin" ? "admin" : "an older session"))")
                 }
+                // 10 §2: the save's own values, and the change from the last one taken (the server's clock); recorded, refused in reject mode
+                if let new = try? JSONDecoder().decode(Walk.self, from: Data(r.walk.utf8)) {
+                    var reasons = SaveCheck.values(new)
+                    if let old = t.walk.flatMap({ try? JSONDecoder().decode(Walk.self, from: Data($0.utf8)) }) { reasons += SaveCheck.changes(from: old, to: new, seconds: now - t.updatedAt) }
+                    if !reasons.isEmpty {
+                        try db.rows("INSERT INTO flags (key, rev, at, reasons) VALUES (:k, :r, :now, :why)",
+                                    ["k": .text(id.key), "r": .int(rev), "now": .int(now), "why": .text(reasons.joined(separator: "; "))])
+                        if reject { return .error(422, "implausible", ["reasons": .s(reasons.joined(separator: "; "))], note: "refused: \(reasons.joined(separator: "; "))") }
+                        flagNote = "flagged: \(reasons.joined(separator: "; "))"
+                    }
+                }
                 let app = t.app.map { verCmp($0, r.app) ?? 0 >= 0 ? $0 : r.app } ?? r.app   // the highest app that saved here (SQL max() compares text and nulls)
                 try db.rows("UPDATE trainers SET walk = :w, rev = :r, app = :a, writer = :s, updated_at = :now WHERE key = :k",
                             ["w": .text(r.walk), "r": .int(rev), "a": .text(app), "s": .text(r.session), "now": .int(now), "k": .text(id.key)])
                 try keep(id.key, rev: rev, walk: r.walk, now: now)
-                return Reply(200, ["rev": .i(rev)])
+                return Reply(200, ["rev": .i(rev)], note: flagNote)
             }
         }
     }

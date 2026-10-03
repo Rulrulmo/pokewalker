@@ -16,6 +16,8 @@ let usage = """
       rename <id> <new id>               a new name (a new key logs the old PCs out)
       delete <id> --yes                  remove a trainer (the save is kept as a file next to the database)
       legacy [<id>]                      pre-server saves
+      suspects [<days>]                  trainers whose saves the checks flagged (docs/plans/10 §2), and the busiest walkers (default 7 days)
+      flags <id> [<n>]                   one trainer's flagged saves, newest first (default 30)
       prune                              drop old history now (the server does it hourly)
       sample                             a new save's JSON (Walk(), the one-time checks marked done)
       verify-release <dir>               a release folder: manifest.sig checks with the release key, each zip's size and SHA-256 (publish.sh)
@@ -179,6 +181,31 @@ extension SaveDB {
         }
     }
 
+    /// 10 §2.3: who the checks flagged in the last `days` (how often, the latest reasons), then today's walkers by steps.
+    func suspects(days: Int, now: Int) throws -> String {
+        let since = now - days * 86_400
+        let f = try db.rows("""
+            SELECT t.name, f.key, count(*) AS saves, datetime(max(f.at), 'unixepoch', 'localtime') AS last,
+              (SELECT reasons FROM flags g WHERE g.key = f.key ORDER BY g.at DESC LIMIT 1) AS latest
+            FROM flags f LEFT JOIN trainers t ON t.key = f.key WHERE f.at >= :since GROUP BY f.key ORDER BY saves DESC
+            """, ["since": .int(since)])
+        var out = "flagged in \(days) day(s): \(f.count)\n" + table(["name", "key", "saves", "last", "latest"], f.map { r in
+            ["name", "key", "saves", "last"].map(r.show) + [String(r.show("latest").prefix(90))] })
+        let w = try db.rows("""
+            SELECT name, key, json_extract(walk, '$.today') AS today, json_extract(walk, '$.total') AS total, json_extract(walk, '$.watts') AS watts,
+              json_extract(walk, '$.bp') AS bp, json_array_length(walk, '$.box') AS box
+            FROM trainers WHERE json_extract(walk, '$.day') = date('now', 'localtime') ORDER BY today DESC LIMIT 10
+            """)
+        out += "\n\ntoday's walkers (a day's cap is \(SaveCheck.daySteps))\n" + table(["name", "key", "today", "total", "watts", "bp", "box"], w.map { r in ["name", "key", "today", "total", "watts", "bp", "box"].map(r.show) })
+        return out
+    }
+    func flags(_ id: String, last n: Int) throws -> String {
+        let k = try key(id)
+        let rows = try db.rows("SELECT rev, datetime(at, 'unixepoch', 'localtime') AS at, reasons FROM flags WHERE key = :k ORDER BY at DESC, rev DESC LIMIT :n",
+                               ["k": .text(k), "n": .int(n)])
+        return rows.isEmpty ? "\(k): no flagged saves" : rows.map { "rev \($0.show("rev")) · \($0.show("at")) · \($0.show("reasons"))" }.joined(separator: "\n")
+    }
+
     func legacyList(_ id: String?) throws -> String {
         let k = try id.map(key)
         let rows = try db.rows("""
@@ -216,7 +243,7 @@ public func run(_ arguments: [String]) async -> Int32 {
         case "serve":
             guard let appKey = env["APP_KEY"], !appKey.isEmpty else { return fail("APP_KEY is empty (/etc/pokewalker/server.env)") }
             let port = env["PORT"].flatMap { Int($0) } ?? 8787
-            let db = try SaveDB(path: path)
+            let db = try SaveDB(path: path, reject: env["CHECK_MODE"] == "reject")
             let release = URL(fileURLWithPath: env["RELEASE_DIR"].flatMap { $0.isEmpty ? nil : $0 } ?? "/var/lib/pokewalker/release", isDirectory: true)
             let site = env["DOWNLOAD_PASSWORD"].flatMap { $0.isEmpty ? nil : DownloadSite(dir: release, password: $0) }
             try await serve(db: db, appKey: appKey, port: port, site: site, release: release)
@@ -251,6 +278,12 @@ public func run(_ arguments: [String]) async -> Int32 {
             out = try await db.delete(rest[0], now: unixNow())
         case ("legacy", 0), ("legacy", 1): out = try await db.legacyList(rest.first)
         case ("prune", 0): out = "\(try await db.prune(now: unixNow())) history row(s) dropped"
+        case ("suspects", 0), ("suspects", 1):
+            guard let days = rest.first.map({ Int($0) }) ?? 7 else { return fail("suspects: <days> is a number") }
+            out = try await db.suspects(days: days, now: unixNow())
+        case ("flags", 1), ("flags", 2):
+            guard let n = rest.count > 1 ? Int(rest[1]) : 30 else { return fail("flags: <n> is a number") }
+            out = try await db.flags(rest[0], last: n)
         default:
             return fail("\(([command] + rest).joined(separator: " ")): not a command (or not its arguments)\n\(usage)")
         }
