@@ -55,8 +55,8 @@ final class CloudInbox: @unchecked Sendable {
     /// server's trust token for this PC (the PIN goes in once a PC: 10 §3).
     struct Seat: Codable, Equatable { var trainerID: String? = nil, session: String? = nil, device: String? = nil, legacyUploaded: Bool? = nil, trust: String? = nil }
     /// How a save from the server is taken: with our steps it doesn't have walked on top (a login, stale), as it is (여기서 계속: our unsent ones
-    /// lose to the other PC's, 08 §2-1), or a new trainer's (create).
-    enum Take { case adopt, asIs, fresh }
+    /// lose to the other PC's, 08 §2-1), as it is after the server refused ours (10 §2: the walker says so), or a new trainer's (create).
+    enum Take { case adopt, asIs, refused, fresh }
     static let period: TimeInterval = 120, gather: TimeInterval = 3, slowest: TimeInterval = 1800
 
     let link: any CloudLink, inbox = CloudInbox(), dir: URL
@@ -74,6 +74,8 @@ final class CloudInbox: @unchecked Sendable {
     var mints: [(ask: MintAsk, walk: String?)] = []                        // to send, before saves; their answers for the walker (status 0 = no answer, offline)
     var minted: [(ask: MintAsk, status: Int, reply: [String: Any])] = []
     var starterUID: Int? = nil                                             // create's: the new walker's companion, as the server issued it
+    private(set) var refusals = 0                                          // 422 implausible in a row (10 §2's reject mode); 0 once a save goes through
+    var refusedNews = false                                                // the server's save taken after a refusal: the walker says so once
     private(set) var lastSaved: Date? = nil
     private(set) var firstRun = false                                      // no cloud.json before: the server's first launch on this PC (Walker.startCloud's 08 §5 move)
     var deviceName: String { String(appDeviceName.prefix(64)) }
@@ -114,6 +116,7 @@ final class CloudInbox: @unchecked Sendable {
     /// the radar, buy, or hatch. walk = the save as it is now (before paying).
     func mint(_ m: MintAsk, walk: Walk?, now: Date) {
         guard phase == .on, now >= retryAt else { minted.append((m, 0, [:])); return }
+        if walk != nil, head?.how == .refused { minted.append((m, 422, [:])); return }          // ours refused, the server's not taken yet: this save would be too
         mints.append((m, walk.map { Cloud.text($0.shared) }))
     }
     /// The walker takes the answers in.
@@ -225,6 +228,7 @@ final class CloudInbox: @unchecked Sendable {
                 let e = j["error"] as? String
                 if e == "no_trainer" { orphan(&w, now) } else if e == "pin_needed" { phase = .pin(.set) }
                 else if s == 409, j["reason"] as? String == "replaced" { phase = .replaced } else if s == 426 { phase = .oldApp }
+                else if s == 422, e == "implausible" { refused(j, now) }                         // (radar, hatch, buy: the walk they carried) the action's "no"
                 minted.append((m, s, j))
             case (_, 426): phase = .oldApp; NSLog("pokewalker: cloud: the server wants app %@ (this is %@)", j["need"] as? String ?? "?", appVersion)
             case (.login(_, let resume), 200): loggedIn(j, resume: resume, &w, now)
@@ -239,12 +243,13 @@ final class CloudInbox: @unchecked Sendable {
             case (.save, 403) where j["error"] as? String == "pin_needed": phase = .pin(.set)
             case (.create, 409): ask(.login(force: false, resume: false))                     // made already (our reply lost, or someone else's): log in to it
             case (.save(let total, let hash), 200) where j["rev"] is Int:
-                w.cloudRev = j["rev"] as? Int; w.cloudTotal = total; acked = hash; mustSave = false; lastSaved = now
+                w.cloudRev = j["rev"] as? Int; w.cloudTotal = total; acked = hash; mustSave = false; lastSaved = now; refusals = 0
             case (.save, 409) where j["reason"] as? String == "replaced": phase = .replaced; NSLog("pokewalker: cloud: another PC took %@", seat.trainerID ?? "")
             case (.save, 409) where j["rev"] is Int && j["walk"] is String:                    // stale: the server is ahead (an admin's rollback)
                 let text = j["walk"] as? String ?? "", rev = j["rev"] as? Int ?? 0
                 if let h = Cloud.walk(text) { head = (h, rev, hex(sha256(Array(text.utf8))), .adopt); NSLog("pokewalker: cloud: stale: the server's rev %ld taken", rev) }
                 else { retryAt = now.addingTimeInterval(Cloud.period); NSLog("pokewalker: cloud: stale, and the server's save doesn't decode") }
+            case (.save, 422) where j["error"] as? String == "implausible": refused(j, now)
             case (.legacy, 200): seat.legacyUploaded = true; legacy = nil                        // stored now or before: done either way
             case (_, 404): orphan(&w, now)
             case (.login, 400) where j["error"] as? String == "bad_id": seat.trainerID = nil; phase = .needsID
@@ -278,13 +283,25 @@ final class CloudInbox: @unchecked Sendable {
         acked = h.hash; nextSave = now
         switch h.how {
         case .adopt: return w.adopt(h.walk, rev: h.rev, at: now)
-        case .asIs: w.cloudTotal = w.total; return w.adopt(h.walk, rev: h.rev, at: now)     // nothing of ours on top
+        case .asIs, .refused: refusedNews = h.how == .refused                                // nothing of ours on top
+            w.cloudTotal = w.total; return w.adopt(h.walk, rev: h.rev, at: now)
         case .fresh:                                                                          // 08 §5: a new save, 1.7's check and 1.10's refund already done
             var f = Walk(); f.audited = 2; f.ballsRefunded = true
             (f.counter, f.boot, f.syncedAt, f.counterKind, f.cloudRev, f.cloudTotal) = (w.counter, w.boot, w.syncedAt, w.counterKind, 0, 0)
             if let u = starterUID { f.companion.uid = u; f.lastUID = max(f.lastUID ?? 0, u) }   // the server's uid for the first companion
             f.rollover(now); f.dex(); w = f; mustSave = true; return false
         }
+    }
+    /// 422 implausible (10 §2, the server in reject mode): that save never goes again. The server's comes back with the refusal and is taken as it
+    /// is, at home — our steps since the save it last took are dropped, as walking them on top would make the same refused save. Mints queued with
+    /// the refused walk get the same "no". Refused again (or nothing to take): nothing goes for 2, 4, 8, 16, then 30 minutes.
+    private func refused(_ j: [String: Any], _ now: Date) {
+        refusals += 1; mustSave = false
+        let text = j["walk"] as? String, h = text.flatMap(Cloud.walk)
+        if let h, let text, let rev = j["rev"] as? Int { head = (h, rev, hex(sha256(Array(text.utf8))), .refused) }
+        minted += mints.filter { $0.walk != nil }.map { ($0.ask, 422, [:]) }; mints.removeAll { $0.walk != nil }
+        if refusals > 1 || head?.how != .refused { retryAt = now.addingTimeInterval(min(Cloud.slowest, Cloud.period * pow(2, Double(max(0, refusals - 2))))) }
+        NSLog("pokewalker: cloud: the server refused the save (%ld in a row): %@", refusals, j["reasons"] as? String ?? "")
     }
     /// No answer, a 5xx, or not JSON (Cloudflare's own pages: 502, 530, a 403 challenge): offline, again in 2, 4, 8 … 30 minutes.
     private func offline(_ a: Ask, _ now: Date) {
@@ -421,6 +438,8 @@ extension Walker {
         if let c = cloud, let u = radarMon?.uid { c.mint(.result(uid: u, result: "missed"), walk: nil, now: now) }
         radarMon = nil
     }
+    /// The LCD's lines when the server refused our save (10 §2) and its last one was taken; a mint's own refusal.
+    static let refusedLines = ["서버가 기록을 받지 않아", "마지막 저장으로 돌아갔어요"], mintRefusedLines = ["서버가 기록을", "받지 않았다"]
     func notifyHatch(_ m: Mon) {
         notify("hatch", "알에서 " + josa(monNames[m.dex], "이", "가") + " 태어났어요!" + (m.shiny == true ? " ✦" : ""), m.shiny == true ? "이로치예요! 상자에 있어요" : "Lv.1 · 상자에 있어요")
     }
@@ -434,7 +453,7 @@ extension Walker {
                 guard mintWaiting == .radar else { continue }
                 mintWaiting = nil
                 guard s == 200, let mon = Cloud.mon(j["mon"]) else {
-                    chainNote = nil; screen = .say(s == 402 ? ["W가 부족하다", "(10W 필요)"] : ["연결되면", "쓸 수 있어요"], next: mintBack ?? .home, since: now); continue
+                    chainNote = nil; screen = .say(s == 402 ? ["W가 부족하다", "(10W 필요)"] : s == 422 ? Walker.mintRefusedLines : ["연결되면", "쓸 수 있어요"], next: mintBack ?? .home, since: now); continue
                 }
                 if j["free"] as? Bool != true { _ = state.spend(10); changed = true }
                 radarMon = mon
@@ -460,7 +479,7 @@ extension Walker {
                 mintWaiting = nil
                 let back = mintBack ?? .home
                 guard s == 200, let mon = Cloud.mon(j["mon"]), state.payLegend(k) else {
-                    screen = .say(s == 402 ? [Walk.legendShop[k].bp > 0 ? "BP가 부족하다" : "W가 부족하다"] : ["연결되면", "쓸 수 있어요"], next: back, since: now); continue
+                    screen = .say(s == 402 ? [Walk.legendShop[k].bp > 0 ? "BP가 부족하다" : "W가 부족하다"] : s == 422 ? Walker.mintRefusedLines : ["연결되면", "쓸 수 있어요"], next: back, since: now); continue
                 }
                 _ = state.keep(mon); changed = true
                 screen = .say(["전설의 " + monNames[mon.dex] + "!", "Lv.\(mon.level) · 상자에 왔다"], next: back, since: now)
@@ -477,7 +496,7 @@ extension Walker {
     var cloudMenuTitle: String {
         guard let c = cloud else { return "" }
         let when: String = switch c.phase {
-        case .on: c.backoff > 0 ? "저장 안 됨" : c.lastSaved.map { d in let m = Int(Date().timeIntervalSince(d) / 60); return m < 1 ? "방금 저장" : m < 60 ? "\(m)분 전 저장" : "\(m / 60)시간 전 저장" } ?? "저장 전"
+        case .on: c.backoff > 0 ? "저장 안 됨" : c.refusals > 0 ? "저장 거절됨" : c.lastSaved.map { d in let m = Int(Date().timeIntervalSince(d) / 60); return m < 1 ? "방금 저장" : m < 60 ? "\(m)분 전 저장" : "\(m / 60)시간 전 저장" } ?? "저장 전"
         case .needsID: "로그인이 필요해요"
         case .replaced: "다른 PC에서 접속 중"
         case .oldApp: "새 버전이 필요해요"
@@ -509,6 +528,10 @@ extension Walker {
             if up { levelled = true }
             rewarded = dexCount; unlockedAt = state.earned; lastSeason = state.season
             queueReadyEvolutions(); save()
+            if c.refusedNews {                                                                   // 10 §2: back to the server's last save, and why
+                c.refusedNews = false; screen = .say(Walker.refusedLines, next: .home, since: now.addingTimeInterval(30))
+                notify("unlock", "서버가 기록을 받지 않았어요", "마지막으로 저장된 기록으로 돌아갔어요.")
+            }
         } else if state.sentHash != sent || state.cloudRev != rev { save() }                     // 08b §10 ②: the sent save's hash on disk before its reply
         mintTick(c, now)
         if c.phase != cloudShown { showCloud(c.phase); cloudShown = c.phase; cloudAsked = nil }   // a new answer from the server: its question may come again
@@ -551,7 +574,8 @@ extension Walker {
 
 // MARK: - the self-test's: a save server in a few lines (08b §4's 13 rows, as far as the app sees them)
 /// One table of trainers. down = no answer; html = that status with a page (Cloudflare's); lose = the next reply lost after the server acted;
-/// hold = replies wait for release(); old = 426 with that need; pins = PINs asked (docs/plans/10 §3: the server does for apps ≥ 2.1).
+/// hold = replies wait for release(); old = 426 with that need; pins = PINs asked (docs/plans/10 §3: the server does for apps ≥ 2.1);
+/// refuse = 10 §2's reject mode: why a walk sent (a save's, a mint's) is implausible, nil = it isn't.
 final class FakeCloud: CloudLink, @unchecked Sendable {
     struct Row {
         var name: String; var rev = 0; var walk: String? = nil; var session = ""; var writer: String? = nil; var device = ""; var at = 0
@@ -559,6 +583,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     }
     var rows: [String: Row] = [:], paths: [String] = [], held: [() -> Void] = [], clock = 10_000
     var down = false, html: Int? = nil, lose = false, hold = false, old: String? = nil, pins = false, saves: [Int] = []   // saves: each save's W, in order
+    var refuse: ((Walk) -> String?)? = nil
     var mintRng = Seeded(s: 77), nextUID = 1_000_001, pending: Int? = nil, chainN = 0, chainFree = false, chainCourse = 0, chainGoes = true   // 10 §4: the server's rolls
     func release() { let h = held; held = []; h.forEach { $0() } }
     func admin(_ key: String, _ walk: String) { rows[key]?.rev += 1; rows[key]?.walk = walk; rows[key]?.writer = "admin" }   // `pokeserver rollback`
@@ -615,6 +640,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         case "v1/radar", "v1/radar/result", "v1/hatch", "v1/buy", "v1/evolve":
             guard j["session"] as? String == r.session else { return (409, ["error": "conflict", "reason": "replaced"]) }
             let w = (j["walk"] as? String).flatMap { try? JSONDecoder().decode(Walk.self, from: Data($0.utf8)) }
+            if let w, let why = refuse?(w) { return (422, ["error": "implausible", "reasons": why, "rev": r.rev, "walk": (r.walk as Any?) ?? NSNull()]) }   // the walk carried
             func text(_ m: Mon) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return (try? e.encode(m)).map { String(decoding: $0, as: UTF8.self) } ?? "" }
             func issue(_ m: Mon) -> String { var m = m; m.uid = nextUID; nextUID += 1; return text(m) }
             switch path {
@@ -648,6 +674,9 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             guard mine == r.session else { return (409, ["error": "conflict", "reason": "replaced"]) }                         // row 9
             if pins, r.pin == nil { return (403, ["error": "pin_needed"]) }
             guard base >= r.rev || r.writer == mine else { return (409, ["error": "conflict", "reason": "stale", "rev": r.rev, "walk": (r.walk as Any?) ?? NSNull()]) }   // 13
+            if let why = (j["walk"] as? String).flatMap({ try? JSONDecoder().decode(Walk.self, from: Data($0.utf8)) }).flatMap({ refuse?($0) }) {
+                return (422, ["error": "implausible", "reasons": why, "rev": r.rev, "walk": (r.walk as Any?) ?? NSNull()])   // not written; the server's comes back
+            }
             r.rev = max(base, r.rev) + 1; r.walk = j["walk"] as? String; r.writer = mine; r.at = clock; rows[id.key] = r           // 10-12
             saves.append(r.walk.flatMap { try? JSONDecoder().decode(Walk.self, from: Data($0.utf8)) }?.watts ?? -1)
             return (200, ["rev": r.rev])
@@ -906,7 +935,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     // the server's Pokémon (docs/plans/10 §4), against a server that issues them
     let ms = FakeCloud(); ms.pins = true
     let bh = TestHost(), bw = Walker(state: Walk()); bw.persist = false; bw.host = bh
-    let bc = Cloud(link: ms, dir: tmp.appendingPathComponent("b", isDirectory: true), on: true); bw.startCloud(bc)
+    let bc = Cloud(link: ms, dir: tmp.appendingPathComponent("bm", isDirectory: true), on: true); bw.startCloud(bc)
     bh.texts = ["zz000020"]; bh.pins = ["2468", "2468"]
     var bt = ticks(bw, t + 30000, 4)
     c.append((bc.phase == .on && bw.state.companion.uid == 1_000_000 && bw.state.lastUID == 1_000_000, "cloud mint: a new trainer's first companion has the server's uid (1,000,000)"))
@@ -960,5 +989,51 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     bt = ticks(bw, bt, 2)
     c.append((bw.state.watts == 30 && !ms.saves.isEmpty && !ms.saves.contains(40) && ms.saves.last == 30,
               "cloud mint: no save goes between a mint's answer and the walker taking it in (the fee is in every save after it)"))
+
+    // 10 §2's reject mode: a refused walk never goes again; the server's comes back and is taken as it is; refused again, saves wait
+    func says(_ w: Walker, _ l: [String]) -> Bool { if case .say(let s, _, _) = w.screen { return s == l }; return false }
+    func saveCount() -> Int { ms.paths.filter { $0 == "v1/save" }.count }
+    /// Home with nothing to play first (an evolution's show, a move to learn: the server's save waits for home).
+    func settle(_ w: Walker, _ from: Date) -> Date {
+        var at = from
+        for _ in 0..<400 {
+            switch w.screen {
+            case .home where !w.growthDue(at) && w.state.learning?.isEmpty != false: return at
+            case .learn: w.screen = .learn(sel: 4); w.press(1)
+            case .say: w.press(1)
+            case .home, .evolve, .hatch: break
+            default: w.screen = .home
+            }
+            w.tick(at); at += 0.5
+        }
+        return at
+    }
+    bt = settle(bw, bt + 600); bt = ticks(bw, bt, 4)
+    let srvWatts = Cloud.walk(ms.rows["zz000020"]?.walk ?? "")?.watts ?? -1, rev0 = ms.rows["zz000020"]?.rev ?? -1
+    ms.refuse = { $0.watts >= 5000 ? "W \($0.watts)" : nil }
+    bw.state.watts = 6000; n = saveCount(); bw.cloud?.saveNow(); bt = ticks(bw, bt, 2)
+    let back = bw.state.watts == srvWatts && bw.state.cloudRev == rev0 && ms.rows["zz000020"]?.rev == rev0 && says(bw, Walker.refusedLines) && bc.refusals == 1
+    let rowSays = bw.cloudMenuTitle.hasSuffix("저장 거절됨"); bw.screen = .home; bt = ticks(bw, bt + 300, 4)
+    c.append((back && rowSays && saveCount() == n + 1 && bw.state.watts == srvWatts && (Walker.refusedLines + Walker.mintRefusedLines).allSatisfy { textWidth($0) <= 96 },
+              "cloud refused: a 422 → the server's save as it is (W back), said on the LCD and in the menu; that save never again"))
+    bw.state.watts = 7000; let t2 = bt; bw.cloud?.saveNow(); bt = ticks(bw, bt, 2)
+    let again = bc.refusals == 2 && bw.state.watts == srvWatts && abs(bc.retryAt.timeIntervalSince(t2) - 120) < 2
+    bw.screen = .home; n = saveCount(); bw.state.watts += 1; bc.soon(bt); bt = ticks(bw, bt, 60); let waited2 = saveCount() == n
+    bt = ticks(bw, t2 + 125, 4)
+    c.append((again && waited2 && saveCount() == n + 1 && bc.refusals == 0 && bw.state.watts == srvWatts + 1 && !bw.cloudMenuTitle.hasSuffix("저장 거절됨"),
+              "cloud refused: again in a row → nothing goes for 2 minutes (then 4, 8 … 30); the next save taken clears it"))
+    bw.screen = .home; bw.radarMon = nil; bw.state.watts = 6000; let radarAsks = ms.paths.filter { $0 == "v1/radar" }.count
+    bw.screen = .menu(menuAt("포켓 레이더")); bw.press(1); bt = ticks(bw, bt, 1)
+    let radarNo = says(bw, Walker.mintRefusedLines) && bw.radarMon == nil && bw.mintWaiting == nil && ms.paths.filter { $0 == "v1/radar" }.count == radarAsks + 1
+    bw.screen = .home; bt = ticks(bw, bt, 1)
+    c.append((radarNo && bw.state.watts == srvWatts + 1 && says(bw, Walker.refusedLines) && bc.refusals == 1,
+              "cloud refused: a mint's walk refused (the radar) → no find, no fee; home, the server's save as it is"))
+    ms.refuse = nil
+    srv.rows["zz000030"] = FakeCloud.Row(name: "zz000030", rev: 0, walk: nil, device: "elsewhere"); srv.refuse = { $0.total >= 50 ? "steps" : nil }
+    let r1 = pc("r1"); var wr = Walk(); wr.walk(80, at: t0); r1.seat.trainerID = "zz000030"; r1.start(); let tr = t + 40000; _ = run(r1, &wr, tr)
+    n = sent(); _ = run(r1, &wr, tr + 60); let quietR = sent() == n
+    srv.refuse = nil
+    c.append((r1.refusals == 1 && wr.total == 80 && r1.head == nil && quietR && abs(r1.retryAt.timeIntervalSince(tr) - 120) < 1,
+              "cloud refused: nothing on the server to take (never saved) → ours kept, nothing goes for 2 minutes"))
     return c
 }
