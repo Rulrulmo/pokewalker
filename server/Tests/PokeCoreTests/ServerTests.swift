@@ -333,6 +333,8 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     var e = b; e.box[0].ivs = [31, 31, 31, 31, 31, 40]; e.bag.append("치트도구"); e.box.append(e.box[0]); e.bp = 500
     let ev = SaveCheck.values(e), ec = SaveCheck.changes(from: b, to: e, seconds: 60)
     #expect(ev.contains { $0.hasPrefix("IVs") } && ev.contains("item 치트도구") && ev.contains("a uid twice") && ec.contains { $0.hasPrefix("BP") })
+    var chained = b; chained.bestChain = 4; chained.watts += 8                                       // a chain's 4th link (+8 W) in a save 7 s after the last: fine
+    #expect(SaveCheck.changes(from: b, to: chained, seconds: 7).isEmpty, "\(SaveCheck.changes(from: b, to: chained, seconds: 7))")
     var f = b; f.earned += 500
     #expect(SaveCheck.changes(from: b, to: f, seconds: 3600).contains { $0.contains("earned W") })
 }

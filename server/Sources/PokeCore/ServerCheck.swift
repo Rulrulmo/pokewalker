@@ -65,7 +65,7 @@ enum SaveCheck {
         let kept = mons(new), keptUIDs = Set(kept.compactMap(\.uid))
         let released = old.box.filter { m in m.uid.map { !keptUIDs.contains($0) } ?? !kept.contains(m) }
         let releases = released.reduce(0) { $0 + max(1, $1.level / 2) }
-        let links = dt / secondsPerLink, linkBonus = 2 * max(10, new.bestChain ?? 0)     // a chain link pays 2 × its length; one at most every 20 s
+        let links = dt / secondsPerLink + 1, linkBonus = 2 * max(10, new.bestChain ?? 0) // a chain link pays 2 × its length: one per 20 s, and one in any save (saves come seconds apart after actions)
 
         // items: a find (the courses' tables, chain rewards) comes free; a shop item costs W, a BP-shop item BP
         let finds = Set<String>(courses.flatMap { (c: Course) -> [String] in c.items.map(\.item) }), wPrice = Dictionary(Walk.shop.map { ($0.item, $0.watts) }, uniquingKeysWith: min)

@@ -85,8 +85,8 @@ jobs:
           Click ([int]($r.L + 108 * $k)) ([int]($r.T + 100 * $k)) 8 16; Start-Sleep 2; Shot "3_right_click"
           [System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep 1
           if ($p.HasExited) { throw "the app quit after the clicks ($($p.ExitCode))" }
-          Get-Content "$env:APPDATA\PokeWalker\settings.json" -ErrorAction SilentlyContinue
-          Get-ChildItem "$env:APPDATA\PokeWalker" | Format-Table Name, Length
+          Get-Content "$env:APPDATA\PokeWalker*\settings.json" -ErrorAction SilentlyContinue                 # a build beside build.sh keeps its own "PokeWalker Dev" folder
+          Get-ChildItem "$env:APPDATA\PokeWalker*" -ErrorAction SilentlyContinue | Format-Table Name, Length
           [W]::PostMessage($h, 0x10, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null; Start-Sleep 2              # WM_CLOSE: 종료 (saves)
           if (!$p.HasExited) { Write-Host "still up after WM_CLOSE"; Stop-Process $p }
           Get-Content smoke.txt
