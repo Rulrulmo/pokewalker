@@ -85,8 +85,8 @@ struct EngineRun<R: RandomNumberGenerator> {
         guard n > 0 else { return }
         let season = w.season
         _ = w.walk(n, at: now)
-        if w.weatherDue, w.rollWeather(&r) { events.append(.weather(w.weather ?? .sunny)) }
-        if w.season != season { events.append(.season(w.season.rawValue)) }
+        if w.weatherDue, w.rollWeather(&r) { events.append(.weather(to: w.weather ?? .sunny)) }
+        if w.season != season { events.append(.season(to: w.season.rawValue)) }
         if w.eventDue {
             switch w.petEvent(&r) {
             case .item(let i)?: events.append(.find(item: i))

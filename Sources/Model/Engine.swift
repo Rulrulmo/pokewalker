@@ -8,16 +8,16 @@ enum Act: Codable, Equatable {
     case steps                                                   // nothing but the request's steps
     case radar                                                   // the radar (10 W) or, a chain holding, its next bush (free)
     case radarPick(bush: Int)                                    // the bush picked; -1 = gave up (the time ran out, too early, left)
-    case battle(BattleCmd)
+    case battle(cmd: BattleCmd)
     case tower                                                   // into the tower (50 W) or, on a run, its next trainer
     case towerPick(slot: Int, uid: Int), towerReset              // the lobby's picker (Walk.towerSet), 추천으로
     case buy(bp: Bool, item: String?, legend: Int?, shell: String?, qty: Int)   // one of item / legend (Walk.legendShop index) / shell (a device colour)
     case use(item: String, stat: Int?)                           // the bag's use: feed, train (은색병뚜껑's stat), evolve, sell all of it
     case sellAll
-    case mon(MonOp)
-    case course(Int)
+    case mon(op: MonOp)
+    case course(index: Int)
 }
-enum BattleCmd: Codable, Equatable { case fight(slot: Int), ball, item(String), swap(Int), replace(Int), run, forfeit }
+enum BattleCmd: Codable, Equatable { case fight(slot: Int), ball, item(name: String), swap(to: Int), replace(to: Int), run, forfeit }
 /// Pokémon by uid (their places move): 함께 걷기, 상자로, 워커로, 놓아주기, 중복 놓아주기, 기술 바꾸기, the waiting move (nil = 배우지 않는다), 통신 진화.
 enum MonOp: Codable, Equatable {
     case pair(uid: Int), store(uid: Int), fetch(uid: Int), release(uid: Int), releaseDupes(dex: Int)
@@ -27,7 +27,7 @@ enum MonOp: Codable, Equatable {
 /// What came of it for the player to see, in the order home shows them (docs/plans/11 §3 news).
 enum News: Codable, Equatable {
     case find(item: String), egg(dex: Int, left: Int), hatch(mon: Mon)
-    case weather(Weather), season(Int)                                                     // Season's rawValue
+    case weather(to: Weather), season(to: Int)                                             // Season's rawValue
     case level(uid: Int, level: Int), evolve(uid: Int, from: Int, to: Int, shed: Mon?), learn(uid: Int, move: Int, learned: Bool)
     case unlock(course: Int), dex(count: Int)
     case chain(n: Int, bonus: Int, reward: String?)

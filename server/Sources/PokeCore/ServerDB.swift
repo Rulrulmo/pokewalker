@@ -39,6 +39,8 @@ struct Reply: Sendable {
         let enc = JSONEncoder(); enc.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         self.status = status; self.body = (try? enc.encode(value)) ?? Data("{}".utf8); self.note = note
     }
+    /// A body made elsewhere (/v2/act's ActReply, a stored reply sent again).
+    init(raw status: Int, _ body: Data, note: String? = nil) { self.status = status; self.body = body; self.note = note }
     /// {"error": code, …more}
     static func error(_ status: Int, _ code: String, _ more: [String: JSON] = [:], note: String? = nil) -> Reply {
         Reply(status, more.merging(["error": .s(code)]) { _, e in e }, note: note)
@@ -99,16 +101,23 @@ actor SaveDB {
     let path: String
     let reject: Bool                                                       // CHECK_MODE=reject: an implausible save is refused (422), else only recorded
     let rejectTests: Bool                                                  // CHECK_REJECT_TESTS=1: refused for test IDs only (zz + 6 digits), to try reject live
+    let minApp: String?                                                    // MIN_APP: apps older than this get 426 (3.0's release turns 2.x away: plan 11 §0)
+    /// The oldest app this trainer may use: the newest that saved here (no going back), or MIN_APP if that's newer.
+    func needApp(_ t: Trainer) -> String? {
+        guard let m = minApp else { return t.app }
+        guard let a = t.app else { return m }
+        return verCmp(a, m) ?? 0 >= 0 ? a : m
+    }
     /// Does an implausible save from this trainer get refused?
     func refuses(_ key: String) -> Bool { reject || (rejectTests && isTestID(key)) }
 
     /// create: only `pokeserver init` and the tests make the file; anything else on a missing file throws (a wrong DB_PATH must not start an empty server).
-    init(path: String, create: Bool = false, reject: Bool = false, rejectTests: Bool = false) throws {
+    init(path: String, create: Bool = false, reject: Bool = false, rejectTests: Bool = false, minApp: String? = nil) throws {
         guard create || FileManager.default.fileExists(atPath: path) else { throw ServerError(description: "\(path): no database (pokeserver init makes it)") }
         let c = try SQLite(path: path, create: create)
         try c.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000; PRAGMA max_page_count = 2621440;")   // 4 KiB × 2621440 = 10 GiB
-        if create || FileManager.default.fileExists(atPath: path) { try c.exec(schema); try c.exec(mintSchema) }   // tables added since (flags) come in on any open: IF NOT EXISTS
-        db = c; self.path = path; self.reject = reject; self.rejectTests = rejectTests
+        if create || FileManager.default.fileExists(atPath: path) { try c.exec(schema); try c.exec(mintSchema); try c.exec(playSchema) }   // tables added since (flags) come in on any open: IF NOT EXISTS
+        db = c; self.path = path; self.reject = reject; self.rejectTests = rejectTests; self.minApp = minApp
     }
 
     /// 판정 2–6, no database needed: the route runs it before awaiting the actor (a 2 MB decode doesn't hold the DB up).
@@ -151,7 +160,7 @@ actor SaveDB {
     }
 
     /// A throw (an SQLite error, SQLITE_FULL at the page cap too) is a 500 with the error in the log.
-    private func guarded(_ body: () throws -> Reply) -> Reply {
+    func guarded(_ body: () throws -> Reply) -> Reply {
         do { return try body() } catch { return .error(500, "internal", note: "\(error)") }
     }
 
@@ -162,8 +171,8 @@ actor SaveDB {
         return guarded {
             try db.transaction {
                 guard let t = try trainer(id.key) else { return Reply(200, ["exists": .b(false)]) }
-                if let a = r.app, let need = t.app, verCmp(a, need) ?? 0 < 0 {                          // before the session moves
-                    return .error(426, "old_app", ["need": .s(need)], note: "login with app \(a) < \(need)")
+                if let need = needApp(t), verCmp(r.app ?? "0", need) ?? 0 < 0 {                          // before the session moves
+                    return .error(426, "old_app", ["need": .s(need)], note: "login with app \(r.app ?? "?") < \(need)")
                 }
                 var token: String? = nil, pinNeeded = false                                             // 10 §3: the PIN (or this PC's trust) before anything else
                 if try hasPIN(id.key) {
@@ -227,7 +236,7 @@ actor SaveDB {
         return guarded {
             try db.transaction {
                 guard let t = try trainer(id.key) else { return .error(404, "no_trainer") }                                       // 7
-                if let need = t.app, verCmp(r.app, need) ?? 0 < 0 { return .error(426, "old_app", ["need": .s(need)], note: "save with app \(r.app) < \(need)") }   // 8
+                if let need = needApp(t), verCmp(r.app, need) ?? 0 < 0 { return .error(426, "old_app", ["need": .s(need)], note: "save with app \(r.app) < \(need)") }   // 8
                 guard r.session == t.session else {                                                                                 // 9
                     try conflict(id.key, base: r.base, walk: r.walk, now: now)
                     return .error(409, "conflict", ["reason": .s("replaced")], note: "replaced (base \(r.base), rev \(t.rev))")
@@ -299,7 +308,7 @@ actor SaveDB {
     }
 
     /// The hour's first rev and the day's (KST) first, kept as they come in: pruning is then three DELETEs.
-    private func keep(_ key: String, rev: Int, walk: String, now: Int) throws {
+    func keep(_ key: String, rev: Int, walk: String, now: Int) throws {
         let a: [String: SQLValue] = ["k": .text(key), "r": .int(rev), "now": .int(now), "w": .text(walk)]
         try db.rows("""
             INSERT OR IGNORE INTO history (key, rev, reason, at, walk) SELECT :k, :r, 'hourly', :now, :w
@@ -330,6 +339,8 @@ actor SaveDB {
                 n += db.changes
             }
             try db.rows("DELETE FROM pin_fails WHERE at < :t", ["t": .int(now - pinWindow)])
+            try db.rows("DELETE FROM actions WHERE at < :t", ["t": .int(now - actionsKept)])
+            try db.rows("DELETE FROM steps_day WHERE day < :d", ["d": .text(Walk.key(Date(timeIntervalSince1970: Double(now - 8 * 86400))))])
             return n
         }
     }

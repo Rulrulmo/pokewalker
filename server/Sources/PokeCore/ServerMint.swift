@@ -77,7 +77,8 @@ extension SaveDB {
         if let walk, walk.utf8.count > walkLimit { return .error(413, "too_big") }
         do {
             return try db.transaction {
-                guard try trainer(key.key) != nil else { return .error(404, "no_trainer") }
+                guard let t0 = try trainer(key.key) else { return .error(404, "no_trainer") }
+                if let need = needApp(t0), verCmp(need, "3.0") ?? 0 >= 0 { return .error(426, "old_app", ["need": .s(need)], note: "a 2.x mint after 3.0") }   // plan 11: 3.0 acts, 2.x may not mint over it
                 guard try hasPIN(key.key) else { return .error(403, "pin_needed") }
                 guard try minting(key.key) else { return .error(409, "relogin") }                 // its Pokémon aren't on record yet: a 2.1 login takes them first (10 §4.3)
                 guard let (t, w, reasons) = try mintGate(key, session: session, walk: walk, now: now) else {

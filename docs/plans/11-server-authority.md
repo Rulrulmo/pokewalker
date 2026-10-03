@@ -34,14 +34,16 @@
 
 ## 3. API (v2)
 
-모두 `POST`, `X-App-Key`, 본문 `{"id", "session", "seq", "steps"?, …}`. 로그인·새 ID·PIN은 v1 그대로(`/v1/login`, `/v1/create`, `/v1/pin`). 3.0은 로그인 답의 `walk`·`rev`를 그대로 쓴다.
+**`POST /v2/act`** 하나, `X-App-Key`. 본문은 `ActReq {"id", "session", "seq", "steps"?, "act": Act}`, 답은 `ActReply {"rev", "walk"?, "taken"?, "out": Outcome}`. 타입은 모두 공유 코드 `Sources/Model/Engine.swift`에 있고 JSON은 Swift가 합성한 Codable 그대로다(정의는 그 파일 하나). 규칙은 `Sources/Model/EngineRules.swift`의 `Engine.apply`(서버와 앱 셀프테스트의 가짜 서버가 같은 코드를 쓴다). 서버만의 것(세션·seq·저장된 답, 걸음 상한, 발급 장부, rev·history)은 `server/Sources/PokeCore/ServerPlay.swift`.
+- 예: `{"id":"민수","session":"…","seq":1,"steps":5,"act":{"buy":{"bp":false,"item":"상처약","qty":2}}}`. 짐 없는 것은 `{"radar":{}}`, 이름표 붙은 짐은 `{"battle":{"cmd":{"fight":{"slot":0}}}}`, `{"mon":{"op":{"pair":{"uid":1000003}}}}`, `{"course":{"index":3}}`.
+- 로그인·새 ID·PIN은 v1 그대로(`/v1/login`, `/v1/create`, `/v1/pin`). 3.0은 로그인 답의 `walk`·`rev`를 그대로 쓴다. 한 번도 행동하지 않은 새 트레이너는 `walk`가 null이고, 첫 행동의 답에 서버가 만든 첫 세이브가 온다.
 - **어느 행동이든 `"steps": n`을 같이 보낼 수 있다.** 서버는 그 걸음을 먼저(같은 트랜잭션에서, 3.1과 똑같이) 적용하고 답에 `"taken"`을 준다. 레이더·상점 직전에 걸음을 따로 보내지 않아도 W가 정확하다.
 - **이 PC의 칸**(`counter`, `boot`, `syncedAt`, `counterKind`, `sentHash`, `cloudRev`, `cloudTotal`)은 앱의 것이다. 서버의 `walk`에는 늘 비어 있고(`shared`), 들어와도 무시한다. 앱은 지금 `adopt()`처럼 자기 것을 다시 얹는다.
 
 **답**
-- `200 {"rev": n, "walk": "<Walk JSON>"?, "news": [ … ], …행동별}` — `walk`는 세이브가 바뀐 때만.
-- `422 {"error": "cannot", "why": "<한국어>"}` — 지금 할 수 없는 행동(W 부족, 없는 도구, 잠긴 코스, 배틀 중 아님 …). 세이브는 그대로(같이 온 `steps`는 적용된다). 앱은 `why`를 LCD에 그대로 보여 준다: 한 줄 14자 안팎, 두 줄이면 `\n`으로 나눈다.
-- `400 bad_action`(형식 오류) · `409 replaced`(다른 PC) · `409 seq` · `403 pin_needed` · `426 old_app` · `404 no_trainer` — v1과 같은 뜻.
+- `200 ActReply` — `walk`(객체)는 세이브가 바뀐 때만, `taken`은 `steps`를 보냈을 때만, `out.news`·행동별 칸은 `Outcome`.
+- **할 수 없는 행동도 200**이고 `out.cannot`에 이유(LCD 줄, 한 줄 14자 안팎, 두 줄이면 `\n`). 그 행동은 오지 않은 것과 같다(이어진 연쇄도 그대로). 같이 온 `steps`는 걸어지므로 `rev`·`walk`·`taken`이 같이 온다. (처음엔 422로 정했으나 이 때문에 200으로 바꿨다.)
+- `400 bad_request` · `409 conflict {"reason":"replaced"}`(다른 PC) · `409 seq {"last": n}` · `403 pin_needed` · `404 no_trainer` — v1과 같은 모양.
 
 **news** — 서버가 이번 행동에서 일어나게 한 일. 앱은 홈 화면에서 **배열 순서대로** 하나씩 보여 준다. 서버는 지금 홈이 보여 주던 순서로 넣는다: 동료의 레벨 → 그 진화 → 그 기술, 그다음 워커·배틀에 나간 포켓몬마다 같은 순서(파티 순서), 그 밖의 것(날씨·주운 것·알·부화·해금·도감)은 일어난 순서. 배틀 중에 오른 레벨은 끝(`end`)의 답에 온다(beats 사이가 아니라).
 
@@ -59,9 +61,9 @@
 | `dex` | `count` | 도감 달성(이벤트 코스·기기 색) |
 | `chain` | `n`, `bonus`, `reward`? | 연쇄 이어짐(+2n W, 5연쇄마다 도구). 다음 풀숲은 앱이 보여 줄 준비가 되면 `/v2/radar`로(3.2) |
 
-### 3.1 걸음 `/v2/steps {"n": 걸음}`
+### 3.1 걸음 `"act": {"steps": {}}` (그리고 모든 행동의 `"steps": n`)
 - 앱은 쌓인 걸음(StepGate를 거친 것)을 **15초마다** 보낸다. 다른 행동 직전에도 먼저 보낸다(레이더가 W를 정확히 보도록). 오프라인이면 쌓아 둔다.
-- 서버가 받는 수: `min(n, 지난 걸음 이후 서버 시각 × 15 + 600, 오늘 남은 몫)`. 오늘 몫은 서버가 KST 날짜별로 더한다(`steps_day`). 답의 `"taken": k`(깎였으면 n보다 작다).
+- 서버가 받는 수: `min(n, 쌓인 몫, 오늘 남은 몫)`. 쌓인 몫은 초당 15씩 차서 하루치(10만)에서 멈추고(세션이 바뀌어도 이어짐, 처음엔 마지막 저장 때부터), 받은 만큼 줄어든다. 오늘 몫은 서버가 KST 날짜별로 더한다(`steps_day`). 답의 `"taken": k`(깎였으면 n보다 작다, `actions`에 기록).
 - 그다음 서버가 `Walk.walk(k)`(W·경험치·알 걸음·레벨) → 날씨(`weatherDue`) → 동료 이벤트(`eventDue`: 주운 도구·알) → 부화(`hatchDue`) → 진화(레벨이 오른 것) → 해금. 모두 news로.
 - 배틀 중이면 서버가 걸음을 묵혀 두었다가(`play.held`) 배틀이 끝날 때 적용한다(지금 앱의 `heldSteps`와 같음).
 - **진화**(앱은 news로 홈에서 연출만 한다, B 캔슬은 지금처럼 없다):
@@ -70,15 +72,15 @@
 - **기술**: 레벨 업·진화로 생긴 새 기술은 빈 칸이 있으면 서버가 바로 배우게 하고 `learn` news(`learned: true`). 4개면 `walk.learning`에 남고 news(`learned: false`). 놓아준 포켓몬 몫은 버린다.
 
 ### 3.2 레이더
-- `/v2/radar` → `{"bush": 0-3, "window": 초, "chain": n}`. 연쇄가 이어진 상태면 무료, 아니면 10W를 낸다(없으면 422). 서버가 풀숲·포켓몬·창을 정해 `play`에 두고, **시계는 이 답을 보낸 때부터**. 포켓몬은 아직 알려 주지 않는다.
+- `{"radar": {}}` → `out.radar {"bush": 0-3, "window": 초, "chain": n}`. 연쇄가 이어진 상태면 무료, 아니면 10W를 낸다(없으면 422). 서버가 풀숲·포켓몬·창을 정해 `play`에 두고, **시계는 이 답을 보낸 때부터**. 포켓몬은 아직 알려 주지 않는다.
   - 연쇄의 다음 풀숲도 이것으로 연다: 배틀 끝의 연출(메시지, 레벨·진화·기술)이 홈에서 다 끝난 뒤, 앱이 풀숲을 보여 줄 준비가 됐을 때 부른다.
   - 이어진 연쇄는 걸음 행동과 `/v2/mon learn`(그 사이의 기술 고르기)만 지나간다. 다른 행동이 오거나 새 세션이 시작되면 연쇄는 끝난다.
-- `/v2/radar/pick {"bush": k}` → 맞는 풀숲이고 서버 시각으로 `1.5 + window + 3`초 안이면 배틀이 시작된다: `{"battle": Battle JSON, "beats": [Beat JSON]}`. 틀리거나 늦으면 `{"missed": true}`, 연쇄는 끝. 더 이른 쪽의 제한은 없다(앱이 자기 시계로 1.5초를 기다린다).
-  - `{"bush": -1}` = 포기(창이 지남, 1.5초 전에 누름, 화면을 떠남). `{"missed": true}`, 연쇄 끝. 서버가 레이더를 다음 행동까지 붙들고 있지 않게.
+- `{"radarPick": {"bush": k}}` → 맞는 풀숲이고 서버 시각으로 `1.5 + window + 3`초 안이면 배틀이 시작된다: `out.battle`, `out.beats`. 틀리거나 늦으면 `out.missed: true`, 연쇄는 끝. 더 이른 쪽의 제한은 없다(앱이 자기 시계로 1.5초를 기다린다).
+  - `{"bush": -1}` = 포기(창이 지남, 1.5초 전에 누름, 화면을 떠남). `out.missed`, 연쇄 끝. 서버가 레이더를 다음 행동까지 붙들고 있지 않게.
 
-### 3.3 배틀 `/v2/battle {"cmd": …}`
-- `cmd`: `{"fight": 칸}` · `{"ball": true}` · `{"item": "이름"}` · `{"swap": i}` · `{"replace": i}` · `{"run": true}` · `{"forfeit": true}`(타워). 배틀 도구는 모두 지금 나와 있는 포켓몬에게 쓴다(부활초·기력의조각은 쓰러질 때 서버가 알아서), 대상 칸은 없다.
-- 서버가 `play.battle`에 그 턴을 돌린다(`Battle.turn`, 볼 종류 `Walk.rollBall`, 서버 난수) → `{"battle": …, "beats": […], "end": …?}`.
+### 3.3 배틀 `{"battle": {"cmd": …}}`
+- `cmd`: `{"fight": {"slot": 칸}}` · `{"ball": {}}` · `{"item": {"name": "이름"}}` · `{"swap": {"to": i}}` · `{"replace": {"to": i}}` · `{"run": {}}` · `{"forfeit": {}}`(타워). 답의 `out.ball` = 던진 볼이 무엇이었는지. 배틀 도구는 모두 지금 나와 있는 포켓몬에게 쓴다(부활초·기력의조각은 쓰러질 때 서버가 알아서), 대상 칸은 없다.
+- 서버가 `play.battle`에 그 턴을 돌린다(`Battle.turn`, 볼 종류 `Walk.rollBall`, 서버 난수) → `out.battle`(턴 뒤), `out.beats`(턴 전 상태부터 재생), 끝나면 `out.end {"result", "chain"?, "streak"?, "bp"?}`.
 - 앱은 지금처럼 `from`(직전 Battle)에서 beats를 재생한다. 메뉴의 막힘(PP 0, 도발, 트집 …)은 앱이 미리 걸러도 되고, 서버도 같은 이유로 422.
 - **끝**(`end`): 서버가 지금 앱의 `after()`를 한다.
   - 부활 도구가 있으면 쓰고 배틀이 이어진다(`end` 없음, beats에 회복).
@@ -87,35 +89,36 @@
 - `Battle`, `Fighter`, `SideState`, `Sky`, `Side`, `Beat`, `Move`, `ItemUse`는 Codable이 된다(공유 코드, S0).
 
 ### 3.4 배틀 타워
-- `/v2/tower` → 도전 중이 아니면 참가비 50W를 내고 연승 0으로 시작, 도전 중이면 다음 상대. `{"battle", "beats"}`.
-- `/v2/tower/pick {"slot": 0-2, "uid": n}` · `/v2/tower/pick {"reset": true}`(추천으로) — `towerSet`.
+- `{"tower": {}}` → 도전 중이 아니면 참가비 50W를 내고 연승 0으로 시작, 도전 중이면 다음 상대. `{"battle", "beats"}`.
+- `{"towerPick": {"slot": 0-2, "uid": n}}` · `{"towerReset": {}}`(추천으로) — `towerSet`.
 
-### 3.5 상점 `/v2/buy {"bp": bool, "item": 이름 | "legend": k | "shell": 이름, "qty": n}`
-- `Walk.purchase`. 전설은 서버가 발급(지금 `/v1/buy`와 같은 굴림), 답의 news 없이 `"mon"`.
+### 3.5 상점 `{"buy": {"bp": bool, "item": 이름 | "legend": k | "shell": 이름, "qty": n}}`
+- `Walk.wares`의 줄 그대로(가격·한 번만), `Walk.purchase`. 전설은 서버가 발급(`Walk.legendMon`, 서버 난수), `out.mon`. BP 기기 색은 `Engine.bpShells`.
 
-### 3.6 도구 `/v2/use {"item": 이름, "stat": 0-5?}`
+### 3.6 도구 `{"use": {"item": 이름, "stat": 0-5?}}`
 - 이상한사탕 · 영양제 · 순백떡 · 열매 · 은색/금색병뚜껑(`stat`) · 진화의 돌(진화 news) · 파는 도구(전부 팔기, `"watts"`).
-- `/v2/sell-all` — 우클릭 메뉴의 전부 팔기.
+- `{"sellAll": {}}` — 우클릭 메뉴의 전부 팔기, `out.watts`.
 
-### 3.7 포켓몬 `/v2/mon {"op": …, "uid": n, …}` (자리 번호 대신 uid: 순서가 바뀌어도 틀리지 않게)
-- `pair`(함께 걷기, 홈 스티커 클릭도) · `store`(상자로) · `fetch`(워커로) · `release`(놓아주기, W) · `release-dupes {"dex"}`(중복 놓아주기)
-- `move {"slot", "move"}`(기술 바꾸기: `relearnable` 안에서만) · `learn {"slot": 0-3 | "skip": true}`(기다리는 기술) · `trade`(통신 진화)
+### 3.7 포켓몬 `{"mon": {"op": …}}` (자리 번호 대신 uid: 순서가 바뀌어도 틀리지 않게)
+- `pair {uid}`(함께 걷기, 홈 스티커 클릭도) · `store {uid}`(상자로) · `fetch {uid}`(워커로) · `release {uid}`(놓아주기, `out.watts`) · `releaseDupes {dex}`(중복 놓아주기)
+- `move {uid, slot, move}`(기술 바꾸기: `relearnable` 안에서만) · `learn {slot?}`(기다리는 기술, slot 없음 = 배우지 않는다) · `trade {}`(통신 진화)
 - 3.0 첫 로그인 때 서버가 uid 없는 포켓몬에 uid를 붙인다.
 
-### 3.8 코스 `/v2/course {"course": i}` — 열린 코스만(`unlocked`), 코스 걸음 0부터.
+### 3.8 코스 `{"course": {"index": i}}` — 열린 코스만(`unlocked`), 코스 걸음 0부터.
 
 ## 4. 서버 저장
 
 | 표 | 내용 |
 |---|---|
 | `trainers` | `walk`(원본), `rev` — 그대로 |
-| `play` (새) | `key`, `state`(JSON): 레이더(`bush`, `window`, `chain`, `at`, 포켓몬), 배틀(`Battle`, `kind`, 참가 uid), 타워 도전 중, 묵힌 걸음. 새 세션이 시작되면 지운다(0절) |
+| `play` (새) | `key`, `session`, 그 세션의 마지막 `seq`와 답(재전송용), 걸음 몫(`bank`, `bank_at`, 세션이 바뀌어도 이어짐), `state` = 엔진의 `Play`(레이더, 이어진 연쇄, 배틀과 참가 uid, 타워 도전, 묵힌 걸음). 새 세션이면 `state`·`seq`는 새로 |
 | `steps_day` (새) | `key`, `day`(KST), `n` — 하루 상한 |
-| `actions` (새) | `key`, `session`, `seq`, `at`, `kind`, `reply` — 재전송에 줄 마지막 답, 그리고 14일치 기록(무슨 일이 있었는지 볼 때) |
+| `actions` (새) | `key`, `session`, `seq`, `at`, `act`, `asked`, `taken`, `note` — 14일치 기록(걸음만 보낸 것은 깎였을 때만). 답 본문은 `play`에 마지막 것 하나만 |
 | `mons` | 발급 장부로 계속 쓴다(서버가 직접 쓰니 검사용은 아님). `chains`·`grants`는 `play`로 대신한다 |
 
 - 10의 세이브 검사(`SaveCheck`)는 3.0에선 필요 없다(세이브가 들어오지 않는다). 2.x를 막을 때까지만 둔다.
-- 관리 명령(`show`, `walk`, `rollback`, `set`, …)은 그대로 쓴다. `pokeserver play <id>`(진행 중인 것)과 `pokeserver actions <id>`(최근 행동)을 더한다.
+- 관리 명령(`show`, `walk`, `rollback`, `set`, …)은 그대로 쓴다. `pokeserver actions <id> [n]`: 최근 행동, 지금 진행 중인 것, 서버가 센 오늘 걸음.
+- 2.x 막기: 3.0으로 한 번이라도 행동한 트레이너는 `trainers.app = 3.0`이 되어 2.x의 로그인·저장·발급이 426. 모두를 막는 것은 server.env의 `MIN_APP=3.0`(S3).
 
 ## 5. 앱 (3.0)
 

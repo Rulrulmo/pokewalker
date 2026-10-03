@@ -94,10 +94,40 @@ jq -n --arg id "$ID" --rawfile w "$TMP/sample.json" '{id: $id, device: "test-a",
 post legacy;                                ok "legacy → stored" is 200 .stored true
 post legacy;                                ok "legacy again → kept as it was" is 200 .stored false
 
+# 5 — 3.0 (plan 11): /v2/act — the server makes the save; a resend, a gap, a refusal, the radar, the tower; 2.x turned away after
+ID3=zz$(printf '%06d' $(( ($(date +%s) + 500000) % 1000000 )))
+act() {  # act <seq> <act JSON> [<steps>]
+    jq -n --arg id "$ID3" --arg s "$S3" --argjson q "$1" --argjson a "$2" --argjson n "${3:-null}" \
+        '{id: $id, session: $s, seq: $q, act: $a} + (if $n == null then {} else {steps: $n} end)' > "$TMP/req"
+    CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act")
+    BODY=$(cat "$TMP/body" 2>/dev/null)
+}
+jq -n --arg id "$ID3" '{id: $id, device: "test-c", device_name: "TEST-C", app: "3.0", pin: "1234"}' > "$TMP/req"
+post create;                                ok "3.0 create → the starter issued" is 200 .starter 1000000
+S3=$(printf '%s' "$BODY" | jq -r .session)
+act 1 '{"steps":{}}' 3;                     ok "act 1: 3 steps → the server's first save" is 200 '.walk.companion.uid' 1000000
+act 1 '{"steps":{}}' 3;                     ok "act 1 again → its reply (nothing twice)" is 200 '.walk.total' 3
+act 3 '{"steps":{}}';                       ok "act 3 after 1 → 409 seq" is 409 .error seq
+act 2 '{"radar":{}}';                       ok "the radar without 10 W → a refusal, 200" is 200 '.out.cannot | startswith("W가 부족하다")' true
+if admin set "$ID3" '$.watts' 200 >/dev/null; then
+    act 3 '{"radar":{}}';                   ok "the radar → a bush, 10 W paid" is 200 '[.out.radar.bush < 4, .walk.watts] | tostring' '[true,190]'
+    act 4 '{"radarPick":{"bush":-1}}';      ok "given up → missed" is 200 .out.missed true
+    act 5 '{"tower":{}}';                   ok "the tower → a trainer's fight" is 200 '.out.battle.trainer != null' true
+    act 6 '{"mon":{"op":{"store":{"uid":1000000}}}}'; ok "mid-fight, anything else → a refusal" is 200 .out.cannot "배틀 중이에요"
+    act 7 '{"battle":{"cmd":{"forfeit":{}}}}'; ok "forfeit → the run's over" is 200 .out.end.result forfeit
+    SEQ3=8
+else
+    echo "SKIP  radar · tower (needs: sudo -u pokewalker $PS set $ID3 '\$.watts' 200)"; SEQ3=3
+fi
+jq -n --arg id "$ID3" '{id: $id, device: "test-d", device_name: "TEST-D", app: "2.2", force: true, pin: "1234"}' > "$TMP/req"
+post login;                                 ok "a 2.2 login to a trainer on 3.0 → 426" is 426 .need 3.0
+act $SEQ3 '{"steps":{}}';                   ok "its 3.0 session acts on" is 200
+
 if [ $MODE = remote ]; then
     # the test ID, its legacy row and the save delete keeps as a file: nothing of the test stays in the real database
     if admin delete "$ID" --yes >/dev/null && sudo -n -u pokewalker sqlite3 /var/lib/pokewalker/pokewalker.db "DELETE FROM legacy WHERE key = '$ID'" \
-        && sudo -n -u pokewalker sh -c "rm -f /var/lib/pokewalker/deleted-$ID-*.json"; then echo "      $ID removed"
+        && admin delete "$ID3" --yes >/dev/null \
+        && sudo -n -u pokewalker sh -c "rm -f /var/lib/pokewalker/deleted-$ID-*.json /var/lib/pokewalker/deleted-$ID3-*.json"; then echo "      $ID $ID3 removed"
     else echo "      remove the test ID: sudo -u pokewalker $PS delete $ID --yes; sudo -u pokewalker sqlite3 /var/lib/pokewalker/pokewalker.db \"DELETE FROM legacy WHERE key = '$ID'\"; sudo rm /var/lib/pokewalker/deleted-$ID-*.json"; fi
 fi
 echo "$PASS ok, $FAILS failed"

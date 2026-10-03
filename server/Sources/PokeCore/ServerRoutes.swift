@@ -1,7 +1,7 @@
 import Foundation
 import Hummingbird
 
-// HTTP (08b §4): POST /v1/{login,create,save,legacy} with X-App-Key, GET /v1/ping. Bound to 127.0.0.1 only: cloudflared is the way in.
+// HTTP (08b §4): POST /v1/{login,create,save,legacy} with X-App-Key, GET /v1/ping; 3.0's POST /v2/act (plan 11). Bound to 127.0.0.1 only: cloudflared is the way in.
 
 func unixNow() -> Int { Int(Date().timeIntervalSince1970) }
 
@@ -47,6 +47,7 @@ func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?, release: 
     post(router, "/v1/hatch", appKey: appKey, id: { (r: HatchReq) in r.id }) { r in await db.hatch(r, now: unixNow()) }
     post(router, "/v1/buy", appKey: appKey, id: { (r: BuyReq) in r.id }) { r in await db.buy(r, now: unixNow()) }
     post(router, "/v1/evolve", appKey: appKey, id: { (r: EvolveReq) in r.id }) { r in await db.evolve(r, now: unixNow()) }
+    post(router, "/v2/act", appKey: appKey, id: { (r: ActReq) in r.id }) { r in await db.act(r, now: Date()) }   // plan 11 (3.0): ServerPlay.swift
 
     let app = Application(router: router, configuration: .init(address: .hostname("127.0.0.1", port: port), serverName: "pokeserver"))
     let log = app.logger

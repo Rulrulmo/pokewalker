@@ -20,6 +20,7 @@ let usage = """
       flags <id> [<n>]                   one trainer's flagged saves, newest first (default 30)
       pin-reset <id>                     forget the trainer's PIN and every PC's trust: the next login sets a new one
       mons <id>                          the Pokémon the server issued to a trainer (uid, species, kind, state, 이로치, IV total) and its grants
+      actions <id> [<n>]                 3.0: a trainer's acts (steps cut, refusals), what's on now, today's steps (default 30)
       prune                              drop old history now (the server does it hourly)
       sample                             a new save's JSON (Walk(), the one-time checks marked done)
       verify-release <dir>               a release folder: manifest.sig checks with the release key, each zip's size and SHA-256 (publish.sh)
@@ -165,8 +166,8 @@ extension SaveDB {
             try db.rows("UPDATE trainers SET key = :nk, name = :n, session = NULL, device = NULL WHERE key = :k", a.merging(["n": .text(n.name)]) { $1 })
             try db.rows("UPDATE history SET key = :nk WHERE key = :k", a)
             try db.rows("UPDATE OR IGNORE legacy SET key = :nk WHERE key = :k", a)
-            for t in ["pins", "flags", "mons", "chains", "grants"] { try db.rows("UPDATE \(t) SET key = :nk WHERE key = :k", a) }
-            for t in ["trust", "pin_fails"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
+            for t in ["pins", "flags", "mons", "chains", "grants", "steps_day", "actions"] { try db.rows("UPDATE \(t) SET key = :nk WHERE key = :k", a) }
+            for t in ["trust", "pin_fails", "play"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }   // play: the session ends anyway
             return "\(k) → \(n.key) (\(n.name)); its PC gets no_trainer on its next save and asks for an ID"
         }
     }
@@ -181,7 +182,7 @@ extension SaveDB {
                 try Data(w.utf8).write(to: file, options: .atomic)
                 kept = "save kept as \(file.path)"
             }
-            for t in ["history", "trainers", "pins", "trust", "pin_fails", "mons", "chains", "grants"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
+            for t in ["history", "trainers", "pins", "trust", "pin_fails", "mons", "chains", "grants", "play", "steps_day", "actions"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
             return "\(k): deleted, \(kept)"
         }
     }
@@ -214,6 +215,25 @@ extension SaveDB {
         let g = try db.rows("SELECT datetime(at, 'unixepoch', 'localtime') AS at, watts, bp, item, why FROM grants WHERE key = :k ORDER BY at DESC LIMIT 20", ["k": .text(k)])
         return table(["uid", "dex", "level", "kind", "state", "shiny", "ivs", "at"], rows.map { r in ["uid", "dex", "level", "kind", "state", "shiny", "ivs", "at"].map(r.show) })
             + "\n\(rows.count) issued\n\ngrants (latest 20)\n" + table(["at", "watts", "bp", "item", "why"], g.map { r in ["at", "watts", "bp", "item", "why"].map(r.show) })
+    }
+    /// Plan 11: a 3.0 trainer's acts (newest first: steps cut, refusals), what's on now (radar, fight, tower run, held steps) and today's steps.
+    func actionsList(_ id: String, last n: Int) throws -> String {
+        let k = try key(id)
+        let rows = try db.rows("SELECT datetime(at, 'unixepoch', 'localtime') AS at, seq, act, asked, taken, note FROM actions WHERE key = :k ORDER BY at DESC, seq DESC LIMIT :n",
+                               ["k": .text(k), "n": .int(n)])
+        var out = table(["at", "seq", "act", "asked", "taken", "note"], rows.map { r in ["at", "seq", "act", "asked", "taken", "note"].map(r.show) })
+        if let p = try db.rows("SELECT seq, bank, state FROM play WHERE key = :k", ["k": .text(k)]).first,
+           let play = p.text("state").flatMap({ try? JSONDecoder().decode(Play.self, from: Data($0.utf8)) }) {
+            var on: [String] = []
+            if let r = play.radar { on.append("radar (bush \(r.bush), chain \(r.chain), #\(r.mon.dex))") }
+            if let c = play.chain { on.append("a chain held at \(c)") }
+            if let b = play.battle { on.append(b.trainer.map { "a tower fight vs \($0)" } ?? "a wild fight vs #\(b.wild.dex)") }
+            if play.tower { on.append("a tower run") }
+            if play.held > 0 { on.append("\(play.held) steps held") }
+            out += "\n\nnow: " + (on.isEmpty ? "nothing" : on.joined(separator: " · ")) + " · last seq \(p.show("seq")) · step allowance \(Int(p.real("bank") ?? 0))"
+        }
+        let today = try db.rows("SELECT n FROM steps_day WHERE key = :k AND day = :d", ["k": .text(k), "d": .text(Walk.key(Date()))]).first?.int("n") ?? 0
+        return out + "\ntoday's steps (the server's count): \(today) of \(Walk.dayCap)"
     }
     func pinReset(_ id: String) throws -> String {
         let k = try key(id)
@@ -266,7 +286,8 @@ public func run(_ arguments: [String]) async -> Int32 {
         case "serve":
             guard let appKey = env["APP_KEY"], !appKey.isEmpty else { return fail("APP_KEY is empty (/etc/pokewalker/server.env)") }
             let port = env["PORT"].flatMap { Int($0) } ?? 8787
-            let db = try SaveDB(path: path, reject: env["CHECK_MODE"] == "reject", rejectTests: env["CHECK_REJECT_TESTS"] == "1")
+            let db = try SaveDB(path: path, reject: env["CHECK_MODE"] == "reject", rejectTests: env["CHECK_REJECT_TESTS"] == "1",
+                                minApp: env["MIN_APP"].flatMap { $0.isEmpty || versionParts($0) == nil ? nil : $0 })
             let release = URL(fileURLWithPath: env["RELEASE_DIR"].flatMap { $0.isEmpty ? nil : $0 } ?? "/var/lib/pokewalker/release", isDirectory: true)
             let site = env["DOWNLOAD_PASSWORD"].flatMap { $0.isEmpty ? nil : DownloadSite(dir: release, password: $0) }
             try await serve(db: db, appKey: appKey, port: port, site: site, release: release)
@@ -306,6 +327,9 @@ public func run(_ arguments: [String]) async -> Int32 {
             out = try await db.suspects(days: days, now: unixNow())
         case ("pin-reset", 1): out = try await db.pinReset(rest[0])
         case ("mons", 1): out = try await db.monsList(rest[0])
+        case ("actions", 1), ("actions", 2):
+            guard let n = rest.count > 1 ? Int(rest[1]) : 30 else { return fail("actions: <n> is a number") }
+            out = try await db.actionsList(rest[0], last: n)
         case ("flags", 1), ("flags", 2):
             guard let n = rest.count > 1 ? Int(rest[1]) : 30 else { return fail("flags: <n> is a number") }
             out = try await db.flags(rest[0], last: n)

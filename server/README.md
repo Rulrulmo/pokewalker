@@ -9,6 +9,7 @@
 ```
 
 - API 주소: `https://pokewalker.rulrulmo.work` (`/v1/ping`, `/v1/login`, `/v1/create`, `/v1/save`, `/v1/legacy`). 08b의 `api.<domain>` 자리다.
+- **3.0 (docs/plans/11)**: 앱은 세이브를 보내지 않고 `POST /v2/act`로 행동만 보낸다. 서버가 공유 엔진(`Sources/Model/EngineRules.swift`)과 서버 난수로 세이브를 만든다(`Sources/PokeCore/ServerPlay.swift`: 세션·seq·저장된 답, 걸음 몫과 하루 상한, 발급 장부, rev·history). 3.0으로 한 번 행동한 트레이너는 2.x가 426. 모두를 막는 것은 server.env의 `MIN_APP=3.0`. 행동 기록은 `pw actions <id>`.
 - `APP_KEY`: `/etc/pokewalker/server.env`에 있다. 커밋하지 않는다. 앱의 `Cloud.swift`에는 `sudo cat /etc/pokewalker/server.env`로 본 값을 넣는다.
 - 트레이너 ID는 2~12자다. 08·08b의 예시 ID "민"은 한 글자라서 서버가 `bad_id`로 거절한다. 앱 테스트에는 "민수"처럼 두 글자 이상을 쓴다.
 

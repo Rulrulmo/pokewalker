@@ -19,10 +19,10 @@ private struct Desk {
     mutating func fightOut(ball: Bool) -> Outcome? {
         for _ in 0..<300 {
             guard let b = p.battle else { return nil }
-            let cmd: BattleCmd = b.mustReplace ? .replace(b.mine.indices.first { b.mine[$0].alive && $0 != b.me } ?? 0) : ball ? .ball : .fight(slot: 0)
-            let o = act(.battle(cmd), after: 3)
+            let cmd: BattleCmd = b.mustReplace ? .replace(to: b.mine.indices.first { b.mine[$0].alive && $0 != b.me } ?? 0) : ball ? .ball : .fight(slot: 0)
+            let o = act(.battle(cmd: cmd), after: 3)
             if o.end != nil { return o }
-            if o.cannot != nil, case .fight = cmd { _ = act(.battle(.fight(slot: 1)), after: 3) }
+            if o.cannot != nil, case .fight = cmd { _ = act(.battle(cmd: .fight(slot: 1)), after: 3) }
         }
         return nil
     }
@@ -83,8 +83,8 @@ private struct Desk {
 @Test func engineHeldChainEndsOnOtherActs() {
     var d = Desk(); d.p.chain = 3
     d.act(.steps, steps: 10); #expect(d.p.chain == 3)
-    d.act(.mon(.learn(slot: nil))); #expect(d.p.chain == 3)                                 // (nothing to learn: a cannot, the chain stays)
-    d.act(.course(0)); #expect(d.p.chain == 3)                                              // a cannot (the course it's on): as if it never came
+    d.act(.mon(op: .learn(slot: nil))); #expect(d.p.chain == 3)                                 // (nothing to learn: a cannot, the chain stays)
+    d.act(.course(index: 0)); #expect(d.p.chain == 3)                                              // a cannot (the course it's on): as if it never came
     d.act(.towerReset); #expect(d.p.chain == nil)                                           // anything else that happens: over
 }
 
@@ -94,7 +94,7 @@ private struct Desk {
     let o = d.act(.buy(bp: false, item: "회복약", legend: nil, shell: nil, qty: 1), steps: 20)
     #expect(o.cannot == "W가 부족하다" && d.w.total == w.total + 20 && d.w.bag == w.bag)     // its steps walked, nothing bought
     #expect(d.act(.buy(bp: false, item: "칠색조", legend: nil, shell: nil, qty: 1)).cannot == "팔지 않는 물건이에요")
-    #expect(d.act(.battle(.ball)).cannot == "배틀 중이 아니에요")
+    #expect(d.act(.battle(cmd: .ball)).cannot == "배틀 중이 아니에요")
     #expect(d.act(.use(item: "이상한사탕", stat: nil)).cannot == "가지고 있지 않아요")
 }
 
@@ -125,7 +125,7 @@ private struct Desk {
     let waiting = o.news.compactMap { n -> Int? in if case .learn(_, let m, false) = n { return m }; return nil }
     if let mv = waiting.first {                                                             // a move it can't fit: forget one, or not
         #expect(d.w.learning?.prefix(2) == [firstUID, mv])
-        let k = d.act(.mon(.learn(slot: 0)))
+        let k = d.act(.mon(op: .learn(slot: 0)))
         #expect(k.cannot == nil && d.w.companion.moves[0] == mv)
     }
 }
@@ -145,14 +145,14 @@ private struct Desk {
     var b = Mon(dex: 19, level: 12, female: false); b.uid = firstUID + 2
     var w = Engine.fresh(now: t0, starter: firstUID); w.box = [a, b]
     var d = Desk(w)
-    #expect(d.act(.mon(.fetch(uid: firstUID + 1))).cannot == nil && d.w.caught.map(\.uid) == [firstUID + 1])
-    #expect(d.act(.mon(.store(uid: firstUID + 1))).cannot == nil && d.w.caught.isEmpty)
-    #expect(d.act(.mon(.pair(uid: firstUID + 2))).cannot == nil && d.w.companion.uid == firstUID + 2 && d.w.box.last?.uid == firstUID)
-    #expect(d.act(.mon(.pair(uid: firstUID + 2))).cannot == "함께 걸을 수 없어요")
+    #expect(d.act(.mon(op: .fetch(uid: firstUID + 1))).cannot == nil && d.w.caught.map(\.uid) == [firstUID + 1])
+    #expect(d.act(.mon(op: .store(uid: firstUID + 1))).cannot == nil && d.w.caught.isEmpty)
+    #expect(d.act(.mon(op: .pair(uid: firstUID + 2))).cannot == nil && d.w.companion.uid == firstUID + 2 && d.w.box.last?.uid == firstUID)
+    #expect(d.act(.mon(op: .pair(uid: firstUID + 2))).cannot == "함께 걸을 수 없어요")
     let w0 = d.w.watts
-    #expect(d.act(.mon(.release(uid: firstUID + 1))).watts == 5 && d.w.watts == w0 + 5 && d.w.ref(uid: firstUID + 1) == nil)
-    #expect(d.act(.mon(.release(uid: firstUID + 2))).cannot == "놓아줄 수 없어요")         // the companion
-    #expect(d.act(.course(courses.count - 1)).cannot == "갈 수 없는 코스예요")                // locked
+    #expect(d.act(.mon(op: .release(uid: firstUID + 1))).watts == 5 && d.w.watts == w0 + 5 && d.w.ref(uid: firstUID + 1) == nil)
+    #expect(d.act(.mon(op: .release(uid: firstUID + 2))).cannot == "놓아줄 수 없어요")         // the companion
+    #expect(d.act(.course(index: courses.count - 1)).cannot == "갈 수 없는 코스예요")                // locked
 }
 
 @Test func engineTowerRun() {
@@ -161,9 +161,9 @@ private struct Desk {
     d.w.watts = 500
     let t = d.act(.tower)
     #expect(t.cannot == nil && t.battle?.trainer != nil && d.w.watts == 450 && d.p.tower)
-    #expect(d.act(.mon(.store(uid: firstUID))).cannot == "배틀 중이에요")
-    #expect(d.act(.battle(.run)).cannot == "트레이너와의 승부에서\n도망칠 수 없다")
-    let f = d.act(.battle(.forfeit))
+    #expect(d.act(.mon(op: .store(uid: firstUID))).cannot == "배틀 중이에요")
+    #expect(d.act(.battle(cmd: .run)).cannot == "트레이너와의 승부에서\n도망칠 수 없다")
+    let f = d.act(.battle(cmd: .forfeit))
     #expect(f.end?.result == "forfeit" && d.p.battle == nil && !d.p.tower && d.w.towerStreak == 0)
     d.act(.tower); let end = d.fightOut(ball: false)?.end
     #expect(end != nil && (end?.result == "won" ? d.p.tower && d.w.bp == end?.bp : !d.p.tower))
@@ -172,13 +172,13 @@ private struct Desk {
 @Test func engineWireRoundTrip() throws {
     var d = Desk(); d.act(.steps, steps: 3000)
     let shown = d.act(.radar), start = d.act(.radarPick(bush: shown.radar!.bush))
-    let req = ActReq(id: "민수", session: "s", seq: 3, steps: 12, act: .battle(.fight(slot: 2)))
+    let req = ActReq(id: "민수", session: "s", seq: 3, steps: 12, act: .battle(cmd: .fight(slot: 2)))
     #expect(try JSONDecoder().decode(ActReq.self, from: JSONEncoder().encode(req)) == req)
     let reply = ActReply(rev: 4, walk: d.w, taken: 12, out: start)
     let back = try JSONDecoder().decode(ActReply.self, from: JSONEncoder().encode(reply))
     #expect(back.walk == d.w && back.out == start && back.rev == 4)
     for a: Act in [.steps, .radar, .radarPick(bush: -1), .tower, .towerPick(slot: 1, uid: 9), .towerReset, .buy(bp: true, item: nil, legend: 1, shell: nil, qty: 1),
-                   .use(item: "은색병뚜껑", stat: 2), .sellAll, .mon(.learn(slot: nil)), .mon(.move(uid: 1, slot: 0, move: 33)), .course(3), .battle(.forfeit)] {
+                   .use(item: "은색병뚜껑", stat: 2), .sellAll, .mon(op: .learn(slot: nil)), .mon(op: .move(uid: 1, slot: 0, move: 33)), .course(index: 3), .battle(cmd: .forfeit)] {
         #expect(try JSONDecoder().decode(Act.self, from: JSONEncoder().encode(a)) == a)
     }
     print("wire: " + String(decoding: try JSONEncoder().encode(ActReq(id: "민수", session: "s", seq: 1, steps: 5, act: .buy(bp: false, item: "상처약", legend: nil, shell: nil, qty: 2))), as: UTF8.self))

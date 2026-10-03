@@ -15,6 +15,7 @@ struct Row {
     let values: [String: SQLValue]
     func int(_ c: String) -> Int? { if case .int(let n)? = values[c] { n } else { nil } }
     func text(_ c: String) -> String? { if case .text(let s)? = values[c] { s } else { nil } }
+    func real(_ c: String) -> Double? { switch values[c] { case .real(let x)?: x; case .int(let n)?: Double(n); default: nil } }
     /// For printing: a number, a text or "" (NULL).
     func show(_ c: String) -> String {
         switch values[c] {
