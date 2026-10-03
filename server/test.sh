@@ -64,8 +64,13 @@ post create;                                ok "create → rev 0" is 200 .rev 0
 SA=$(printf '%s' "$BODY" | jq -r .session)
 post create;                                ok "create again → 409 exists" is 409 .error exists
 
-# 2 — saves, a lost reply, another PC
-save "$SA" 0;                               ok "A saves on rev 0 → rev 1" is 200 .rev 1
+# 2 — saves, a lost reply, another PC (2.x's: a server with MIN_APP=3.0 turns them all away, which is checked instead)
+save "$SA" 0
+if [ "$CODE" = 426 ]; then
+    ok "MIN_APP: a 2.x save → 426 (need 3.0)" is 426 .need 3.0
+    echo "SKIP  2.x's save flow (2–4): this server turns 2.x away (MIN_APP); server/test.sh without BASE runs it"
+else
+ok "A saves on rev 0 → rev 1" is 200 .rev 1
 save "$SA" 0;                               ok "the same again (its reply lost) → rev 2" is 200 .rev 2
 login test-b;                               ok "B logs in → busy (A saved just now)" is 200 .busy true
 login test-b true;                          ok "B, force → B has it" is 200 .rev 2
@@ -93,6 +98,7 @@ fi
 jq -n --arg id "$ID" --rawfile w "$TMP/sample.json" '{id: $id, device: "test-a", walk: $w}' > "$TMP/req"
 post legacy;                                ok "legacy → stored" is 200 .stored true
 post legacy;                                ok "legacy again → kept as it was" is 200 .stored false
+fi
 
 # 5 — 3.0 (plan 11): /v2/act — the server makes the save; a resend, a gap, a refusal, the radar, the tower; 2.x turned away after
 ID3=zz$(printf '%06d' $(( ($(date +%s) + 500000) % 1000000 )))
@@ -105,8 +111,9 @@ act() {  # act <seq> <act JSON> [<steps>]
 jq -n --arg id "$ID3" '{id: $id, device: "test-c", device_name: "TEST-C", app: "3.0", pin: "1234"}' > "$TMP/req"
 post create;                                ok "3.0 create → the starter issued" is 200 .starter 1000000
 S3=$(printf '%s' "$BODY" | jq -r .session)
-act 1 '{"steps":{}}' 3;                     ok "act 1: 3 steps → the server's first save" is 200 '.walk.companion.uid' 1000000
-act 1 '{"steps":{}}' 3;                     ok "act 1 again → its reply (nothing twice)" is 200 '.walk.total' 3
+act 1 '{"steps":{}}' 3;                     ok "act 1: steps → the server's first save" is 200 '.walk.companion.uid' 1000000
+FIRST=$(printf '%s' "$BODY" | jq -c '[.rev, .taken, .walk.total]')                        # (taken: what the allowance had, a moment after create)
+act 1 '{"steps":{}}' 3;                     ok "act 1 again → its reply (nothing twice)" is 200 '[.rev, .taken, .walk.total] | tostring' "$FIRST"
 act 3 '{"steps":{}}';                       ok "act 3 after 1 → 409 seq" is 409 .error seq
 act 2 '{"radar":{}}';                       ok "the radar without 10 W → a refusal, 200" is 200 '.out.cannot | startswith("W가 부족하다")' true
 if admin set "$ID3" '$.watts' 200 >/dev/null; then
