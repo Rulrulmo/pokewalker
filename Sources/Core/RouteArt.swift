@@ -523,29 +523,38 @@ private func stagePic(_ a: Art, _ s: Season, _ tb: Int, _ grey: Bool, _ W: Int, 
     let haze = tb == 3 ? rgb(120, 140, 180) : sky[3], gr = grassRamp(s), lv = leafRamp(s)
     func far(_ c: UInt32, _ k: Double) -> UInt32 { lerpRGB(c, haze, k) }
     func farRamp(_ r: [UInt32], _ k: Double) -> [UInt32] { r.map { far($0, k) } }
-    for y in 0..<H { for x in 0..<W { p.set(x, y, sky[max(0, min(3, Int(Double(y) / Double(max(8, hz)) * 4 + bayer4(x, y) * 0.6)))]) } }
-    var ground = a == .mountain ? [rgb(200, 170, 128), rgb(214, 188, 146)] : a == .beach ? [rgb(236, 216, 164), rgb(244, 228, 184)] : a == .cave ? [rgb(160, 134, 110), rgb(174, 150, 124)] : [gr[1], gr[2]]
+    let skyH = Double(max(8, hz))                                                              // (typed in steps: as one expression it cost seconds to type-check)
+    for y in 0..<H { for x in 0..<W { let v: Double = Double(y) / skyH * 4.0 + bayer4(x, y) * 0.6; p.set(x, y, sky[max(0, min(3, Int(v)))]) } }
+    var ground: [UInt32]                                                                       // (a switch, typed: the ternary of arrays cost seconds to type-check)
+    switch a {
+    case .mountain: ground = [rgb(200, 170, 128), rgb(214, 188, 146)]
+    case .beach: ground = [rgb(236, 216, 164), rgb(244, 228, 184)]
+    case .cave: ground = [rgb(160, 134, 110), rgb(174, 150, 124)]
+    default: ground = [gr[1], gr[2]]
+    }
     if s == .winter, a != .beach, a != .cave { ground = [rgb(222, 230, 242), rgb(236, 242, 250)] }
     switch a {
     case .field, .town:
-        p.ridge(hz + 4, rim: far(gr[3], 0.55), { x in hz - 10 - Int(4 * sin(Double(x) * 0.035 + 1) + 2 * sin(Double(x) * 0.1)) }) { _, _ in far(gr[1], 0.6) }
+        p.ridge(hz + 4, rim: far(gr[3], 0.55), { (x: Int) -> Int in hz - 10 - Int(4.0 * sin(Double(x) * 0.035 + 1.0) + 2.0 * sin(Double(x) * 0.1)) }) { _, _ in far(gr[1], 0.6) }
         for k in 0..<22 { p.tree(Double(k * 9 + hashXY(k, 5) % 5), Double(hz - 1), 2.6 + Double(hashXY(k, 6) % 2), farRamp(lv, 0.66)) }       // two rows of trees, the back one paler
         for k in 0..<16 { let x = Double(k * 13 + hashXY(k, 1) % 7); p.tree(x, Double(hz + 2), 3.5 + Double(hashXY(k, 2) % 4), farRamp(lv, 0.5)) }
         if a == .town { for k in 0..<4 { let x = 8 + k * 50 + hashXY(k, 3) % 12, w = 18 + hashXY(k, 4) % 8                                 // rooftops among them
-            for r in 0..<7 { for xx in x + (6 - r) / 2..<x + w - (6 - r) / 2 { p.set(xx, hz - 10 + r, far(r == 6 ? rgb(150, 50, 40) : k % 2 == 0 ? rgb(214, 80, 58) : rgb(80, 122, 214), 0.5)) } }
+            let roof: UInt32 = k % 2 == 0 ? rgb(214, 80, 58) : rgb(80, 122, 214), eave: UInt32 = rgb(150, 50, 40)
+            for r in 0..<7 { for xx in x + (6 - r) / 2..<x + w - (6 - r) / 2 { p.set(xx, hz - 10 + r, far(r == 6 ? eave : roof, 0.5)) } }
             p.fill(x + 1, hz - 3, w - 2, 5, far(rgb(236, 228, 208), 0.4)); p.fill(x + w / 2 - 1, hz - 1, 3, 3, far(rgb(150, 98, 60), 0.4)) } }
     case .forest:
         for k in 0..<30 { let x = k * 7 + hashXY(k, 1) % 4 - 3, h = 24 + hashXY(k, 2) % 14; p.fir(x, hz + 2 - h, h, farRamp(firRamp(s), 0.55), snow: s == .winter) }
         for k in 0..<9 { let x = Double(k * 24 + hashXY(k, 3) % 9); p.tree(x, Double(hz + 3), 7 + Double(hashXY(k, 4) % 3), farRamp(lv, 0.42)) }
     case .mountain:
-        p.peaks([(20, Double(hz - 34)), (70, Double(hz - 26)), (120, Double(hz - 38)), (176, Double(hz - 28))], hz + 2, farRamp(rockRamp, 0.55), snow: s == .winter ? 18 : 8, seed: 3)
+        let tops: [(Double, Double)] = [(20.0, Double(hz - 34)), (70.0, Double(hz - 26)), (120.0, Double(hz - 38)), (176.0, Double(hz - 28))]
+        p.peaks(tops, hz + 2, farRamp(rockRamp, 0.55), snow: s == .winter ? 18 : 8, seed: 3)
     case .beach, .lake:
-        let water = s == .winter && a == .lake ? [rgb(200, 222, 240), rgb(226, 238, 250)] : [rgb(96, 170, 240), rgb(150, 206, 250)]
-        if a == .lake { p.ridge(hz - 6, rim: far(gr[3], 0.55), { x in hz - 14 - Int(3 * sin(Double(x) * 0.05)) }) { _, _ in far(gr[1], 0.6) }
+        let water: [UInt32] = s == .winter && a == .lake ? [rgb(200, 222, 240), rgb(226, 238, 250)] : [rgb(96, 170, 240), rgb(150, 206, 250)]
+        if a == .lake { p.ridge(hz - 6, rim: far(gr[3], 0.55), { (x: Int) -> Int in hz - 14 - Int(3.0 * sin(Double(x) * 0.05)) }) { _, _ in far(gr[1], 0.6) }
             for k in 0..<18 { p.tree(Double(k * 11 + hashXY(k, 1) % 5), Double(hz - 6), 3 + Double(hashXY(k, 2) % 2), farRamp(lv, 0.5)) } }
         p.ridge(hz + 3, { _ in a == .lake ? hz - 6 : hz - 12 }) { x, y in hashXY(x / 4, y, 5) % 9 == 0 ? far(water[1], 0.1) : far(water[0], 0.35) }
     case .cave:
-        let wall = [rgb(112, 88, 74), rgb(138, 112, 92), rgb(152, 126, 104), rgb(168, 142, 118), rgb(184, 160, 134)]
+        let wall: [UInt32] = [rgb(112, 88, 74), rgb(138, 112, 92), rgb(152, 126, 104), rgb(168, 142, 118), rgb(184, 160, 134)]
         p.fill(0, 0, W, hz + 2, wall[1])
         for r in 0...(hz + 2) / 14 { for c in 0..<10 {                                                 // pale boulders, like the course's cave
             let x = Double(c * 22 + (r % 2) * 11 + hashXY(c, r, 15) % 6), y = Double(r * 14 + 5 + hashXY(c, r, 16) % 4), sz = 9 + Double(hashXY(c, r, 17) % 4)

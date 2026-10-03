@@ -96,7 +96,7 @@ func fxPic(_ a: FXShape, _ tone: String, _ k: Int) -> Pic {
         }
     case .bolt:                                                                             // a lightning bolt from the sky, 104 tall, its foot at the bottom; k = its zigzag
         let zig: [[Double]] = [[-2, 5, -4, 6, -5, 3, -6, 4, -3, 0], [3, -4, 6, -3, 5, -6, 4, -4, 3, 0], [0, -6, 3, -5, 6, -2, 5, -5, 2, 0]]
-        let pts = (0..<10).map { (zig[k % 3][$0], -52 + Double($0) * 104 / 9) }, fork = (pts[5].0 + 9, pts[5].1 + 14)
+        let pts: [(Double, Double)] = (0..<10).map { (i: Int) -> (Double, Double) in (zig[k % 3][i], -52.0 + Double(i) * 104.0 / 9.0) }, fork: (Double, Double) = (pts[5].0 + 9, pts[5].1 + 14)
         return fxDraw(24, 104, t) { x, y in
             let d = (1..<10).map { fxSeg(x, y, pts[$0 - 1], pts[$0]) }.min()!, f = fxSeg(x, y, pts[5], fork) + 0.8
             let m = min(d, f)
@@ -155,7 +155,7 @@ func fxPic(_ a: FXShape, _ tone: String, _ k: Int) -> Pic {
             let along = (x - y) / 1.414, across = (x + y) / 1.414
             guard along > 12 - 24 * f else { return nil }
             for o in [-6.5, 0, 6.5] {
-                let c = across - o, hw = 2.6 * sin(.pi * max(0, min(1, (along + 12 - abs(o) * 0.4) / 24)))
+                let c: Double = across - o, hw: Double = 2.6 * sin(Double.pi * max(0.0, min(1.0, (along + 12.0 - abs(o) * 0.4) / 24.0)))
                 if abs(c) < hw { return abs(c) < hw * 0.45 ? 4 : 3 }
             }
             return nil
@@ -230,10 +230,15 @@ extension Walker {
         /// A fighter's body now, in half-dots: its centre across, head, middle, feet; its sprite run, if drawn (dash, shake and bob included).
         func body(_ s: Side) -> (x: Double, top: Double, y: Double, feet: Double, run: SpriteRun?) {
             let run = fb.sprites.last { $0.back == (s == .me) }, a = at[s]!, dex = (s == .me ? b.mine[b.me] : b.theirs[b.it]).mon.dex
-            let x = Double(((run?.x ?? a.x) + 16) * 2), feet = Double(((run?.y ?? a.y) + 32) * 2 - (run?.bob ?? 0)), top = feet - Double(80 - spriteTop(dex, back: s == .me))
+            let rx: Int = run?.x ?? a.x, ry: Int = run?.y ?? a.y, bob: Int = run?.bob ?? 0      // (typed in steps: the ?? arithmetic in one go cost seconds to type-check)
+            let x = Double((rx + 16) * 2), feet = Double((ry + 32) * 2 - bob), top: Double = feet - Double(80 - spriteTop(dex, back: s == .me))
             return (x, top, (top + min(feet, low)) / 2, feet, run)
         }
-        func mouth(_ s: Side) -> P { let p = body(s); return s == .me ? (p.x + 16, p.top + (min(p.feet, low) - p.top) * 0.35) : (p.x - 12, p.top + (p.feet - p.top) * 0.35) }   // where a move leaves its user
+        func mouth(_ s: Side) -> P {                                                            // where a move leaves its user
+            let p = body(s)
+            if s == .me { return (p.x + 16, p.top + (min(p.feet, low) - p.top) * 0.35) }
+            return (p.x - 12, p.top + (p.feet - p.top) * 0.35)
+        }
         func aim(_ s: Side) -> P { let p = body(s); return s == .me ? (p.x + 6, p.y - 6) : (p.x, p.y) }                                           // where it lands
         func put(_ a: FXShape, _ t: String, _ k: Int, _ x: Double, _ y: Double, alpha: Double = 1) {
             fb.pic("fx|\(a.rawValue)|\(t)|\(k)", Int(x.rounded()), Int(y.rounded()), alpha: max(0, min(1, alpha))) { fxPic(a, t, k) }

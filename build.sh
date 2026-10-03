@@ -3,7 +3,7 @@
 # ./build.sh run    build, then (re)launch
 # ./build.sh dist   dist/PokeWalker.zip for other Macs: Apple Silicon + Intel, macOS 13+, ad-hoc signed (no Apple Developer ID)
 # ./build.sh publish [--dry]   the signed release, for auto-update and the download page (committed and pushed first; gh logged in): dist's Mac zip,
-#                      the windows workflow's build of this commit (started and waited for when there's none), manifest.json (version, build, commit,
+#                      the windows workflow's build of this commit (one already going is joined, else started first; the Mac's is built meanwhile), manifest.json (version, build, commit,
 #                      each zip's sha256 and size) and manifest.sig (Ed25519 by the release key: tools/release-key.swift, this Mac only) on the GitHub
 #                      release v<version>; then the server's Claude publishes it. --dry stops before the upload (and never starts a windows build)
 set -e
@@ -14,17 +14,22 @@ if [ "$1" = publish ]; then
     git fetch -q origin && git merge-base --is-ancestor HEAD origin/main || { echo "push first: the windows build and the server take what they can fetch"; exit 1; }
     plist() { sed -n "s|.*<key>$1</key><string>\([^<]*\)</string>.*|\1|p" Info.plist; }
     V=$(plist CFBundleShortVersionString) B=$(plist CFBundleVersion) SHA=$(git rev-parse HEAD)
-    "$0" dist
-    cp dist/PokeWalker.zip dist/PokeWalker-mac.zip
-    RUN=$(gh run list --workflow windows.yml --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId')
+    RUN=$(gh run list --workflow windows.yml --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId') WAIT=
     if [ -z "$RUN" ] && [ -n "$DRY" ]; then                                       # a dry run spends no Actions minutes: the last good build stands in
         RUN=$(gh run list --workflow windows.yml --status success --limit 1 --json databaseId -q '.[0].databaseId'); echo "dry: no windows build of $SHA; run $RUN's stands in"
-    elif [ -z "$RUN" ]; then
-        [ "$SHA" = "$(git rev-parse origin/main)" ] || { echo "no windows build of $SHA, and it isn't main's head: run the windows workflow on it first"; exit 1; }
-        gh workflow run windows.yml --ref main; echo "the windows build of $SHA: started, waiting (about 10 minutes)"
-        while [ -z "$RUN" ]; do sleep 5; RUN=$(gh run list --workflow windows.yml --commit "$SHA" --event workflow_dispatch --limit 1 --json databaseId -q '.[0].databaseId'); done
-        gh run watch "$RUN" --exit-status > /dev/null || { echo "the windows build failed: gh run view $RUN"; exit 1; }
+    elif [ -z "$RUN" ]; then                                                       # the windows build first (~10 minutes), the Mac's alongside it
+        RUN=$(gh run list --workflow windows.yml --commit "$SHA" --limit 1 --json databaseId,status -q '.[] | select(.status != "completed") | .databaseId')
+        if [ -n "$RUN" ]; then echo "the windows build of $SHA: run $RUN already going"
+        else
+            [ "$SHA" = "$(git rev-parse origin/main)" ] || { echo "no windows build of $SHA, and it isn't main's head: run the windows workflow on it first"; exit 1; }
+            gh workflow run windows.yml --ref main; echo "the windows build of $SHA: started"
+            while [ -z "$RUN" ]; do sleep 5; RUN=$(gh run list --workflow windows.yml --commit "$SHA" --event workflow_dispatch --limit 1 --json databaseId -q '.[0].databaseId'); done
+        fi
+        WAIT=1
     fi
+    "$0" dist                                                                     # (meanwhile)
+    cp dist/PokeWalker.zip dist/PokeWalker-mac.zip
+    if [ -n "$WAIT" ]; then echo "waiting for the windows build (run $RUN)"; gh run watch "$RUN" --exit-status > /dev/null || { echo "the windows build failed: gh run view $RUN"; exit 1; }; fi
     gh run download "$RUN" -n PokeWalker-windows-x64 -D dist/win/PokeWalker                   # a PokeWalker folder at the zip's top
     (cd dist/win && zip -qrX ../PokeWalker-windows-x64.zip PokeWalker)
     sum() { shasum -a 256 "$1" | cut -d' ' -f1; }; size() { stat -f %z "$1"; }

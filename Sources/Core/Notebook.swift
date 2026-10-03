@@ -211,7 +211,7 @@ func bubblePic(_ kind: Int) -> Pic {
 /// Self-test checks for this file (run by selftest()).
 @MainActor func notebookChecks() -> [(Bool, String)] {
     var c: [(Bool, String)] = []
-    func lum(_ p: Pic) -> Double { p.px.reduce(0) { $0 + 0.3 * Double($1 >> 16 & 255) + 0.59 * Double($1 >> 8 & 255) + 0.11 * Double($1 & 255) } / Double(p.px.count) }
+    func lum(_ p: Pic) -> Double { p.px.reduce(0.0) { (s: Double, v: UInt32) -> Double in s + 0.3 * Double(v >> 16 & 255) + 0.59 * Double(v >> 8 & 255) + 0.11 * Double(v & 255) } / Double(p.px.count) }
     var pages = true
     for s in paperNames.indices { for grey in [false, true] {
         let ps = (0..<4).map { paperPic(s, $0, grey: grey) }
