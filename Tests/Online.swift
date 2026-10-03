@@ -43,3 +43,83 @@ import Foundation
 @MainActor func playOut(_ v: Walker) { var n = 0; while n < 30, case .beats = v.screen { v.tick(Date() + 100); n += 1 }; drain(v) }
 /// Nothing going on any more (a fight, a run, a radar): the server's play and the walker's.
 @MainActor func calm(_ v: Walker) { let (srv, key) = server(v); srv.rows[key]?.play = Play(); v.dropPlay(); v.screen = .home }
+
+/// 3.0's client paths on the fake server (the shared engine): what the walker sends, and what it shows of the answers.
+@MainActor func actChecks() -> [(Bool, String)] {
+    var c: [(Bool, String)] = []
+    func check(_ ok: Bool, _ name: String, _ why: @autoclosure () -> String = "") { c.append((ok, ok ? name : name + " — " + why())) }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func isHome(_ w: Walker) -> Bool { if case .home = w.screen { return true }; return false }
+    func row(_ w: Walker, _ item: String) -> Int { w.state.inventory.firstIndex(of: item) ?? -1 }
+
+    // steps waiting go with the next act, whatever it is (W counts them)
+    let ra = online({ var s = Walk(); s.watts = 50; return s }()), (rs, _) = server(ra)
+    ra.cloud!.addSteps(9); ra.screen = .menu(menuAt("포켓 레이더")); ra.press(1); drain(ra)
+    check(rs.acts.last == .radar && rs.steps.last == 9 && served(ra)?.total == 9, "3.0 steps: those waiting go with a radar (not only with the 15 s ones)", "\(rs.acts.suffix(2)) \(rs.steps.suffix(2))")
+
+    // a tower run: in for 50 W, a win (streak, BP), the next trainer with no fee, then 기권
+    var strong = Mon(dex: 6, level: 50, female: false); strong.known = [53]
+    let tv = online({ var s = Walk(); s.watts = 100; s.companion = strong; return s }(), rng: 3)
+    tv.screen = .tower(pick: nil); tv.press(1); drain(tv)
+    let paid = tv.state.watts == 50 && tv.towerRun && tv.inBattle
+    var near = Battle(party: [tv.state.companion], trainer: "엘리트 x", foes: [Mon(dex: 10, level: 2, female: false)]); near.theirs[0].hp = 1
+    fightOn(tv, near, tower: true); tv.screen = .moves(near, sel: 0); tv.press(1); drain(tv); playOut(tv)
+    let won = says(tv) == ["1연승!", "+1 BP"] && tv.state.towerStreak == 1 && tv.state.bp == 1 && tv.towerRun
+    tv.press(1); let lobby: Bool = { if case .tower(nil) = tv.screen { return true }; return false }()
+    tv.press(1); drain(tv); let nextFree = tv.inBattle && tv.state.watts == 50
+    if let f = tv.fight { tv.screen = .battle(f, sel: tv.battleMenu(f).firstIndex(of: "기권")!); tv.press(1); tv.press(2); tv.press(1); drain(tv) }
+    check(paid && won && lobby && nextFree && says(tv) == ["기권했다", "1연승에서 끝"] && !tv.towerRun && tv.state.towerStreak == 0 && !tv.inBattle,
+          "3.0 tower: in for 50 W; a win → 1연승! +1 BP, the lobby; the next trainer free; 기권 ends the run", "\(paid) \(won) \(lobby) \(nextFree) \(says(tv))")
+
+    // the bag: a candy that levels into an evolution, a vitamin, a 진화의 돌, 전부 팔기; 중복 놓아주기
+    var rat = Mon(dex: 19, level: 19, female: false); rat.exp = expTable[growthRate[19]][19]
+    let bv = online({ var s = Walk(); s.companion = rat; s.bag = ["이상한사탕", "타우린", "금구슬", "진주"]; return s }(), rng: 5)
+    bv.screen = .items(row(bv, "이상한사탕")); bv.press(1); drain(bv)
+    let candySaid = says(bv) == [monNames[19] + " Lv.20!"], noLevelNews = !bv.news.contains { if case .level = $0 { return true }; return false }
+    bv.press(1); bv.screen = .home; bv.tick(Date())
+    let candyEvolves: Bool = { if case .evolve(let f, let t, _) = bv.screen { return f.dex == 19 && t.dex == 20 }; return false }()
+    bv.screen = .items(row(bv, "타우린")); bv.press(1); drain(bv)
+    let vitamin = says(bv).last == "노력치 10" && bv.state.companion.evs?[1] == 10
+    let w0 = bv.state.watts; bv.screen = .home; bv.sellAll(); drain(bv)
+    let sold = bv.state.watts - w0, soldSaid = says(bv) == ["전부 팔았다", "+\(sold)W"] && sold > 0 && bv.state.count("금구슬") == 0 && bv.state.count("진주") == 0
+    check(candySaid && noLevelNews && candyEvolves && vitamin && soldSaid, "3.0 bag: 이상한사탕 (its line, no second 레벨 업!), the evolution it brings at home; 타우린; 전부 팔기",
+          "\(candySaid) \(noLevelNews) \(candyEvolves) \(vitamin) \(soldSaid) \(says(bv))")
+    let sv = online({ var s = Walk(); s.companion = Mon(dex: 133, level: 20, female: false); s.bag = ["불꽃의돌"]; s.box = (0..<3).map { Mon(dex: 16, level: 5 + $0, female: false) }; return s }())
+    sv.screen = .items(0); sv.press(1); drain(sv)
+    let stoned: Bool = { if case .evolve(let f, let t, _) = sv.screen { return f.dex == 133 && t.dex == 136 }; return false }()
+    sv.screen = .home; sv.releaseDupes(16); drain(sv)
+    check(stoned && sv.state.count("불꽃의돌") == 0 && sv.state.companion.dex == 136 && says(sv).first == "2마리를 놓아줬다" && sv.state.box.count == 1,
+          "3.0 bag: 불꽃의돌 → the server evolves 이브이, home shows it; 중복 놓아주기 (2 of 3)", "\(stoned) \(says(sv)) \(sv.state.box.count)")
+
+    // a revive mid-fight: ours goes down, 기력의조각 brings it back, the fight goes on (no end)
+    let rv = online({ var s = Walk(); s.bag = ["기력의조각"]; return s }(), rng: 7)
+    var foe = Mon(dex: 150, level: 100, female: false); foe.known = [94]
+    var down = Battle(wild: foe, companion: rv.state.companion); down.mine[0].hp = 1; down.mine[0].moves = [33]; down.mine[0].pp = [35]
+    fightOn(rv, down); rv.screen = .moves(down, sel: 0); rv.press(1); drain(rv)
+    let healed: Bool = { if case .beats(_, let bs, _, _) = rv.screen { return bs.contains { if case .heal(.me, _, _) = $0 { return true }; return false } }; return false }()
+    playOut(rv)
+    check(healed && rv.inBattle && rv.fightEnd == nil && rv.state.count("기력의조각") == 0 && server(rv).0.rows[server(rv).1]?.play.battle != nil,
+          "3.0 fight: ours goes down with 기력의조각 in the bag — back up, the fight goes on (no end)", "\(healed) \(rv.screen)")
+
+    // steps piled up offline, more than the allowance: the server takes some (taken), the rest are gone; the walker shows the server's
+    let ov = online(Walk()), (os, _) = server(ov)
+    os.stepCap = 100; ov.cloud!.addSteps(500); ov.cloud!.saveNow(); drain(ov)
+    check(served(ov)?.total == 100 && ov.state.total == 100 && ov.cloud!.ahead == 0, "3.0 steps: more than the allowance — the server takes what it allows (taken), the rest aren't sent again", "\(served(ov)?.total ?? -1) \(ov.state.total)")
+
+    // another PC takes the trainer mid-fight: locked, the fight dropped; 여기서 계속 → a new session, nothing going on
+    let pv = online(Walk()), (ps, pk) = server(pv)
+    fightOn(pv, Battle(wild: Mon(dex: 16, level: 3, female: false), companion: pv.state.companion))
+    _ = ps.answer("v1/login", ["id": pk, "device": "another", "force": true]); pv.cloud!.addSteps(1); pv.cloud!.saveNow(); drain(pv)
+    let lockedOut = pv.frozen && !pv.inBattle && pv.fight == nil
+    pv.press(1); drain(pv)
+    check(lockedOut && !pv.frozen && !pv.inBattle && ps.rows[pk]?.play.battle == nil && isHome(pv), "3.0 session: another PC mid-fight → locked, the fight dropped; 여기서 계속: a new session, nothing going on")
+
+    // home's news: an egg found, its hatch, a new season
+    let nv = online(Walk())
+    nv.news = [.egg(dex: 175, left: 100), .hatch(mon: Mon(dex: 175, level: 1, female: false)), .season(to: 1)]; nv.screen = .home; nv.tick(Date())
+    let egg = says(nv).last == "포켓몬의 알"; nv.press(1)
+    let hatch: Bool = { if case .hatch(let m, _) = nv.screen { return m.dex == 175 }; return false }()
+    nv.tick(Date() + 6)
+    check(egg && hatch && says(nv) == ["여름이 왔다!"], "3.0 home: an egg found, its hatch's show, the season — in order", "\(egg) \(hatch) \(says(nv))")
+    return c
+}

@@ -463,7 +463,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     }
     var rows: [String: Row] = [:], paths: [String] = [], acts: [Act] = [], steps: [Int] = [], held: [() -> Void] = [], clock = 10_000
     var down = false, html: Int? = nil, lose = false, hold = false, old: String? = nil, pins = false
-    var rng = Seeded(s: 77), nextUID = 1_000_001, now: Date? = nil
+    var rng = Seeded(s: 77), nextUID = 1_000_001, now: Date? = nil, stepCap: Int? = nil       // stepCap: the steps allowance (the real one fills at 15 a second)
     func release() { let h = held; held = []; h.forEach { $0() } }
     static func text(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return (try? e.encode(w)).flatMap { String(data: $0, encoding: .utf8) } ?? "" }
     /// The trainer's save as the server has it; an admin's `pokeserver set` (a new rev).
@@ -495,10 +495,11 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         let first = r.walk == nil                                                                           // a new trainer's first act: the server makes its save
         var w = r.walk.flatMap(Cloud.walk) ?? Engine.fresh(now: now ?? Date(), starter: 1_000_000)
         var ids = Issued(next: max(nextUID, (w.lastUID ?? 0) + 1))
-        let o = Engine.apply(q.act, steps: q.steps ?? 0, walk: &w, play: &r.play, rng: &rng, now: now ?? Date(), ids: &ids)
+        let taken = min(q.steps ?? 0, stepCap ?? .max)
+        let o = Engine.apply(q.act, steps: taken, walk: &w, play: &r.play, rng: &rng, now: now ?? Date(), ids: &ids)
         nextUID = ids.next; acts.append(q.act); steps.append(q.steps ?? 0); clock += 1
         if o.changed || first { r.rev += 1; r.walk = FakeCloud.text(w); r.at = clock }
-        let reply = (try? JSONEncoder().encode(ActReply(rev: r.rev, walk: o.changed || first ? w : nil, taken: q.steps, out: o))) ?? Data()
+        let reply = (try? JSONEncoder().encode(ActReply(rev: r.rev, walk: o.changed || first ? w : nil, taken: q.steps.map { _ in taken }, out: o))) ?? Data()
         r.seq = q.seq; r.reply = reply; rows[id.key] = r
         return (200, reply)
     }
