@@ -43,7 +43,7 @@ import Foundation
     var waiting: Waiting? = nil
     var news: [News] = []                                                  // the server's, shown at home one at a time (settle)
     var fight: Battle? = nil, fightEnd: BattleEnd? = nil                   // the fight as the server last sent it; its end, once its beats have played
-    var chainNext = false                                                  // a chain holds: its next bush is asked for once home's news are shown
+    var chainNext: Int? = nil                                              // a chain holds (its length): its next bush is asked for once home's news are shown
 
     init(state: Walk) { self.state = state }
 

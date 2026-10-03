@@ -664,10 +664,12 @@ import AppKit                                                                   
     if case .battle = v.screen { v.sidePick(3); drain(v) }                                            // the pane's 도망
     check(on(v) { if case .beats(_, let bs, _, _) = $0 { return bs == [.ran] || bs.first == .note(.me, text: "도망칠 수 없었다!") }; return false }, "tapping 도망 tries to run (Gen IV odds)")
     let caughtB = Battle(wild: Mon(dex: 16, level: 3, female: false), companion: v.state.companion, chain: 1)
-    v.fightEnd = BattleEnd(result: "caught", chain: 2); let goesOn = v.beatsDone(caughtB, .caught, Date()), chained = v.chainNext; v.chainNext = false
+    let (vs0, vk0) = server(v); vs0.rows[vk0]?.play = Play(chain: 2); v.news = [.chain(n: 2, bonus: 4, reward: nil)]
+    v.fightEnd = BattleEnd(result: "caught", chain: 2); let goesOn = v.beatsDone(caughtB, .caught, Date()); let saysChain: Bool = { if case .say(let l, _, _) = goesOn { return l == ["연쇄 2!", "풀숲이 흔들린다"] }; return false }()
+    drain(v); let chained = saysChain && { if case .radar(_, _, _, 2) = v.screen { return true }; return false }() && v.chainNote == "+4W" && v.news.isEmpty; calm(v)
     v.fightEnd = BattleEnd(result: "caught", chain: 0); let quiet = v.beatsDone(caughtB, .caught, Date())
-    check({ if case .home = goesOn { return true }; return false }() && chained && { if case .say(let l, .home, _) = quiet { return l == ["풀숲이 조용해졌다", "연쇄 1에서 끝"] }; return false }(),
-          "a catch, as the server ends it: the chain goes on (its next bush once home is done) or quietly ends")
+    check(chained && { if case .say(let l, .home, _) = quiet { return l == ["풀숲이 조용해졌다", "연쇄 1에서 끝"] }; return false }(),
+          "a catch, as the server ends it: the chain goes on — 연쇄 2! straight to its bush, no home in between (its +4W under it) — or quietly ends")
     var hpB = Battle(wild: Mon(dex: 143, level: 30, female: false), companion: Mon(dex: 25, level: 30, female: false))
     hpB.mine[0].moves = [85]; hpB.mine[0].pp = [15]; hpB.theirs[0].moves = [33]; hpB.theirs[0].pp = [35]   // damaging moves only (no 꼬리흔들기, no 잠자기)
     fightOn(v, hpB); v.screen = .moves(hpB, sel: 0); v.press(1); drain(v)
@@ -1065,10 +1067,10 @@ import AppKit                                                                   
     let ghkHeld = ghk.key(.enter, held: true) && { if case .learn(0) = ghk.screen { return true }; return false }()
     check(ghkHome && ghkLobby && ghkHeld, "… 메뉴/홈 on the fight's message stays home; the lobby it hands over to doesn't time out at once; a held ● can't pick on the forget-one screen")
     let gch = online(grS); let (gchSrv, gchKey) = server(gch); gchSrv.rows[gchKey]?.play.chain = 3
-    gch.news = [.evolve(uid: grU, from: 147, to: 148, shed: nil)]; gch.chainNext = true
+    gch.news = [.evolve(uid: grU, from: 147, to: 148, shed: nil)]; gch.chainNext = 3
     gch.screen = .home; gch.tick(Date()); let gEvo2: Bool = { if case .evolve = gch.screen { return true }; return false }()
-    let gT = Date(); gch.tick(gT + 7); drain(gch)
-    check(gEvo2 && { if case .radar(_, 0, let since, 3) = gch.screen { return since >= gT }; return false }() && gchSrv.rows[gchKey]?.play.radar?.chain == 3 && gch.state.watts == grS.watts,
+    let gT = Date(); gch.tick(gT + 7); let gLine = { if case .say(let l, _, _) = gch.screen { return l == ["연쇄 3!", "풀숲이 흔들린다"] }; return false }(); drain(gch)
+    check(gEvo2 && gLine && { if case .radar(_, 0, let since, 3) = gch.screen { return since >= gT }; return false }() && gchSrv.rows[gchKey]?.play.radar?.chain == 3 && gch.state.watts == grS.watts,
           "… a chain: its next bush is asked for after the evolution (free), its window starting then")
     pt.screen = .menu(menuAt("포켓몬")); pt.press(1); let g0 = pt.paneContent(Date()).grid
     check(pts { if case .box(-1, nil, false, false) = $0 { return true }; return false } && g0?.party.map(\.dex) == [25, 16] && g0?.partySel == 0 && g0?.items == 1

@@ -26,7 +26,7 @@ import Foundation
         let end = Date().addingTimeInterval(secs)
         while Date() < end {
             switch w.screen {
-            case .home where w.news.isEmpty && idle() && !w.chainNext: return
+            case .home where w.news.isEmpty && idle() && w.chainNext == nil: return
             case .learn: w.screen = .learn(sel: 4); w.press(1)
             case .say: if w.waiting == nil { w.press(1) }
             case .home, .evolve, .hatch, .beats, .radar: break
@@ -81,7 +81,7 @@ import Foundation
             switch w.screen {
             case .radar: chainUp = true; return true
             case .say: if w.waiting == nil { w.press(1) }; return false
-            case .home: return w.news.isEmpty && idle() && !w.chainNext
+            case .home: return w.news.isEmpty && idle() && w.chainNext == nil
             case .evolve, .hatch, .beats: return false
             default: w.screen = .home; return false
             }

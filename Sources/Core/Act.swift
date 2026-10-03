@@ -42,16 +42,16 @@ extension Walker {
         if let b = o.battle, o.end == nil, !inBattle { fight = b; freshFight(); screen = (o.beats ?? []).isEmpty ? .battle(b, sel: 0) : .beats(b, o.beats!, since: now, from: b) }
     }
     /// What was going on stops here (a lock, another trainer): the server ends it with the session.
-    func dropPlay() { waiting = nil; fight = nil; fightEnd = nil; chainNext = false; growthThen = nil; towerRun = false }
+    func dropPlay() { waiting = nil; fight = nil; fightEnd = nil; chainNext = nil; growthThen = nil; towerRun = false }
 
     // MARK: home: the server's news, one at a time
     /// Home: the news in order (a level, an evolution, a move, a find …); once none is left, where a fight was going on to: the chain's next
-    /// bush (asked for now: its clock starts when it shows), or the tower's lobby.
+    /// bush (asked for now: its clock starts when it shows; "연쇄 n!" meanwhile, never a bare home), or the tower's lobby.
     func settle(_ now: Date) {
         guard case .home = screen, waiting == nil else { return }
         while case .home = screen, !news.isEmpty { show(news.removeFirst(), now) }
         guard case .home = screen else { return }
-        if chainNext { chainNext = false; act(.radar, back: .home, now) { [weak self] o, now in self?.radarShown(o, now) }; return }
+        if let n = chainNext { chainNext = nil; nextBush(n, now); return }
         if let t = growthThen { growthThen = nil; lastInput = now; screen = t }               // the lobby's idle time starts now, not at the fight's last press
     }
     func show(_ n: News, _ now: Date) {
@@ -103,6 +103,10 @@ extension Walker {
         guard state.watts >= Engine.radarFee else { screen = .say(["W가 부족하다", "(10W 필요)"], next: back, since: now); return }
         act(.radar, back: back, now, lines: ["포켓 레이더", "준비 중..."]) { [weak self] o, now in self?.radarShown(o, now) }
     }
+    /// A chain's next bush, asked for (free): "연쇄 n! / 풀숲이 흔들린다" while the server picks it, as 2.x said it.
+    func nextBush(_ n: Int, _ now: Date) {
+        act(.radar, back: .home, now, lines: ["연쇄 \(n)!", "풀숲이 흔들린다"]) { [weak self] o, now in self?.radarShown(o, now) }
+    }
     func radarShown(_ o: Outcome, _ now: Date) -> Screen? {
         guard let r = o.radar else { return nil }
         if r.chain == 0 { chainNote = nil }
@@ -138,8 +142,9 @@ extension Walker {
         if last.ends || fightEnd != nil { return endOfFight(b, now) }
         return b.mustReplace ? .party(b, sel: b.mine.indices.first { b.mine[$0].alive } ?? 0) : .battle(b, sel: 0)
     }
-    /// How a fight ended, as the server said. Wild: caught or beaten with the chain going on → home's news, then the next bush; else the grass
-    /// goes quiet. Tower: the streak and its BP, the lobby after home's news; a loss ends the run.
+    /// How a fight ended, as the server said. Wild: caught or beaten with the chain going on → its next bush at once (its W and item under
+    /// "연쇄 n!"), or — a level's evolution, a move to learn first — home's news, then the bush; else the grass goes quiet. Tower: the streak
+    /// and its BP, the lobby (after home's news, if any); a loss ends the run.
     func endOfFight(_ b: Battle, _ now: Date) -> Screen {
         let e = fightEnd; fightEnd = nil; fight = nil
         guard let e else { return .home }
@@ -152,7 +157,11 @@ extension Walker {
             return .say(["\(e.streak ?? 0)연승에서 끝났다", "BP \(state.bp ?? 0)"], next: .home, since: now)
         }
         guard e.result == "caught" || e.result == "won" else { chainNote = nil; return .home }
-        if (e.chain ?? 0) > 0 { chainNext = true; return .home }                                   // its bush once home's news have played (settle)
+        if let n = e.chain, n > 0 {
+            news.removeAll { if case .chain(_, let bonus, let reward) = $0 { chainNote = "+\(bonus)W" + (reward.map { " · " + $0 } ?? ""); return true }; return false }
+            if news.isEmpty { nextBush(n, now); return screen }                                    // straight on: no home in between
+            chainNext = n; return .home                                                             // its bush once home's news have played (settle)
+        }
         chainNote = nil
         return .say(b.chain > 0 ? ["풀숲이 조용해졌다", "연쇄 \(b.chain)에서 끝"] : ["풀숲이", "조용해졌다"], next: .home, since: now)
     }
