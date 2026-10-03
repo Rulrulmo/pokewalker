@@ -463,8 +463,14 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     #expect(shed?.dex == 292 && shed?.level == 20 && shed?.shiny == nin.shiny)
     r = await db.evolve(EvolveReq(id: "minty", session: s, uid: nincada, to: 150, level: 20), now: 10_501)
     #expect(string(r, "error") == "no_evolution")
+    // a create that sends a PIN without "app" is 2.1's too: its starter is issued
+    r = await db.create(CreateReq(id: "noapp", device: "mac", device_name: "MAC", app: nil, pin: "1212"), now: 10_600)
+    let noapp = try await db.minting("noapp")
+    #expect(number(r, "starter") == firstUID && noapp)
     // a 2.0 trainer's first 2.1 login: its Pokémon taken as issued, uids stamped (rev + 1)
     let old = try await make(db, "veteran")
+    r = await db.radar(RadarReq(id: "veteran", session: old, walk: text(Walk())), now: 10_900)
+    #expect(r.status == 403)                                                                       // no PIN yet; with one and nothing on record: relogin
     var vw = Walk(); vw.audited = 2; vw.box = [Mon.wild(16, level: 9, &g)]
     _ = await save(db, "veteran", old, base: 0, walk: text(vw), app: "2.0", now: 11_000)
     r = await db.login(LoginReq(id: "veteran", device: "pc-a", device_name: "PC-A", app: "2.1", force: true), now: 11_010)

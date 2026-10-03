@@ -203,12 +203,13 @@ actor SaveDB {
                     try db.rows("INSERT OR REPLACE INTO pins (key, salted, at) VALUES (:k, :s, :now)", ["k": .text(id.key), "s": .text(saltedPIN(id.key, p)), "now": .int(now)])
                     token = try trust(id.key, r.device, now: now)
                 }
-                if asksPIN(r.app) { var s = Walk.starter; s.uid = firstUID; try record(id.key, s, kind: "starter", now: now) }   // 10 §4.1: the starter is issued too
+                let issues = asksPIN(r.app) || r.pin != nil                                         // 2.1 (only 2.1 sends a PIN, with or without "app")
+                if issues { var s = Walk.starter; s.uid = firstUID; try record(id.key, s, kind: "starter", now: now) }   // 10 §4.1: the starter is issued too
                 try db.rows("INSERT INTO trainers (key, name, rev, session, device, last_device, created_at, updated_at) VALUES (:k, :n, 0, :s, :d, :dn, :now, :now)",
                             ["k": .text(id.key), "n": .text(id.name), "s": .text(session), "d": .text(r.device), "dn": .text(String(r.device_name.prefix(64))), "now": .int(now)])
                 var reply: [String: JSON] = ["rev": .i(0), "session": .s(session)]
                 if let token { reply["trust"] = .s(token) }
-                if asksPIN(r.app) { reply["starter"] = .i(firstUID) }
+                if issues { reply["starter"] = .i(firstUID) }
                 return Reply(200, reply, note: "new trainer \(id.name) from \(r.device_name.prefix(64))")
             }
         }

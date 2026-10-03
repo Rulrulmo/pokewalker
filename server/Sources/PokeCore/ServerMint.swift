@@ -79,6 +79,7 @@ extension SaveDB {
             return try db.transaction {
                 guard try trainer(key.key) != nil else { return .error(404, "no_trainer") }
                 guard try hasPIN(key.key) else { return .error(403, "pin_needed") }
+                guard try minting(key.key) else { return .error(409, "relogin") }                 // its Pokémon aren't on record yet: a 2.1 login takes them first (10 §4.3)
                 guard let (t, w, reasons) = try mintGate(key, session: session, walk: walk, now: now) else {
                     return try trainer(key.key)?.session == session ? .error(400, "bad_walk") : .error(409, "conflict", ["reason": .s("replaced")])
                 }
