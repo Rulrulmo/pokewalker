@@ -7,6 +7,10 @@ import UserNotifications
 settings = UserDefaults.standard                                                               // before anything reads a setting (the look's globals)
 fonts = MacFonts()                                                                             // before anything lays out text
 if CommandLine.arguments.contains("--selftest") { exit(selftest() ? 0 : 1) }
+if let i = CommandLine.arguments.firstIndex(of: "--live-test"), i + 2 < CommandLine.arguments.count {      // a dev build against the real save server (Tests/LiveTest.swift)
+    guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-test: a build run from the repository only"); exit(2) }
+    exit(liveTest(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2]) ? 0 : 1)
+}
 if let i = CommandLine.arguments.firstIndex(of: "--stage-update"), i + 1 < CommandLine.arguments.count {   // a local build's zip, to try the install (Core/Update.swift)
     exit(Update.stageLocal(URL(fileURLWithPath: CommandLine.arguments[i + 1])) ? 0 : 1)
 }
