@@ -824,6 +824,10 @@ import AppKit                                                                   
     _ = dc.key(.enter, held: true)
     #endif
     check(dc.state.watts == 1000, "a held return doesn't buy")
+    let hv = Walker(state: { var s = Walk(); s.companion = Mon(dex: 64, level: 20, female: false); return s }()); hv.persist = false   // 윤겔라: 통신 진화 needs nothing
+    hv.screen = .menu(menuAt("포켓몬")); hv.press(1)                                                // the first press opens the grid
+    for _ in 0..<4 { _ = hv.key(.enter, held: true) }                                             // it used to go on: the companion's page, then 통신 진화
+    check(hv.state.companion.dex == 64 && on(hv) { if case .box(-1, nil, false, false) = $0 { return true }; return false }, "a held return opens 포켓몬 and stops there (no page, no evolution)", "\(hv.screen)")
     dc.shopStep(10); dc.listRow(1); check(on(dc) { if case .shop(false, 1, nil) = $0 { return true }; return false }, "scrolling the panel moves a row and leaves how-many (never the amount)")
     dc.screen = .shop(bp: false, sel: 0, qty: nil); check(dc.shopModel()?.hint.contains("●") == true, "the panel says what ● does")
     dc.screen = .shop(bp: false, sel: dc.wares(false).count - 1, qty: nil); check(dc.shopModel()?.hint == "W가 부족해요 · 9,999W 필요", "the panel says why a row can't be bought", "\(dc.shopModel()?.hint ?? "")")
