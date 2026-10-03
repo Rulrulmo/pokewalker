@@ -215,7 +215,12 @@ extension Walk {
         let names = ["엘리트 트레이너", "베테랑", "아가씨", "등산가", "연구원", "격투가", "사이킥", "드래곤 조련사", "모범 소년", "레인저"]
         let he = ["민수", "현우", "도윤", "준호", "태양"], she = ["지은", "서연", "하은", "유나", "보라"]      // a one-sex class gets a name to match (its sprite: trainerFrame)
         let pool = (1...493).filter { d in !legends.contains(d) && d != 292 && !evolutions.contains { $0.from == d } && (tier < 5 || baseStats[d].reduce(0, +) >= 450) }   // fully evolved
+        // 3.1.2 (the user: "초반엔 1승도 힘들어"): the first 7 wins' trainers bring ones about as strong as ours (any stage, base stats within
+        // 60 of our party's mean) with what they'd know at Lv.25 — still Lv.50. Simulated first-trainer wins: 0 → 32 % for a Lv.15 party, 6 → 62 % at Lv.25.
+        let ours = party().map { baseStats[$0.mon.dex].reduce(0, +) }, mean = ours.isEmpty ? 400 : ours.reduce(0, +) / ours.count
+        let near = (1...493).filter { d in !legends.contains(d) && d != 292 && abs(baseStats[d].reduce(0, +) - mean) <= 60 }
         let foes = (0..<3).map { _ -> Mon in
+            if tier == 0, let d = near.randomElement(using: &r) { var m = Mon.wild(d, level: 25, &r); m.known = m.moves; m.level = lv; return m }
             let d = pool.randomElement(using: &r)!, phys = baseStats[d][1] >= baseStats[d][3]           // 물리형 or 특수형
             var m = Mon.wild(d, level: lv, perfect: [0, 0, 0, 3, 5, 6][tier], &r)
             if (1...2).contains(tier) { m.ivs = (0..<6).map { _ in Int.random(in: 15...31, using: &r) } }

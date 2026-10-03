@@ -550,7 +550,11 @@ import AppKit                                                                   
     w = Walk(); w.companion = Mon(dex: 25, level: 20, female: false); w.box = [Mon(dex: 16, level: 5, female: false), Mon(dex: 143, level: 30, female: false), Mon(dex: 19, level: 12, female: false)]
     check(w.party().map(\.ref) == [-1, 1, 2] && w.party().map(\.mon.dex) == [25, 143, 19], "party: companion + the two strongest")
     let legendSet = Set(courses.flatMap(\.legends) + [150, 250])
-    let tf = w.towerFoes(&r); check(tf.foes.count == 3 && tf.foes.allSatisfy { f in f.level == Walk.towerLevel && !legendSet.contains(f.dex) && !evolutions.contains { $0.from == f.dex } }, "tower foes: 3 fully evolved non-legends at Lv.50 (1.14)", "\(tf.foes)")
+    var w7 = w; w7.towerStreak = 7
+    let tf = w7.towerFoes(&r); check(tf.foes.count == 3 && tf.foes.allSatisfy { f in f.level == Walk.towerLevel && !legendSet.contains(f.dex) && !evolutions.contains { $0.from == f.dex } }, "tower foes from 7 wins: 3 fully evolved non-legends at Lv.50 (1.14)", "\(tf.foes)")
+    let wMean = w.party().map { baseStats[$0.mon.dex].reduce(0, +) }.reduce(0, +) / 3, tf0 = (0..<5).flatMap { _ in w.towerFoes(&r).foes }
+    check(tf0.allSatisfy { f in f.level == Walk.towerLevel && !legendSet.contains(f.dex) && abs(baseStats[f.dex].reduce(0, +) - wMean) <= 60 && (f.known ?? []).allSatisfy { f.learnLevel($0).map { $0 <= 25 } ?? true } } && tf0.contains { f in evolutions.contains { $0.from == f.dex } },
+          "3.1.2: the first 7 wins' foes are about as strong as our party (any stage, base stats within 60 of its mean) with Lv.25's moves, still Lv.50", "\(tf0.map { "\(monNames[$0.dex]) \(baseStats[$0.dex].reduce(0, +))" }) mean \(wMean)")
     var g: [Int] = []; for _ in 0..<8 { g.append(w.towerWin()) }
     check(g == [1, 1, 1, 1, 1, 1, 4, 2] && w.bp == 12 && w.towerBest == 8, "BP: 1 a win, +3 on the 7th, 2 a win after 7", "\(g)")
     w.towerEnd(); check(w.towerStreak == 0 && w.towerBest == 8, "a loss ends the streak, best kept")
@@ -1007,14 +1011,14 @@ import AppKit                                                                   
     check(b14Capped && b14NoExp && b14Run.w.companion == b14Before && b14Run.w.towerStreak == 1 && b14v.state.watts == 50 && b14v.towerRun,
           "1.15: the tower fights a Lv.70 and a Lv.12 both as 50 (flat), its foes Lv.50, no EXP for a KO, and the Lv.70 is still 70 after it (nothing written back)")
     var b14Tiers: [Bool] = []
-    for (streak, check) in [(0, { (m: Mon) in m.evs == nil && m.known == nil }), (7, { (m: Mon) in m.evs == nil && (m.ivs ?? []).allSatisfy { $0 >= 15 } }),
+    for (streak, check) in [(0, { (m: Mon) in m.evs == nil && (m.known ?? []).allSatisfy { m.learnLevel($0).map { $0 <= 25 } ?? true } }), (7, { (m: Mon) in m.evs == nil && (m.ivs ?? []).allSatisfy { $0 >= 15 } }),
                             (14, { (m: Mon) in (m.evs ?? []).reduce(0, +) == 504 && (m.ivs ?? []).allSatisfy { $0 >= 15 } && m.known == nil }),
                             (21, { (m: Mon) in m.perfectIVs >= 3 && [3, 13, 15, 10].contains(m.nature ?? -1) && (1...4).contains(m.moves.count) && m.moves.allSatisfy { m.learnLevel($0).map { $0 <= 50 } ?? false } }),
                             (35, { (m: Mon) in m.perfectIVs == 6 && baseStats[m.dex].reduce(0, +) >= 450 })] as [(Int, (Mon) -> Bool)] {
         var b14s = b14; b14s.towerStreak = streak; var b14g = Seeded(s: UInt64(streak + 1))
         b14Tiers.append((0..<4).allSatisfy { _ in b14s.towerFoes(&b14g).foes.allSatisfy { $0.level == 50 && check($0) } })
     }
-    check(b14Tiers == [true, true, true, true, true] && Walk.towerTier(6) == 0 && Walk.towerTier(7) == 1 && Walk.towerTier(99) == 5, "1.14: tower foes by 7 wins — as caught · IVs 15+ · EVs 252/252 · 3V, 고집/명랑/조심/겁쟁이, 좋은 4개 it learns · 5V · 6V with base stats 450+", "\(b14Tiers)")
+    check(b14Tiers == [true, true, true, true, true] && Walk.towerTier(6) == 0 && Walk.towerTier(7) == 1 && Walk.towerTier(99) == 5, "1.14: tower foes by 7 wins — as caught (3.1.2: Lv.25's moves) · IVs 15+ · EVs 252/252 · 3V, 고집/명랑/조심/겁쟁이, 좋은 4개 it learns · 5V · 6V with base stats 450+", "\(b14Tiers)")
     let b14Moves = Mon(dex: 149, level: 50, female: false).towerMoves()
     let wobb = Mon(dex: 202, level: 50, female: false).towerMoves(), arbok = Mon(dex: 24, level: 50, female: false).towerMoves(), blast = Mon(dex: 9, level: 50, female: false).towerMoves()
     check(wobb.contains { !moveTable[$0]!.isStatus } && !arbok.contains(256) && blast.filter { moveTable[$0]!.type == "water" && !moveTable[$0]!.isStatus }.count >= 2,
