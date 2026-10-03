@@ -231,6 +231,9 @@ extension Walker {
             default: for (k, l) in lines.enumerated() { fb.text(l, 0, 32 - lines.count * 7 + 14 * k, center: true) }
             }
         }
+        if let w = waiting, now.timeIntervalSince(w.since) > 0.3 {                                  // an act's answer on the way (docs/plans/11 §5): dots in the corner, one more each third of a second
+            for k in 0...(Int(now.timeIntervalSince(w.since) * 3) % 3) { fb.fill(85 + 4 * k, 1, 2, 2, 3) }
+        }
         return fb
     }
     func evoText(_ e: Evo) -> String {
@@ -332,8 +335,9 @@ extension Walker {
         if let s = shopModel() { return PaneContent(shop: s) }
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }                       // a menu page's message (W가 부족하다 …): the list stays
         if case .menu(let i) = sc {
+            let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워"]   // offline: what needs the server, dimmed
             let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승"]
-            return PaneContent(menu: MenuModel(rows: menuItems.map { .init(name: $0, note: notes[$0] ?? "") }, sel: i))
+            return PaneContent(menu: MenuModel(rows: menuItems.map { off && needs.contains($0) ? .init(name: $0, note: "연결되면 할 수 있어요", off: true) : .init(name: $0, note: notes[$0] ?? "") }, sel: i))
         }
         switch sc {                                                                               // the rest of the walker's pages: what you press is here, the LCD shows it
         case .radar(let b, let c, let since, let chain):

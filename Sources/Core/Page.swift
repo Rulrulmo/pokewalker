@@ -377,7 +377,7 @@ extension Canvas {
         for (i, row) in m.rows.enumerated() {
             let rc = r(X0 + CGFloat(i % 2) * (cw + gap), 203 + CGFloat(i / 2) * (rh + gap), cw, rh), on = i == m.sel
             c.fill(.rounded(rc, 9 * K), on ? Ink.red : Ink.tile)
-            c.say(row.name, rc.minX + x(9), rc.minY + x(10.5), font(10, .bold), on ? .white : Ink.ink, maxW: rc.width - x(14))
+            c.say(row.name, rc.minX + x(9), rc.minY + x(10.5), font(10, .bold), on ? .white : row.off ? Ink.sub : Ink.ink, maxW: rc.width - x(14))
             c.say(row.note, rc.minX + x(9), rc.minY + x(22), font(8, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(14))
             hits.append((rc, 3000 + i))
         }

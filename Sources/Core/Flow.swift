@@ -108,9 +108,9 @@ extension Walker {
             return u.flatMap { b.usable($0) ? (i, $0) : nil }
         }
     }
-    /// The companion's 진화의 돌 or 통신 진화, now (the server evolves it; home shows it).
+    /// The companion's 진화의 돌 or 통신 진화 (an item it holds for one is the trade's, not a stone), now: the server evolves it; home shows it.
     func evolveNow(_ e: Evo, back: Screen, _ now: Date = Date()) {
-        act(e.item.map { .use(item: $0, stat: nil) } ?? .mon(op: .trade), back: back, now) { _, _ in .home }
+        act(e.way == .trade ? .mon(op: .trade) : .use(item: e.item ?? "", stat: nil), back: back, now) { _, _ in .home }
     }
     var seenList: [Int] { Array(Set((state.seen ?? []) + (state.owned ?? []))).sorted() }
     /// The 도감 grid's list for a tab: 전체 (1-493) / 잡음 / 못 잡음 (seen, not caught) / 이 코스 (what walks here, legends too).

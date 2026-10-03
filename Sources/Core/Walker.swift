@@ -94,7 +94,7 @@ import Foundation
         updater?.tick(now); updateTick(now)
     }
     /// Fights, shows and animations play at 30 fps; the rest (the walking sprite too: HGSS steps it every 0.15 s) at the tick's 10.
-    var busy: Bool { switch screen { case .beats, .hatch, .evolve, .radar: true; default: animating } }
+    var busy: Bool { switch screen { case .beats, .hatch, .evolve, .radar: true; default: animating || waiting != nil } }   // (an act out: its dots)
 
     /// The keys as the walker knows them: ◀ ▶ ↑ ↓, page up / down, tab, ● (return / space), ↩ (esc), 메뉴 / 홈 (M).
     enum Key { case left, right, up, down, pageUp, pageDown, tab, enter, back, menu }

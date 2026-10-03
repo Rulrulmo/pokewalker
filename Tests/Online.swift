@@ -25,9 +25,21 @@ import Foundation
 @MainActor func serve(_ v: Walker, _ change: (inout Walk) -> Void) {
     let (srv, key) = server(v)
     guard var w = srv.walk(key) else { return }
-    change(&w); srv.set(key, w)
+    change(&w); for ref in [-1] + w.caught.indices.map({ -2 - $0 }) + Array(w.box.indices) { _ = w.id(ref) }   // (new ones get uids, as the server's would)
+    srv.set(key, w)
     (w.counter, w.boot, w.syncedAt, w.counterKind) = (v.state.counter, v.state.boot, v.state.syncedAt, v.state.counterKind)
     v.state = w
 }
 /// The trainer's save as the server has it.
 @MainActor func served(_ v: Walker) -> Walk? { let (srv, key) = server(v); return srv.walk(key) }
+/// A fight going on, on the server (its play: ours by uid, for the EXP after it) and on the walker's screen.
+@MainActor func fightOn(_ v: Walker, _ b: Battle, tower: Bool = false) {
+    let (srv, key) = server(v)
+    srv.rows[key]?.play.battle = b; srv.rows[key]?.play.tower = tower
+    srv.rows[key]?.play.party = ([-1] + v.state.caught.indices.map { -2 - $0 }).prefix(b.mine.count).compactMap { v.state.mon($0)?.uid }
+    v.fight = b; v.screen = .battle(b, sel: 0); v.towerRun = tower
+}
+/// The beats on the LCD played out (the walker's clock run on).
+@MainActor func playOut(_ v: Walker) { var n = 0; while n < 30, case .beats = v.screen { v.tick(Date() + 100); n += 1 }; drain(v) }
+/// Nothing going on any more (a fight, a run, a radar): the server's play and the walker's.
+@MainActor func calm(_ v: Walker) { let (srv, key) = server(v); srv.rows[key]?.play = Play(); v.dropPlay(); v.screen = .home }

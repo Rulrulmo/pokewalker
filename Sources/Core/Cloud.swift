@@ -132,6 +132,7 @@ final class CloudInbox: @unchecked Sendable {
     /// The walker's tick: replies taken; then what's due goes, if nothing is out: a login / create / PIN, an act sent again, the walker's act,
     /// the 1.x save once, the steps every 15 s.
     func tick(_ now: Date) {
+        if case .pin(.locked(let until)) = phase, now >= until { phase = .pin(.enter(wrong: false)) }   // the lock's over: the box again
         take(now)
         guard inFlight == nil, now >= retryAt else { return }
         if let a = asking { asking = nil; send(a); return }
@@ -162,9 +163,11 @@ final class CloudInbox: @unchecked Sendable {
 
     // MARK: requests
     private func ask(_ a: Ask) { phase = .login; asking = a; retryAt = .distantPast }
-    /// What an old session had going is gone with it (docs/plans/11 §0): its act out, the walker's waiting one.
-    private func drop() {
+    /// What an old session had going is gone with it (docs/plans/11 §0): its act out, the walker's waiting one. keepSteps: the server never
+    /// ran the act out (409 seq): its steps go with the next session's first act.
+    private func drop(keepSteps: Bool = false) {
         if let o = out { answers.append((o.act, nil)) }; if let q = queued { answers.append((q, nil)) }
+        if keepSteps { unsent += sending }
         out = nil; queued = nil; sending = 0; seq = 0
     }
     private func send(_ a: Ask) {
@@ -198,7 +201,7 @@ final class CloudInbox: @unchecked Sendable {
         for (a, s, body) in inbox.take() {
             inFlight = nil
             guard s != 0, s < 500, let j = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else { offline(a, now); continue }
-            backoff = 0
+            backoff = 0; retryAt = .distantPast                                                  // the server answered: online
             switch (a, s) {
             case (.act(let n), 200):
                 guard let o = out, o.seq == n else { continue }                                     // (an old session's: dropped already)
@@ -223,7 +226,7 @@ final class CloudInbox: @unchecked Sendable {
             case (.create, 409): ask(.login(force: false, resume: false))                     // made already (our reply lost, or someone else's): log in to it
             case (.act, 409) where j["reason"] as? String == "replaced": drop(); phase = .replaced; NSLog("pokewalker: cloud: another PC took %@", seat.trainerID ?? "")
             case (.act, 409) where j["error"] as? String == "seq":                              // out of step with the server: a new session, its save
-                NSLog("pokewalker: cloud: seq %ld out of step: logging in again", seq); drop(); ask(.login(force: false, resume: true))
+                NSLog("pokewalker: cloud: seq %ld out of step: logging in again", seq); drop(keepSteps: true); ask(.login(force: false, resume: true))
             case (.legacy, 200): seat.legacyUploaded = true; legacy = nil                        // stored now or before: done either way
             case (_, 404): orphan(now)
             case (.login, 400) where j["error"] as? String == "bad_id": seat.trainerID = nil; phase = .needsID
@@ -251,7 +254,7 @@ final class CloudInbox: @unchecked Sendable {
             }
             base = w; rebased = true
         }
-        drop(); seat.session = session; self.rev = rev; phase = .on; lastSaved = now; pendingPIN = nil; stepsAt = now   // (the steps walked meanwhile go up first)
+        drop(keepSteps: true); seat.session = session; self.rev = rev; phase = .on; lastSaved = now; pendingPIN = nil; stepsAt = now   // (the steps walked meanwhile go up first)
         if j["pin_needed"] as? Bool == true { phase = .pin(.set) }                             // a 2.0 ID: its PIN first, acts wait
     }
     /// No answer, a 5xx, or not JSON (Cloudflare's own pages: 502, 530, a 403 challenge): offline, again in 2, 4, 8 … 30 minutes. An act out
@@ -611,21 +614,23 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     c.append((lostSays && offlineNow && ranOnce == 2 && vs.acts.count == 2 && v.state.count("상처약") == 2 && served(v)?.count("상처약") == 2 && v.cloud!.online,
               "3.0 act: its reply lost → 연결되면 할 수 있어요 (offline); 2 minutes on the same act goes again (the same seq): the server's stored answer, bought once"))
     vs.down = true; v.cloud!.addSteps(30); v.cloud!.saveNow(); v.tick(Date()); v.tick(Date())
-    v.screen = .menu(menuAt("포켓 레이더")); v.press(1)
+    v.screen = .menu(menuAt("포켓 레이더")); let tiles = v.paneContent(Date()).menu?.rows ?? []; v.press(1)
     let refused = says(v) == Walker.offlineLines && v.waiting == nil, row = v.cloudMenuTitle
+    let dimmed = tiles.filter(\.off).map(\.name) == ["포켓 레이더", "상점", "BP 교환소", "배틀 타워"] && tiles.first { $0.off }?.note == "연결되면 할 수 있어요"
     vs.down = false; v.tick(Date() + 121); drain(v)
-    chk(refused && row.hasSuffix("연결 안 됨 · 올릴 걸음 30") && served(v)?.total == 37 && v.cloud!.ahead == 0,
-              "3.0 offline: acts say 연결되면 할 수 있어요 at once; steps pile up (the menu: 연결 안 됨 · 올릴 걸음 n); back, they go up", row)
-    let bo = Cloud(link: vs, dir: tmp.appendingPathComponent("bo", isDirectory: true)); bo.seat.trainerID = vk; bo.start(); var bt = Date(); bo.tick(bt); bo.tick(bt)
+    chk(refused && dimmed && row.hasSuffix("연결 안 됨 · 올릴 걸음 30") && served(v)?.total == 37 && v.cloud!.ahead == 0,
+              "3.0 offline: what needs the server dimmed on the menu (연결되면 할 수 있어요), and says so at once; steps pile up (the right-click: 연결 안 됨 · 올릴 걸음 n); back, they go up", row)
+    let bs = FakeCloud(); bs.add("zz000099", Walk())
+    let bo = Cloud(link: bs, dir: tmp.appendingPathComponent("bo", isDirectory: true)); bo.seat.trainerID = "zz000099"; bo.login(force: true); var bt = Date(); bo.tick(bt); bo.tick(bt)
     var waits2: [TimeInterval] = []; bo.addSteps(5)
-    for i in 0..<6 { vs.html = [403, 502][safe: i]; vs.down = i >= 2; bo.saveNow(); bo.tick(bt); bo.tick(bt); waits2.append(bo.backoff); bt = bo.retryAt }
-    vs.html = nil; vs.down = false; bo.tick(bt); bo.tick(bt)
-    c.append((waits2 == [120, 240, 480, 960, 1800, 1800] && bo.backoff == 0 && bo.ahead == 0, "3.0 offline (an HTML 403 / 502, then no answer): again in 2, 4, 8, 16, 30, 30 minutes; back, the steps go up"))
+    for i in 0..<6 { bs.html = [403, 502][safe: i]; bs.down = i >= 2; bo.tick(bt); bo.tick(bt); waits2.append(bo.backoff); bt = bo.retryAt }
+    bs.html = nil; bs.down = false; bo.tick(bt); bo.tick(bt)
+    chk(waits2 == [120, 240, 480, 960, 1800, 1800] && bo.backoff == 0 && bo.ahead == 0, "3.0 offline (an HTML 403 / 502, then no answer): again in 2, 4, 8, 16, 30, 30 minutes; back, the steps go up", "\(waits2) \(bo.phase) \(bo.ahead)")
 
     // the server's "not now" (out.cannot): its lines on the LCD, back where it was; nothing changed but the steps
     serve(v) { w in var e = [0, 0, 0, 0, 0, 0]; e[0] = 100; w.companion.evs = e; w.bag = ["맥스업"] }
     let vRev = vs.rows[vk]?.rev; v.screen = .items(0); v.press(1); drain(v)
-    c.append((says(v) == ["먹어도 효과가", "없을 것 같다"] && v.state.count("맥스업") == 1 && vs.rows[vk]?.rev == vRev, "3.0 act: the server's no (맥스업 at 100: 먹어도 효과가 / 없을 것 같다) on the LCD, nothing used"))
+    chk(says(v) == ["먹어도 효과가", "없을 것 같다"] && v.state.count("맥스업") == 1 && vs.rows[vk]?.rev == vRev, "3.0 act: the server's no (맥스업 at 100: 먹어도 효과가 / 없을 것 같다) on the LCD, nothing used", "\(says(v)) \(v.screen) \(v.state.inventory) \(String(describing: vs.acts.last))")
 
     // the session: out of step (409 seq) → logged in again, its save; another PC took it → locked, 여기서 계속; 426; 404
     vs.rows[vk]?.seq = 40; v.screen = .home; v.cloud!.addSteps(3); v.cloud!.saveNow(); drain(v); drain(v)
@@ -633,8 +638,8 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     _ = vs.answer("v1/login", ["id": vk, "device": "another", "force": true]); v.cloud!.addSteps(2); v.cloud!.saveNow(); drain(v)
     let locked = v.frozen && v.title().meta == "다른 PC에서 접속했어요" && v.cloud!.phase == .replaced
     v.press(1); drain(v)
-    c.append((reLogged && locked && v.cloud!.phase == .on && !v.frozen && isHome(v) && v.state.total == 40,
-              "3.0 session: 409 seq → a new login, the server's save; another PC took it → locked; ● = 여기서 계속 (the steps walked meanwhile aren't sent)"))
+    chk(reLogged && locked && v.cloud!.phase == .on && !v.frozen && isHome(v) && v.state.total == 40,
+              "3.0 session: 409 seq → a new login (the act's steps kept), the server's save; another PC took it → locked; ● = 여기서 계속 (the steps walked meanwhile aren't sent)", "\(reLogged) \(locked) \(v.cloud!.phase) \(v.state.total) \(served(v)?.total ?? -1) \(v.screen)")
     vs.old = "9.0"; v.cloud!.addSteps(1); v.cloud!.saveNow(); drain(v); vs.old = nil
     c.append((v.cloud!.phase == .oldApp && v.frozen && says(v).joined().contains("rulrulmo.work") && v.pane.login?.title == "새 버전이 필요해요", "3.0 session: 426 → 새 버전이 필요해요, the game held"))
     let o = online(Walk()), (os, ok) = server(o); os.rows[ok] = nil; o.cloud!.addSteps(77); o.cloud!.saveNow(); drain(o)
@@ -669,8 +674,8 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     rs.lose = true; rv.screen = .menu(menuAt("포켓 레이더")); rv.press(1); drain(rv, max: 3)
     let gaveUpSays = says(rv) == Walker.offlineLines
     rv.tick(Date() + 121); drain(rv); drain(rv)
-    c.append((gaveUpSays && rs.acts.suffix(2) == [.radar, .radarPick(bush: -1)] && rs.rows[rk]?.play.radar == nil && !isRadar(rv.screen),
-              "3.0 late: a radar whose answer came after the walker gave up (offline) is given up at once (the server hears -1)"))
+    chk(gaveUpSays && rs.acts.suffix(2) == [.radar, .radarPick(bush: -1)] && rs.rows[rk]?.play.radar == nil && !isRadar(rv.screen),
+              "3.0 late: a radar whose answer came after the walker gave up (offline) is given up at once (the server hears -1)", "\(gaveUpSays) \(rs.acts.suffix(3)) \(rv.screen)")
 
     // the walker with the server: 08 §5's move at the first launch, the 1.x save up once as 옛 기록
     let md = tmp.appendingPathComponent("m", isDirectory: true), mf = md.appendingPathComponent("state.json"), mb = md.appendingPathComponent("state.json.bak"), mid = "zz000004"
@@ -718,8 +723,8 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     uh.answer = false; ut = ticks(uw, ut, 3)                                                       // 새 트레이너? no → back to the box (by itself only once: not again)
     c.append((flushed && uc.phase == .needsID && uc.seat.trainerID == nil && uh.boxes.count == 4,
               "cloud UI: ID 바꾸기 sends the steps not up yet, goes home (a tower run ends); 새 트레이너? no → 로그인이 필요해요"))
-    uh.answer = true; uh.texts = ["zz000005"]; uw.press(1); ut = ticks(uw, ut, 3)                    // ● = ID 입력: back to the first, the server's save
-    c.append((uc.phase == .on && uc.seat.trainerID == "zz000005" && uw.state.total == srv.walk("zz000005")?.total, "cloud UI: ● on 로그인이 필요해요 opens the box; the first trainer again: its save from the server"))
+    uh.answer = true; uh.texts = ["zz000005"]; uh.pins = ["2580"]; uw.press(1); ut = ticks(uw, ut, 3)   // ● = ID 입력: back to the first (its PIN: another ID dropped this PC's trust), the server's save
+    chk(uc.phase == .on && uc.seat.trainerID == "zz000005" && uw.state.total == srv.walk("zz000005")?.total, "cloud UI: ● on 로그인이 필요해요 opens the box; the first trainer again: its save from the server", "\(uc.phase) \(uw.state.total) \(srv.walk("zz000005")?.total ?? -1) \(uc.ahead)")
 
     // PINs (docs/plans/10 §3), against a server that asks for them
     let ps = FakeCloud(); ps.pins = true
@@ -746,9 +751,9 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     let pinLocked: Bool = { if case .pin(.locked) = c4.phase { return true }; return false }(), boxesThen = h4.pinBoxes.count
     pt = ticks(p4, pt, 5); let lockedLines = p4.pane.login
     pt = ticks(p4, pt + 700, 1)
-    c.append((pinLocked && boxesThen == 5 && lockedLines?.title == "PIN을 너무 많이 틀렸어요" && lockedLines?.lines.first?.hasSuffix("분 뒤에 다시 넣을 수 있어요.") == true && p4.frozen
+    chk(pinLocked && boxesThen == 5 && lockedLines?.title == "PIN을 너무 많이 틀렸어요" && lockedLines?.lines.first?.hasSuffix("분 뒤에 다시 넣을 수 있어요.") == true && p4.frozen
               && h4.pinBoxes.count == 6 && c4.phase == .pin(.enter(wrong: false)),
-              "cloud PIN: 5 wrong → locked (429): no box, the pane says how long; after it, the box again"))
+              "cloud PIN: 5 wrong → locked (429): no box, the pane says how long; after it, the box again", "\(pinLocked) \(boxesThen) \(String(describing: lockedLines)) \(h4.pinBoxes.count) \(c4.phase)")
     ps.add("zz000011", Walk())                                                                       // a 2.0 ID: no PIN
     let (p5, c5, h5) = pinPC("p5", "zz000011"); pt = ticks(p5, pt, 3)                                  // its box 취소'd: the button stays
     let acts5 = ps.acts.count; c5.addSteps(3); pt = ticks(p5, pt + 20, 5); let pinWaits = c5.phase == .pin(.set) && ps.acts.count == acts5

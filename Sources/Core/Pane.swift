@@ -23,7 +23,7 @@ struct StatusModel: Equatable {
 }
 /// 메뉴: the LCD's pages as tiles, the one on the LCD picked.
 struct MenuModel: Equatable {
-    struct Row: Equatable { var name, note: String }
+    struct Row: Equatable { var name, note: String; var off = false }       // off: it needs the server, and it isn't there (dimmed)
     var rows: [Row]; var sel: Int
 }
 /// The 도감 entry (the LCD shows its number, name and types): base stats, where to meet it, how it evolves.
