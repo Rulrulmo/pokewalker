@@ -144,7 +144,7 @@ final class CloudInbox: @unchecked Sendable {
         take(&w, now)
         var took: Bool? = nil
         if canTake, let h = head { head = nil; took = apply(h, &w, now) }
-        guard inFlight == nil, now >= retryAt else { return took }
+        guard inFlight == nil, now >= retryAt, minted.isEmpty else { return took }              // a mint's answer not yet taken in: nothing goes (a save would miss its fee or grant)
         if phase != .on, !mints.isEmpty { minted += mints.map { ($0.ask, 0, [:]) }; mints = [] }   // logged out / locked: they won't go
         if let a = asking { asking = nil; send(a) }
         else if phase == .on, !mints.isEmpty { let m = mints.removeFirst(); sendMint(m.ask, m.walk) }   // a Pokémon waits on these: before saves
@@ -160,6 +160,7 @@ final class CloudInbox: @unchecked Sendable {
         let end = Date().addingTimeInterval(timeout); var sent = false
         while true {
             take(&w, Date())
+            if !minted.isEmpty { return }                                                       // the walker takes a mint's answer in first (quitSave), then flushes again
             if inFlight == nil { if sent || head != nil || !save(&w, Date()) { return }; sent = true }
             if Date() >= end { return }
             Thread.sleep(forTimeInterval: 0.02)
@@ -425,7 +426,7 @@ extension Walker {
     }
     /// The server's answers: the radar's find (10 W unless the chain's), a chain going on (its W and item exactly) or not, an egg's, a legend
     /// (paid now), a 껍질몬. No answer: the radar and the shop say "연결되면", the chain ends, the egg waits.
-    func mintTick(_ c: Cloud, _ now: Date) {
+    func mintTick(_ c: Cloud, _ now: Date, quitting: Bool = false) {
         var changed = false
         for (m, s, j) in c.takeMinted() {
             switch m {
@@ -447,7 +448,7 @@ extension Walker {
                 let bonus = j["bonus"] as? Int ?? 0, reward = j["reward"] as? String
                 state.watts = min(9999, state.watts + bonus); state.bestChain = max(state.bestChain ?? 0, n); if let r = reward { _ = state.keep(r) }
                 chainNote = "+\(bonus)W" + (reward.map { " · " + $0 } ?? ""); changed = true
-                askMint(.radar, walk: true, lines: ["연쇄 \(n)!", "풀숲이 흔들린다"], back: .home)
+                if !quitting { askMint(.radar, walk: true, lines: ["연쇄 \(n)!", "풀숲이 흔들린다"], back: .home) }   // (quitting: its W and item kept, no new radar)
             case .hatch:
                 hatchAsked = false
                 guard s == 200, let mon = Cloud.mon(j["mon"]), state.egg != nil else { hatchAt = now.addingTimeInterval(Cloud.period); continue }
@@ -557,7 +558,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         var pin: String? = nil; var trusts: [String: String] = [:]; var fails: [Int] = []                  // its PIN, each PC's trust token, wrong PINs' times
     }
     var rows: [String: Row] = [:], paths: [String] = [], held: [() -> Void] = [], clock = 10_000
-    var down = false, html: Int? = nil, lose = false, hold = false, old: String? = nil, pins = false
+    var down = false, html: Int? = nil, lose = false, hold = false, old: String? = nil, pins = false, saves: [Int] = []   // saves: each save's W, in order
     var mintRng = Seeded(s: 77), nextUID = 1_000_001, pending: Int? = nil, chainN = 0, chainFree = false, chainCourse = 0, chainGoes = true   // 10 §4: the server's rolls
     func release() { let h = held; held = []; h.forEach { $0() } }
     func admin(_ key: String, _ walk: String) { rows[key]?.rev += 1; rows[key]?.walk = walk; rows[key]?.writer = "admin" }   // `pokeserver rollback`
@@ -648,6 +649,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             if pins, r.pin == nil { return (403, ["error": "pin_needed"]) }
             guard base >= r.rev || r.writer == mine else { return (409, ["error": "conflict", "reason": "stale", "rev": r.rev, "walk": (r.walk as Any?) ?? NSNull()]) }   // 13
             r.rev = max(base, r.rev) + 1; r.walk = j["walk"] as? String; r.writer = mine; r.at = clock; rows[id.key] = r           // 10-12
+            saves.append(r.walk.flatMap { try? JSONDecoder().decode(Walk.self, from: Data($0.utf8)) }?.watts ?? -1)
             return (200, ["rev": r.rev])
         default: return (200, ["stored": true])                                                                                 // v1/legacy
         }
@@ -952,5 +954,10 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     c.append((noLocal && shed?.dex == 292 && (shed?.uid ?? 0) > 1_000_000 && bw.state.box.last?.dex == 291 && ms.paths.contains("v1/evolve"),
               "cloud mint: 토중몬 → 아이스크: the 껍질몬 is the server's (none rolled here); offline, none"))
     ms.down = false
+    bw.screen = .home; bw.state.watts = 40; bt = ticks(bw, bt + 600, 4); ms.saves = []                 // (settled, offline's backoff over)
+    bw.state.bag.append("상처약"); bc.due = .distantPast; bw.screen = .menu(menuAt("포켓 레이더")); bw.press(1)   // a save due as the radar's answer comes in
+    bt = ticks(bw, bt, 2)
+    c.append((bw.state.watts == 30 && !ms.saves.isEmpty && !ms.saves.contains(40) && ms.saves.last == 30,
+              "cloud mint: no save goes between a mint's answer and the walker taking it in (the fee is in every save after it)"))
     return c
 }

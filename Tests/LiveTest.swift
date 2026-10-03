@@ -26,6 +26,44 @@ import Foundation
     guard c.phase == .on else { print("FAIL \(failed) — not logged in (phase \(c.phase))"); return false }
     if h.asked.contains("새 트레이너") { check(w.state.companion.uid == 1_000_000, "live: the new trainer's companion is the server's starter (uid 1,000,000)") }
 
+    /// Home, with what the walker plays there done: an evolution's or a hatch's show waited out, a message closed, a new move not learned.
+    func toHome(_ secs: Double = 40) {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end {
+            switch w.screen {
+            case .home where !w.growthDue(Date()) && w.mintWaiting == nil && w.state.learning?.isEmpty != false: return
+            case .learn: w.screen = .learn(sel: 4); w.press(1)
+            case .say: if w.mintWaiting == nil { w.press(1) }
+            case .home, .evolve, .hatch, .beats: break
+            default: w.screen = .home
+            }
+            w.tick(Date()); Thread.sleep(forTimeInterval: 0.1)
+        }
+    }
+    // what an admin gave the trainer (pokeserver set), first — the legend's 9,999 W would go on radars otherwise. At login: an egg ready,
+    // a 토중몬 issued (the walker evolves one past Lv.20 at home by itself), the W for a legend.
+    let atLogin = w.state, shedBefore = Set(atLogin.box.filter { $0.dex == 292 }.compactMap(\.uid))
+    let nincadaAtLogin = (atLogin.caught + atLogin.box).first { $0.dex == 290 && ($0.uid ?? 0) > 0 }
+    toHome()
+    if atLogin.hatchDue, let d = atLogin.egg?.dex {
+        run(30) { w.state.egg == nil }; toHome()
+        let m = w.state.box.last { m in m.dex == d && !atLogin.box.contains { $0.uid == m.uid } }
+        check(w.state.egg == nil && (m?.uid ?? 0) > 1_000_000, "live hatch: the server's \(monNames[d]) Lv.1 uid \(m?.uid ?? 0)")
+    } else { print("skip live hatch: " + (atLogin.egg.map { "its egg needs \($0.left) more steps" } ?? "no egg") + " (pokeserver set …'$.egg' {…, left: 0})") }
+    if let n = nincadaAtLogin, let e = evolutions.first(where: { $0.from == 290 && $0.to == 291 }) {
+        if let r = (w.state.caught.indices.map { -2 - $0 } + Array(w.state.box.indices)).first(where: { w.state.mon($0)?.uid == n.uid && w.state.mon($0)?.dex == 290 }) {
+            w.screen = .home; w.startEvolving(e, Date(), ref: r)                                 // not evolved yet (under Lv.20): now, as a 진화의 돌 would
+        }
+        run(20, until: settled); toHome()
+        let evolved = (w.state.caught + w.state.box).first { $0.uid == n.uid }, shed = w.state.box.first { $0.dex == 292 && ($0.uid ?? 0) > 1_000_000 && !shedBefore.contains($0.uid ?? 0) }
+        check(evolved?.dex == 291 && shed != nil, "live evolve: 토중몬 uid \(n.uid ?? 0) → 아이스크; the server's 껍질몬 uid \(shed?.uid ?? 0) Lv.\(shed?.level ?? 0)")
+    } else { print("skip live evolve: no 토중몬 issued") }
+    if w.state.watts >= 9999, let k = w.wares(false).firstIndex(where: { if case .legend = $0.kind { return true }; return false }) {
+        w.screen = .home; w.buyWare(w.wares(false)[k], 1, bp: false, sel: k, Date()); run(20, until: settled); toHome()
+        let m = w.state.box.last { $0.dex == 250 }
+        check((m?.uid ?? 0) > 1_000_000 && w.state.watts < 9999 && w.state.legendBought(250), "live buy: the server's 칠색조 uid \(m?.uid ?? 0); 9,999 W paid")
+    } else { print("skip live buy: \(w.state.watts) W (9,999 needed: pokeserver set …'$.watts' 9999)") }
+    toHome()
     let need = 45                                                                                // W for the four radars, walked: ~900 steps at a person's rate
     if w.state.watts < need {
         let t0 = Date(); var k: UInt32 = 0
@@ -35,7 +73,7 @@ import Foundation
 
     /// From home: a radar opened (the server's find), then its live bush pressed (hit) or the next one; the fight, if it began.
     func radar(hit: Bool, opened: Bool = false) -> Battle? {
-        if !opened { w.screen = .menu(menuAt("포켓 레이더")); w.press(1) }
+        if !opened { toHome(); w.screen = .menu(menuAt("포켓 레이더")); w.press(1) }
         guard run(20, until: radarUp), case .radar(let b, _, let since, let chain) = w.screen else { return nil }
         w.screen = .radar(bush: b, cursor: hit ? b : (b + 1) % 4, since: since, chain: chain)
         while Date().timeIntervalSince(since) < 1.6 { Thread.sleep(forTimeInterval: 0.05) }   // inside the bush's window (no tick meanwhile: its timeout)
@@ -69,24 +107,6 @@ import Foundation
     w.screen = .home; w0 = w.state.watts
     let missed = radar(hit: false); run(10, until: settled)
     check(missed == nil && w.radarMon == nil && w.state.watts == w0 - 10, "live radar: a wrong bush → missed, reported; its 10 W spent")
-
-    w.screen = .home
-    if w.state.hatchDue {                                                                        // an egg walked to the end (or an admin's, ready: pokeserver set) — never forced here
-        let before = w.state.box.count
-        run(20) { w.state.egg == nil }
-        let m = w.state.box.last
-        check(w.state.egg == nil && w.state.box.count == before + 1 && (m?.uid ?? 0) > 1_000_000, "live hatch: the server's \(m.map { monNames[$0.dex] } ?? "?") Lv.1 uid \(m?.uid ?? 0)")
-    } else { print("skip live hatch: " + (w.state.egg.map { "its egg needs \($0.left) more steps" } ?? "no egg") + " (pokeserver set …'$.egg' {…, left: 0})") }
-    if w.state.watts >= 9999, let k = w.wares(false).firstIndex(where: { if case .legend = $0.kind { return true }; return false }) {
-        w.screen = .home; w.buyWare(w.wares(false)[k], 1, bp: false, sel: k, Date()); run(20, until: settled)
-        let m = w.state.box.last
-        check(m?.dex == 250 && (m?.uid ?? 0) > 1_000_000 && w.state.watts < 9999 && w.state.legendBought(250), "live buy: the server's 칠색조 uid \(m?.uid ?? 0); 9,999 W paid")
-    } else { print("skip live buy: \(w.state.watts) W (9,999 needed: pokeserver set …'$.watts' 9999)") }
-    if let i = w.state.box.lastIndex(where: { $0.dex == 290 && ($0.uid ?? 0) > 0 }), let e = evolutions.first(where: { $0.from == 290 && $0.to == 291 }) {
-        let before = w.state.box.count
-        w.screen = .home; w.startEvolving(e, Date(), ref: i); run(20, until: settled)
-        check(w.state.box.count == before + 1 && w.state.box.last?.dex == 292, "live evolve: 토중몬 → 아이스크, the server's 껍질몬 uid \(w.state.box.last?.uid ?? 0)")
-    } else { print("skip live evolve: no 토중몬 issued") }
 
     w.screen = .home; c.soon(Date()); run(10) { c.inFlight == nil && c.due == nil }; c.flush(&w.state)
     print("box: " + w.state.box.map { "\(monNames[$0.dex]) #\($0.uid ?? 0)" }.joined(separator: ", ") + " · \(w.state.watts) W · rev \(w.state.cloudRev ?? 0)")

@@ -71,7 +71,11 @@ extension Walker {
     func quitSave() {
         if let h = host, !frozen { let n = gate.pass(state.take(counter: h.counter(), boot: h.boot(), at: Date()), Date().timeIntervalSinceReferenceDate); state.walk(state.roomToday(n + heldSteps), at: Date()); heldSteps = 0 }
         save()
-        if let c = cloud { c.flush(&state); save() }                                              // up before it goes (2 s at most); its rev / hash on disk
+        if let c = cloud {                                                                        // up before it goes (2 s at most), a mint's answer taken in first; its rev / hash on disk
+            let end = Date().addingTimeInterval(2)
+            repeat { mintTick(c, Date(), quitting: true); c.flush(&state, timeout: max(0.05, end.timeIntervalSinceNow)) } while !c.minted.isEmpty && Date() < end
+            save()
+        }
         if persist, !shuttingDown, let a = Update.appURL { _ = Update.install(dir: Update.dir, app: a, relaunch: false) }   // a staged update goes in once the app is gone, not started again (the user quit); not mid-shutdown: half a swap
     }
     /// A fight brought something to play before what comes next: one of ours that levelled can evolve, or a move waits to be learned.
