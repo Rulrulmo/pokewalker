@@ -1,0 +1,9 @@
+# /etc/systemd/system/pokewalker-backup.service — a checked, gzipped copy of the database (run by pokewalker-backup.timer)
+[Unit]
+Description=PokeWalker database backup
+
+[Service]
+Type=oneshot
+User=pokewalker
+UMask=0027
+ExecStart=/usr/local/bin/pokewalker-backup

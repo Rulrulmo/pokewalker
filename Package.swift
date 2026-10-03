@@ -6,6 +6,6 @@ import PackageDescription
 let package = Package(
     name: "PokeWalker",
     platforms: [.macOS(.v13)],
-    targets: [.executableTarget(name: "PokeWalker", path: ".", exclude: ["docs", "tools", "Resources", "README.md", "Info.plist", "build.sh"], sources: ["Sources", "Tests"],   // Resources: copied next to the exe
+    targets: [.executableTarget(name: "PokeWalker", path: ".", exclude: ["docs", "tools", "Resources", "README.md", "Info.plist", "build.sh", "server"], sources: ["Sources", "Tests"],   // Resources: copied next to the exe
                                 linkerSettings: [.unsafeFlags(["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup"], .when(platforms: [.windows]))])]   // a window app: no console of its own
 )

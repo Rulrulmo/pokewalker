@@ -1,0 +1,8 @@
+# /etc/cloudflared/pokewalker.yml — the save server's own tunnel, run by cloudflared-pokewalker.service (README: 터널은 따로 둔다).
+# On this PC: <UUID> = the tunnel "pokewalker", <host> = pokewalker.rulrulmo.work. Check with: cloudflared tunnel --config <this file> ingress validate
+tunnel: <UUID>
+credentials-file: /etc/cloudflared/<UUID>.json
+ingress:
+  - hostname: <host>
+    service: http://127.0.0.1:8787
+  - service: http_status:404

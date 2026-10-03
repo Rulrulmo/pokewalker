@@ -1,0 +1,10 @@
+# /etc/systemd/system/pokewalker-backup.timer — daily at 04:30 (the system time zone is Asia/Seoul)
+[Unit]
+Description=PokeWalker database backup, daily
+
+[Timer]
+OnCalendar=*-*-* 04:30
+Persistent=true
+
+[Install]
+WantedBy=timers.target

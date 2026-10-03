@@ -4,3 +4,4 @@ tools/.cache/
 dist/
 .claude/
 .build/
+server/Sources/PokeCore/Game/

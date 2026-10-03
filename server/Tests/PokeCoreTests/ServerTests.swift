@@ -1,0 +1,284 @@
+import Foundation
+import Testing
+@testable import PokeCore
+
+// 08b §8: the trainer ID, versions, the save rules (판정 7–13) row by row, busy, bytes kept as sent, history and pruning, legacy, opening.
+// Every test has its own database file; `now` is passed in, so the clock is the test's. Awaited values are taken first, then checked.
+
+func tempDB() throws -> (SaveDB, String) {
+    let path = FileManager.default.temporaryDirectory.appendingPathComponent("pokeserver-test-\(UUID().uuidString).db").path
+    return (try SaveDB(path: path, create: true), path)
+}
+func fields(_ r: Reply) -> [String: Any] { (try? JSONSerialization.jsonObject(with: r.body)) as? [String: Any] ?? [:] }
+func string(_ r: Reply, _ k: String) -> String? { fields(r)[k] as? String }
+func number(_ r: Reply, _ k: String) -> Int? { (fields(r)[k] as? NSNumber)?.intValue }
+func flag(_ r: Reply, _ k: String) -> Bool? { fields(r)[k] as? Bool }
+func sample() -> String { try! sampleWalk() }
+let nfdMin = String(String.UnicodeScalarView([0x1106, 0x1175, 0x11AB, 0x1109, 0x116E].map { Unicode.Scalar($0)! }))   // 민수, as the Mac may hand it over
+
+extension SaveDB {
+    func count(_ sql: String, _ args: [String: SQLValue] = [:]) throws -> Int { try db.rows(sql, args).first?.int("n") ?? -1 }
+    func copies(_ key: String, _ reason: String) throws -> Int {
+        try count("SELECT count(*) AS n FROM history WHERE key = :k AND reason = :r", ["k": .text(key), "r": .text(reason)])
+    }
+}
+
+/// create → the session
+func make(_ db: SaveDB, _ id: String, device: String = "pc-a", now: Int = 1_000) async throws -> String {
+    let r = await db.create(CreateReq(id: id, device: device, device_name: device.uppercased()), now: now)
+    #expect(r.status == 200, "create \(id)")
+    return try #require(string(r, "session"))
+}
+/// The route's order: precheck, then the database.
+func save(_ db: SaveDB, _ id: String, _ session: String, base: Int, walk: String? = nil, app: String = "2.0", now: Int) async -> Reply {
+    let r = SaveReq(id: id, session: session, app: app, base: base, walk: walk ?? sample())
+    if let early = SaveDB.precheck(r) { return early }
+    return await db.save(r, now: now)
+}
+func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", force: Bool = false, now: Int) async -> Reply {
+    await db.login(LoginReq(id: id, device: device, device_name: device.uppercased(), app: app, force: force), now: now)
+}
+
+@Test func trainerIDs() {
+    #expect(trainerID("Min")?.key == trainerID("min")?.key)
+    #expect(trainerID("Min")?.name == "Min")
+    #expect(trainerID(nfdMin)?.key.unicodeScalars.map(\.value) == [0xBBFC, 0xC218])                  // NFC: 2 letters, not 5
+    #expect(trainerID("민") == nil)                                                                 // one letter: under 2
+    #expect(trainerID(" 민수 ")?.name == "민수")
+    for bad in ["a", "abcdefghijklm", "민 수", "ㅋㅋ", "min!", "ＡＢ", "", "  "] { #expect(trainerID(bad) == nil, "\(bad)") }
+    #expect(trainerID("abcdefghijkl") != nil)                                                     // 12 is fine
+    #expect(trainerID("트레이너_1") != nil)
+}
+
+@Test func versions() {
+    #expect(verCmp("2.10", "2.9") == 1)
+    #expect(verCmp("2.0", "2.0.0") == 0)
+    #expect(verCmp("1.9", "1.13") == -1)
+    #expect(verCmp("2.x", "2.0") == nil)
+    for bad in ["", "2.", ".2", "1.2.3.4.5", "2.0-beta", "v2"] { #expect(versionParts(bad) == nil, "\(bad)") }
+    #expect(versionParts("1.2.3.4") == [1, 2, 3, 4])
+}
+
+@Test func sampleIsANewSave() throws {
+    let w = try JSONDecoder().decode(Walk.self, from: Data(sample().utf8))
+    #expect(w.version == 1 && w.audited == 2 && w.ballsRefunded == true && w.counter == 0 && w.counterKind == nil)
+    #expect(walkDecodes(sample()))
+    #expect(!walkDecodes("{}"))
+}
+
+@Test func saveRules() async throws {
+    let (db, _) = try tempDB()
+    let a = try await make(db, "Ash")
+    // 10, then 12: the same request again (its reply was lost)
+    var r = await save(db, "ash", a, base: 0, now: 1_010)
+    #expect(r.status == 200 && number(r, "rev") == 1)
+    r = await save(db, "ash", a, base: 0, now: 1_020)
+    #expect(r.status == 200 && number(r, "rev") == 2)
+    // 9: B takes it (force); A's next save is replaced and kept as a conflict
+    let b = try #require(string(await login(db, "ash", device: "pc-b", force: true, now: 1_030), "session"))
+    r = await save(db, "ash", a, base: 2, now: 1_040)
+    #expect(r.status == 409 && string(r, "error") == "conflict" && string(r, "reason") == "replaced")
+    var conflicts = try await db.copies("ash", "conflict")
+    #expect(conflicts == 1)
+    r = await save(db, "ash", b, base: 2, now: 1_050)
+    #expect(r.status == 200 && number(r, "rev") == 3)
+    // 13: an admin's rollback → B's older base is stale (with the server's rev and save), B then saves on it
+    _ = try await db.rollback("ash", rev: 1, reason: "hourly", now: 1_060)
+    let t = try #require(try await db.trainer("ash"))
+    #expect(t.rev == 4 && t.writer == "admin")
+    r = await save(db, "ash", b, base: 3, now: 1_070)
+    #expect(r.status == 409 && string(r, "reason") == "stale" && number(r, "rev") == 4 && string(r, "walk") != nil)
+    conflicts = try await db.copies("ash", "conflict")
+    #expect(conflicts == 2)
+    r = await save(db, "ash", b, base: 4, now: 1_080)
+    #expect(r.status == 200 && number(r, "rev") == 5)
+    // 11: base ahead of the server (it lost saves) is taken whoever wrote last
+    _ = try await db.rollback("ash", rev: 1, reason: "hourly", now: 1_090)
+    r = await save(db, "ash", b, base: 9, now: 1_100)
+    #expect(r.status == 200 && number(r, "rev") == 10)
+    let n = try await make(db, "neo")                                                              // rev 0, no save yet
+    r = await save(db, "neo", n, base: 3, now: 1_110)
+    #expect(r.status == 200 && number(r, "rev") == 4)
+    // 8: an older app than the highest that saved here
+    let v = try await make(db, "ver")
+    r = await save(db, "ver", v, base: 0, app: "2.1", now: 1_120)
+    #expect(r.status == 200 && number(r, "rev") == 1)
+    r = await save(db, "ver", v, base: 1, app: "2.0", now: 1_130)
+    #expect(r.status == 426 && string(r, "error") == "old_app" && string(r, "need") == "2.1")
+    r = await login(db, "ver", device: "pc-a", app: "2.0", now: 1_140)
+    #expect(r.status == 426)
+    r = await save(db, "ver", v, base: 1, app: "2.10", now: 1_150)                                  // 2.10 > 2.1: taken, and the bar moves up
+    let ver = try await db.trainer("ver")
+    #expect(r.status == 200 && ver?.app == "2.10")
+    // 7, and 2–6 before the database
+    r = await save(db, "nobody", "x", base: 0, now: 1_160)
+    #expect(r.status == 404 && string(r, "error") == "no_trainer")
+    r = await save(db, "ash", b, base: 10, walk: "{}", now: 1_170)
+    #expect(string(r, "error") == "bad_walk")
+    r = await save(db, "ash", b, base: 10, walk: sample().replacingOccurrences(of: "\"version\":1", with: "\"version\":2"), now: 1_170)
+    #expect(string(r, "error") == "bad_walk")
+    r = await save(db, "ash", b, base: 10, walk: String(repeating: "x", count: walkLimit + 1), now: 1_170)
+    #expect(r.status == 413 && string(r, "error") == "too_big")
+    r = await save(db, "a!", b, base: 10, now: 1_170)
+    #expect(string(r, "error") == "bad_id")
+    r = await save(db, "ash", b, base: -1, now: 1_170)
+    #expect(string(r, "error") == "bad_request")
+    r = await save(db, "ash", b, base: 10, app: "2.x", now: 1_170)
+    #expect(string(r, "error") == "bad_app")
+    let still = try await db.trainer("ash")
+    #expect(still?.rev == 10)                                                                      // none of those wrote
+    // conflicts: the newest 10 per trainer
+    for i in 0..<12 { _ = await save(db, "ash", a, base: 100 + i, now: 1_200 + i) }
+    conflicts = try await db.copies("ash", "conflict")
+    let oldest = try await db.count("SELECT min(rev) AS n FROM history WHERE key = 'ash' AND reason = 'conflict'")
+    #expect(conflicts == 10 && oldest == 102)
+}
+
+@Test func busy() async throws {
+    let (db, _) = try tempDB()
+    let a = try await make(db, "busy", device: "pc-a", now: 9_000)
+    var r = await save(db, "busy", a, base: 0, now: 10_000)
+    #expect(r.status == 200)
+    r = await login(db, "busy", device: "pc-b", now: 10_299)                                       // A saved 299 s ago
+    #expect(flag(r, "busy") == true && string(r, "last_device") == "PC-A" && number(r, "updated_at") == 10_000 && string(r, "session") == nil)
+    let kept = try await db.trainer("busy")
+    #expect(kept?.session == a)
+    r = await login(db, "busy", device: "pc-b", now: 10_301)                                       // 301 s: it moves
+    let b = try #require(string(r, "session"))
+    #expect(flag(r, "busy") == nil && number(r, "rev") == 1 && string(r, "last_device") == "PC-A")
+    r = await save(db, "busy", b, base: 1, now: 10_400)
+    #expect(r.status == 200)
+    r = await login(db, "busy", device: "pc-c", force: true, now: 10_401)                          // force: at once
+    #expect(string(r, "session") != nil && string(r, "last_device") == "PC-B")
+    r = await login(db, "busy", device: "pc-c", now: 10_402)                                       // the PC that has it: never busy
+    #expect(string(r, "session") != nil)
+    r = await login(db, "nobody", device: "pc-a", now: 10_403)
+    #expect(r.status == 200 && flag(r, "exists") == false)
+    r = await login(db, "busy", device: "", now: 10_404)
+    #expect(string(r, "error") == "bad_request")
+    r = await db.create(CreateReq(id: "BUSY", device: "pc-z", device_name: "Z"), now: 10_405)
+    #expect(r.status == 409 && string(r, "error") == "exists")
+}
+
+@Test func bytesKept() async throws {
+    let (db, _) = try tempDB()
+    let s = try await make(db, "bytes")
+    var walk = sample().replacingOccurrences(of: "\"day\":\"\"", with: "\"day\":\"\(nfdMin)  x\"")
+    walk = "{ \"version\" : 1 ,  " + walk.dropFirst().replacingOccurrences(of: "\"version\":1,", with: "")    // keys out of order, spaces
+    #expect(walkDecodes(walk))
+    let saved = await save(db, "bytes", s, base: 0, walk: walk, now: 2_000)
+    #expect(saved.status == 200)
+    struct Back: Decodable { let walk: String? }
+    let reply = await login(db, "bytes", device: "pc-a", now: 2_010)
+    let back = try #require(try JSONDecoder().decode(Back.self, from: reply.body).walk)
+    let stored = try #require(try await db.trainer("bytes")?.walk)
+    #expect(Array(back.utf8) == Array(walk.utf8))                                                  // String == would call NFD and NFC equal
+    #expect(Array(stored.utf8) == Array(walk.utf8))
+    _ = try await make(db, "fresh")
+    let r = await login(db, "fresh", device: "pc-a", now: 2_020)
+    #expect(fields(r)["walk"] is NSNull && number(r, "rev") == 0)                                  // "walk": null before the first save
+}
+
+@Test func historyAndPrune() async throws {
+    let (db, _) = try tempDB()
+    let s = try await make(db, "hist")
+    let hour = 1_800_000_000 - 1_800_000_000 % 3600
+    _ = await save(db, "hist", s, base: 0, now: hour + 100)
+    _ = await save(db, "hist", s, base: 1, now: hour + 200)
+    var hourly = try await db.copies("hist", "hourly")
+    #expect(hourly == 1)
+    _ = await save(db, "hist", s, base: 2, now: hour + 3600)
+    hourly = try await db.copies("hist", "hourly")
+    #expect(hourly == 2)
+    // a KST day turns at 15:00 UTC
+    let midnight = 1_800_000_000 - (1_800_000_000 + 32400) % 86400 + 86400
+    let d = try await make(db, "daily")
+    _ = await save(db, "daily", d, base: 0, now: midnight - 20)
+    _ = await save(db, "daily", d, base: 1, now: midnight - 10)
+    var daily = try await db.copies("daily", "daily")
+    #expect(daily == 1)
+    _ = await save(db, "daily", d, base: 2, now: midnight + 10)
+    daily = try await db.copies("daily", "daily")
+    #expect(daily == 2)
+    // prune: hourly after 48 h, conflicts after 30 days, daily after 90; admin copies stay
+    _ = await save(db, "hist", "not-the-session", base: 0, now: hour + 3700)                       // a conflict
+    _ = try await db.set("hist", path: "$.watts", value: "7", now: hour + 3800)                    // an admin copy
+    try await db.prune(now: hour + 3600 + 49 * 3600)
+    var counts = try await (db.copies("hist", "hourly"), db.copies("hist", "daily"), db.copies("hist", "conflict"), db.copies("hist", "admin"))
+    #expect(counts == (0, 1, 1, 1))
+    try await db.prune(now: hour + 3700 + 31 * 86400)
+    counts = try await (db.copies("hist", "hourly"), db.copies("hist", "daily"), db.copies("hist", "conflict"), db.copies("hist", "admin"))
+    #expect(counts == (0, 1, 0, 1))
+    try await db.prune(now: hour + 100 * 86400)
+    counts = try await (db.copies("hist", "hourly"), db.copies("hist", "daily"), db.copies("hist", "conflict"), db.copies("hist", "admin"))
+    #expect(counts == (0, 0, 0, 1))
+}
+
+@Test func legacySaves() async throws {
+    let (db, _) = try tempDB()
+    _ = try await make(db, "old")
+    var r = await db.legacy(LegacyReq(id: "old", device: "mac", walk: "{\"total\":5}"), now: 3_000)
+    #expect(flag(r, "stored") == true)
+    r = await db.legacy(LegacyReq(id: "old", device: "mac", walk: "{\"total\":9}"), now: 3_010)
+    #expect(flag(r, "stored") == false)
+    let first = try await db.count("SELECT json_extract(walk, '$.total') AS n FROM legacy WHERE key = 'old' AND device = 'mac'")
+    #expect(first == 5)                                                                            // never overwritten
+    for (i, pc) in ["win", "pc3", "pc4"].enumerated() {
+        r = await db.legacy(LegacyReq(id: "old", device: pc, walk: "{}"), now: 3_020 + i)
+        #expect(flag(r, "stored") == true)
+    }
+    r = await db.legacy(LegacyReq(id: "old", device: "pc5", walk: "{}"), now: 3_030)
+    let rows = try await db.count("SELECT count(*) AS n FROM legacy WHERE key = 'old'")
+    #expect(flag(r, "stored") == false && rows == 4)
+    r = await db.legacy(LegacyReq(id: "nobody", device: "mac", walk: "{}"), now: 3_040)
+    #expect(r.status == 404)
+    r = await db.legacy(LegacyReq(id: "old", device: "mac", walk: "[1]"), now: 3_050)
+    #expect(string(r, "error") == "bad_walk")
+}
+
+@Test func opening() throws {
+    let path = FileManager.default.temporaryDirectory.appendingPathComponent("pokeserver-missing-\(UUID().uuidString).db").path
+    #expect(throws: (any Error).self) { try SaveDB(path: path) }
+    #expect(!FileManager.default.fileExists(atPath: path))
+    _ = try SaveDB(path: path, create: true)
+    _ = try SaveDB(path: path, create: true)                                                       // init again: there already, tables checked
+    _ = try SaveDB(path: path)
+}
+
+@Test func adminTools() async throws {
+    let (db, path) = try tempDB()
+    let s = try await make(db, "Admin")
+    _ = await save(db, "admin", s, base: 0, now: 4_000)
+    _ = try await db.set("admin", path: "$.watts", value: "123", now: 4_010)
+    let watts = try await db.count("SELECT json_extract(walk, '$.watts') AS n FROM trainers WHERE key = 'admin'")
+    var t = try await db.trainer("admin")
+    var copies = try await db.copies("admin", "admin")
+    #expect(watts == 123 && t?.rev == 2 && t?.writer == "admin" && copies == 1)
+    await #expect(throws: (any Error).self) { try await db.set("admin", path: "$.version", value: "2", now: 4_020) }    // not a save the app loads
+    t = try await db.trainer("admin")
+    #expect(t?.rev == 2)                                                                           // nothing changed
+    var r = await save(db, "admin", s, base: 1, now: 4_030)
+    #expect(string(r, "reason") == "stale")                                                        // the PC follows the admin
+    // rename: a new key ends the session; the old PC gets no_trainer
+    _ = try await db.rename("admin", to: "Boss")
+    let gone = try await db.trainer("admin"), boss = try await db.trainer("boss")
+    copies = try await db.copies("boss", "admin")
+    #expect(gone == nil && boss?.session == nil && boss?.name == "Boss" && copies == 1)
+    r = await save(db, "admin", s, base: 2, now: 4_040)
+    #expect(r.status == 404)
+    _ = try await db.rename("boss", to: "BOSS")                                                    // case only: the name
+    t = try await db.trainer("boss")
+    #expect(t?.name == "BOSS")
+    // delete: the save kept next to the database, legacy kept
+    _ = await db.legacy(LegacyReq(id: "boss", device: "mac", walk: "{}"), now: 4_050)
+    _ = try await db.delete("boss", now: 4_060)
+    t = try await db.trainer("boss")
+    copies = try await db.copies("boss", "admin")
+    let legacy = try await db.count("SELECT count(*) AS n FROM legacy WHERE key = 'boss'")
+    #expect(t == nil && copies == 0 && legacy == 1)
+    let kept = URL(fileURLWithPath: path).deletingLastPathComponent().appendingPathComponent("deleted-boss-4060.json")
+    #expect(walkDecodes(try String(contentsOf: kept, encoding: .utf8)))
+    try? FileManager.default.removeItem(at: kept)
+    let list = try await db.list()
+    #expect(list.hasSuffix("0 trainer(s)"))
+}

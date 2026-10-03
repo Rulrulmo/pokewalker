@@ -1,0 +1,23 @@
+# /etc/systemd/system/pokewalker.service — the save server (docs/plans/08b-server-home.md §6)
+[Unit]
+Description=PokeWalker save server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pokewalker
+EnvironmentFile=/etc/pokewalker/server.env
+Environment=TZ=Asia/Seoul
+ExecStart=/usr/local/bin/pokeserver serve
+Restart=always
+RestartSec=2
+StateDirectory=pokewalker
+StateDirectoryMode=0750
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

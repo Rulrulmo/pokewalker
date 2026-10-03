@@ -1,0 +1,16 @@
+# /etc/systemd/system/cloudflared-pokewalker.service — the save server's own tunnel (pokewalker), next to any other cloudflared.service.
+# Its config is /etc/cloudflared/pokewalker.yml (cloudflared.yml.example); restarting it leaves the machine's other tunnels alone.
+[Unit]
+Description=cloudflared tunnel for the PokeWalker save server
+After=network-online.target pokewalker.service
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/cloudflared --no-autoupdate --config /etc/cloudflared/pokewalker.yml tunnel run
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
