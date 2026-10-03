@@ -59,12 +59,13 @@ import Foundation
         return run(20) { if case .beats = w.screen { return true }; return idle() && !w.inBattle }
             && w.inBattle
     }
-    /// The fight's menu, then the beats played out.
+    /// The fight's menu, then the beats played out; the server's end, if it came.
+    var lastEnd: String? = nil
     func pick(_ what: String) {
         run(30) { if case .battle = w.screen { return true }; return !w.inBattle && idle() }
         guard case .battle(let b, _) = w.screen, let i = w.battleMenu(b).firstIndex(of: what) else { return }
         w.screen = .battle(b, sel: i); w.press(1)
-        run(40) { if case .beats = w.screen { return false }; return idle() }
+        run(40) { if let e = w.fightEnd { lastEnd = e.result }; if case .beats = w.screen { return false }; return idle() }
     }
 
     var w0 = w.state.watts
@@ -74,12 +75,21 @@ import Foundation
         var balls = 0
         while w.inBattle, balls < 12 { pick("볼"); balls += 1 }
         let caught = w.state.box.contains { $0.uid == uid }
-        check(caught && !w.inBattle, "live fight: \(balls) ball\(balls == 1 ? "" : "s") (\(w.usedItem)) — caught, uid \(uid) in the box")
-        toHome(); run(20, until: idle)
-        if case .radar(let b, _, _, let ch) = w.screen {                                          // the chain held: its bush came after home's news (free)
-            check(ch == 1 && w.state.watts == w0 - 10 + 2, "live chain: held — its bush asked for once home was done, free; +2 W")
+        check(!w.inBattle && (caught ? lastEnd == "caught" : lastEnd != nil), "live fight: \(balls) ball\(balls == 1 ? "" : "s") (\(w.usedItem)) — " + (caught ? "caught, uid \(uid) in the box" : "it ended \(lastEnd ?? "?") (the dice), as the server said"))
+        var chainUp = false                                                                       // home's news, then the chain's bush (if it held) — not pressed through
+        run(40) {
+            switch w.screen {
+            case .radar: chainUp = true; return true
+            case .say: if w.waiting == nil { w.press(1) }; return false
+            case .home: return w.news.isEmpty && idle() && !w.chainNext
+            case .evolve, .hatch, .beats: return false
+            default: w.screen = .home; return false
+            }
+        }
+        if chainUp, case .radar(let b, _, _, let ch) = w.screen {                                  // the chain held: its bush came after home's news (free)
+            check(ch == 1 && w.state.watts == w0 - 10 + 2, "live chain: held — its bush asked for once home was done, free; +2 W (\(w.state.watts) W)")
             w.screen = .radar(bush: b, cursor: (b + 1) % 4, since: .distantPast, chain: ch); w.press(1); run(10, until: idle)
-            check(server(play: c) == nil, "live chain: a wrong bush gives it up")
+            check(!w.inBattle && idle() && { if case .radar = w.screen { return false }; return true }(), "live chain: a wrong bush gives it up")
         } else { check(true, "live chain: the server ended it (no bonus)") }
     } else { check(false, "live radar: no fight began") }
     toHome(); w0 = w.state.watts
@@ -105,5 +115,3 @@ import Foundation
     print(failed == 0 ? "PASS live" : "FAIL \(failed)")
     return failed == 0
 }
-/// (The live test can't see the server's play table: a radar given up leaves the walker idle at a message, nothing shown.)
-@MainActor private func server(play c: Cloud) -> Int? { c.out != nil || c.queued != nil ? 1 : nil }
