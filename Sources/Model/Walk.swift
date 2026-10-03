@@ -24,6 +24,8 @@ struct Walk: Codable, Equatable {
     var counter: UInt32 = 0, boot: Double = 0           // system input-event counter at the last poll, and the boot it belongs to
     var syncedAt: Double? = nil                          // when that poll was (seconds since 2001): the gap while the app was quit
     var counterKind: Int? = nil                          // what the counter counts: 2 = keys + 5 x clicks (1.9); another (older saves) re-baselines once
+    var cloudRev: Int? = nil, cloudTotal: Int? = nil     // this PC's: the server's rev of our last save it took, and that save's total (steps past it aren't up yet)
+    var sentHash: String? = nil                          // this PC's: hex(sha256) of the last walk text sent; a login handing it back = only the reply was lost
     var seen: [Int]? = nil, owned: [Int]? = nil         // Pokédex, sorted; Optional so older saves decode (see `dex()`)
     var shinyOwned: [Int]? = nil                        // species ever owned as 이로치 (the dex shows those colours too)
     var weather: Weather? = nil, weatherAt: Int? = nil  // nil = sunny; total steps at the last roll
@@ -266,6 +268,19 @@ struct Walk: Codable, Equatable {
     }
 
     mutating func spend(_ w: Int) -> Bool { guard watts >= w else { return false }; watts -= w; return true }
+
+    // MARK: the server's copy (docs/plans/08 §4, 08b §10)
+    /// What goes up: this PC's fields cleared. Another PC's counter baseline would drop the steps typed here while the app was quit.
+    var shared: Walk { var w = self; (w.counter, w.boot, w.syncedAt, w.counterKind, w.cloudRev, w.cloudTotal, w.sentHash) = (0, 0, nil, nil, nil, nil, nil); return w }
+    /// Takes the server's save (a login, a stale reply) and walks this PC's steps it doesn't have yet on top, so EXP, W and the egg rise as usual.
+    /// Rollover first: today's cap is the new day's, not yesterday's. Returns true when the companion levelled up.
+    @discardableResult mutating func adopt(_ head: Walk, rev: Int, at now: Date) -> Bool {
+        let pending = max(0, total - (cloudTotal ?? total))
+        var w = head; (w.counter, w.boot, w.syncedAt, w.counterKind, w.sentHash) = (counter, boot, syncedAt, counterKind, sentHash)
+        w.cloudRev = rev; w.cloudTotal = head.total
+        w.rollover(now); let up = w.walk(w.roomToday(pending), at: now)
+        self = w; return up
+    }
 
     /// The draw: 10 % a habitat guest; else the walker's own order, rarest group first — "some of its candidates are far enough and
     /// rand(100) < their mean chance" picks the group — and then any candidate of it that's far enough, the weather's types 1.5x as likely.

@@ -87,6 +87,43 @@ import AppKit                                                                   
     check(ed1r?.macro == false && ed1.watts == 0 && ed2r?.gone == 2 && ed2.box.isEmpty && ed3r != nil && ed3.box[0].ivs?[0] == 31 && ed3.corrected == true && ok1.audit() == nil && ok1.watts == 2_072,
           "1.8's check: more W than ever earned, more 칠색조 than the W could buy, IVs over 31 → corrected; a plain save (checked by 1.7) is left alone")
 
+    // 4b the server's copy (docs/plans/08 §4): shared goes up without this PC's fields; adopt takes the server's and walks this PC's steps it hasn't got on top
+    func syMine(_ x: Walk, from pc: Walk) -> Walk { var x = x; (x.counter, x.boot, x.syncedAt, x.counterKind, x.cloudRev, x.cloudTotal, x.sentHash) = (pc.counter, pc.boot, pc.syncedAt, pc.counterKind, pc.cloudRev, pc.cloudTotal, pc.sentHash); return x }
+    var syPC = Walk(); syPC.walk(1_300, at: at(12)); syPC.caught = [Mon(dex: 16, level: 5, female: false)]; syPC.bag = ["상처약"]
+    (syPC.counter, syPC.boot, syPC.syncedAt, syPC.counterKind, syPC.cloudRev, syPC.cloudTotal, syPC.sentHash) = (4_321, 7, at(12).timeIntervalSinceReferenceDate, Walk.counterNow, 3, 1_000, "ab12")
+    let syUp = syPC.shared, syEnc = JSONEncoder(); syEnc.outputFormatting = .sortedKeys
+    let syText = (try? syEnc.encode(syUp)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    check(syUp.counter == 0 && syUp.boot == 0 && syUp.syncedAt == nil && syUp.counterKind == nil && syUp.cloudRev == nil && syUp.cloudTotal == nil && syUp.sentHash == nil
+          && syMine(syUp, from: syPC) == syPC && (try? JSONDecoder().decode(Walk.self, from: Data(syText.utf8))) == syUp
+          && !["syncedAt", "counterKind", "cloudRev", "cloudTotal", "sentHash"].contains { syText.contains("\"\($0)\"") },
+          "shared: this PC's fields cleared, the rest as it was; through JSON unchanged", syText.count > 300 ? "" : syText)
+    var syHead = Walk(); syHead.walk(1_210, at: at(12)); syHead.caught = [Mon(dex: 16, level: 5, female: false)]; syHead.box = [Mon(dex: 19, level: 3, female: true)]   // the server's: played elsewhere since
+    var syAd = syPC, syWant = syHead; let syAdUp = syAd.adopt(syHead, rev: 5, at: at(12)), syWantUp = syWant.walk(300, at: at(12))   // 1,300 here, 1,000 up: 300 pending
+    syWant = syMine(syWant, from: syPC); syWant.cloudRev = 5; syWant.cloudTotal = syHead.total
+    check(syAd == syWant && syAdUp == syWantUp && syAd.total == syHead.total + 300 && syAd.today == syHead.today + 300 && syAd.watts > syHead.watts
+          && syAd.companion.points > syHead.companion.points && syAd.caught[0].points > syHead.caught[0].points && syAd.box == syHead.box && syAd.counter == 4_321 && syAd.sentHash == "ab12",
+          "adopt: the server's save with this PC's 300 pending steps walked on top (total, W, EXP rise); this PC's fields kept, the rev and the server's total noted")
+    var syCapHead = syHead; syCapHead.today = Walk.dayCap - 100
+    var syCap = syPC; syCap.adopt(syCapHead, rev: 6, at: at(12))
+    var syLate = syHead; syLate.today = Walk.dayCap - 10
+    var syNext = syPC; syNext.adopt(syLate, rev: 7, at: at(13, 9))
+    check(syCap.today == Walk.dayCap && syCap.total == syCapHead.total + 100 && syNext.today == 300 && syNext.history.first == Walk.dayCap - 10 && syNext.total == syLate.total + 300,
+          "adopt's re-walk keeps to the day's cap (room for 100 of 300: 100); a save from yesterday rolls over first, so yesterday's 99,990 doesn't cap today",
+          "\(syCap.today) \(syNext.today) \(syNext.history)")
+    var syStill = syPC; syStill.cloudTotal = syPC.total; syStill.adopt(syHead, rev: 8, at: at(12))
+    var syNever = syPC; (syNever.cloudRev, syNever.cloudTotal) = (nil, nil); syNever.adopt(syHead, rev: 1, at: at(12))
+    var syStillWant = syMine(syHead, from: syPC); syStillWant.cloudRev = 8; syStillWant.cloudTotal = syHead.total
+    var syNeverWant = syStillWant; syNeverWant.cloudRev = 1
+    check(syStill == syStillWant && syNever == syNeverWant, "adopt with nothing pending (or never saved up): the server's save as it is, with this PC's fields")
+    let syOld: String = {                                                                         // a save from before these fields: the keys aren't there at all
+        guard let d = try? syEnc.encode(syPC), var o = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return "" }
+        for k in ["cloudRev", "cloudTotal", "sentHash"] { o[k] = nil }
+        return (try? JSONSerialization.data(withJSONObject: o)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    }()
+    var syOldWant = syPC; (syOldWant.cloudRev, syOldWant.cloudTotal, syOldWant.sentHash) = (nil, nil, nil)
+    check(syOld.contains("\"counter\"") && !syOld.contains("cloudRev") && (try? JSONDecoder().decode(Walk.self, from: Data(syOld.utf8))) == syOldWant,
+          "a save without cloudRev / cloudTotal / sentHash still loads (they're nil)")
+
     // 5 the draw reproduces Serebii's bands (상쾌한 들판, A = 두두 70 %, B 75 %)
     w = Walk(); w.companion = Mon(dex: 7, level: 5, female: false)            // squirtle: water, no bonus here
     func share(_ steps: Int) -> [Double] {
