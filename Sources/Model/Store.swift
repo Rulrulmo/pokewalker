@@ -11,7 +11,8 @@ enum Store {
     static let bak = dir.appendingPathComponent("state.json.bak")
 
     static func sig(_ u: URL) -> URL { u.deletingLastPathComponent().appendingPathComponent(u.lastPathComponent + ".sig") }
-    /// `file` first, then `bak`. An unreadable `file` is kept as `state.corrupt-<unix>.json` so the next save can't rotate it over the good `bak`.
+    /// `file` first, then `bak`. A file that isn't loaded is moved aside (state.corrupt-<unix>.json: unreadable; state.rejected-<unix>.json: its signature
+    /// is off; `.bak.json` for the bak), with its .sig, so the saves that follow can't rotate it away: nothing the player had is ever deleted.
     static func load(file: URL = Store.file, bak: URL = Store.bak) -> Walk { loadChecked(file: file, bak: bak, signedBefore: false).walk }
     /// load, signatures checked: once this machine has signed a save (signedBefore), a `file` without a matching signature was changed outside
     /// the app — the last save the app made (`bak`) comes back instead (tampered = true), or, when that's no good either, a fresh walker.
@@ -23,20 +24,30 @@ enum Store {
         }
         func good(_ r: (s: Walk, signed: Bool?)?) -> Walk? { r.flatMap { $0.signed == true || ($0.signed == nil && !signedBefore) ? $0.s : nil } }
         let main = read(file)
-        if main == nil, FileManager.default.fileExists(atPath: file.path) {
-            let corrupt = file.deletingLastPathComponent().appendingPathComponent("state.corrupt-\(Int(Date().timeIntervalSince1970)).json")
-            try? FileManager.default.moveItem(at: file, to: corrupt)
-            NSLog("pokewalker: %@ unreadable, kept as %@", file.path, corrupt.lastPathComponent)
-        }
         if let m = good(main) { return (m, false) }
-        return (good(read(bak)) ?? Walk(), main != nil)                                            // main read but failed its signature: changed by hand
+        if FileManager.default.fileExists(atPath: file.path) { setAside(file, main == nil ? "corrupt" : "rejected") }   // read but its signature is off: changed by hand
+        let back = read(bak)
+        if let b = good(back) { return (b, main != nil) }
+        if FileManager.default.fileExists(atPath: bak.path) { setAside(bak, back == nil ? "corrupt" : "rejected", suffix: ".bak") }
+        return (Walk(), main != nil)
+    }
+    /// u (and its .sig) → state.<why>-<unix>[-n]<suffix>.json next to it.
+    static func setAside(_ u: URL, _ why: String, suffix: String = "") {
+        let fm = FileManager.default, dir = u.deletingLastPathComponent(), stamp = "state.\(why)-\(Int(Date().timeIntervalSince1970))"
+        var n = 0, to = dir.appendingPathComponent(stamp + suffix + ".json")
+        while fm.fileExists(atPath: to.path) { n += 1; to = dir.appendingPathComponent("\(stamp)-\(n)\(suffix).json") }   // two in one second: neither lost
+        try? fm.moveItem(at: u, to: to)
+        if fm.fileExists(atPath: sig(u).path) { try? fm.moveItem(at: sig(u), to: sig(to)) }
+        NSLog("pokewalker: %@ not loaded (%@), kept as %@", u.path, why, to.lastPathComponent)
     }
     static func save(_ s: Walk, file: URL = Store.file, bak: URL = Store.bak) {
         let enc = JSONEncoder(); enc.outputFormatting = .sortedKeys
         guard let data = try? enc.encode(s) else { return }
         let fm = FileManager.default
         try? fm.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        for (from, to) in [(file, bak), (sig(file), sig(bak))] { try? fm.removeItem(at: to); try? fm.copyItem(at: from, to: to) }   // the last save, kept (signed)
+        if fm.fileExists(atPath: file.path) {                                                      // the last save, kept (signed); none (set aside at launch): the bak stays
+            for (from, to) in [(file, bak), (sig(file), sig(bak))] { try? fm.removeItem(at: to); try? fm.copyItem(at: from, to: to) }
+        }
         do { try data.write(to: file, options: .atomic); try saveSignature(data).write(to: sig(file), atomically: true, encoding: .utf8) }
         catch { NSLog("pokewalker: save failed: %@", "\(error)") }
     }

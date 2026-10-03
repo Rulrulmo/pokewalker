@@ -30,9 +30,22 @@ import AppKit                                                                   
     let signedOK = Store.loadChecked(file: f, bak: b, signedBefore: true)
     let edited = (try? String(contentsOf: f, encoding: .utf8))?.replacingOccurrences(of: "\"watts\":340", with: "\"watts\":9999") ?? ""; try? edited.write(to: f, atomically: true, encoding: .utf8)
     let caught = Store.loadChecked(file: f, bak: b, signedBefore: true)
-    try? FileManager.default.removeItem(at: Store.sig(f)); let legacy = Store.loadChecked(file: f, bak: b, signedBefore: false), stripped = Store.loadChecked(file: f, bak: b, signedBefore: true)
+    func aside(_ why: String) -> [String] { ((try? FileManager.default.contentsOfDirectory(atPath: tmp.path)) ?? []).filter { $0.hasPrefix("state.\(why)-") && $0.hasSuffix(".json") } }
+    func keeps(_ why: String, _ text: String) -> Bool { aside(why).contains { (try? String(contentsOf: tmp.appendingPathComponent($0), encoding: .utf8))?.contains(text) == true } }
+    let editedKept = keeps("rejected", "\"watts\":9999") && !FileManager.default.fileExists(atPath: f.path)
+    try? edited.write(to: f, atomically: true, encoding: .utf8)                                    // the edited one again, without a .sig (it went aside with its file)
+    let legacy = Store.loadChecked(file: f, bak: b, signedBefore: false), stripped = Store.loadChecked(file: f, bak: b, signedBefore: true)
     check(signedOK.walk == s2 && !signedOK.tampered && edited.contains("9999") && caught.walk == s1 && caught.tampered && legacy.walk.watts == 9999 && !legacy.tampered && stripped.walk == s1 && stripped.tampered,
           "a signed save loads; edited by hand (or its .sig deleted) the last save the app made comes back; unsigned is fine before this machine has signed")
+    check(editedKept, "a save that isn't loaded is kept aside (state.rejected-…), out of the next saves' way")
+    var s3 = s1; s3.watts = 777; Store.save(s3, file: f, bak: b)                                    // the first save after: no state.json to rotate
+    check(Store.load(file: tmp.appendingPathComponent("none.json"), bak: b) == s1, "a save with state.json set aside leaves the good bak alone")
+    Store.save(s3, file: f, bak: b)
+    for u in [f, b] { try? ((try? String(contentsOf: u, encoding: .utf8)) ?? "").replacingOccurrences(of: "\"watts\":777", with: "\"watts\":8888").replacingOccurrences(of: "\"watts\":120", with: "\"watts\":8888").write(to: u, atomically: true, encoding: .utf8) }
+    let rejectedBefore = aside("rejected").count, bothOff = Store.loadChecked(file: f, bak: b, signedBefore: true)
+    Store.save(bothOff.walk, file: f, bak: b); Store.save(bothOff.walk, file: f, bak: b)            // launch saves twice: these used to write over both
+    check(bothOff.walk == Walk() && bothOff.tampered && aside("rejected").count == rejectedBefore + 2 && aside("rejected").contains { $0.hasSuffix(".bak.json") } && keeps("rejected", "\"watts\":8888"),
+          "save and bak both edited: a fresh walker, both kept aside (not saved over)", "\(aside("rejected"))")
     try? FileManager.default.removeItem(at: tmp)
 
     // 2 steps -> watts
