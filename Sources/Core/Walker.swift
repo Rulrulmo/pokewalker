@@ -36,6 +36,7 @@ import Foundation
     var cloudShown: Cloud.Phase? = nil, idBoxShown = false                 // the server's state the LCD shows; the ID box opened by itself (once a launch)
     var updater: Updater? = nil, shuttingDown = false                      // auto-update (Core/Update.swift): set at launch; a logout / shutdown puts nothing in at quit
     var relaunchAfterQuit = false, notedUpdate: String? = nil, updateNotices = 0   // the menu's 업데이트 설치: the quit starts the new version; the version a banner said was ready
+    var installWhenStaged = false, installAt: Date? = nil                  // 업데이트 확인 · 설치 clicked: what it finds goes in; the install's moment (after the LCD says so)
     /// What the quit runs to put a staged update in (relaunch: start it after); the self-test's stub records it instead.
     var installUpdate: @MainActor (_ relaunch: Bool) -> Bool = { r in Update.appURL.map { Update.install(dir: Update.dir, app: $0, relaunch: r) } ?? false }
     var mintWaiting: Cloud.MintAsk? = nil, mintBack: Screen? = nil         // a Pokémon asked of the server (10 §4): the LCD waits, keys held; where a "no" goes back to
@@ -130,8 +131,7 @@ import Foundation
         }
         if now.timeIntervalSince(lastSave) > 60 { save() }
         if cloud != nil { cloudTick(now, acted: acted || stepped != state) }
-        updater?.tick(now)
-        if let v = updater?.staged { updater?.staged = nil; noteStaged(v) }
+        updater?.tick(now); updateTick(now)
     }
     /// Fights, shows and animations play at 30 fps; the rest (the walking sprite too: HGSS steps it every 0.15 s) at the tick's 10.
     var busy: Bool { switch screen { case .beats, .hatch, .evolve, .radar: true; default: animating } }

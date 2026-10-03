@@ -18,9 +18,10 @@ func updateFixtureChecks() -> [(Bool, String)] {
 
 /// The save server's update API in a few lines: the manifest and signature it gives (nil = no release), the zip it sends; what was asked.
 final class FakeUpdates: CloudLink, @unchecked Sendable {
-    var manifest: String? = fixtureManifest99, sig: String? = fixtureSig99, zip = Data(fixtureZip99.mac), paths: [String] = []
+    var manifest: String? = fixtureManifest99, sig: String? = fixtureSig99, zip = Data(fixtureZip99.mac), paths: [String] = [], down = false   // down: no answer
     func post(_ path: String, _ json: Data, done: @escaping @Sendable (Int, Data) -> Void) {
         paths.append(path)
+        if down { done(0, Data()); return }
         done(200, (try? JSONSerialization.data(withJSONObject: ["manifest": (manifest as Any?) ?? NSNull(), "sig": (sig as Any?) ?? NSNull()])) ?? Data())
     }
     func get(_ path: String, done: @escaping @Sendable (Int, Data) -> Void) { paths.append(path); done(200, zip) }
@@ -85,22 +86,51 @@ final class FakeUpdates: CloudLink, @unchecked Sendable {
     for k in 0..<4 { uw.tick(t0 + 0.5 * Double(k)) }
     c.append((uc.phase == .oldApp && link3.paths == ["v1/update"], "update: 426 from the save server (새 버전이 필요해요) asks for an update at once"))
 
-    // 업데이트 설치 from the menu (U4): a newer one staged; asked; the quit's path, then the helper starting the new one
+    // the menu's update row: a staged one installs at a click (no question); else one click checks, downloads and installs; greyed while busy
     let ih = TestHost(), iw = Walker(state: Walk()); iw.persist = false; iw.host = ih
     let idir = tmp.appendingPathComponent("menu", isDirectory: true)
     iw.updater = Updater(link: FakeUpdates(), dir: idir, app: shipped, platform: "mac", now: t0)
     var installs: [Bool] = []; iw.installUpdate = { installs.append($0); return true }
-    func installRow() -> MenuItem? { iw.menu().first { $0.title.hasPrefix("업데이트 설치") } }
-    let noRow = installRow() == nil
-    _ = readyIn("menu", "99.0"); let row = installRow()
-    iw.towerRun = true; let blockedRow = installRow(); iw.towerRun = false
-    ih.answer = false; installRow()?.action?(); let declined = ih.quits == 0 && !iw.relaunchAfterQuit
-    ih.answer = true; installRow()?.action?(); let accepted = ih.quits == 1 && iw.relaunchAfterQuit && ih.asked.last == "업데이트 설치"
+    func updateRow(_ w: Walker) -> MenuItem? { w.menu().first { $0.title.hasPrefix("업데이트") } }
+    func says(_ w: Walker, _ l: [String]) -> Bool { if case .say(let s, _, _) = w.screen { return s == l }; return false }
+    let plain = Walker(state: Walk()), noRow = updateRow(plain) == nil, checkRow = updateRow(iw)
+    _ = readyIn("menu", "99.0"); let row = updateRow(iw)
+    iw.towerRun = true; let blockedRow = updateRow(iw); iw.towerRun = false
+    updateRow(iw)?.action?(); let saysFirst = says(iw, ["99.0로", "업데이트할게요"]) && ih.quits == 0 && ih.asked.isEmpty
+    let clickedAt = Date(); iw.tick(clickedAt + 1); let notYet = ih.quits == 0; iw.tick(clickedAt + 2)   // (a menu click: the real clock)
+    let accepted = ih.quits == 1 && iw.relaunchAfterQuit
     iw.quitSave()
-    c.append((noRow && row?.enabled == true && row?.title == "업데이트 설치 (다시 시작) · 99.0" && blockedRow?.enabled == false && blockedRow?.title.contains("배틀이 끝나면") == true
-              && declined && accepted && installs == [true],
-              "update: 업데이트 설치 in the menu only with a newer one staged; greyed mid-run; 취소 does nothing; 확인 quits through the quit's path and installs it to start again"))
+    c.append((noRow && checkRow?.title == "업데이트 확인 · 설치" && checkRow?.enabled == true && row?.enabled == true && row?.title == "업데이트 설치 (다시 시작) · 99.0"
+              && blockedRow?.enabled == false && blockedRow?.title.contains("배틀이 끝나면") == true && saysFirst && notYet && accepted && installs == [true],
+              "update row: 업데이트 확인 · 설치 with the updater on; staged: 업데이트 설치 (다시 시작) · v, greyed mid-run; a click (no question) says so, then the quit's path installs it to start again"))
     iw.updater?.staged = "99.0"; iw.tick(t0); iw.updater?.staged = "99.0"; iw.tick(t0 + 1); iw.updater?.staged = "99.1"; iw.tick(t0 + 2)
     c.append((iw.updateNotices == 2 && iw.notedUpdate == "99.1", "update: a staged download says so once a version (업데이트를 받아 두었어요)"))
+
+    /// A walker whose 업데이트 확인 · 설치 was just clicked, against that link.
+    func clicked(_ name: String, _ link: FakeUpdates) -> (Walker, TestHost) {
+        let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h; w.installUpdate = { _ in true }
+        w.updater = Updater(link: link, dir: tmp.appendingPathComponent(name, isDirectory: true), app: shipped, platform: "mac", now: t0)
+        updateRow(w)?.action?(); return (w, h)
+    }
+    let same = FakeUpdates(); same.manifest = fixtureManifest99.replacingOccurrences(of: "\"9.9\"", with: "\"1.0\"")   // (its signature no longer checks: not asked)
+    let (nw, nh) = clicked("c1", same); nw.tick(t0 + 1); let checking = updateRow(nw)?.title == "업데이트 확인 중…" && updateRow(nw)?.enabled == false
+    nw.tick(t0 + 2)
+    let newest = checking && says(nw, ["최신 버전이에요", appVersion]) && !nw.installWhenStaged && nh.quits == 0 && updateRow(nw)?.title == "업데이트 확인 · 설치"
+    let none = FakeUpdates(); none.manifest = nil; none.sig = nil
+    let (ew, _) = clicked("c2", none); ew.tick(t0 + 1); ew.tick(t0 + 2)
+    c.append((newest && says(ew, ["최신 버전이에요", appVersion]) && same.paths == ["v1/update"],
+              "update row: a click asks at once (greyed: 업데이트 확인 중…); nothing newer (or nothing released) → 최신 버전이에요 · this version, nothing downloaded"))
+    let badZip = FakeUpdates(); badZip.zip = Data("x".utf8)
+    let (fw, fh) = clicked("c3", badZip); fw.tick(t0 + 1); fw.tick(t0 + 2); let fetching = updateRow(fw)?.title == "업데이트 받는 중… · 9.9"
+    fw.tick(t0 + 3)
+    let off = FakeUpdates(); off.down = true
+    let (ow, _) = clicked("c4", off); ow.tick(t0 + 1); ow.tick(t0 + 2)
+    c.append((fetching && says(fw, ["업데이트를", "확인하지 못했어요"]) && !fw.installWhenStaged && fh.quits == 0 && says(ow, ["업데이트를", "확인하지 못했어요"]) && !ow.installWhenStaged,
+              "update row: a newer one downloading (받는 중… · v); bytes that don't check out, or no answer → 업데이트를 확인하지 못했어요, and nothing goes in"))
+    let (sw, sh) = clicked("c5", FakeUpdates()); sw.tick(t0 + 1); _ = readyIn("c5", "9.9")   // what the check finds is staged (a download, as far as the walker sees)
+    sw.towerRun = true; sw.tick(t0 + 2); sw.tick(t0 + 5); let held = sh.quits == 0 && sw.installWhenStaged && updateRow(sw)?.enabled == false
+    sw.towerRun = false; sw.tick(t0 + 6); let said = says(sw, ["9.9로", "업데이트할게요"]); sw.tick(t0 + 8)
+    c.append((held && said && sh.quits == 1 && sw.relaunchAfterQuit && sw.updateNotices == 0,
+              "update row: what a click finds staged goes in by itself (no banner) — after the tower run it came during, the LCD saying so first"))
     return c
 }

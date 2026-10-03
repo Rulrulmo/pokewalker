@@ -48,6 +48,10 @@ enum Update {
     static func failed(_ dir: URL) -> [String] {
         ((try? String(contentsOf: dir.appendingPathComponent("failed"), encoding: .utf8)) ?? "").split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
     }
+    /// A manifest's version is newer than `app` — unchecked: only for what 업데이트 확인 says when it isn't taken (nothing newer, or it didn't check out).
+    static func newer(_ manifest: String, than app: String) -> Bool {
+        (((try? JSONSerialization.jsonObject(with: Data(manifest.utf8))) as? [String: Any])?["version"] as? String).map { verCmp($0, app) == 1 } ?? false
+    }
     static func ready(_ dir: URL) -> Ready? { (try? Data(contentsOf: dir.appendingPathComponent("ready.json"))).flatMap { try? JSONDecoder().decode(Ready.self, from: $0) } }
     /// A downloaded zip: thrown away unless its size and SHA-256 are the signed manifest's, then staged. The staged app's path, or nil. (Off the main thread.)
     static func prepare(_ bytes: Data, _ e: Entry, dir: URL) -> String? {
@@ -193,6 +197,10 @@ final class UpdateInbox: @unchecked Sendable {
     let link: any CloudLink, dir: URL, app: URL, platform: String, inbox = UpdateInbox()
     private(set) var nextCheck: Date, busy = false
     var staged: String? = nil                                              // a version just staged: the walker's banner (once a version)
+    /// How a check ended with nothing staged: nothing newer, or it didn't work (offline, an error, a download that didn't check out).
+    enum Heard: Equatable { case newest, failed }
+    var heard: Heard? = nil                                                // the last check's, for 업데이트 확인 (the walker clears it)
+    private(set) var fetching: String? = nil                               // the version downloading
 
     init(link: any CloudLink, dir: URL, app: URL, platform: String = appPlatform, now: Date = Date()) {
         self.link = link; self.dir = dir; self.app = app; self.platform = platform; nextCheck = now.addingTimeInterval(Updater.first)
@@ -205,7 +213,7 @@ final class UpdateInbox: @unchecked Sendable {
     func tick(_ now: Date) {
         for r in inbox.take() { take(r) }
         guard !busy, now >= nextCheck else { return }
-        nextCheck = now.addingTimeInterval(Updater.period); busy = true
+        nextCheck = now.addingTimeInterval(Updater.period); busy = true; heard = nil
         let body = (try? JSONSerialization.data(withJSONObject: ["app": appVersion, "platform": platform])) ?? Data()
         link.post("v1/update", body) { [inbox] s, d in inbox.put(.answer(s, d)) }
     }
@@ -215,14 +223,17 @@ final class UpdateInbox: @unchecked Sendable {
     private func take(_ r: UpdateInbox.Item) {
         switch r {
         case .answer(let s, let d):
-            let j = s == 200 ? (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] : nil
-            guard let m = j?["manifest"] as? String, let sig = j?["sig"] as? String,
-                  let e = Update.accept(m, sig, platform: platform, over: appVersion, failed: Update.failed(dir)), Update.ready(dir)?.version != e.version
-            else { busy = false; return }                                                         // nothing new (or offline: the next round)
+            guard let j = s == 200 ? (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] : nil else { busy = false; heard = .failed; return }   // offline: the next round
+            guard let m = j["manifest"] as? String, let sig = j["sig"] as? String else { busy = false; heard = .newest; return }        // nothing released yet
+            guard let e = Update.accept(m, sig, platform: platform, over: appVersion, failed: Update.failed(dir)) else {
+                busy = false; heard = Update.newer(m, than: appVersion) ? .failed : .newest; return                                   // a newer one not taken: bad signature, no zip here …
+            }
+            guard Update.ready(dir)?.version != e.version else { busy = false; return }           // staged already
+            fetching = e.version
             let (dir, inbox) = (self.dir, self.inbox)
             link.get("v1/download/\(platform)") { s, d in inbox.put(.staged(e.version, s == 200 ? Update.prepare(d, e, dir: dir) : nil)) }   // the SHA-256 and the unpacking here, off the main thread
         case .staged(let v, let path):
-            busy = false; if path != nil { staged = v }
+            busy = false; fetching = nil; if path != nil { staged = v } else { heard = .failed }
             NSLog(path != nil ? "pokewalker: update %@ is ready: it goes in at the next quit or launch" : "pokewalker: update %@ didn't check out: again next round", v)
         }
     }
@@ -237,10 +248,35 @@ extension Walker {
         switch screen { case .beats, .evolve, .hatch, .radar: return "지금 하는 게 끝나면"; default: break }
         return mintWaiting != nil ? "지금 하는 게 끝나면" : nil
     }
-    /// 업데이트 설치: asked first; then the quit's own path (steps, a save, the server's answers, a flush) and the helper, which starts the new one.
-    func installUpdateNow() {
-        guard let v = stagedUpdate, installBlocker == nil, let h = host, h.confirm("업데이트 설치", "다시 시작해서 \(v)로 바꿀까요?", ok: "확인") else { return }
-        relaunchAfterQuit = true; h.quit()
+    /// The menu's row (no question asked: the click is the consent): a staged one installs; else one click checks, downloads and installs
+    /// (installWhenStaged); greyed while a check or a download is on, or with a fight or a show on.
+    func updateRow(_ u: Updater) -> MenuItem {
+        if let v = stagedUpdate {
+            if let why = installBlocker { return MenuItem("업데이트 설치 · \(v) — \(why)", enabled: false) }
+            return MenuItem("업데이트 설치 (다시 시작) · \(v)", action: { self.installSoon(v, Date()) })
+        }
+        if u.busy || installWhenStaged { return MenuItem(u.fetching.map { "업데이트 받는 중… · \($0)" } ?? "업데이트 확인 중…", enabled: false) }
+        return MenuItem("업데이트 확인 · 설치", action: { self.checkAndInstall() })
+    }
+    /// 업데이트 확인 · 설치: asked now; what it finds goes in (updateTick).
+    func checkAndInstall() { guard let u = updater, !u.busy else { return }; installWhenStaged = true; u.heard = nil; u.checkNow() }
+    /// The LCD says so, then (installAt) the quit's own path (steps, a save, the server's answers, a flush) and the helper, which starts the new one.
+    func installSoon(_ v: String, _ now: Date) {
+        installWhenStaged = false; screen = .say([v + "로", "업데이트할게요"], next: .home, since: now); installAt = now.addingTimeInterval(1.5)
+    }
+    /// The tick's: a click's check answered — staged: in (once nothing's in progress); nothing newer, or it didn't work: said. Then the install itself.
+    func updateTick(_ now: Date) {
+        guard let u = updater else { return }
+        if let v = u.staged { u.staged = nil; if !installWhenStaged { noteStaged(v) } }                // (a click's own download: no banner, it goes in)
+        if installWhenStaged {
+            if let v = stagedUpdate { if installBlocker == nil { installSoon(v, now) } }
+            else if let h = u.heard {
+                u.heard = nil; installWhenStaged = false
+                let lines = h == .newest ? ["최신 버전이에요", appVersion] : ["업데이트를", "확인하지 못했어요"]
+                if installBlocker == nil { screen = .say(lines, next: screen, since: now) } else { notify("update", lines.joined(separator: " "), "") }
+            }
+        }
+        if let at = installAt, now >= at, installBlocker == nil, let h = host { installAt = nil; relaunchAfterQuit = true; h.quit() }
     }
     /// A download just staged: a banner, once a version.
     func noteStaged(_ v: String) {
