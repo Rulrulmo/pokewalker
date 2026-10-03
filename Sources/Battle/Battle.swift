@@ -1,7 +1,7 @@
 import Foundation
 // The battle state and its plumbing: HP / status changes that emit beats, stat stages, speed.
 
-struct Battle: Equatable {
+struct Battle: Equatable, Codable {                                 // Codable: the server holds a fight and sends it (docs/plans/11 §3.3)
     var mine: [Fighter], theirs: [Fighter]
     var me = 0, it = 0
     var trainer: String? = nil

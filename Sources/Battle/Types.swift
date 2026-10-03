@@ -21,7 +21,7 @@ enum Status: String, Codable, Equatable {
     case poison, toxic, burn, paralysis, sleep, freeze
     var badge: String { ["poison": "독", "toxic": "맹독", "burn": "화상", "paralysis": "마비", "sleep": "잠듦", "freeze": "얼음"][rawValue]! }
 }
-enum Sky: Equatable { case clear, sun, rain, sand, hail, fog }
+enum Sky: String, Codable, Equatable { case clear, sun, rain, sand, hail, fog }
 let statNames = ["HP", "공격", "방어", "특수공격", "특수방어", "스피드", "명중률", "회피율"]
 
 enum Moves {
@@ -36,8 +36,8 @@ enum Moves {
 func effectiveness(_ type: String, on d: Int) -> Double { monTypes[d].reduce(1) { $0 * (typeChart[type]?[$1] ?? 1) } }
 
 // MARK: - fighters and the field
-enum Side: Equatable { case me, it }
-struct Fighter: Equatable {
+enum Side: String, Codable, Equatable { case me, it }
+struct Fighter: Equatable, Codable {
     var mon: Mon; var hp: Int
     var status: Status? = nil; var sleep = 0, toxic = 0
     var moves: [Int]; var pp: [Int]
@@ -67,11 +67,11 @@ struct Fighter: Equatable {
         moves = om; pp = om.indices.map { k in !transformed && k < mv.count && mv[k] == om[k] ? p[k] : op[k] }   // 변신 / 흉내내기 wear off: its own moves back (after 흉내내기, the PP the others spent since)
     }
 }
-struct SideState: Equatable { var reflect = 0, light = 0, safeguard = 0, mist = 0, tailwind = 0, luckyChant = 0, spikes = 0, toxicSpikes = 0, stealthRock = false, wish = 0, wishHP = 0, future = 0, futureDmg = 0, healingWish = false, lunarDance = false }
+struct SideState: Equatable, Codable { var reflect = 0, light = 0, safeguard = 0, mist = 0, tailwind = 0, luckyChant = 0, spikes = 0, toxicSpikes = 0, stealthRock = false, wish = 0, wishHP = 0, future = 0, futureDmg = 0, healingWish = false, lunarDance = false }
 
-enum Move: Equatable { case fight(Int), capture, item(ItemUse), swap(Int), run }
+enum Move: Equatable, Codable { case fight(Int), capture, item(ItemUse), swap(Int), run }
 /// A bag item used in battle (the UI picks it and takes it out of the bag).
-enum ItemUse: Equatable {
+enum ItemUse: Equatable, Codable {
     case heal(Int)                                   // HP (999 = all)
     case cure([Status], confusion: Bool)             // the statuses it fixes
     case restore                                     // 회복약: all HP and any status
@@ -79,7 +79,7 @@ enum ItemUse: Equatable {
     case x(Int, Int)                                 // stat index, stages (Gen IV X items: +1)
     case guardSpec, direHit
 }
-enum Beat: Equatable {
+enum Beat: Equatable, Codable {
     case appear                                      // a wild one slides in
     case sendOut(Side, Int)                          // that side's fighter #i comes in
     case use(Side, move: Int)                        // "X의 Y!" (the user dashes)

@@ -498,3 +498,22 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
         #expect((r.status == 422) == refused, "\(id): \(r.status)")
     }
 }
+
+@Test func battleRoundTrip() throws {                                                        // docs/plans/11 §3.3: the server keeps a fight as JSON between turns
+    var r = Seeded(s: 7)
+    let party = [Mon.wild(25, level: 30, &r), Mon.wild(4, level: 28, &r)]
+    var b = Battle(wild: Mon.wild(130, level: 30, &r), party: party, chain: 2)
+    var beats = b.begin(weather: .rain, &r)
+    for m in b.mine[b.me].moves.prefix(2) { beats += b.turn(.fight(m), &r) }
+    let d = try JSONEncoder().encode(b), back = try JSONDecoder().decode(Battle.self, from: d)
+    #expect(back == b)
+    let beatsBack = try JSONDecoder().decode([Beat].self, from: try JSONEncoder().encode(beats))
+    #expect(beatsBack == beats && !beats.isEmpty)
+    var a = b, c = back, ra = r, rc = r                                                         // the same dice on both: the same next turns
+    for _ in 0..<3 where !a.over { #expect(a.turn(.fight(a.mine[a.me].moves[0]), &ra) == c.turn(.fight(c.mine[c.me].moves[0]), &rc)) }
+    #expect(a == c)
+    var t = Battle(party: party, trainer: "엘리트 트레이너 지은", foes: [Mon.wild(149, level: 50, &r)])   // a tower fight, mid-turn state and all
+    _ = t.begin(weather: nil, &r); _ = t.turn(.capture, &r)
+    #expect(try JSONDecoder().decode(Battle.self, from: try JSONEncoder().encode(t)) == t)
+    print("battle JSON: \(d.count) bytes")
+}
