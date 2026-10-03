@@ -31,6 +31,8 @@ import Foundation
     var titleShown = ""                                                    // the title row as last shown: a change redraws it
     var persist = true                                                     // false in --selftest: flows must never touch the real save (nor notify)
     lazy var unlockedAt = state.earned                                     // lifetime watts already announced
+    var cloud: Cloud? = nil                                                // the save server (Core/Cloud.swift): set at launch (startCloud), never in the self-test's walkers
+    var seen = Walk(), cloudAsked: Cloud.Phase? = nil, cloudAsking = false  // the state as the last tick left it (a change since = the player's); the question asked
 
     init(state: Walk) { self.state = state }
 
@@ -52,13 +54,19 @@ import Foundation
 
     /// The clock (the host's, 10 a second): steps, the companion's finds, weather, unlocks, level-ups; screens that time out; the minute's save.
     func tick(_ now: Date) {
+        let acted = cloud != nil && state != seen                                                  // between ticks only the player changes the save: up soon (steps come here)
         let before = state.total
         if let h = host {                                                                          // keys + clicks, the way a person makes them (StepGate)
             state.rollover(now)                                                                    // (a capped day still turns at midnight)
-            let n = state.roomToday(gate.pass(state.take(counter: h.counter(), boot: h.boot(), at: now), now.timeIntervalSinceReferenceDate) + heldSteps) - heldSteps   // (today's cap counts the fight's held ones)
-            if inBattle { heldSteps += n }                                                         // mid-fight: the fight's copy would overwrite their EXP; they count once it's over
-            else if n + heldSteps > 0 { if state.walk(n + heldSteps, at: now) { levelled = true }; heldSteps = 0 }
+            let taken = state.take(counter: h.counter(), boot: h.boot(), at: now)
+            if frozen { heldSteps = 0 }                                                            // another PC has the trainer: the baseline follows, nothing walks (08 §2-1)
+            else {
+                let n = state.roomToday(gate.pass(taken, now.timeIntervalSinceReferenceDate) + heldSteps) - heldSteps   // (today's cap counts the fight's held ones)
+                if inBattle { heldSteps += n }                                                     // mid-fight: the fight's copy would overwrite their EXP; they count once it's over
+                else if n + heldSteps > 0 { if state.walk(n + heldSteps, at: now) { levelled = true }; heldSteps = 0 }
+            }
         }
+        let stepped: Walk? = cloud == nil ? nil : state                                            // what the rest of the tick changes (a fight's end, a find, a hatch …) goes up soon too
         perk(now, stepped: state.total != before)                                               // the companion's animation now and then
         if state.total != before { lastStep = now }
         stepRate = stepRate * 0.8 + Double(min(50, state.total - before)) * 10 * 0.2               // steps a second, smoothed (the tick is 10 Hz)
@@ -113,6 +121,7 @@ import Foundation
             if let g = got.first { screen = .say(["도감 \(dexCount)종 달성!", g + " 해금"] + got.dropFirst().prefix(1), next: .home, since: now); notify("unlock", "도감 \(dexCount)종 달성!", got.joined(separator: " · ") + " 해금") }
         }
         if now.timeIntervalSince(lastSave) > 60 { save() }
+        if cloud != nil { cloudTick(now, acted: acted || stepped != state) }
     }
     /// Fights, shows and animations play at 30 fps; the rest (the walking sprite too: HGSS steps it every 0.15 s) at the tick's 10.
     var busy: Bool { switch screen { case .beats, .hatch, .evolve, .radar: true; default: animating } }
@@ -122,6 +131,7 @@ import Foundation
     /// A key down (held: the key's repeat): in a shop ↑ ↓ = a row, or ±10; in a grid ↑ ↓ a row, page up / down a page; tab a grid's next tab
     /// (shift: the one before). false = not the walker's (the platform passes it on).
     func key(_ k: Key, shift: Bool = false, held: Bool = false) -> Bool {
+        if frozen { if k == .enter, !held { press(1) }; return true }                              // another PC has it: ● = 여기서 계속, nothing else
         if case .shop(_, _, let q) = screen, let d = [Key.up: -1, .down: 1][k] { shopStep(q == nil ? d : -10 * d); return true }
         if case .tower(_?) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -TowerModel.perPage, .pageDown: TowerModel.perPage][k] { towerStep(d); return true }   // the tower's picker: ↑ ↓ a row, page up / down a page
         switch screen { case .course, .train, .relearn: if let d = [Key.up: -1, .down: 1, .pageUp: -CourseModel.perPage, .pageDown: CourseModel.perPage][k] { listRow(d); return true }; default: break }   // the lists: the same
@@ -166,7 +176,7 @@ import Foundation
         case .course: return ("코스", "\(courses.indices.filter(state.unlocked).count) / \(courses.count) 열림")
         case .train: return ("대단한 특훈", "은색병뚜껑 ×\(state.count("은색병뚜껑"))")
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
-        default: return (state.here.name, gate.held ? "자동 입력 감지 · 걸음 멈춤" : when)                                                 // screens without a page of their own: the status sheet
+        default: return (state.here.name, cloudNote ?? (gate.held ? "자동 입력 감지 · 걸음 멈춤" : when))                                                 // screens without a page of their own: the status sheet
         }
     }
 }

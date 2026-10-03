@@ -55,13 +55,14 @@ final class CloudInbox: @unchecked Sendable {
     var head: (walk: Walk, rev: Int, hash: String?, how: Take)? = nil      // the server's save, waiting for home to take it (mid-fight the fight's copy would write over it)
     var legacy: String? = nil                                              // the 1.x save's text, to go up once (2b: state.pre-server.json)
     private(set) var lastSaved: Date? = nil
+    private(set) var firstRun = false                                      // no cloud.json before: the server's first launch on this PC (Walker.startCloud's 08 §5 move)
     var deviceName: String { String(appDeviceName.prefix(64)) }
     var seatFile: URL { dir.appendingPathComponent("cloud.json") }
 
     init(link: any CloudLink, dir: URL, on: Bool) {
         self.link = link; self.dir = dir; phase = on ? .needsID : .off
         guard on else { return }
-        if let d = try? Data(contentsOf: seatFile), let s = try? JSONDecoder().decode(Seat.self, from: d) { seat = s }
+        if let d = try? Data(contentsOf: seatFile), let s = try? JSONDecoder().decode(Seat.self, from: d) { seat = s } else { firstRun = !FileManager.default.fileExists(atPath: seatFile.path) }
         if seat.device == nil { seat.device = hex((0..<16).map { _ in UInt8.random(in: .min ... .max) }); writeSeat() }   // (no didSet inside init)
     }
     /// The app's: on with the `cloud` setting, never with persist == false (the self-test, renders).
@@ -229,6 +230,78 @@ final class CloudInbox: @unchecked Sendable {
     }
 }
 
+// MARK: - the walker's side
+extension Walker {
+    /// Launch with the cloud on (main.swift, WinApp.swift): on the server's first launch here a 1.x save goes aside (Store.movePreServer, 08 §5) to go up
+    /// once as 옛 기록, and the walker starts empty (this PC's counter kept) until the login brings the trainer's; then the login. Off: nothing, 1.x as ever.
+    func startCloud(_ c: Cloud, file: URL = Store.file, bak: URL = Store.bak) {
+        guard c.phase != .off else { return }
+        cloud = c
+        if c.firstRun, Store.movePreServer(file: file, bak: bak) {
+            var w = Walk(); w.audited = 2; w.ballsRefunded = true                                   // nothing for 1.7's check or 1.10's refund to do
+            (w.counter, w.boot, w.syncedAt, w.counterKind) = (state.counter, state.boot, state.syncedAt, state.counterKind)
+            w.rollover(Date()); w.dex(); state = w
+        }
+        if c.seat.legacyUploaded != true, let text = try? String(contentsOf: Store.preServer(file), encoding: .utf8) { c.legacy = text }
+        c.start(); seen = state
+    }
+    /// Another PC took the trainer (08 §2-1): no steps, no keys; ● is 여기서 계속.
+    var frozen: Bool { cloud?.phase == .replaced }
+    func resumeCloud() { cloud?.resume(); screen = .home; host?.redraw(.all) }               // home: the server's save is taken there
+    /// Woken from sleep: what changed goes up (a stale reply brings the server's).
+    func woke() { cloud?.soon(Date()) }
+    /// ID 바꾸기 (step 3's box): what isn't up goes up first; another trainer's rev, total and hash don't carry over. false = not an ID.
+    @discardableResult func switchID(_ raw: String) -> Bool {
+        guard let c = cloud, let id = trainerID(raw) else { return false }
+        if c.seat.trainerID.flatMap(trainerID)?.key != id.key { c.flush(&state); (state.cloudRev, state.cloudTotal, state.sentHash) = (nil, nil, nil) }
+        c.login(raw); save(); return true
+    }
+    /// The tick's end: what the player did goes up soon; replies; the server's save taken at home (its news quiet: it happened elsewhere), saved at once,
+    /// as is a save's hash once it went; another PC taking over locks the walker; a question the server's answer raises.
+    func cloudTick(_ now: Date, acted: Bool) {
+        guard let c = cloud else { return }
+        if acted { c.soon(now) }
+        let was = c.phase, sent = state.sentHash, rev = state.cloudRev
+        let home = { if case .home = screen { return true }; return false }()
+        if let up = c.tick(&state, now, canTake: home && !towerRun && heldSteps == 0) {
+            if up { levelled = true }
+            rewarded = dexCount; unlockedAt = state.earned; lastSeason = state.season
+            queueReadyEvolutions(); save()
+        } else if state.sentHash != sent || state.cloudRev != rev { save() }                     // 08b §10 ②: the sent save's hash on disk before its reply
+        if c.phase != was {
+            if c.phase == .replaced { towerRun = false; growthThen = nil; screen = .say(["다른 PC에서", "접속했어요", "●: 여기서 계속"], next: .home, since: .distantFuture) }
+            host?.redraw(.all)
+        }
+        seen = state
+        cloudQuestion(c)
+    }
+    /// 새 트레이너? / 가져올까요? — once per answer the server gave (step 3 brings the ID box and the buttons). A tick may come during the question: not twice.
+    func cloudQuestion(_ c: Cloud) {
+        guard let h = host, !cloudAsking, c.phase != cloudAsked else { return }
+        let q: (title: String, body: String, ok: String)? = switch c.phase {
+        case .new(let id): ("새 트레이너", josa("'\(id)'", "은", "는") + " 서버에 없는 ID예요. 이 ID로 새로 시작할까요?", "새로 시작")
+        case .busy(let device, let at): ("다른 PC에서 하고 있었어요", "\(device)에서 \(max(0, Int(Date().timeIntervalSince1970) - at) / 60)분 전까지 하고 있었어요. 여기로 가져올까요?", "가져오기")
+        default: nil
+        }
+        guard let q else { return }
+        cloudAsking = true; cloudAsked = c.phase
+        let yes = h.confirm(q.title, q.body, ok: q.ok)
+        cloudAsking = false
+        guard yes else { return }
+        if case .new = c.phase { c.create() } else if case .busy = c.phase { c.login(force: true) }
+    }
+    /// The title row's note while the server isn't plain sailing.
+    var cloudNote: String? {
+        switch cloud?.phase {
+        case .needsID?: "로그인이 필요해요"
+        case .login?, .new?, .busy?: "서버에 연결하는 중"
+        case .replaced?: "다른 PC에서 접속했어요"
+        case .oldApp?: "새 버전이 필요해요"
+        default: nil
+        }
+    }
+}
+
 // MARK: - the self-test's: a save server in a few lines (08b §4's 13 rows, as far as the app sees them)
 /// One table of trainers. down = no answer; html = that status with a page (Cloudflare's); lose = the next reply lost after the server acted;
 /// hold = replies wait for release(); old = 426 with that need.
@@ -271,6 +344,22 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         default: return (200, ["stored": true])                                                                                 // v1/legacy
         }
     }
+}
+
+/// A host for the self-test: a key counter the test moves, a scripted answer to confirm().
+@MainActor final class TestHost: Host {
+    var keys: UInt32 = 0, answer = true, asked: [String] = []
+    func notify(_ title: String, _ body: String) {}
+    func counter() -> UInt32 { keys }
+    func boot() -> Double { 1 }
+    func redraw(_ part: CardPart) {}
+    func resized() {}
+    var windowHidden: Bool { false }
+    func toggleShown() {}
+    func fits(size: CGFloat) -> Bool { true }
+    func beep() {}
+    func confirm(_ title: String, _ body: String, ok: String) -> Bool { asked.append(title); return answer }
+    func quit() {}
 }
 
 @MainActor func cloudChecks() -> [(Bool, String)] {
@@ -379,5 +468,47 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     var l5 = Walk(); l5.walk(20, at: t0)
     let l5n = launch("l5", &l5, rev: 0, walk: nil)
     c.append((l4n == 2 && l4.cloudRev == 10 && l5n == 2 && l5.cloudRev == 1 && l5.total == 20, "cloud launch ④: the server lost ours (rev under cloudRev): up even unchanged, base cloudRev; made but never saved (walk null): up as base 0"))
+
+    // the walker with the cloud on: 08 §5's move at the first launch, the question, the hooks, another PC taking over
+    let md = tmp.appendingPathComponent("m", isDirectory: true), mf = md.appendingPathComponent("state.json"), mb = md.appendingPathComponent("state.json.bak"), mid = "zz000004"
+    var old = Walk(); old.walk(4_321, at: t0); (old.counter, old.boot, old.counterKind) = (99, 1, Walk.counterNow)
+    Store.save(old, file: mf, bak: mb); old.watts += 1; Store.save(old, file: mf, bak: mb)                 // a 1.x save and its bak, signed
+    let oldText = (try? String(contentsOf: mf, encoding: .utf8)) ?? ""
+    let mh = TestHost(); mh.keys = 99
+    let mw = Walker(state: Store.load(file: mf, bak: mb)); mw.persist = false; mw.host = mh
+    let mc = Cloud(link: srv, dir: md, on: true); mc.seat.trainerID = mid; mw.startCloud(mc, file: mf, bak: mb)
+    let names = Set((try? fm.contentsOfDirectory(atPath: md.path)) ?? [])
+    let moved = !names.contains("state.json") && !names.contains("state.json.bak") && names.isSuperset(of: ["state.pre-server.json", "state.pre-server.json.sig", "state.pre-server.bak.json", "state.pre-server.bak.json.sig"])
+        && (try? String(contentsOf: Store.preServer(mf), encoding: .utf8)) == oldText
+    let blank = mw.state.total == 0 && mw.state.audited == 2 && mw.state.counter == 99 && mc.legacy == oldText
+    func ticks(_ wk: Walker, _ from: Date, _ secs: Double) -> Date { var at = from; while at < from + secs { wk.tick(at); at += 0.5 }; return at }
+    var mt = ticks(mw, t + 5000, 5)
+    c.append((moved && blank && mh.asked == ["새 트레이너"] && mc.phase == .on && srv.paths.contains("v1/legacy") && mc.seat.legacyUploaded == true && mc.legacy == nil
+              && srv.rows[mid]?.walk == text(mw.state.shared) && mw.state.audited == 2,
+              "cloud walker: the first launch moves the 1.x save and its bak aside (state.pre-server.json, .sig too) and starts empty; 새 트레이너? yes → create; the old save goes up once as 옛 기록"))
+
+    mw.state.bag = ["금구슬"]; mt = ticks(mw, mt, 5); n = sent()
+    mh.keys += 10; mt = ticks(mw, mt, 1); let stepsQuiet = mc.due == nil && mw.state.total == 10 && sent() == n
+    mw.sellOne("금구슬"); mw.screen = .home; mt = ticks(mw, mt, 0.5); let soonSet = mc.due != nil   // (its message times out by the real clock)
+    mt = ticks(mw, mt, 3.5)
+    c.append((stepsQuiet && soonSet && sent() == n + 1 && srv.rows[mid]?.walk == text(mw.state.shared),
+              "cloud walker: steps wait for the 2-minute save; a menu action (not through press) goes up within 3 s"))
+    mw.state.egg = Egg(dex: 175, left: 5); mt = ticks(mw, mt, 5)
+    let boxed = mw.state.box.count; mh.keys += 10; mw.tick(mt); mt += 0.5
+    c.append((mw.state.box.count == boxed + 1 && mc.due != nil, "cloud walker: what the tick itself does (an egg hatching) goes up soon too"))
+
+    mt = ticks(mw, mt, 5); _ = srv.answer("v1/login", ["id": mid, "device": "another", "force": true])   // another PC takes it
+    mw.state.bag.append("상처약"); mt = ticks(mw, mt, 5)
+    let locked = mw.frozen && mw.title().meta == "다른 PC에서 접속했어요", total = mw.state.total
+    mh.keys += 30; mt = ticks(mw, mt, 3); mw.press(4); mw.press(0); let still = { if case .say = mw.screen { return true }; return false }()
+    let frozenOK = locked && still && mw.state.total == total && mw.state.counter == mh.keys
+    mw.press(1); mt = ticks(mw, mt, 3)
+    c.append((frozenOK && mc.phase == .on && !mw.frozen && Cloud.walk(srv.rows[mid]?.walk ?? "") == mw.state.shared && { if case .home = mw.screen { return true }; return false }(),
+              "cloud walker: another PC took it → locked: steps don't walk (the counter's baseline follows), keys do nothing; ● = 여기서 계속: the server's save as it is"))
+
+    Store.save(Walk(), file: mf, bak: mb)                                                         // the next launch: a save with no cloudRev (never logged in) stays
+    let mc2 = Cloud(link: srv, dir: md, on: true), mw2 = Walker(state: Walk()); mw2.persist = false; mw2.startCloud(mc2, file: mf, bak: mb)
+    c.append((!mc2.firstRun && fm.fileExists(atPath: mf.path) && mc2.legacy == nil && (try? String(contentsOf: Store.preServer(mf), encoding: .utf8)) == oldText,
+              "cloud walker: only the first launch moves a save aside; the 옛 기록 isn't sent twice"))
     return c
 }

@@ -60,8 +60,9 @@ extension Walker {
     func save() { guard persist else { return }; Store.save(state); lastSave = Date(); if !savedSigned { savedSigned = true; settings.set("saveSigned", true) } }   // from now on an unsigned save here is an edited one
     /// Quitting: count the steps a fight held back (its copy is dropped on quit), then save.
     func quitSave() {
-        if let h = host { let n = gate.pass(state.take(counter: h.counter(), boot: h.boot(), at: Date()), Date().timeIntervalSinceReferenceDate); state.walk(state.roomToday(n + heldSteps), at: Date()); heldSteps = 0 }
+        if let h = host, !frozen { let n = gate.pass(state.take(counter: h.counter(), boot: h.boot(), at: Date()), Date().timeIntervalSinceReferenceDate); state.walk(state.roomToday(n + heldSteps), at: Date()); heldSteps = 0 }
         save()
+        if let c = cloud { c.flush(&state); save() }                                              // up before it goes (2 s at most); its rev / hash on disk
     }
     /// A fight brought something to play before what comes next: one of ours that levelled can evolve, or a move waits to be learned.
     func growthDue(_ now: Date) -> Bool {
@@ -136,6 +137,7 @@ extension Walker {
     }
     /// The scroll wheel / trackpad on a list: a row up or down — the shop's (leaving how-many: the amount only changes on purpose) or the tower's picker.
     func listRow(_ d: Int) {
+        guard !frozen else { return }
         if case .tower(_?) = screen { towerStep(d); return }
         if case .course(let i) = screen { lastInput = Date(); host?.redraw(.all); screen = .course(max(0, min(courses.count - 1, i + d))); return }
         if case .train(let k) = screen { lastInput = Date(); host?.redraw(.all); screen = .train(max(0, min(5, k + d))); return }
@@ -159,6 +161,7 @@ extension Walker {
     }
     /// A click on the shop panel: 2100 + k = row k (and how-many, if it can be bought), 2000-2004 = −10 −1 +1 +10 max, 2005 = buy, 2006 / 2007 = 예 / 아니오.
     func shopTap(_ code: Int) {
+        guard !frozen else { return }
         throughSay()
         if case .shopConfirm(let bp, let sel, _) = screen {
             if code == 2006 { screen = .shopConfirm(bp: bp, sel: sel, yes: true); press(1) }
@@ -241,6 +244,7 @@ extension Walker {
     /// The grids' pick moves d along its list: ◀ ▶ wrap around; rows (↑ ↓) and the wheel stop at the ends; a page step (the page buttons, page up / down,
     /// `ends`) past the last page goes to #1, before the first to the last one. The box's ● menu closes.
     func gridStep(_ d: Int, wrap: Bool = false, ends: Bool = false) {
+        guard !frozen else { return }
         func to(_ i: Int, _ n: Int) -> Int {
             let j = i + d, per = GridModel.perPage
             if wrap { return (j % n + n) % n }
@@ -276,6 +280,7 @@ extension Walker {
         }
     }
     func press(_ k: Int) {                                    // 0 left, 1 enter, 2 right, 3 back (↩), 4 메뉴 / 홈
+        if frozen { if k == 1 { resumeCloud() }; return }        // another PC has the trainer: ● = 여기서 계속, nothing else
         let now = Date(); lastInput = now; defer { settle(now); save(); host?.redraw(.all) }        // back home: what a fight brought goes on at once
         if k == 4 {                                           // one key both ways: home opens the menu (on the pane; the LCD stays home), anywhere else it goes home
             if let open = homeKey() { if !open { growthThen = nil }; screen = open ? .menu(0) : .home }   // home means home: what a fight brought still plays there, then it stays
@@ -487,6 +492,7 @@ extension Walker {
     /// A click on the LCD: it's the screen to look at — the pane's page and the keys are what you press. Only a message goes on (as ● would).
     /// Returns false where the click drags the device instead.
     func touch(_ x: Int, _ y: Int) -> Bool {
+        if frozen { return true }
         if case .say = screen { press(1); return true }
         guard let k = stickerAt(x, y) else { return false }                                        // the LCD is to look at, but for the walker's stickers on home:
         lastInput = Date(); state.pair(k, onWalker: true); emote = (1, Date().addingTimeInterval(2)); animOn = ("home", state.companion.dex, Date())   // a tap = walk with that one

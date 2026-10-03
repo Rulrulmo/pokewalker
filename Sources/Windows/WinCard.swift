@@ -371,7 +371,9 @@ func put<T>(_ s: String, _ field: inout T) {
         case UINT(WM_QUERYENDSESSION): walker.save(); return 1
         case UINT(WM_ENDSESSION): if wp != 0 { walker.quitSave() }; return 0
         case UINT(WM_HOTKEY): toggleShown(); return 0
-        case UINT(WM_POWERBROADCAST): if wp == WPARAM(PBT_APMSUSPEND) { walker.save() }; return nil   // going to sleep
+        case UINT(WM_POWERBROADCAST):                                                             // going to sleep; awake: what changed goes up
+            if wp == WPARAM(PBT_APMSUSPEND) { walker.save() } else if wp == WPARAM(PBT_APMRESUMEAUTOMATIC) { walker.woke() }
+            return nil
         case UINT(WM_CLOSE): quit(); return 0
         case UINT(WM_DESTROY): PostQuitMessage(0); return 0
         default: return nil

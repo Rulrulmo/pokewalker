@@ -11,6 +11,7 @@ let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let loaded = Store.loadChecked(signedBefore: settings.bool("saveSigned", false))             // a save changed by hand: the last one the app made
 let walker = Walker(state: loaded.walk), view = WalkerView(walker: walker)                  // the view is the walker's host
+walker.startCloud(Cloud.app(persist: walker.persist))                                         // the save server, if on: a 1.x save goes aside first (08 §5)
 /// Opening the app again (Finder, Spotlight, Launchpad) brings a hidden walker back: macOS may hide the menu-bar icon (too many icons, the notch, 메뉴 막대 settings).
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -76,6 +77,7 @@ timer.tolerance = 0.02
 RunLoop.main.add(timer, forMode: .common)
 let ws = NSWorkspace.shared.notificationCenter
 ws.addObserver(view, selector: #selector(WalkerView.save(_:)), name: NSWorkspace.willSleepNotification, object: nil)
+ws.addObserver(view, selector: #selector(WalkerView.woke(_:)), name: NSWorkspace.didWakeNotification, object: nil)
 NotificationCenter.default.addObserver(view, selector: #selector(WalkerView.quitting(_:)), name: NSApplication.willTerminateNotification, object: nil)
 app.run()
 #elseif os(Windows)

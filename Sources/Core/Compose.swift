@@ -293,6 +293,7 @@ extension Walker {
         switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn: screen = next; default: break }
     }
     func gridTap(_ code: Int) {
+        guard !frozen else { return }
         throughSay()
         lastInput = Date(); host?.redraw(.all)
         switch (screen, code) {
@@ -384,6 +385,7 @@ extension Walker {
     /// 5400 / 5401 the tower's 도전 / 나가기, 5410 + i its party row i (who goes there instead), 5420 추천으로, then its picker: 5430 + k a row of the page,
     /// 5440 / 5441 the page before / after (round); 기술 바꾸기: 5500 + k a slot, then 5530 + k a move of the page, 5540 / 5541 its pages. One click does it, as ● would.
     func pageTap(_ code: Int) {
+        guard !frozen else { return }
         throughSay(); lastInput = Date(); host?.redraw(.all)
         switch (screen, code) {
         case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
@@ -487,6 +489,7 @@ extension Walker {
     }
     /// A click on a 메뉴 tile: open it (as ● on it would).
     func menuTap(_ i: Int) {
+        guard !frozen else { return }
         throughSay()
         guard case .menu = screen, menuItems.indices.contains(i) else { return }
         lastInput = Date(); host?.redraw(.all)

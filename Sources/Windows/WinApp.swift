@@ -56,6 +56,7 @@ final class JSONSettings: Settings {
     let f = WinFonts(); fonts = f; textMasks = f
     let loaded = Store.loadChecked(signedBefore: settings.bool("saveSigned", false))           // a save changed by hand: the last one the app made
     let walker = Walker(state: loaded.walk), c = WinCard(walker: walker); card = c              // the card is the walker's host
+    walker.startCloud(Cloud.app(persist: walker.persist))                                         // the save server, if on: a 1.x save goes aside first (08 §5)
     walker.state.dex()
     walker.levelled = walker.state.sync(counter: c.counter(), boot: c.boot(), at: Date(), away: true)        // a new launch only baselines: steps while it was closed can't be seen
     walker.auditAtLaunch(tampered: loaded.tampered)

@@ -40,6 +40,19 @@ enum Store {
         if fm.fileExists(atPath: sig(u).path) { try? fm.moveItem(at: sig(u), to: sig(to)) }
         NSLog("pokewalker: %@ not loaded (%@), kept as %@", u.path, why, to.lastPathComponent)
     }
+    /// The save from before the server (docs/plans/08 §5), kept as it was: the game never reads it again; it goes up once as the trainer's 옛 기록.
+    static func preServer(_ file: URL = Store.file) -> URL { file.deletingLastPathComponent().appendingPathComponent("state.pre-server.json") }
+    /// The server's first launch here: a save that was never the server's (no cloudRev) goes aside with its .sig as state.pre-server.json, its bak as
+    /// state.pre-server.bak.json — never over ones already there. true = it went.
+    static func movePreServer(file: URL = Store.file, bak: URL = Store.bak) -> Bool {
+        let fm = FileManager.default, to = preServer(file), bto = file.deletingLastPathComponent().appendingPathComponent("state.pre-server.bak.json")
+        guard !fm.fileExists(atPath: to.path), let d = try? Data(contentsOf: file) else { return false }
+        if let w = try? JSONDecoder().decode(Walk.self, from: d), w.cloudRev != nil { return false }      // the server's already
+        func move(_ u: URL, _ v: URL) { try? fm.moveItem(at: u, to: v); if fm.fileExists(atPath: sig(u).path) { try? fm.moveItem(at: sig(u), to: sig(v)) } }
+        move(file, to)
+        if fm.fileExists(atPath: bak.path), !fm.fileExists(atPath: bto.path) { move(bak, bto) }
+        return true
+    }
     static func save(_ s: Walk, file: URL = Store.file, bak: URL = Store.bak) {
         let enc = JSONEncoder(); enc.outputFormatting = .sortedKeys
         guard let data = try? enc.encode(s) else { return }
