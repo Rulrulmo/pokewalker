@@ -38,7 +38,7 @@ extension WalkerView: Host {
     func confirm(_ title: String, _ body: String, ok: String) -> Bool {
         NSApp.activate(ignoringOtherApps: true)                                                   // the only time it takes focus: a real confirmation
         let a = NSAlert(); a.messageText = title; a.informativeText = body
-        a.addButton(withTitle: ok); a.addButton(withTitle: "취소")
+        a.addButton(withTitle: ok); a.addButton(withTitle: "취소").keyEquivalent = "\u{1b}"   // Esc = 취소 (NSAlert only gives it to a "Cancel")
         return a.runModal() == .alertFirstButtonReturn
     }
     func askText(title: String, message: String) -> String? { ask(title, message, NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24)), placeholder: "예: 민수") }
@@ -46,7 +46,7 @@ extension WalkerView: Host {
     private func ask(_ title: String, _ message: String, _ f: NSTextField, placeholder: String) -> String? {
         NSApp.activate(ignoringOtherApps: true)                                                   // typing needs the app in front
         let a = NSAlert(); a.messageText = title; a.informativeText = message
-        a.addButton(withTitle: "확인"); a.addButton(withTitle: "취소")                              // the first is the default: Return
+        a.addButton(withTitle: "확인"); a.addButton(withTitle: "취소").keyEquivalent = "\u{1b}"                              // the first is the default: Return
         f.placeholderString = placeholder
         a.accessoryView = f; a.window.initialFirstResponder = f
         let ok = a.runModal() == .alertFirstButtonReturn

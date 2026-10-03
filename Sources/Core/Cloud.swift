@@ -309,8 +309,8 @@ extension Walker {
     /// The PIN box for this trainer's (wrong: the last one wasn't it): 4 digits, or nil (취소). Hidden as it's typed.
     func askPIN(wrong: Bool) -> String? {
         guard let h = host else { return nil }
-        var note = (wrong ? "PIN이 맞지 않아요. " : "") + "\(cloud?.seat.trainerID ?? "")의 PIN(숫자 4자리) · 이 PC에선 처음 한 번만 넣어요"
-        while let p = h.askPIN(title: "PIN을 입력해 주세요", message: note)?.trimmingCharacters(in: .whitespaces) {
+        var note = "\(cloud?.seat.trainerID ?? "")의 PIN (숫자 4자리)\n이 PC에선 처음 한 번만 넣어요."              // a line a thought: the alert wraps by width only
+        while let p = h.askPIN(title: wrong ? "PIN이 맞지 않아요" : "PIN을 입력해 주세요", message: note)?.trimmingCharacters(in: .whitespaces) {
             if Cloud.validPIN(p) { return p }
             note = "숫자 4자리로 넣어 주세요."
         }
@@ -319,22 +319,23 @@ extension Walker {
     /// A new PIN (a new trainer, or a 2.0 ID's first), twice the same: 4 digits, or nil (취소).
     func askNewPIN() -> String? {
         guard let h = host else { return nil }
-        var note = "숫자 4자리 · 다른 PC에서 이 ID로 들어갈 때 넣어요. 잊지 않게 적어 두세요."
+        var note = "숫자 4자리\n다른 PC에서 이 ID로 들어갈 때 넣어요.\n잊지 않게 적어 두세요."
         while let p = h.askPIN(title: "PIN을 정해 주세요", message: note)?.trimmingCharacters(in: .whitespaces) {
             guard Cloud.validPIN(p) else { note = "숫자 4자리로 넣어 주세요."; continue }
             guard let again = h.askPIN(title: "PIN을 한 번 더", message: "같은 PIN을 한 번 더 넣어 주세요.")?.trimmingCharacters(in: .whitespaces) else { return nil }
             if again == p { return p }
-            note = "두 번 넣은 PIN이 달라요. 처음부터 다시 정해 주세요."
+            note = "두 번 넣은 PIN이 달라요.\n처음부터 다시 정해 주세요."
         }
         return nil
     }
-    /// The ID box until an ID or 취소 (08 §2): log in with it, or (change, ID 바꾸기) switch to it. A non-ID asks again with the rule. false = 취소.
+    /// The ID box until an ID or 취소 (08 §2), then switchID (ID 바꾸기 or not: what was here never goes up as another trainer's). A non-ID asks
+    /// again with the rule. false = 취소.
     @discardableResult func askID(change: Bool = false) -> Bool {
-        guard let h = host, let c = cloud, !cloudAsking else { return false }
+        guard let h = host, cloud != nil, !cloudAsking else { return false }
         cloudAsking = true; defer { cloudAsking = false }
         var note = "2–12자, 한글·영문·숫자·_ (대소문자는 같은 ID)"
         while let raw = h.askText(title: change ? "ID 바꾸기" : "트레이너 ID를 입력해 주세요", message: note) {
-            if trainerID(raw) != nil { if change { switchID(raw) } else { c.login(raw) }; return true }
+            if trainerID(raw) != nil { switchID(raw); return true }                                 // either way: another trainer's rev / total / hash never carry over
             note = josa("'\(raw.trimmingCharacters(in: .whitespaces))'", "은", "는") + " ID로 쓸 수 없어요.\n2–12자, 한글·영문·숫자·_ 만 돼요."
         }
         return false
@@ -420,9 +421,10 @@ extension Walker {
         case .pin(.set): cloudAsked = c.phase; cloudAsking = true; defer { cloudAsking = false }; if let p = askNewPIN() { c.setPIN(p) }; return
         default: break
         }
+        func ago(_ at: Int) -> String { let m = max(0, Int(Date().timeIntervalSince1970) - at) / 60; return m < 1 ? "방금 전" : "\(m)분 전" }
         let q: (title: String, body: String, ok: String)? = switch c.phase {
         case .new(let id): ("새 트레이너", josa("'\(id)'", "은", "는") + " 서버에 없는 ID예요. 이 ID로 새로 시작할까요?", "새로 시작")
-        case .busy(let device, let at): ("다른 PC에서 하고 있었어요", "\(device)에서 \(max(0, Int(Date().timeIntervalSince1970) - at) / 60)분 전까지 하고 있었어요. 여기로 가져올까요?", "가져오기")
+        case .busy(let device, let at): ("다른 PC에서 하고 있었어요", "\(device)에서 \(ago(at))까지 하고 있었어요.\n여기로 가져올까요?", "가져오기")
         default: nil
         }
         guard let q else { return }
@@ -717,6 +719,11 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     let oldSays = { if case .say(let l, _, _) = uw.screen { return l.joined().contains("rulrulmo.work") }; return false }()
     c.append((uc.phase == .oldApp && uw.frozen && oldSays && uw.pane.login?.title == "새 버전이 필요해요" && uw.pane.login?.button == nil && uw.title().meta == "새 버전이 필요해요",
               "cloud UI: 426 → 새 버전이 필요해요 on the LCD (the download page's address) and the pane; the game is held"))
+    let xh = TestHost(), xw = Walker(state: Walk()); xw.persist = false; xw.host = xh
+    let xc = Cloud(link: srv, dir: tmp.appendingPathComponent("x", isDirectory: true), on: true); xw.startCloud(xc)
+    (xw.state.cloudRev, xw.state.cloudTotal, xw.state.sentHash) = (9, 40, "ab"); xh.texts = ["zz000012"]; xw.askID()   // what another trainer left here (an admin's bad_id, a hand-edited seat)
+    c.append((xc.seat.trainerID == "zz000012" && xw.state.cloudRev == nil && xw.state.cloudTotal == nil && xw.state.sentHash == nil,
+              "cloud UI: an ID typed at 로그인이 필요해요 starts clean too — the rev / total / hash left here never go up as that trainer's"))
 
     // PINs (docs/plans/10 §3), against a server that asks for them
     let ps = FakeCloud(); ps.pins = true

@@ -88,7 +88,8 @@ extension Canvas {
     /// A rounded tile, ringed red when it's the pick (1.5 pt).
     func tile(_ rc: CGRect, _ radius: CGFloat, on: Bool, _ fill: Color? = nil) { let p = Path.rounded(rc, radius * K); c.fill(p, fill ?? (on ? Ink.redTint : Ink.tile)); if on { c.stroke(p, Ink.red, width: 1.5 * K) } }
 
-    // MARK: the save server holding the game (no ID yet, another PC has it, too old an app): what's up, its lines, the one button (5950)
+    // MARK: the save server holding the game (no ID yet, a PIN, another PC has it, too old an app): what's up, its lines, the one button (5950);
+    // two lines and the button end at 320 — the page's 330 (PaneContent.height) leaves the 10 the other pages do
     func drawLogin(_ m: LoginModel) {
         c.say(m.title, x(X0 + 2), y(206), font(14, .bold), Ink.ink, maxW: x(X1 - X0 - 4))
         for (k, l) in m.lines.enumerated() { c.say(l, x(X0 + 2), y(232 + CGFloat(k) * 17), font(11, .medium), Ink.sub, maxW: x(X1 - X0 - 4)) }
