@@ -2,20 +2,44 @@
 # ./build.sh        build PokeWalker.app (this Mac only); runs --selftest first, so a broken rule or missing data fails the build
 # ./build.sh run    build, then (re)launch
 # ./build.sh dist   dist/PokeWalker.zip for other Macs: Apple Silicon + Intel, macOS 13+, ad-hoc signed (no Apple Developer ID)
-# ./build.sh publish   dist, then onto the download page: the zip goes up as PokeWalker-mac.zip on the GitHub release v<version> (made at this commit,
-#                      with its patch notes; gh logged in), which the server's publish.sh takes with the Windows build (committed and pushed first)
+# ./build.sh publish [--dry]   the signed release, for auto-update and the download page (committed and pushed first; gh logged in): dist's Mac zip,
+#                      the windows workflow's build of this commit (started and waited for when there's none), manifest.json (version, build, commit,
+#                      each zip's sha256 and size) and manifest.sig (Ed25519 by the release key: tools/release-key.swift, this Mac only) on the GitHub
+#                      release v<version>; then the server's Claude publishes it. --dry stops before the upload (and never starts a windows build)
 set -e
 cd "$(dirname "$0")"
 if [ "$1" = publish ]; then
-    [ -z "$(git status --porcelain)" ] || { echo "commit first: the page takes this commit's version and patch notes"; exit 1; }
-    git fetch -q origin && git merge-base --is-ancestor HEAD origin/main || { echo "push first: the server builds the page from what it can fetch"; exit 1; }
-    V=$(sed -n 's|.*<key>CFBundleShortVersionString</key><string>\([^<]*\)</string>.*|\1|p' Info.plist)
+    case "$2" in "") DRY= ;; --dry) DRY=1 ;; *) echo "usage: ./build.sh publish [--dry]"; exit 1 ;; esac   # a typo never publishes for real
+    [ -z "$(git status --porcelain)" ] || { echo "commit first: the release is this commit's version, build and patch notes"; exit 1; }
+    git fetch -q origin && git merge-base --is-ancestor HEAD origin/main || { echo "push first: the windows build and the server take what they can fetch"; exit 1; }
+    plist() { sed -n "s|.*<key>$1</key><string>\([^<]*\)</string>.*|\1|p" Info.plist; }
+    V=$(plist CFBundleShortVersionString) B=$(plist CFBundleVersion) SHA=$(git rev-parse HEAD)
     "$0" dist
     cp dist/PokeWalker.zip dist/PokeWalker-mac.zip
-    if gh release view "v$V" >/dev/null 2>&1; then gh release upload "v$V" dist/PokeWalker-mac.zip --clobber
-    else gh release create "v$V" dist/PokeWalker-mac.zip --target "$(git rev-parse HEAD)" --title "PokeWalker $V" \
+    RUN=$(gh run list --workflow windows.yml --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId')
+    if [ -z "$RUN" ] && [ -n "$DRY" ]; then                                       # a dry run spends no Actions minutes: the last good build stands in
+        RUN=$(gh run list --workflow windows.yml --status success --limit 1 --json databaseId -q '.[0].databaseId'); echo "dry: no windows build of $SHA; run $RUN's stands in"
+    elif [ -z "$RUN" ]; then
+        [ "$SHA" = "$(git rev-parse origin/main)" ] || { echo "no windows build of $SHA, and it isn't main's head: run the windows workflow on it first"; exit 1; }
+        gh workflow run windows.yml --ref main; echo "the windows build of $SHA: started, waiting (about 10 minutes)"
+        while [ -z "$RUN" ]; do sleep 5; RUN=$(gh run list --workflow windows.yml --commit "$SHA" --event workflow_dispatch --limit 1 --json databaseId -q '.[0].databaseId'); done
+        gh run watch "$RUN" --exit-status > /dev/null || { echo "the windows build failed: gh run view $RUN"; exit 1; }
+    fi
+    gh run download "$RUN" -n PokeWalker-windows-x64 -D dist/win/PokeWalker                   # a PokeWalker folder at the zip's top
+    (cd dist/win && zip -qrX ../PokeWalker-windows-x64.zip PokeWalker)
+    sum() { shasum -a 256 "$1" | cut -d' ' -f1; }; size() { stat -f %z "$1"; }
+    printf '{"build":"%s","commit":"%s","mac":{"file":"PokeWalker-mac.zip","sha256":"%s","size":%s},"version":"%s","windows":{"file":"PokeWalker-windows-x64.zip","sha256":"%s","size":%s}}' \
+        "$B" "$SHA" "$(sum dist/PokeWalker-mac.zip)" "$(size dist/PokeWalker-mac.zip)" "$V" "$(sum dist/PokeWalker-windows-x64.zip)" "$(size dist/PokeWalker-windows-x64.zip)" > dist/manifest.json   # compact, keys sorted, no newline: these bytes are signed and uploaded
+    swift tools/release-key.swift sign dist/manifest.json > dist/manifest.sig
+    KEY=$(sed -n 's|^let releaseKey.*unhex("\([0-9a-f]*\)").*|\1|p' Sources/Model/Ed25519.swift)
+    [ ${#KEY} = 64 ] || { echo "no releaseKey in Model/Ed25519.swift to check the signature with"; exit 1; }
+    swift tools/release-key.swift verify dist/manifest.json "$(cat dist/manifest.sig)" "$KEY" > /dev/null || { echo "the signature doesn't check with the app's releaseKey (Model/Ed25519.swift)"; exit 1; }
+    if [ -n "$DRY" ]; then echo "dry: nothing uploaded"; cat dist/manifest.json; echo; cat dist/manifest.sig; exit; fi
+    set -- dist/PokeWalker-mac.zip dist/PokeWalker-windows-x64.zip dist/manifest.json dist/manifest.sig
+    if gh release view "v$V" >/dev/null 2>&1; then gh release upload "v$V" "$@" --clobber
+    else gh release create "v$V" "$@" --target "$SHA" --title "PokeWalker $V" \
         --notes "$(awk -v h="■ $V " 'index($0, h) == 1 { on = 1; next } /^■ / { on = 0 } on' docs/patch-notes.txt)"; fi
-    echo "v$V: the Mac zip is on GitHub. The page: server/publish.sh --ref $(git rev-parse HEAD) on the server (or ask its Claude)"
+    echo "v$V ($SHA) is on GitHub, signed. Next: tell the server's Claude \"publish v$V\""
     exit
 fi
 SRC=$(find Sources Tests -name "*.swift")
