@@ -56,6 +56,8 @@ func newSession() -> String { hex((0..<16).map { _ in UInt8.random(in: 0...255) 
 let pinTries = 5, pinWindow = 600                                         // wrong PINs: 5 in 10 minutes, then 429
 /// App 2.1 on asks for PINs; 2.0 has no PIN box, and a trainer without a PIN plays on there as before.
 func asksPIN(_ app: String?) -> Bool { app.flatMap { verCmp($0, "2.1") }.map { $0 >= 0 } ?? false }
+/// The test IDs (zz + 6 digits: test.sh, the live tests): CHECK_REJECT_TESTS can refuse theirs without touching real players.
+func isTestID(_ key: String) -> Bool { key.utf8.count == 8 && key.hasPrefix("zz") && key.utf8.dropFirst(2).allSatisfy { (48...57).contains($0) } }
 func pinOK(_ p: String?) -> Bool { p.map { $0.utf8.count == 4 && $0.utf8.allSatisfy { (48...57).contains($0) } } ?? false }
 func saltedPIN(_ key: String, _ pin: String, salt: String = newSession()) -> String { salt + ":" + hex(sha256(Array((salt + ":" + key + ":" + pin).utf8))) }
 
@@ -96,14 +98,17 @@ actor SaveDB {
     let db: SQLite
     let path: String
     let reject: Bool                                                       // CHECK_MODE=reject: an implausible save is refused (422), else only recorded
+    let rejectTests: Bool                                                  // CHECK_REJECT_TESTS=1: refused for test IDs only (zz + 6 digits), to try reject live
+    /// Does an implausible save from this trainer get refused?
+    func refuses(_ key: String) -> Bool { reject || (rejectTests && isTestID(key)) }
 
     /// create: only `pokeserver init` and the tests make the file; anything else on a missing file throws (a wrong DB_PATH must not start an empty server).
-    init(path: String, create: Bool = false, reject: Bool = false) throws {
+    init(path: String, create: Bool = false, reject: Bool = false, rejectTests: Bool = false) throws {
         guard create || FileManager.default.fileExists(atPath: path) else { throw ServerError(description: "\(path): no database (pokeserver init makes it)") }
         let c = try SQLite(path: path, create: create)
         try c.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000; PRAGMA max_page_count = 2621440;")   // 4 KiB × 2621440 = 10 GiB
         if create || FileManager.default.fileExists(atPath: path) { try c.exec(schema); try c.exec(mintSchema) }   // tables added since (flags) come in on any open: IF NOT EXISTS
-        db = c; self.path = path; self.reject = reject
+        db = c; self.path = path; self.reject = reject; self.rejectTests = rejectTests
     }
 
     /// 판정 2–6, no database needed: the route runs it before awaiting the actor (a 2 MB decode doesn't hold the DB up).
@@ -246,7 +251,7 @@ actor SaveDB {
                     if !reasons.isEmpty {
                         try db.rows("INSERT INTO flags (key, rev, at, reasons) VALUES (:k, :r, :now, :why)",
                                     ["k": .text(id.key), "r": .int(rev), "now": .int(now), "why": .text(reasons.joined(separator: "; "))])
-                        if reject {                                                                       // refused: the server's save comes back (as stale's does), to take as it is
+                        if refuses(id.key) {                                                              // refused: the server's save comes back (as stale's does), to take as it is
                             return .error(422, "implausible", ["reasons": .s(reasons.joined(separator: "; ")), "rev": .i(t.rev), "walk": .str(t.walk)], note: "refused: \(reasons.joined(separator: "; "))")
                         }
                         flagNote = "flagged: \(reasons.joined(separator: "; "))"

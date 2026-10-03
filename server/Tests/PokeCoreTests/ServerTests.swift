@@ -482,3 +482,16 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     let issued = try await db.minting("veteran")
     #expect(issued)
 }
+
+@Test func rejectForTestIDsOnly() async throws {
+    let path = FileManager.default.temporaryDirectory.appendingPathComponent("pokeserver-zz-\(UUID().uuidString).db").path
+    let db = try SaveDB(path: path, create: true, rejectTests: true)
+    func text(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return String(decoding: try! e.encode(w), as: UTF8.self) }
+    var w = Walk(); w.audited = 2; var rich = w; rich.watts = 9999
+    for (id, refused) in [("zz123456", true), ("player", false), ("zz12345", false), ("zzabcdef", false)] {
+        let s = try await make(db, id)
+        _ = await save(db, id, s, base: 0, walk: text(w), now: 5_000)
+        let r = await save(db, id, s, base: 1, walk: text(rich), now: 5_060)
+        #expect((r.status == 422) == refused, "\(id): \(r.status)")
+    }
+}

@@ -266,7 +266,7 @@ public func run(_ arguments: [String]) async -> Int32 {
         case "serve":
             guard let appKey = env["APP_KEY"], !appKey.isEmpty else { return fail("APP_KEY is empty (/etc/pokewalker/server.env)") }
             let port = env["PORT"].flatMap { Int($0) } ?? 8787
-            let db = try SaveDB(path: path, reject: env["CHECK_MODE"] == "reject")
+            let db = try SaveDB(path: path, reject: env["CHECK_MODE"] == "reject", rejectTests: env["CHECK_REJECT_TESTS"] == "1")
             let release = URL(fileURLWithPath: env["RELEASE_DIR"].flatMap { $0.isEmpty ? nil : $0 } ?? "/var/lib/pokewalker/release", isDirectory: true)
             let site = env["DOWNLOAD_PASSWORD"].flatMap { $0.isEmpty ? nil : DownloadSite(dir: release, password: $0) }
             try await serve(db: db, appKey: appKey, port: port, site: site, release: release)
