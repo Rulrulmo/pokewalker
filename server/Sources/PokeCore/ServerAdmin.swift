@@ -19,6 +19,7 @@ let usage = """
       suspects [<days>]                  trainers whose saves the checks flagged (docs/plans/10 §2), and the busiest walkers (default 7 days)
       flags <id> [<n>]                   one trainer's flagged saves, newest first (default 30)
       pin-reset <id>                     forget the trainer's PIN and every PC's trust: the next login sets a new one
+      mons <id>                          the Pokémon the server issued to a trainer (uid, species, kind, state, 이로치, IV total) and its grants
       prune                              drop old history now (the server does it hourly)
       sample                             a new save's JSON (Walk(), the one-time checks marked done)
       verify-release <dir>               a release folder: manifest.sig checks with the release key, each zip's size and SHA-256 (publish.sh)
@@ -162,7 +163,7 @@ extension SaveDB {
             try db.rows("UPDATE trainers SET key = :nk, name = :n, session = NULL, device = NULL WHERE key = :k", a.merging(["n": .text(n.name)]) { $1 })
             try db.rows("UPDATE history SET key = :nk WHERE key = :k", a)
             try db.rows("UPDATE OR IGNORE legacy SET key = :nk WHERE key = :k", a)
-            try db.rows("UPDATE pins SET key = :nk WHERE key = :k", a); try db.rows("UPDATE flags SET key = :nk WHERE key = :k", a)
+            for t in ["pins", "flags", "mons", "chains", "grants"] { try db.rows("UPDATE \(t) SET key = :nk WHERE key = :k", a) }
             for t in ["trust", "pin_fails"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
             return "\(k) → \(n.key) (\(n.name)); its PC gets no_trainer on its next save and asks for an ID"
         }
@@ -178,7 +179,7 @@ extension SaveDB {
                 try Data(w.utf8).write(to: file, options: .atomic)
                 kept = "save kept as \(file.path)"
             }
-            for t in ["history", "trainers", "pins", "trust", "pin_fails"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
+            for t in ["history", "trainers", "pins", "trust", "pin_fails", "mons", "chains", "grants"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
             return "\(k): deleted, \(kept)"
         }
     }
@@ -200,6 +201,17 @@ extension SaveDB {
             """)
         out += "\n\ntoday's walkers (a day's cap is \(SaveCheck.daySteps))\n" + table(["name", "key", "today", "total", "watts", "bp", "box"], w.map { r in ["name", "key", "today", "total", "watts", "bp", "box"].map(r.show) })
         return out
+    }
+    func monsList(_ id: String) throws -> String {
+        let k = try key(id)
+        let rows = try db.rows("""
+            SELECT uid, dex, level, kind, state, json_extract(traits, '$.shiny') AS shiny,
+              (SELECT sum(value) FROM json_each(json_extract(traits, '$.ivs'))) AS ivs, datetime(at, 'unixepoch', 'localtime') AS at
+            FROM mons WHERE key = :k ORDER BY uid
+            """, ["k": .text(k)])
+        let g = try db.rows("SELECT datetime(at, 'unixepoch', 'localtime') AS at, watts, bp, item, why FROM grants WHERE key = :k ORDER BY at DESC LIMIT 20", ["k": .text(k)])
+        return table(["uid", "dex", "level", "kind", "state", "shiny", "ivs", "at"], rows.map { r in ["uid", "dex", "level", "kind", "state", "shiny", "ivs", "at"].map(r.show) })
+            + "\n\(rows.count) issued\n\ngrants (latest 20)\n" + table(["at", "watts", "bp", "item", "why"], g.map { r in ["at", "watts", "bp", "item", "why"].map(r.show) })
     }
     func pinReset(_ id: String) throws -> String {
         let k = try key(id)
@@ -291,6 +303,7 @@ public func run(_ arguments: [String]) async -> Int32 {
             guard let days = rest.first.map({ Int($0) }) ?? 7 else { return fail("suspects: <days> is a number") }
             out = try await db.suspects(days: days, now: unixNow())
         case ("pin-reset", 1): out = try await db.pinReset(rest[0])
+        case ("mons", 1): out = try await db.monsList(rest[0])
         case ("flags", 1), ("flags", 2):
             guard let n = rest.count > 1 ? Int(rest[1]) : 30 else { return fail("flags: <n> is a number") }
             out = try await db.flags(rest[0], last: n)

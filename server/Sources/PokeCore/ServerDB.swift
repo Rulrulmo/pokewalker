@@ -102,7 +102,7 @@ actor SaveDB {
         guard create || FileManager.default.fileExists(atPath: path) else { throw ServerError(description: "\(path): no database (pokeserver init makes it)") }
         let c = try SQLite(path: path, create: create)
         try c.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000; PRAGMA max_page_count = 2621440;")   // 4 KiB × 2621440 = 10 GiB
-        if create || FileManager.default.fileExists(atPath: path) { try c.exec(schema) }   // tables added since (flags) come in on any open: IF NOT EXISTS
+        if create || FileManager.default.fileExists(atPath: path) { try c.exec(schema); try c.exec(mintSchema) }   // tables added since (flags) come in on any open: IF NOT EXISTS
         db = c; self.path = path; self.reject = reject
     }
 
@@ -174,10 +174,12 @@ actor SaveDB {
                 if r.force != true, let d = t.device, d != r.device, now - t.updatedAt < busySeconds {  // another PC saved a moment ago: the app asks first
                     return Reply(200, ["exists": .b(true), "busy": .b(true), "name": .s(t.name), "last_device": .str(t.lastDevice), "updated_at": .i(t.updatedAt)])
                 }
+                var (rev, walk) = (t.rev, t.walk)
+                if asksPIN(r.app), let g = try grandfather(id.key, now: now) { (rev, walk) = (g.rev, g.walk) }    // 10 §4.3: a 2.0 trainer's first 2.1 login
                 let session = newSession()
                 try db.rows("UPDATE trainers SET session = :s, device = :d, last_device = :n WHERE key = :k",
                             ["s": .text(session), "d": .text(r.device), "n": .text(String(r.device_name.prefix(64))), "k": .text(id.key)])
-                var reply: [String: JSON] = ["exists": .b(true), "name": .s(t.name), "rev": .i(t.rev), "walk": .str(t.walk), "session": .s(session),
+                var reply: [String: JSON] = ["exists": .b(true), "name": .s(t.name), "rev": .i(rev), "walk": .str(walk), "session": .s(session),
                                              "last_device": .str(t.lastDevice), "updated_at": .i(t.updatedAt)]   // who had it, until when: before this login
                 if let token { reply["trust"] = .s(token) }
                 if pinNeeded { reply["pin_needed"] = .b(true) }
@@ -201,10 +203,12 @@ actor SaveDB {
                     try db.rows("INSERT OR REPLACE INTO pins (key, salted, at) VALUES (:k, :s, :now)", ["k": .text(id.key), "s": .text(saltedPIN(id.key, p)), "now": .int(now)])
                     token = try trust(id.key, r.device, now: now)
                 }
+                if asksPIN(r.app) { var s = Walk.starter; s.uid = firstUID; try record(id.key, s, kind: "starter", now: now) }   // 10 §4.1: the starter is issued too
                 try db.rows("INSERT INTO trainers (key, name, rev, session, device, last_device, created_at, updated_at) VALUES (:k, :n, 0, :s, :d, :dn, :now, :now)",
                             ["k": .text(id.key), "n": .text(id.name), "s": .text(session), "d": .text(r.device), "dn": .text(String(r.device_name.prefix(64))), "now": .int(now)])
                 var reply: [String: JSON] = ["rev": .i(0), "session": .s(session)]
                 if let token { reply["trust"] = .s(token) }
+                if asksPIN(r.app) { reply["starter"] = .i(firstUID) }
                 return Reply(200, reply, note: "new trainer \(id.name) from \(r.device_name.prefix(64))")
             }
         }
@@ -234,7 +238,10 @@ actor SaveDB {
                 // 10 §2: the save's own values, and the change from the last one taken (the server's clock); recorded, refused in reject mode
                 if let new = try? JSONDecoder().decode(Walk.self, from: Data(r.walk.utf8)) {
                     var reasons = SaveCheck.values(new)
-                    if let old = t.walk.flatMap({ try? JSONDecoder().decode(Walk.self, from: Data($0.utf8)) }) { reasons += SaveCheck.changes(from: old, to: new, seconds: now - t.updatedAt) }
+                    let issued = asksPIN(r.app) ? try minting(id.key) : false                    // 2.1 on: Pokémon and grants are the server's (10 §4.4)
+                    let g = issued ? try granted(id.key, since: t.updatedAt) : nil
+                    if let old = t.walk.flatMap({ try? JSONDecoder().decode(Walk.self, from: Data($0.utf8)) }) { reasons += SaveCheck.changes(from: old, to: new, seconds: now - t.updatedAt, granted: g) }
+                    if issued { reasons += try mintProblems(id.key, new, now: now) }
                     if !reasons.isEmpty {
                         try db.rows("INSERT INTO flags (key, rev, at, reasons) VALUES (:k, :r, :now, :why)",
                                     ["k": .text(id.key), "r": .int(rev), "now": .int(now), "why": .text(reasons.joined(separator: "; "))])

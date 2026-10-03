@@ -391,9 +391,9 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     r = await save(db, "older", s, base: 0, app: "2.0", now: 8_000)
     #expect(r.status == 200)
     r = await pinLogin("older", "pc-a", now: 8_010)
-    let session = try #require(string(r, "session"))
+    let session = try #require(string(r, "session")), rev = try #require(number(r, "rev"))      // (its first 2.1 login stamped uids: rev + 1)
     #expect(flag(r, "pin_needed") == true)
-    r = await save(db, "older", session, base: 1, app: "2.1", now: 8_020)
+    r = await save(db, "older", session, base: rev, app: "2.1", now: 8_020)
     #expect(r.status == 403 && string(r, "error") == "pin_needed")
     r = await db.setPIN(PinReq(id: "older", session: "nope", pin: "1111"), now: 8_030)
     #expect(r.status == 409)
@@ -401,9 +401,75 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     #expect(r.status == 200 && string(r, "trust") != nil)
     r = await db.setPIN(PinReq(id: "older", session: session, pin: "2222"), now: 8_032)
     #expect(string(r, "error") == "pin_set")                                                       // once; the admin's pin-reset to change it
-    r = await save(db, "older", session, base: 1, app: "2.1", now: 8_040)
+    r = await save(db, "older", session, base: rev, app: "2.1", now: 8_040)
     #expect(r.status == 200)
     _ = try await db.pinReset("older")
     let has = try await db.hasPIN("older")
     #expect(!has)
+}
+
+@Test func minting() async throws {
+    let (db, _) = try tempDB()
+    func text(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return String(decoding: try! e.encode(w), as: UTF8.self) }
+    func mon(_ r: Reply) -> Mon? { string(r, "mon").flatMap { try? JSONDecoder().decode(Mon.self, from: Data($0.utf8)) } }
+    var g = SystemRandomNumberGenerator()
+    // a 2.1 trainer: its starter is issued (uid 1,000,000)
+    var r = await db.create(CreateReq(id: "minty", device: "mac", device_name: "MAC", app: "2.1", pin: "4321"), now: 10_000)
+    let s = try #require(string(r, "session"))
+    #expect(number(r, "starter") == firstUID)
+    var w = Walk(); w.audited = 2; w.ballsRefunded = true; w.companion.uid = firstUID; w.lastUID = firstUID
+    r = await save(db, "minty", s, base: 0, walk: text(w), app: "2.1", now: 10_010)
+    #expect(r.status == 200 && r.note == nil, "\(r.note ?? "")")
+    // the radar: 10 W, a Pokémon only the server rolls; a catch keeps it, the chain may go on (then the next radar is free)
+    _ = w.walk(400, at: Date(timeIntervalSince1970: 1_800_000_000))                                // 20 W
+    r = await db.radar(RadarReq(id: "minty", session: s, walk: text(w)), now: 10_100)
+    let wild = try #require(mon(r))
+    #expect(r.status == 200 && (wild.uid ?? 0) > firstUID && flag(r, "free") == false)
+    r = await db.radarResult(ResultReq(id: "minty", session: s, uid: wild.uid!, result: "caught"), now: 10_130)
+    let chain = number(r, "chain") ?? -1, bonus = number(r, "bonus") ?? -1
+    #expect(r.status == 200 && (chain == 0 || chain == 1) && bonus == 2 * chain)
+    // the save with it: taken clean; the same save with a made-up one (or the caught one's IVs changed) is flagged
+    var withIt = w; withIt.watts -= 10; withIt.watts += bonus; withIt.box.append(wild); withIt.lastUID = wild.uid
+    r = await save(db, "minty", s, base: 1, walk: text(withIt), app: "2.1", now: 10_140)
+    #expect(r.status == 200 && r.note == nil, "\(r.note ?? "")")
+    var forged = withIt; var fake = Mon.wild(150, level: 70, shiny: true, perfect: 6, &g); fake.uid = 1_000_999; forged.box.append(fake); forged.lastUID = 1_000_999
+    forged.box[0].ivs = [31, 31, 31, 31, 31, 31]
+    r = await save(db, "minty", s, base: 2, walk: text(forged), app: "2.1", now: 10_150)
+    let note = r.note ?? ""
+    #expect(note.contains("#150 Lv.70 wasn't issued") && note.contains("traits changed"), "\(note)")
+    // a radar left open ends the chain; the next costs 10 W again
+    r = await db.radar(RadarReq(id: "minty", session: s, walk: text(withIt)), now: 10_200)
+    r = await db.radar(RadarReq(id: "minty", session: s, walk: text(withIt)), now: 10_210)
+    #expect(flag(r, "free") == false && number(r, "chain") == 0)
+    var poor = withIt; poor.watts = 5
+    r = await db.radar(RadarReq(id: "minty", session: s, walk: text(poor)), now: 10_220)
+    #expect(r.status == 402)
+    // an egg hatches once; the legend shop sells 칠색조 for 9,999 W; 토중몬 → 아이스크 issues a 껍질몬
+    var eggy = withIt; eggy.egg = Egg(dex: eggPool[0], left: 0)
+    r = await db.hatch(HatchReq(id: "minty", session: s, walk: text(eggy)), now: 10_300)
+    #expect(r.status == 200 && mon(r)?.level == 1 && mon(r)?.dex == eggPool[0])
+    r = await db.hatch(HatchReq(id: "minty", session: s, walk: text(eggy)), now: 10_301)
+    #expect(string(r, "error") == "hatched")
+    var rich = withIt; rich.watts = 9999
+    r = await db.buy(BuyReq(id: "minty", session: s, walk: text(rich), index: 0), now: 10_400)
+    #expect(mon(r)?.dex == 250 && mon(r)?.level == 50 && (mon(r)?.ivs?.filter { $0 == 31 }.count ?? 0) >= 3)
+    r = await db.buy(BuyReq(id: "minty", session: s, walk: text(withIt), index: 0), now: 10_401)
+    #expect(r.status == 402)
+    let nincada = try await db.nextUID("minty")
+    var nin = Mon.wild(290, level: 20, &g); nin.uid = nincada
+    try await db.record("minty", nin, kind: "test", now: 10_499)                                     // a 토중몬 on record (no roll)
+    r = await db.evolve(EvolveReq(id: "minty", session: s, uid: nincada, to: 291, level: 20), now: 10_500)
+    let shed = string(r, "shedinja").flatMap { try? JSONDecoder().decode(Mon.self, from: Data($0.utf8)) }
+    #expect(shed?.dex == 292 && shed?.level == 20 && shed?.shiny == nin.shiny)
+    r = await db.evolve(EvolveReq(id: "minty", session: s, uid: nincada, to: 150, level: 20), now: 10_501)
+    #expect(string(r, "error") == "no_evolution")
+    // a 2.0 trainer's first 2.1 login: its Pokémon taken as issued, uids stamped (rev + 1)
+    let old = try await make(db, "veteran")
+    var vw = Walk(); vw.audited = 2; vw.box = [Mon.wild(16, level: 9, &g)]
+    _ = await save(db, "veteran", old, base: 0, walk: text(vw), app: "2.0", now: 11_000)
+    r = await db.login(LoginReq(id: "veteran", device: "pc-a", device_name: "PC-A", app: "2.1", force: true), now: 11_010)
+    let back = string(r, "walk").flatMap(decodeWalk)
+    #expect(number(r, "rev") == 2 && back?.box.first?.uid != nil && back?.companion.uid != nil)
+    let issued = try await db.minting("veteran")
+    #expect(issued)
 }

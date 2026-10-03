@@ -42,6 +42,11 @@ func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?, release: 
     }
     post(router, "/v1/legacy", appKey: appKey, id: { (r: LegacyReq) in r.id }) { r in await db.legacy(r, now: unixNow()) }
     post(router, "/v1/pin", appKey: appKey, id: { (r: PinReq) in r.id }) { r in await db.setPIN(r, now: unixNow()) }
+    post(router, "/v1/radar", appKey: appKey, id: { (r: RadarReq) in r.id }) { r in await db.radar(r, now: unixNow()) }           // 10 §4: the server's Pokémon
+    post(router, "/v1/radar/result", appKey: appKey, id: { (r: ResultReq) in r.id }) { r in await db.radarResult(r, now: unixNow()) }
+    post(router, "/v1/hatch", appKey: appKey, id: { (r: HatchReq) in r.id }) { r in await db.hatch(r, now: unixNow()) }
+    post(router, "/v1/buy", appKey: appKey, id: { (r: BuyReq) in r.id }) { r in await db.buy(r, now: unixNow()) }
+    post(router, "/v1/evolve", appKey: appKey, id: { (r: EvolveReq) in r.id }) { r in await db.evolve(r, now: unixNow()) }
 
     let app = Application(router: router, configuration: .init(address: .hostname("127.0.0.1", port: port), serverName: "pokeserver"))
     let log = app.logger

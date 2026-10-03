@@ -43,9 +43,10 @@ enum SaveCheck {
         return s
     }()
 
-    /// The change from `old` (the last save the server took) to `new`, `seconds` apart on the server's clock (10 §2.2). minted: new Pokémon the
-    /// server issued in between (level 2; until then nil, and a time bound stands in).
-    static func changes(from old: Walk, to new: Walk, seconds: Int, minted: Int? = nil) -> [String] {
+    /// The change from `old` (the last save the server took) to `new`, `seconds` apart on the server's clock (10 §2.2). granted: what the server
+    /// handed out in between (10 §4: a chain's W and reward items, less a radar fee or a legend's price) — exact, where a 2.0 save gets a bound
+    /// from the time (a link every 20 s) and a cap on new Pokémon (2.1's are checked against what was issued instead).
+    static func changes(from old: Walk, to new: Walk, seconds: Int, granted: (watts: Int, bp: Int, items: [String])? = nil) -> [String] {
         var out: [String] = []
         let dt = max(0, seconds), steps = new.total - old.total
         if steps < 0 { out.append("total went down \(old.total) → \(new.total)") }
@@ -77,16 +78,19 @@ enum SaveCheck {
             else if evolutions.contains(where: { $0.item == k }) { wCost += Walk.evoItemPrice * n }
             else { found += n }
         }
-        if found > max(0, steps) / stepsPerFind + links / 5 + 1 { out.append("\(found) items found in \(steps) steps") }
-        let budget = min(9999, old.watts + max(0, earned) + links * linkBonus + sales + releases)
+        let rewards = granted.map { $0.items.count } ?? links / 5, chainW = granted.map(\.watts) ?? links * linkBonus
+        if found > max(0, steps) / stepsPerFind + rewards + 1 { out.append("\(found) items found in \(steps) steps") }
+        let budget = min(9999, old.watts + max(0, earned) + chainW + sales + releases)
         if new.watts + wCost > budget { out.append("W \(old.watts) → \(new.watts) (+\(wCost) spent in shops) over what came in (\(budget))") }
-        let bpIn = (dt / secondsPerTowerFight) * maxBPPerWin + 3
+        let bpIn = (dt / secondsPerTowerFight) * maxBPPerWin + 3 + (granted?.bp ?? 0)
         if (new.bp ?? 0) + bpCost > (old.bp ?? 0) + bpIn { out.append("BP \(old.bp ?? 0) → \(new.bp ?? 0) (+\(bpCost) spent) in \(dt) s") }
 
-        // new Pokémon: issued by the server (level 2), or at most one per 20 s
-        let oldUIDs = Set(mons(old).compactMap(\.uid))
-        let fresh = kept.filter { m in m.uid.map { !oldUIDs.contains($0) } ?? !mons(old).contains(m) }.count
-        if fresh > (minted ?? dt / 20 + 1) { out.append("\(fresh) new Pokémon in \(dt) s") }
+        // new Pokémon (2.0 saves): at most one per 20 s; 2.1's are checked against what was issued (SaveDB.mintProblems)
+        if granted == nil {
+            let oldUIDs = Set(mons(old).compactMap(\.uid))
+            let fresh = kept.filter { m in m.uid.map { !oldUIDs.contains($0) } ?? !mons(old).contains(m) }.count
+            if fresh > dt / 20 + 1 { out.append("\(fresh) new Pokémon in \(dt) s") }
+        }
         return out
     }
 }
