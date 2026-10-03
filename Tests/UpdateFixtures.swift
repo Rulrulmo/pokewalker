@@ -84,5 +84,23 @@ final class FakeUpdates: CloudLink, @unchecked Sendable {
     uw.updater = Updater(link: link3, dir: tmp.appendingPathComponent("u5"), app: shipped, platform: "mac", now: t0)
     for k in 0..<4 { uw.tick(t0 + 0.5 * Double(k)) }
     c.append((uc.phase == .oldApp && link3.paths == ["v1/update"], "update: 426 from the save server (새 버전이 필요해요) asks for an update at once"))
+
+    // 업데이트 설치 from the menu (U4): a newer one staged; asked; the quit's path, then the helper starting the new one
+    let ih = TestHost(), iw = Walker(state: Walk()); iw.persist = false; iw.host = ih
+    let idir = tmp.appendingPathComponent("menu", isDirectory: true)
+    iw.updater = Updater(link: FakeUpdates(), dir: idir, app: shipped, platform: "mac", now: t0)
+    var installs: [Bool] = []; iw.installUpdate = { installs.append($0); return true }
+    func installRow() -> MenuItem? { iw.menu().first { $0.title.hasPrefix("업데이트 설치") } }
+    let noRow = installRow() == nil
+    _ = readyIn("menu", "99.0"); let row = installRow()
+    iw.towerRun = true; let blockedRow = installRow(); iw.towerRun = false
+    ih.answer = false; installRow()?.action?(); let declined = ih.quits == 0 && !iw.relaunchAfterQuit
+    ih.answer = true; installRow()?.action?(); let accepted = ih.quits == 1 && iw.relaunchAfterQuit && ih.asked.last == "업데이트 설치"
+    iw.quitSave()
+    c.append((noRow && row?.enabled == true && row?.title == "업데이트 설치 (다시 시작) · 99.0" && blockedRow?.enabled == false && blockedRow?.title.contains("배틀이 끝나면") == true
+              && declined && accepted && installs == [true],
+              "update: 업데이트 설치 in the menu only with a newer one staged; greyed mid-run; 취소 does nothing; 확인 quits through the quit's path and installs it to start again"))
+    iw.updater?.staged = "99.0"; iw.tick(t0); iw.updater?.staged = "99.0"; iw.tick(t0 + 1); iw.updater?.staged = "99.1"; iw.tick(t0 + 2)
+    c.append((iw.updateNotices == 2 && iw.notedUpdate == "99.1", "update: a staged download says so once a version (업데이트를 받아 두었어요)"))
     return c
 }

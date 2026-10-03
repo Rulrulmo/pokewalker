@@ -9,7 +9,8 @@ enum Store {
     #endif
     /// "PokeWalker"; a build run from the repository keeps its own, "PokeWalker Dev": developing on a PC with the real app installed never touches
     /// its save, its trainer ID or its PIN (the settings are still shared).
-    static let folder = devBuild(Bundle.main.bundleURL) ? "PokeWalker Dev" : "PokeWalker"
+    static let folder = Bundle.main.object(forInfoDictionaryKey: "PWDataFolder") as? String ?? (devBuild(Bundle.main.bundleURL) ? "PokeWalker Dev" : "PokeWalker")
+    // (PWDataFolder: a test install's Info.plist may name its own — an update's swap tried beside the real app; the shipped one has none)
     /// A build run from the repository: build.sh beside the app (the Mac's .app; Windows' exe folder), or beside its dist/.
     static func devBuild(_ app: URL) -> Bool {
         let parent = app.deletingLastPathComponent()

@@ -44,6 +44,12 @@ extension Walker {
             m.append(MenuItem("지금 저장", enabled: c.phase == .on, action: { self.cloud?.saveNow() }))
             m.append(MenuItem("ID 바꾸기…", enabled: !cloudAsking, action: { self.askID(change: true) }))
         }
+        if let v = stagedUpdate {                                                                 // auto-update (Core/Update.swift): a newer one staged
+            if cloud == nil { m.append(.separator) }
+            let why = installBlocker
+            var install: (@MainActor () -> Void)? = nil; if why == nil { install = { self.installUpdateNow() } }   // greyed: no action
+            m.append(MenuItem(why.map { "업데이트 설치 · \(v) — \($0)" } ?? "업데이트 설치 (다시 시작) · \(v)", enabled: why == nil, action: install))
+        }
         m.append(.separator)
         m.append(MenuItem("종료", key: "q", action: { self.host?.quit() }))
         return m

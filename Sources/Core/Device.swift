@@ -35,5 +35,5 @@ let lcds: [LCD] = [
 @MainActor var lcdStyle = min(max(settings.int("lcd", 0), 0), lcds.count - 1)
 
 // MARK: - notifications (the host's banners); each kind can be switched off in the menu
-let notifyKinds = [("pet", "동료가 주워 온 것"), ("hatch", "알 부화"), ("grow", "진화 · 레벨(5의 배수)"), ("weather", "날씨 변화"), ("unlock", "해금 (코스 · 기기)")]
+let notifyKinds = [("pet", "동료가 주워 온 것"), ("hatch", "알 부화"), ("grow", "진화 · 레벨(5의 배수)"), ("weather", "날씨 변화"), ("unlock", "해금 (코스 · 기기)"), ("update", "업데이트")]
 @MainActor func notifyOn(_ k: String) -> Bool { settings.bool("notify.\(k)", true) }

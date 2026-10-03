@@ -76,7 +76,7 @@ extension Walker {
             repeat { mintTick(c, Date(), quitting: true); c.flush(&state, timeout: max(0.05, end.timeIntervalSinceNow)) } while !c.minted.isEmpty && Date() < end
             save()
         }
-        if persist, !shuttingDown, let a = Update.appURL { _ = Update.install(dir: Update.dir, app: a, relaunch: false) }   // a staged update goes in once the app is gone, not started again (the user quit); not mid-shutdown: half a swap
+        if persist || relaunchAfterQuit, !shuttingDown { _ = installUpdate(relaunchAfterQuit) }   // a staged update goes in once the app is gone, started again only from 업데이트 설치 (else the user quit); not mid-shutdown: half a swap
     }
     /// A fight brought something to play before what comes next: one of ours that levelled can evolve, or a move waits to be learned.
     func growthDue(_ now: Date) -> Bool {

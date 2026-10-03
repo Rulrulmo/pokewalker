@@ -672,7 +672,8 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     func fits(size: CGFloat) -> Bool { true }
     func beep() {}
     func confirm(_ title: String, _ body: String, ok: String) -> Bool { asked.append(title); return answer }
-    func quit() {}
+    var quits = 0
+    func quit() { quits += 1 }
 }
 
 @MainActor func cloudChecks() -> [(Bool, String)] {

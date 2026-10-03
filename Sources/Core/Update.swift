@@ -192,6 +192,7 @@ final class UpdateInbox: @unchecked Sendable {
     static let first: TimeInterval = 30, period: TimeInterval = 6 * 3600
     let link: any CloudLink, dir: URL, app: URL, platform: String, inbox = UpdateInbox()
     private(set) var nextCheck: Date, busy = false
+    var staged: String? = nil                                              // a version just staged: the walker's banner (once a version)
 
     init(link: any CloudLink, dir: URL, app: URL, platform: String = appPlatform, now: Date = Date()) {
         self.link = link; self.dir = dir; self.app = app; self.platform = platform; nextCheck = now.addingTimeInterval(Updater.first)
@@ -221,13 +222,32 @@ final class UpdateInbox: @unchecked Sendable {
             let (dir, inbox) = (self.dir, self.inbox)
             link.get("v1/download/\(platform)") { s, d in inbox.put(.staged(e.version, s == 200 ? Update.prepare(d, e, dir: dir) : nil)) }   // the SHA-256 and the unpacking here, off the main thread
         case .staged(let v, let path):
-            busy = false
+            busy = false; if path != nil { staged = v }
             NSLog(path != nil ? "pokewalker: update %@ is ready: it goes in at the next quit or launch" : "pokewalker: update %@ didn't check out: again next round", v)
         }
     }
 }
 
 extension Walker {
+    /// A staged update newer than this app, the updater on: the menu's 업데이트 설치 offers it.
+    var stagedUpdate: String? { updater.flatMap { Update.ready($0.dir) }.flatMap { verCmp($0.version, appVersion) == 1 ? $0.version : nil } }
+    /// Why not now (the row is greyed with it): a fight, a show or a tower run on — nothing in progress is lost to a restart.
+    var installBlocker: String? {
+        if inBattle || towerRun { return "배틀이 끝나면" }
+        switch screen { case .beats, .evolve, .hatch, .radar: return "지금 하는 게 끝나면"; default: break }
+        return mintWaiting != nil ? "지금 하는 게 끝나면" : nil
+    }
+    /// 업데이트 설치: asked first; then the quit's own path (steps, a save, the server's answers, a flush) and the helper, which starts the new one.
+    func installUpdateNow() {
+        guard let v = stagedUpdate, installBlocker == nil, let h = host, h.confirm("업데이트 설치", "다시 시작해서 \(v)로 바꿀까요?", ok: "확인") else { return }
+        relaunchAfterQuit = true; h.quit()
+    }
+    /// A download just staged: a banner, once a version.
+    func noteStaged(_ v: String) {
+        guard v != notedUpdate else { return }
+        notedUpdate = v; updateNotices += 1
+        notify("update", "\(v) 업데이트를 받아 두었어요", "우클릭 → 업데이트 설치로 바로 바꿀 수 있어요. 다음에 끄거나 켤 때도 바뀌어요.")
+    }
     /// The first launch of a new version: it says so, on the LCD and as a banner.
     func announceUpdate(_ v: String) {
         screen = .say([v + "로", "업데이트했어요"], next: screen, since: Date())
