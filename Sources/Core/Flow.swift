@@ -63,6 +63,7 @@ extension Walker {
         if let h = host, !frozen { let n = gate.pass(state.take(counter: h.counter(), boot: h.boot(), at: Date()), Date().timeIntervalSinceReferenceDate); state.walk(state.roomToday(n + heldSteps), at: Date()); heldSteps = 0 }
         save()
         if let c = cloud { c.flush(&state); save() }                                              // up before it goes (2 s at most); its rev / hash on disk
+        if persist, !shuttingDown, let a = Update.appURL { _ = Update.install(dir: Update.dir, app: a, relaunch: false) }   // a staged update goes in once the app is gone, not started again (the user quit); not mid-shutdown: half a swap
     }
     /// A fight brought something to play before what comes next: one of ours that levelled can evolve, or a move waits to be learned.
     func growthDue(_ now: Date) -> Bool {

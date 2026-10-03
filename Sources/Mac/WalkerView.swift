@@ -76,6 +76,7 @@ final class WalkerView: NSView {
     }
     @objc func save(_ sender: Any?) { walker.save() }                                           // going to sleep
     @objc func woke(_ sender: Any?) { walker.woke() }                                           // awake: what changed goes up
+    @objc func poweringOff(_ sender: Any?) { walker.shuttingDown = true }                       // logout / shutdown: no update goes in at this quit
     @objc func quitting(_ sender: Any?) { walker.quitSave() }                                     // quitting: the steps a fight held back count
 
     // MARK: input

@@ -369,7 +369,7 @@ func put<T>(_ s: String, _ field: inout T) {
         case wmShow: if windowHidden { toggleShown() }; return 0                                  // launched again: a hidden card comes back
         case taskbarCreated: tray(DWORD(NIM_ADD)); return 0                                       // Explorer restarted: the icon again
         case UINT(WM_QUERYENDSESSION): walker.save(); return 1
-        case UINT(WM_ENDSESSION): if wp != 0 { walker.quitSave() }; return 0
+        case UINT(WM_ENDSESSION): if wp != 0 { walker.shuttingDown = true; walker.quitSave() }; return 0   // (no update goes in mid-shutdown)
         case UINT(WM_HOTKEY): toggleShown(); return 0
         case UINT(WM_POWERBROADCAST):                                                             // going to sleep; awake: what changed goes up
             if wp == WPARAM(PBT_APMSUSPEND) { walker.save() } else if wp == WPARAM(PBT_APMRESUMEAUTOMATIC) { walker.woke() }

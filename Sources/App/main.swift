@@ -7,11 +7,17 @@ import UserNotifications
 settings = UserDefaults.standard                                                               // before anything reads a setting (the look's globals)
 fonts = MacFonts()                                                                             // before anything lays out text
 if CommandLine.arguments.contains("--selftest") { exit(selftest() ? 0 : 1) }
+if let i = CommandLine.arguments.firstIndex(of: "--stage-update"), i + 1 < CommandLine.arguments.count {   // a local build's zip, to try the install (Core/Update.swift)
+    exit(Update.stageLocal(URL(fileURLWithPath: CommandLine.arguments[i + 1])) ? 0 : 1)
+}
+let launch = Update.atLaunch()                                                                 // a downloaded update goes in first: the helper starts it once this exits
+if launch == .installing { exit(0) }
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let loaded = Store.loadChecked(signedBefore: settings.bool("saveSigned", false))             // a save changed by hand: the last one the app made
 let walker = Walker(state: loaded.walk), view = WalkerView(walker: walker)                  // the view is the walker's host
 walker.startCloud(Cloud.app(persist: walker.persist))                                         // the save server, if on: a 1.x save goes aside first (08 §5)
+walker.updater = Updater.app(persist: walker.persist)
 /// Opening the app again (Finder, Spotlight, Launchpad) brings a hidden walker back: macOS may hide the menu-bar icon (too many icons, the notch, 메뉴 막대 settings).
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -48,6 +54,7 @@ walker.state.dex()
 walker.levelled = walker.state.sync(counter: view.counter(), boot: view.boot(), at: Date(), away: true)   // steps typed while the app was quit (same login) count
 walker.auditAtLaunch(tampered: loaded.tampered)                  // an edited save restored; once: a macro's / an edited save corrected
 walker.queueReadyEvolutions()                                    // the walker's ones past their evolution (before 1.4 only the companion evolved) evolve at home
+if case .updated(let v) = launch { walker.announceUpdate(v) }
 walker.save()
 walker.refreshPane(Date(), force: true)                          // the page it opens on (the status sheet): no jump after it shows
 let size = view.frame.size
@@ -78,6 +85,7 @@ RunLoop.main.add(timer, forMode: .common)
 let ws = NSWorkspace.shared.notificationCenter
 ws.addObserver(view, selector: #selector(WalkerView.save(_:)), name: NSWorkspace.willSleepNotification, object: nil)
 ws.addObserver(view, selector: #selector(WalkerView.woke(_:)), name: NSWorkspace.didWakeNotification, object: nil)
+ws.addObserver(view, selector: #selector(WalkerView.poweringOff(_:)), name: NSWorkspace.willPowerOffNotification, object: nil)
 NotificationCenter.default.addObserver(view, selector: #selector(WalkerView.quitting(_:)), name: NSApplication.willTerminateNotification, object: nil)
 app.run()
 #elseif os(Windows)

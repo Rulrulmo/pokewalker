@@ -34,6 +34,7 @@ import Foundation
     var cloud: Cloud? = nil                                                // the save server (Core/Cloud.swift): set at launch (startCloud), never in the self-test's walkers
     var seen = Walk(), cloudAsked: Cloud.Phase? = nil, cloudAsking = false  // the state as the last tick left it (a change since = the player's); the question asked
     var cloudShown: Cloud.Phase? = nil, idBoxShown = false                 // the server's state the LCD shows; the ID box opened by itself (once a launch)
+    var updater: Updater? = nil, shuttingDown = false                      // auto-update (Core/Update.swift): set at launch; a logout / shutdown puts nothing in at quit
 
     init(state: Walk) { self.state = state }
 
@@ -123,6 +124,7 @@ import Foundation
         }
         if now.timeIntervalSince(lastSave) > 60 { save() }
         if cloud != nil { cloudTick(now, acted: acted || stepped != state) }
+        updater?.tick(now)
     }
     /// Fights, shows and animations play at 30 fps; the rest (the walking sprite too: HGSS steps it every 0.15 s) at the tick's 10.
     var busy: Bool { switch screen { case .beats, .hatch, .evolve, .radar: true; default: animating } }

@@ -15,3 +15,74 @@ func updateFixtureChecks() -> [(Bool, String)] {
             (fields?["version"] as? String == "9.9" && mac?["sha256"] as? String == hex(sha256(fixtureZip99.mac)) && mac?["size"] as? Int == fixtureZip99.mac.count,
              "update fixtures: its mac entry is fixtureZip99.mac's sha256 and size")]
 }
+
+/// The save server's update API in a few lines: the manifest and signature it gives (nil = no release), the zip it sends; what was asked.
+final class FakeUpdates: CloudLink, @unchecked Sendable {
+    var manifest: String? = fixtureManifest99, sig: String? = fixtureSig99, zip = Data(fixtureZip99.mac), paths: [String] = []
+    func post(_ path: String, _ json: Data, done: @escaping @Sendable (Int, Data) -> Void) {
+        paths.append(path)
+        done(200, (try? JSONSerialization.data(withJSONObject: ["manifest": (manifest as Any?) ?? NSNull(), "sig": (sig as Any?) ?? NSNull()])) ?? Data())
+    }
+    func get(_ path: String, done: @escaping @Sendable (Int, Data) -> Void) { paths.append(path); done(200, zip) }
+}
+
+/// Core/Update.swift: what's taken, the round, the download's checks, staging, the launch's step, 426. Nothing here starts the helper.
+@MainActor func updateChecks() -> [(Bool, String)] {
+    var c: [(Bool, String)] = []
+    let fm = FileManager.default, tmp = fm.temporaryDirectory.appendingPathComponent("pokewalker-update-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    defer { try? fm.removeItem(at: tmp) }
+    let m = fixtureManifest99, sig = fixtureSig99, t0 = Date(timeIntervalSinceReferenceDate: 812_000_000)
+    let mac = Update.accept(m, sig, platform: "mac", over: "1.15", failed: []), win = Update.accept(m, sig, platform: "windows", over: "2.0", failed: [])
+    c.append((mac == Update.Entry(version: "9.9", sha256: hex(sha256(fixtureZip99.mac)), size: 19) && win?.size == 23, "update: a signed newer release is taken (9.9 over 1.15 / 2.0, each platform's zip)"))
+    let bad = (sig.first == "0" ? "1" : "0") + sig.dropFirst()
+    let not = [Update.accept(m, sig, platform: "mac", over: "9.9", failed: []), Update.accept(m, sig, platform: "mac", over: "10.0", failed: []),
+               Update.accept(m, bad, platform: "mac", over: "1.15", failed: []), Update.accept(m + " ", sig, platform: "mac", over: "1.15", failed: []),
+               Update.accept(m, sig, platform: "linux", over: "1.15", failed: []), Update.accept(m, sig, platform: "mac", over: "1.15", failed: ["9.9"])]
+    c.append((not.allSatisfy { $0 == nil }, "update: not the same or a lower version, a bad signature, a changed manifest, no zip for this platform, a version that failed here"))
+
+    let repo = tmp.appendingPathComponent("repo", isDirectory: true), shipped = tmp.appendingPathComponent("Applications/PokeWalker.app", isDirectory: true)
+    for d in [repo.appendingPathComponent("PokeWalker.app"), repo.appendingPathComponent("dist/PokeWalker.app"), shipped] { try? fm.createDirectory(at: d, withIntermediateDirectories: true) }
+    fm.createFile(atPath: repo.appendingPathComponent("build.sh").path, contents: Data())
+    c.append((!Update.allowed(repo.appendingPathComponent("PokeWalker.app")) && !Update.allowed(repo.appendingPathComponent("dist/PokeWalker.app"))
+              && !Update.allowed(URL(fileURLWithPath: "/private/var/folders/x/AppTranslocation/A1/d/PokeWalker.app")) && Update.allowed(shipped),
+              "update: never a dev build (beside build.sh or its dist/) or App Translocation's copy; an installed app may"))
+
+    let link = FakeUpdates(), u = Updater(link: link, dir: tmp.appendingPathComponent("u1"), app: shipped, platform: "mac", now: t0)
+    u.tick(t0 + 10); let early = link.paths.isEmpty
+    u.tick(t0 + 31); u.tick(t0 + 32); u.tick(t0 + 33)                                               // the question; its answer → the download; the download's verdict
+    c.append((early && link.paths == ["v1/update", "v1/download/mac"] && !u.busy && u.nextCheck == t0 + 31 + Updater.period,
+              "update: asked ~30 s after launch (then every 6 h); a signed newer one is downloaded"))
+    let link2 = FakeUpdates(); link2.zip = Data("pokewalker 9.9 maC\n".utf8)                       // the size, not the bytes
+    let d2 = tmp.appendingPathComponent("u2"), u2 = Updater(link: link2, dir: d2, app: shipped, platform: "mac", now: t0)
+    u2.tick(t0 + 31); u2.tick(t0 + 32); u2.tick(t0 + 33)
+    c.append((link2.paths.count == 2 && ((try? fm.contentsOfDirectory(atPath: d2.path)) ?? []).isEmpty && !u2.busy && Update.ready(d2) == nil,
+              "update: a download whose bytes aren't the signed manifest's is thrown away (again next round)"))
+    #if os(macOS)
+    let src = tmp.appendingPathComponent("src/PokeWalker.app/Contents", isDirectory: true), zip = tmp.appendingPathComponent("src.zip")
+    try? fm.createDirectory(at: src, withIntermediateDirectories: true)
+    try? PropertyListSerialization.data(fromPropertyList: ["CFBundleShortVersionString": "9.9"], format: .xml, options: 0).write(to: src.appendingPathComponent("Info.plist"))
+    let ditto = Process(); ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto"); ditto.arguments = ["-c", "-k", "--keepParent", src.deletingLastPathComponent().path, zip.path]
+    try? ditto.run(); ditto.waitUntilExit()
+    let d3 = tmp.appendingPathComponent("u3"), d4 = tmp.appendingPathComponent("u4"), staged = Update.stage(zip, version: "9.9", dir: d3), wrong = Update.stage(zip, version: "9.8", dir: d4)
+    c.append((staged != nil && Update.ready(d3) == Update.Ready(version: "9.9", staged: staged ?? "") && fm.fileExists(atPath: (staged ?? "") + "/Contents/Info.plist") && wrong == nil && Update.ready(d4) == nil,
+              "update: the zip unpacks into staging, the app's version checked, ready.json written (an app of another version isn't staged)"))
+    #endif
+
+    func readyIn(_ name: String, _ v: String) -> URL {
+        let d = tmp.appendingPathComponent(name); try? fm.createDirectory(at: d, withIntermediateDirectories: true)
+        try? JSONEncoder().encode(Update.Ready(version: v, staged: d.path)).write(to: d.appendingPathComponent("ready.json")); return d
+    }
+    let l1 = readyIn("l1", appVersion), l2 = readyIn("l2", "0.1"), l3 = readyIn("l3", "99.0")
+    let a1 = Update.atLaunch(dir: l1, app: shipped), a2 = Update.atLaunch(dir: l2, app: shipped), a3 = Update.atLaunch(dir: l3, app: repo.appendingPathComponent("PokeWalker.app"))
+    c.append((a1 == .updated(appVersion) && !fm.fileExists(atPath: l1.path) && a2 == .none && Update.ready(l2) == nil && a3 == .none && Update.ready(l3) != nil,
+              "update at launch: the version just installed is announced (the folder cleared); an older staged one is dropped; a dev build installs nothing"))
+
+    let srv = FakeCloud(); srv.old = "9.0"                                                          // the save server answers 426
+    let uw = Walker(state: Walk()); uw.persist = false
+    let uc = Cloud(link: srv, dir: tmp.appendingPathComponent("c"), on: true); uc.seat.trainerID = "zz000009"; uw.startCloud(uc)
+    let link3 = FakeUpdates(); link3.manifest = nil; link3.sig = nil
+    uw.updater = Updater(link: link3, dir: tmp.appendingPathComponent("u5"), app: shipped, platform: "mac", now: t0)
+    for k in 0..<4 { uw.tick(t0 + 0.5 * Double(k)) }
+    c.append((uc.phase == .oldApp && link3.paths == ["v1/update"], "update: 426 from the save server (새 버전이 필요해요) asks for an update at once"))
+    return c
+}

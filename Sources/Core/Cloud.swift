@@ -7,17 +7,28 @@ import FoundationNetworking                                                     
 // Off unless the `cloud` setting is on (2.0 flips it), and always with persist == false: then nothing goes out and the app is 1.x.
 // The walker's hooks, the launch and the UI: P2 step 2b.
 
-/// The wire: POST json to path; done(status, body) on any thread. status 0 = no answer (network error, timeout).
-protocol CloudLink: Sendable { func post(_ path: String, _ json: Data, done: @escaping @Sendable (Int, Data) -> Void) }
+/// The wire: POST json to path, or GET it (an update's zip: Core/Update.swift); done(status, body) on any thread. status 0 = no answer (network error, timeout).
+protocol CloudLink: Sendable {
+    func post(_ path: String, _ json: Data, done: @escaping @Sendable (Int, Data) -> Void)
+    func get(_ path: String, done: @escaping @Sendable (Int, Data) -> Void)
+}
+extension CloudLink { func get(_ path: String, done: @escaping @Sendable (Int, Data) -> Void) { done(404, Data()) } }   // (the save server's fakes have no downloads)
 
 /// The real one: https://pokewalker.rulrulmo.work (08b's api.<domain>), 15 s to answer.
 struct HTTPLink: CloudLink {
     static let base = URL(string: "https://pokewalker.rulrulmo.work")!
     static let appKey = "6b0b5cdf9410adc1ed7d10ae86dd2013"                                       // not a secret (08 §2-1): it keeps the internet's scanners from making trainers
     func post(_ path: String, _ json: Data, done: @escaping @Sendable (Int, Data) -> Void) {
+        var r = request(path); r.httpMethod = "POST"; r.httpBody = json; r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        send(r, done)
+    }
+    func get(_ path: String, done: @escaping @Sendable (Int, Data) -> Void) { send(request(path), done) }
+    private func request(_ path: String) -> URLRequest {                                       // 15 s without a byte is no answer (a long download is fine)
         var r = URLRequest(url: HTTPLink.base.appendingPathComponent(path), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
-        r.httpMethod = "POST"; r.httpBody = json
-        for (k, v) in ["Content-Type": "application/json", "X-App-Key": HTTPLink.appKey, "User-Agent": "PokeWalker/\(appVersion) (\(appPlatform))"] { r.setValue(v, forHTTPHeaderField: k) }
+        for (k, v) in ["X-App-Key": HTTPLink.appKey, "User-Agent": "PokeWalker/\(appVersion) (\(appPlatform))"] { r.setValue(v, forHTTPHeaderField: k) }
+        return r
+    }
+    private func send(_ r: URLRequest, _ done: @escaping @Sendable (Int, Data) -> Void) {
         URLSession.shared.dataTask(with: r) { d, res, _ in done((res as? HTTPURLResponse)?.statusCode ?? 0, d ?? Data()) }.resume()
     }
 }
@@ -282,6 +293,7 @@ extension Walker {
         default: nil
         }
         if let lines { towerRun = false; growthThen = nil; heldSteps = 0; screen = .say(lines, next: .home, since: .distantFuture) }   // (a fight going on is dropped)
+        if p == .oldApp { updater?.checkNow() }                                                  // 426: a newer app is out — the updater asks now
         else if cloudShown.map(Cloud.locks) == true { screen = .home }
         refreshPane(Date(), force: true); host?.redraw(.all)
     }
