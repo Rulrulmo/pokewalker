@@ -310,10 +310,14 @@ extension Walker {
     }
     /// Woken from sleep: what changed goes up (a stale reply brings the server's).
     func woke() { cloud?.soon(Date()) }
-    /// ID 바꾸기 (step 3's box): what isn't up goes up first; another trainer's rev, total and hash don't carry over. false = not an ID.
+    /// ID 바꾸기 (step 3's box): what isn't up goes up first; another trainer's rev, total and hash don't carry over. Home at once, a tower run over:
+    /// the other trainer's save is taken only there (a page left open, or a run, kept the old one up under the new ID). false = not an ID.
     @discardableResult func switchID(_ raw: String) -> Bool {
         guard let c = cloud, let id = trainerID(raw) else { return false }
-        if c.seat.trainerID.flatMap(trainerID)?.key != id.key { c.flush(&state); (state.cloudRev, state.cloudTotal, state.sentHash) = (nil, nil, nil) }
+        if c.seat.trainerID.flatMap(trainerID)?.key != id.key {
+            c.flush(&state); (state.cloudRev, state.cloudTotal, state.sentHash) = (nil, nil, nil)
+            towerRun = false; growthThen = nil; heldSteps = 0; screen = .home                    // (a fight going on is dropped: it was the other trainer's)
+        }
         c.login(raw); save(); return true
     }
     /// The tick's end: what the player did goes up soon; replies; the server's save taken at home (its news quiet: it happened elsewhere), saved at once,
@@ -588,11 +592,12 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
               "cloud UI: the right-click menu has 트레이너: ID · n분 전 저장, 지금 저장, ID 바꾸기… and the trainer card heads with the ID (only with the cloud)"))
     uw.screen = .home; uw.state.walk(40, at: ut); ut = ticks(uw, ut, 4)
     let upBefore = srv.rows["zz000005"]?.walk == text(uw.state.shared)
-    uw.state.watts += 7; n = sent(); uh.texts = ["zz000006"]; uw.askID(change: true)            // ID 바꾸기: ours goes up first, then the other trainer
+    uw.state.watts += 7; n = sent(); uh.texts = ["zz000006"]; uw.towerRun = true; uw.screen = .card(0); uw.askID(change: true)   // ID 바꾸기 (in a tower run, a page up): ours goes up first, then the other trainer
     let flushed = sent() == n + 1 && srv.rows["zz000005"]?.walk == text(uw.state.shared), cleared = uw.state.cloudRev == nil && uw.state.cloudTotal == nil && uw.state.sentHash == nil
+        && !uw.towerRun && { if case .home = uw.screen { return true }; return false }()
     uh.answer = false; ut = ticks(uw, ut, 3)                                                       // 새 트레이너? no → back to the box (by itself only once: not again)
     c.append((upBefore && flushed && cleared && uc.phase == .needsID && uc.seat.trainerID == nil && uh.boxes.count == 4,
-              "cloud UI: ID 바꾸기 sends what isn't up, then forgets the old trainer's rev / total / hash; 새 트레이너? no → 로그인이 필요해요"))
+              "cloud UI: ID 바꾸기 sends what isn't up, then forgets the old trainer's rev / total / hash, goes home (a tower run ends: the new save is taken there); 새 트레이너? no → 로그인이 필요해요"))
     uh.answer = true; uh.texts = ["zz000005"]; uw.press(1); ut = ticks(uw, ut, 3)                    // ● = ID 입력: back to the first, the server's save
     c.append((uc.phase == .on && uc.seat.trainerID == "zz000005" && uw.state.cloudRev == srv.rows["zz000005"]?.rev && uw.state.watts == (Cloud.walk(srv.rows["zz000005"]?.walk ?? "")?.watts ?? -1),
               "cloud UI: ● on 로그인이 필요해요 opens the box; the first trainer again: its save from the server"))
