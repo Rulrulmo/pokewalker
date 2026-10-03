@@ -1,8 +1,8 @@
 #!/bin/sh
 # server/publish.sh [--ref <commit>] [<PokeWalker.zip>] — a new release on the download page (server/README.md: 다운로드 페이지), run on the server:
 #   the version and the patch notes of <commit> (default: origin/main), the Windows zip from the windows workflow's successful run on that commit
-#   (on origin/main's head with none yet, it's started and waited for), and the Mac zip given (./build.sh publish on the Mac uploads it and calls this).
-#   No Mac zip: the page's current one stays if it's the same version, else the Mac button says 준비 중.
+#   (on origin/main's head with none yet, it's started and waited for), and the Mac zip: the one given, else the asset PokeWalker-mac.zip of the
+#   GitHub release v<version> (./build.sh publish on the Mac puts it there), else the page's current one if it's the same version, else 준비 중.
 # All files land in RELEASE_DIR at once, as the pokewalker user (sudo).
 set -eu
 cd "$(dirname "$0")/.."
@@ -19,7 +19,7 @@ VERSION=$(plist CFBundleShortVersionString); BUILD=$(plist CFBundleVersion)
 [ -n "$VERSION" ] || { echo "no version in $SHA:Info.plist"; exit 1; }
 echo "release $VERSION (build $BUILD) from $(git log -1 --format='%h %s' "$SHA" | cut -c1-90)"
 
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+TMP=$(mktemp -d); IN=$(mktemp -d); trap 'rm -rf "$TMP" "$IN"' EXIT             # TMP: what the page gets; IN: what comes in
 chmod 755 "$TMP"                                                       # the pokewalker user copies from it
 git show "$SHA:docs/patch-notes.txt" > "$TMP/patch-notes.txt"
 
@@ -42,8 +42,10 @@ echo "Windows: run $RUN"
 gh run download "$RUN" -n PokeWalker-windows-x64 -D "$TMP/PokeWalker"
 (cd "$TMP" && zip -qr PokeWalker-windows-x64.zip PokeWalker && rm -rf PokeWalker)
 
-# Mac: the zip given (its version must be this one), else the page's current one when it's this version
-MACJSON=null
+# Mac: the zip given, else the release's (its version must be this one), else the page's current one when it's this version
+if [ -z "$MAC" ] && gh release view "v$VERSION" --json assets -q '.assets[].name' 2>/dev/null | grep -qx PokeWalker-mac.zip; then
+    gh release download "v$VERSION" -p PokeWalker-mac.zip -D "$IN"; MAC=$IN/PokeWalker-mac.zip; echo "Mac: the GitHub release v$VERSION's zip"
+fi
 if [ -n "$MAC" ]; then
     MACV=$(unzip -p "$MAC" PokeWalker.app/Contents/Info.plist | sed -n 's|.*<key>CFBundleShortVersionString</key><string>\([^<]*\)</string>.*|\1|p')
     [ "$MACV" = "$VERSION" ] || { echo "the Mac zip is version '${MACV:-?}', $SHA is $VERSION"; exit 1; }
