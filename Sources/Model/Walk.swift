@@ -94,10 +94,9 @@ struct Walk: Codable, Equatable {
         let i = courseItem(&r); _ = keep(i); return .item(i)
     }
     var hatchDue: Bool { (egg?.left ?? 1) <= 0 }
-    mutating func hatch<R: RandomNumberGenerator>(_ r: inout R) -> Mon {
-        let m = Mon.wild(egg!.dex, level: 1, shiny: Int.random(in: 0..<shinyOdds, using: &r) == 0 ? true : nil, &r)
-        egg = nil; _ = keep(m); return m
-    }
+    mutating func hatch<R: RandomNumberGenerator>(_ r: inout R) -> Mon { let m = eggMon(&r)!; hatched(m); return m }   // (Model/Mint.swift's roll)
+    /// The egg's Pokémon comes (the walker's own roll, or the server's: docs/plans/10 §4): the egg goes, it goes to the box.
+    mutating func hatched(_ m: Mon) { egg = nil; _ = keep(m) }
     /// On a legend course the radar sometimes turns up one you don't have yet.
     func legend<R: RandomNumberGenerator>(_ r: inout R, chain: Int) -> Int? {
         let all = here.legends, left = all.filter { !(owned ?? []).contains($0) }
@@ -196,13 +195,14 @@ struct Walk: Codable, Equatable {
     func tradeEvolution(_ now: Date) -> Evo? { evolutions.first { $0.from == companion.dex && $0.way == .trade && allows($0, companion, now) } }
     /// Items the companion could evolve with (for the W shop).
     func evolutionItems() -> [String] { Array(Set(evolutions.filter { $0.from == companion.dex }.compactMap(\.item))).sorted() }
-    mutating func evolve(_ e: Evo, ref: Int = -1) {
+    /// shed: 토중몬 → 아이스크 leaves a 껍질몬 rolled here (false: the server issues it — docs/plans/10 §4 — or, offline, none).
+    mutating func evolve(_ e: Evo, ref: Int = -1, shed: Bool = true) {
         guard var m = mon(ref) else { return }
         if let i = e.item { if let k = bag.firstIndex(of: i) { bag.remove(at: k) } else if let k = items.firstIndex(of: i) { items.remove(at: k) } }
         if m.known == nil { m.known = m.moves }                                                    // its moves stay (the new form's defaults would replace them)
         m.dex = e.to; setMon(ref, m); own(e.to, shiny: m.shiny)
         queueMoves(ref, from: m.level - 1)                                                         // the new form's move at this level
-        if e.to == 291 { var g = SystemRandomNumberGenerator(), s = Mon.wild(292, level: m.level, shiny: m.shiny, &g); s.known = m.known; _ = keep(s) }   // 토중몬 -> 아이스크 leaves a 껍질몬 behind
+        if e.to == 291, shed { var g = SystemRandomNumberGenerator(); _ = keep(Walk.shedinja(from: m, &g)) }   // 토중몬 -> 아이스크 leaves a 껍질몬 behind
     }
 
     /// Steps = keys + clicks since the last poll. Same boot and a counter that only grew => the gap (also while the app was quit) counts;
@@ -314,7 +314,7 @@ struct Walk: Codable, Equatable {
     }
 
     /// Returns false when the walker was full and it went straight to the box / bag.
-    mutating func keep(_ m: Mon) -> Bool { own(m.dex, shiny: m.shiny); box.append(m); return false }   // every catch / hatch / buy goes to the box: the walker takes only who the player sends (워커로)
+    mutating func keep(_ m: Mon) -> Bool { own(m.dex, shiny: m.shiny); if let u = m.uid { lastUID = max(lastUID ?? 0, u) }; box.append(m); return false }   // (a server-issued one keeps its uid)   // every catch / hatch / buy goes to the box: the walker takes only who the player sends (워커로)
     mutating func keep(_ i: String) -> Bool { if items.count < 3 { items.append(i); return true }; bag.append(i); return false }
     /// One of the walker's to the box (포켓몬's 상자로 보내기).
     mutating func store(_ i: Int) { box.append(caught.remove(at: i)) }

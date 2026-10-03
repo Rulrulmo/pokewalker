@@ -48,7 +48,9 @@ final class CloudInbox: @unchecked Sendable {
     /// The PIN the server wants (docs/plans/10 §3): this trainer's (wrong: the last one wasn't), a new one (a 2.0 ID has none yet), or none for a while (too many wrong).
     enum PinAsk: Equatable { case enter(wrong: Bool), set, locked(until: Date) }
     /// A request out, kept to read its reply by.
-    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, save(total: Int, hash: String), legacy, setPin }
+    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, save(total: Int, hash: String), legacy, setPin, mint(MintAsk) }
+    /// The server's Pokémon (docs/plans/10 §4): a radar's find, its result (the chain), an egg's, a legend bought, an evolution (껍질몬).
+    enum MintAsk: Sendable, Equatable { case radar, result(uid: Int, result: String), hatch, buy(Int), evolve(uid: Int, to: Int, level: Int) }
     /// This PC's, in cloud.json next to the save: the ID as typed, the server's session, a random id made once, whether the 1.x save went up, and the
     /// server's trust token for this PC (the PIN goes in once a PC: 10 §3).
     struct Seat: Codable, Equatable { var trainerID: String? = nil, session: String? = nil, device: String? = nil, legacyUploaded: Bool? = nil, trust: String? = nil }
@@ -69,6 +71,9 @@ final class CloudInbox: @unchecked Sendable {
     var head: (walk: Walk, rev: Int, hash: String?, how: Take)? = nil      // the server's save, waiting for home to take it (mid-fight the fight's copy would write over it)
     var legacy: String? = nil                                              // the 1.x save's text, to go up once (2b: state.pre-server.json)
     var pendingPIN: String? = nil                                          // the PIN just typed: goes with the next login / create / pin until the server takes it (never stored)
+    var mints: [(ask: MintAsk, walk: String?)] = []                        // to send, before saves; their answers for the walker (status 0 = no answer, offline)
+    var minted: [(ask: MintAsk, status: Int, reply: [String: Any])] = []
+    var starterUID: Int? = nil                                             // create's: the new walker's companion, as the server issued it
     private(set) var lastSaved: Date? = nil
     private(set) var firstRun = false                                      // no cloud.json before: the server's first launch on this PC (Walker.startCloud's 08 §5 move)
     var deviceName: String { String(appDeviceName.prefix(64)) }
@@ -105,6 +110,16 @@ final class CloudInbox: @unchecked Sendable {
     func enterPIN(_ pin: String) { if case .pin(.enter) = phase { pendingPIN = pin; ask(.login(force: false, resume: false)) } }
     /// A 2.0 ID's first PIN (pin_needed): set it on the server; saves wait for it.
     func setPIN(_ pin: String) { if phase == .pin(.set) { pendingPIN = pin; ask(.setPin) } }
+    /// Ask the server for a Pokémon (10 §4). Not logged in, or offline (its backoff): answered at once with no answer — the walker doesn't start
+    /// the radar, buy, or hatch. walk = the save as it is now (before paying).
+    func mint(_ m: MintAsk, walk: Walk?, now: Date) {
+        guard phase == .on, now >= retryAt else { minted.append((m, 0, [:])); return }
+        mints.append((m, walk.map { Cloud.text($0.shared) }))
+    }
+    /// The walker takes the answers in.
+    func takeMinted() -> [(ask: MintAsk, status: Int, reply: [String: Any])] { let t = minted; minted = []; return t }
+    static func text(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return (try? e.encode(w)).flatMap { String(data: $0, encoding: .utf8) } ?? "" }
+    static func mon(_ any: Any?) -> Mon? { (any as? String).flatMap { try? JSONDecoder().decode(Mon.self, from: Data($0.utf8)) } }
     nonisolated static func validPIN(_ s: String) -> Bool { s.count == 4 && s.allSatisfy { $0.isASCII && $0.isNumber } }
     /// After an action (a fight's end, a buy, …): up within 3 s, the actions of those 3 s in one save.
     func soon(_ now: Date) { if phase == .on, due == nil { due = now.addingTimeInterval(Cloud.gather) } }
@@ -130,7 +145,9 @@ final class CloudInbox: @unchecked Sendable {
         var took: Bool? = nil
         if canTake, let h = head { head = nil; took = apply(h, &w, now) }
         guard inFlight == nil, now >= retryAt else { return took }
+        if phase != .on, !mints.isEmpty { minted += mints.map { ($0.ask, 0, [:]) }; mints = [] }   // logged out / locked: they won't go
         if let a = asking { asking = nil; send(a) }
+        else if phase == .on, !mints.isEmpty { let m = mints.removeFirst(); sendMint(m.ask, m.walk) }   // a Pokémon waits on these: before saves
         else if phase == .on, head == nil {
             if legacy != nil, seat.legacyUploaded != true { send(.legacy) }
             else if mustSave || now >= nextSave || due.map({ now >= $0 }) == true { save(&w, now) }
@@ -160,6 +177,7 @@ final class CloudInbox: @unchecked Sendable {
             post(a, "v1/login", b)
         case .create: post(a, "v1/create", ["id": id, "device": device, "device_name": deviceName, "pin": pendingPIN ?? ""])
         case .setPin: post(a, "v1/pin", ["id": id, "session": seat.session ?? "", "pin": pendingPIN ?? ""])
+        case .mint: break
         case .legacy: post(a, "v1/legacy", ["id": id, "device": device, "walk": legacy ?? ""])
         case .save: break
         }
@@ -176,6 +194,19 @@ final class CloudInbox: @unchecked Sendable {
         post(.save(total: w.total, hash: hash), "v1/save", ["id": id, "session": session, "app": appVersion, "base": w.cloudRev ?? 0, "walk": text])
         return true
     }
+    private func sendMint(_ m: MintAsk, _ walk: String?) {
+        guard let id = seat.trainerID, let session = seat.session else { minted.append((m, 0, [:])); return }
+        var b: [String: Any] = ["id": id, "session": session]; if let walk { b["walk"] = walk }
+        let path: String
+        switch m {
+        case .radar: path = "v1/radar"
+        case .result(let uid, let result): path = "v1/radar/result"; b["uid"] = uid; b["result"] = result
+        case .hatch: path = "v1/hatch"
+        case .buy(let i): path = "v1/buy"; b["index"] = i
+        case .evolve(let uid, let to, let level): path = "v1/evolve"; b["uid"] = uid; b["to"] = to; b["level"] = level
+        }
+        post(.mint(m), path, b)
+    }
     private func post(_ a: Ask, _ path: String, _ body: [String: Any]) {
         guard let d = try? JSONSerialization.data(withJSONObject: body) else { return }
         inFlight = a
@@ -189,10 +220,16 @@ final class CloudInbox: @unchecked Sendable {
             guard s != 0, s < 500, let j = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else { offline(a, now); continue }
             backoff = 0
             switch (a, s) {
+            case (.mint(let m), _):                                                           // the walker reads it; the session's own answers act here too
+                let e = j["error"] as? String
+                if e == "no_trainer" { orphan(&w, now) } else if e == "pin_needed" { phase = .pin(.set) }
+                else if s == 409, j["reason"] as? String == "replaced" { phase = .replaced } else if s == 426 { phase = .oldApp }
+                minted.append((m, s, j))
             case (_, 426): phase = .oldApp; NSLog("pokewalker: cloud: the server wants app %@ (this is %@)", j["need"] as? String ?? "?", appVersion)
             case (.login(_, let resume), 200): loggedIn(j, resume: resume, &w, now)
             case (.create, 200) where j["session"] is String:
                 seat.session = j["session"] as? String; seat.trust = j["trust"] as? String ?? seat.trust; pendingPIN = nil; phase = .on; head = (Walk(), 0, nil, .fresh)
+                starterUID = j["starter"] as? Int                                                // 10 §4.1: the starter is issued too
             case (.create, 400) where j["error"] as? String == "bad_pin": pendingPIN = nil; phase = .new(seat.trainerID ?? "")   // (the box checks: not met)
             case (.login, 401) where j["error"] as? String == "pin":                            // no trust for this PC, or the PIN wasn't it
                 seat.trust = nil; phase = .pin(.enter(wrong: pendingPIN != nil)); pendingPIN = nil
@@ -213,7 +250,7 @@ final class CloudInbox: @unchecked Sendable {
             default:                                                                             // 400 / 401 / 413 (a bug, the build's key): logged, again next round
                 NSLog("pokewalker: cloud: %@ → %ld %@", "\(a)", s, String(data: body.prefix(200), encoding: .utf8) ?? "")
                 retryAt = now.addingTimeInterval(Cloud.period)
-                switch a { case .login, .create: asking = a; case .legacy: legacy = nil; case .save: break; case .setPin: pendingPIN = nil; phase = .pin(.set) }
+                switch a { case .login, .create: asking = a; case .legacy: legacy = nil; case .save, .mint: break; case .setPin: pendingPIN = nil; phase = .pin(.set) }
             }
         }
     }
@@ -244,6 +281,7 @@ final class CloudInbox: @unchecked Sendable {
         case .fresh:                                                                          // 08 §5: a new save, 1.7's check and 1.10's refund already done
             var f = Walk(); f.audited = 2; f.ballsRefunded = true
             (f.counter, f.boot, f.syncedAt, f.counterKind, f.cloudRev, f.cloudTotal) = (w.counter, w.boot, w.syncedAt, w.counterKind, 0, 0)
+            if let u = starterUID { f.companion.uid = u; f.lastUID = max(f.lastUID ?? 0, u) }   // the server's uid for the first companion
             f.rollover(now); f.dex(); w = f; mustSave = true; return false
         }
     }
@@ -256,6 +294,7 @@ final class CloudInbox: @unchecked Sendable {
         case .login, .create: asking = a
         case .save, .legacy: break
         case .setPin: phase = .pin(.set)                                                        // the button again, once it's back
+        case .mint(let m): minted.append((m, 0, [:])); minted += mints.map { ($0.ask, 0, [:]) }; mints = []   // no answer: nothing waits on the network
         }
     }
     /// 404: the trainer is gone (an admin deleted or renamed it). The save is kept as state.orphan-<unix>.json; this PC's ID is cleared: the ID box.
@@ -351,7 +390,7 @@ extension Walker {
         case .pin(.locked): ["PIN을 너무 많이", "틀렸어요", "잠시 뒤에 다시"]
         default: nil
         }
-        if let lines { towerRun = false; growthThen = nil; heldSteps = 0; screen = .say(lines, next: .home, since: .distantFuture) }   // (a fight going on is dropped)
+        if let lines { towerRun = false; growthThen = nil; heldSteps = 0; mintWaiting = nil; radarMon = nil; screen = .say(lines, next: .home, since: .distantFuture) }   // (a fight going on is dropped)
         if p == .oldApp { updater?.checkNow() }                                                  // 426: a newer app is out — the updater asks now
         else if cloudShown.map(Cloud.locks) == true { screen = .home }
         refreshPane(Date(), force: true); host?.redraw(.all)
@@ -368,6 +407,68 @@ extension Walker {
             LoginModel(title: "PIN을 너무 많이 틀렸어요", lines: ["\(max(1, Int((until.timeIntervalSinceNow / 60).rounded(.up))))분 뒤에 다시 넣을 수 있어요."], button: nil)
         default: nil
         }
+    }
+    // MARK: the server's Pokémon (docs/plans/10 §4)
+    /// Asked of the server: the LCD says so and waits (keys held, steps go on); back = where a "no" returns.
+    func askMint(_ m: Cloud.MintAsk, walk: Bool, lines: [String], back: Screen) {
+        guard let c = cloud else { return }
+        mintWaiting = m; mintBack = back; screen = .say(lines, next: back, since: .distantFuture)
+        c.mint(m, walk: walk ? state : nil, now: Date())
+    }
+    /// The radar's bushes went by (a wrong one, or too slow): the server's find is gone, its chain over.
+    func radarMissed(_ now: Date) {
+        if let c = cloud, let u = radarMon?.uid { c.mint(.result(uid: u, result: "missed"), walk: nil, now: now) }
+        radarMon = nil
+    }
+    func notifyHatch(_ m: Mon) {
+        notify("hatch", "알에서 " + josa(monNames[m.dex], "이", "가") + " 태어났어요!" + (m.shiny == true ? " ✦" : ""), m.shiny == true ? "이로치예요! 상자에 있어요" : "Lv.1 · 상자에 있어요")
+    }
+    /// The server's answers: the radar's find (10 W unless the chain's), a chain going on (its W and item exactly) or not, an egg's, a legend
+    /// (paid now), a 껍질몬. No answer: the radar and the shop say "연결되면", the chain ends, the egg waits.
+    func mintTick(_ c: Cloud, _ now: Date) {
+        var changed = false
+        for (m, s, j) in c.takeMinted() {
+            switch m {
+            case .radar:
+                guard mintWaiting == .radar else { continue }
+                mintWaiting = nil
+                guard s == 200, let mon = Cloud.mon(j["mon"]) else {
+                    chainNote = nil; screen = .say(s == 402 ? ["W가 부족하다", "(10W 필요)"] : ["연결되면", "쓸 수 있어요"], next: mintBack ?? .home, since: now); continue
+                }
+                if j["free"] as? Bool != true { _ = state.spend(10); changed = true }
+                radarMon = mon
+                let next = Screen.radar(bush: Int.random(in: 0..<4, using: &rng), cursor: 0, since: now, chain: j["chain"] as? Int ?? 0)
+                if growthDue(now) { growthThen = next; screen = .home } else { screen = next }       // what the last fight brought plays first
+            case .result:
+                guard case .result? = mintWaiting else { continue }                                 // a missed or fled one: nothing waits on it
+                mintWaiting = nil
+                let n = s == 200 ? j["chain"] as? Int ?? 0 : 0
+                guard n > 0 else { screen = .say(chainWas > 0 ? ["풀숲이 조용해졌다", "연쇄 \(chainWas)에서 끝"] : ["풀숲이", "조용해졌다"], next: .home, since: now); continue }
+                let bonus = j["bonus"] as? Int ?? 0, reward = j["reward"] as? String
+                state.watts = min(9999, state.watts + bonus); state.bestChain = max(state.bestChain ?? 0, n); if let r = reward { _ = state.keep(r) }
+                chainNote = "+\(bonus)W" + (reward.map { " · " + $0 } ?? ""); changed = true
+                askMint(.radar, walk: true, lines: ["연쇄 \(n)!", "풀숲이 흔들린다"], back: .home)
+            case .hatch:
+                hatchAsked = false
+                guard s == 200, let mon = Cloud.mon(j["mon"]), state.egg != nil else { hatchAt = now.addingTimeInterval(Cloud.period); continue }
+                state.hatched(mon); changed = true
+                if case .home = screen { screen = .hatch(mon, since: now) }
+                notifyHatch(mon)
+            case .buy(let k):
+                guard mintWaiting == m else { continue }
+                mintWaiting = nil
+                let back = mintBack ?? .home
+                guard s == 200, let mon = Cloud.mon(j["mon"]), state.payLegend(k) else {
+                    screen = .say(s == 402 ? [Walk.legendShop[k].bp > 0 ? "BP가 부족하다" : "W가 부족하다"] : ["연결되면", "쓸 수 있어요"], next: back, since: now); continue
+                }
+                _ = state.keep(mon); changed = true
+                screen = .say(["전설의 " + monNames[mon.dex] + "!", "Lv.\(mon.level) · 상자에 왔다"], next: back, since: now)
+                notify("unlock", "전설의 \(monNames[mon.dex])", "Lv.\(mon.level)이 상자에 왔어요")
+            case .evolve:
+                if s == 200, let shed = Cloud.mon(j["shedinja"]) { _ = state.keep(shed); changed = true }
+            }
+        }
+        if changed { save(); c.soon(now) }
     }
     /// The trainer card's first page heads with the trainer ID (08 §2), once there is one.
     var cardTitle: String { cloud?.seat.trainerID ?? "트레이너 카드" }
@@ -408,6 +509,7 @@ extension Walker {
             rewarded = dexCount; unlockedAt = state.earned; lastSeason = state.season
             queueReadyEvolutions(); save()
         } else if state.sentHash != sent || state.cloudRev != rev { save() }                     // 08b §10 ②: the sent save's hash on disk before its reply
+        mintTick(c, now)
         if c.phase != cloudShown { showCloud(c.phase); cloudShown = c.phase; cloudAsked = nil }   // a new answer from the server: its question may come again
         seen = state
         cloudQuestion(c)
@@ -456,6 +558,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     }
     var rows: [String: Row] = [:], paths: [String] = [], held: [() -> Void] = [], clock = 10_000
     var down = false, html: Int? = nil, lose = false, hold = false, old: String? = nil, pins = false
+    var mintRng = Seeded(s: 77), nextUID = 1_000_001, pending: Int? = nil, chainN = 0, chainFree = false, chainCourse = 0, chainGoes = true   // 10 §4: the server's rolls
     func release() { let h = held; held = []; h.forEach { $0() } }
     func admin(_ key: String, _ walk: String) { rows[key]?.rev += 1; rows[key]?.walk = walk; rows[key]?.writer = "admin" }   // `pokeserver rollback`
     func post(_ path: String, _ json: Data, done: @escaping @Sendable (Int, Data) -> Void) {
@@ -476,7 +579,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             if path == "v1/create" {
                 guard !pins || Cloud.validPIN(pin) else { return (400, ["error": "bad_pin"]) }
                 rows[id.key] = Row(name: id.name, session: session, device: device, at: clock, pin: pins ? pin : nil, trusts: pins ? [device: token] : [:])
-                return (200, pins ? ["rev": 0, "session": session, "trust": token] : ["rev": 0, "session": session])
+                return (200, pins ? ["rev": 0, "session": session, "trust": token, "starter": 1_000_000] : ["rev": 0, "session": session])   // (pins: as a 2.1 app's create)
             }
             return path == "v1/login" ? (200, ["exists": false]) : (404, ["error": "no_trainer"])
         }
@@ -507,6 +610,37 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             guard Cloud.validPIN(pin) else { return (400, ["error": "bad_pin"]) }
             r.pin = pin; r.trusts = [r.device: token]; rows[id.key] = r                                 // trusted: the PC holding the session
             return (200, ["trust": token])
+        case "v1/radar", "v1/radar/result", "v1/hatch", "v1/buy", "v1/evolve":
+            guard j["session"] as? String == r.session else { return (409, ["error": "conflict", "reason": "replaced"]) }
+            let w = (j["walk"] as? String).flatMap { try? JSONDecoder().decode(Walk.self, from: Data($0.utf8)) }
+            func text(_ m: Mon) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return (try? e.encode(m)).map { String(decoding: $0, as: UTF8.self) } ?? "" }
+            func issue(_ m: Mon) -> String { var m = m; m.uid = nextUID; nextUID += 1; return text(m) }
+            switch path {
+            case "v1/radar":
+                guard let w else { return (400, ["error": "bad_walk"]) }
+                if pending != nil { pending = nil; chainN = 0; chainFree = false }                       // one left open: its chain is over
+                let free = chainFree && chainN > 0
+                if !free { guard w.watts >= 10 else { return (402, ["error": "watts"]) }; chainN = 0 }
+                let (m, legend) = w.radarMon(&mintRng, chain: chainN), t = issue(m)
+                pending = nextUID - 1; chainFree = false; chainCourse = w.course
+                return (200, ["mon": t, "legend": legend, "chain": chainN, "free": free])
+            case "v1/radar/result":
+                guard let u = j["uid"] as? Int, u == pending else { return (409, ["error": "no_radar"]) }
+                pending = nil
+                guard ["caught", "defeated"].contains(j["result"] as? String ?? ""), chainGoes else { chainN = 0; chainFree = false; return (200, ["chain": 0, "bonus": 0, "reward": NSNull()]) }
+                chainN += 1; chainFree = true
+                return (200, ["chain": chainN, "bonus": 2 * chainN, "reward": chainN % 5 == 0 ? courses[chainCourse].items[0].item : NSNull()])
+            case "v1/hatch":
+                guard let w, w.hatchDue, let m = w.eggMon(&mintRng) else { return (409, ["error": "no_egg"]) }
+                return (200, ["mon": issue(m)])
+            case "v1/buy":
+                let i = j["index"] as? Int ?? -1
+                guard let w, Walk.legendShop.indices.contains(i), w.watts >= Walk.legendShop[i].watts, (w.bp ?? 0) >= Walk.legendShop[i].bp else { return (402, ["error": "price"]) }
+                return (200, ["mon": issue(Walk.legendMon(i, &mintRng))])
+            default:                                                                                // v1/evolve: 토중몬 → 아이스크 brings a 껍질몬
+                guard j["to"] as? Int == 291 else { return (200, ["shedinja": NSNull()]) }
+                return (200, ["shedinja": issue(Walk.shedinja(from: Mon(dex: 291, level: j["level"] as? Int ?? 1, female: false), &mintRng))])
+            }
         case "v1/save":
             let base = j["base"] as? Int ?? -1, mine = j["session"] as? String
             guard mine == r.session else { return (409, ["error": "conflict", "reason": "replaced"]) }                         // row 9
@@ -670,7 +804,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     c.append((stepsQuiet && soonSet && sent() == n + 1 && srv.rows[mid]?.walk == text(mw.state.shared),
               "cloud walker: steps wait for the 2-minute save; a menu action (not through press) goes up within 3 s"))
     mw.state.egg = Egg(dex: 175, left: 5); mt = ticks(mw, mt, 5)
-    let boxed = mw.state.box.count; mh.keys += 10; mw.tick(mt); mt += 0.5
+    let boxed = mw.state.box.count; mh.keys += 10; mw.tick(mt); mt += 0.5; mw.tick(mt); mt += 0.5   // (the server's egg: a round trip)
     c.append((mw.state.box.count == boxed + 1 && mc.due != nil, "cloud walker: what the tick itself does (an egg hatching) goes up soon too"))
 
     mt = ticks(mw, mt, 5); _ = srv.answer("v1/login", ["id": mid, "device": "another", "force": true])   // another PC takes it
@@ -764,5 +898,58 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     h3.pins = []; w3.state.watts += 1; pt = ticks(w3, pt, 5)                                         // (w3 holds that PC's session now)
     let reset = c3.phase == .pin(.set); _ = c3.login("zz000099")
     c.append((reset && c3.seat.trust == nil && c3.seat.session == nil, "cloud PIN: a PIN reset by the admin → 403 pin_needed at the next save → PIN 정하기; another ID drops this PC's trust"))
+
+    // the server's Pokémon (docs/plans/10 §4), against a server that issues them
+    let ms = FakeCloud(); ms.pins = true
+    let bh = TestHost(), bw = Walker(state: Walk()); bw.persist = false; bw.host = bh
+    let bc = Cloud(link: ms, dir: tmp.appendingPathComponent("b", isDirectory: true), on: true); bw.startCloud(bc)
+    bh.texts = ["zz000020"]; bh.pins = ["2468", "2468"]
+    var bt = ticks(bw, t + 30000, 4)
+    c.append((bc.phase == .on && bw.state.companion.uid == 1_000_000 && bw.state.lastUID == 1_000_000, "cloud mint: a new trainer's first companion has the server's uid (1,000,000)"))
+    bw.state.watts = 30; bw.screen = .menu(menuAt("포켓 레이더")); bw.press(1)
+    let asking = bw.mintWaiting == .radar && bw.state.watts == 30; bw.press(3); let keysHeld = bw.mintWaiting == .radar
+    bt = ticks(bw, bt, 1)
+    var bush = -1, since = Date.distantPast; if case .radar(let b0, _, let s0, 0) = bw.screen { bush = b0; since = s0 }
+    let found = bw.radarMon
+    c.append((asking && keysHeld && bush >= 0 && (found?.uid ?? 0) > 1_000_000 && bw.state.watts == 20 && ms.paths.last == "v1/radar",
+              "cloud mint: the radar asks the server first (keys held meanwhile), then its find on the bushes; 10 W once it answered"))
+    bw.screen = .radar(bush: bush, cursor: bush, since: since, chain: 0); bw.press(1)
+    var fight: Battle? = nil; if case .beats(let b0, _, _, _) = bw.screen { fight = b0 }
+    ms.chainGoes = true
+    if let f = fight { bw.screen = bw.after(f, .caught, Date()) }
+    bt = ticks(bw, bt, 2)
+    let caughtKept = bw.state.box.contains { $0.uid == found?.uid && $0.dex == found?.dex }
+    var chain1 = false; if case .radar(_, _, _, 1) = bw.screen { chain1 = true }
+    c.append((fight?.wild.uid == found?.uid && caughtKept && chain1 && bw.state.watts == 22 && bw.state.bestChain == 1 && bw.chainNote == "+2W" && ms.paths.contains("v1/radar/result") && ms.paths.last == "v1/radar",
+              "cloud mint: the fight is the server's Pokémon; caught → its result; the server's chain: +2 W exactly, the next radar free"))
+    if case .radar(let b0, _, let s0, let ch) = bw.screen { bw.screen = .radar(bush: b0, cursor: (b0 + 1) % 4, since: s0, chain: ch); bw.press(1) }
+    bt = ticks(bw, bt, 1)
+    c.append((bw.radarMon == nil && ms.paths.last == "v1/radar/result" && ms.pending == nil && ms.chainN == 0, "cloud mint: a wrong bush → missed: the server ends the chain"))
+    ms.down = true; let w0 = bw.state.watts; bw.screen = .menu(menuAt("포켓 레이더")); bw.press(1); bt = ticks(bw, bt, 2)
+    let refused = { if case .say(let l, _, _) = bw.screen { return l == ["연결되면", "쓸 수 있어요"] }; return false }()
+    c.append((refused && bw.state.watts == w0 && bw.mintWaiting == nil, "cloud mint: offline the radar doesn't start, and costs nothing"))
+    bw.screen = .home; bw.state.egg = Egg(dex: 175, left: 0); bt = ticks(bw, bt, 2)
+    let eggWaits = bw.state.egg != nil
+    ms.down = false; bt = ticks(bw, bt + 600, 2)
+    let hatchedOne = bw.state.box.last
+    c.append((eggWaits && bw.state.egg == nil && hatchedOne?.dex == 175 && (hatchedOne?.uid ?? 0) > 1_000_000 && { if case .hatch = bw.screen { return true }; return false }(),
+              "cloud mint: offline the egg waits (no hatch); back, the server's Pokémon hatches"))
+    bw.screen = .home; bw.state.watts = 9999; let boxBefore = bw.state.box.count
+    if let k = bw.wares(false).firstIndex(where: { if case .legend = $0.kind { return true }; return false }) { bw.buyWare(bw.wares(false)[k], 1, bp: false, sel: k, Date()) }
+    let buyHeld = bw.mintWaiting != nil && bw.state.watts == 9999
+    bt = ticks(bw, bt, 2)
+    let legendOne = bw.state.box.last
+    c.append((buyHeld && bw.state.watts == 0 && bw.state.box.count == boxBefore + 1 && legendOne?.dex == 250 && (legendOne?.uid ?? 0) > 1_000_000 && bw.state.legendBought(250),
+              "cloud mint: the legend shop asks the server, then pays (9,999 W) and keeps its 칠색조"))
+    var tz = Mon(dex: 290, level: 20, female: false); tz.uid = 1_000_090; bw.state.box.append(tz)
+    let toNinjask = evolutions.first { $0.from == 290 && $0.to == 291 }!, boxN = bw.state.box.count
+    bw.startEvolving(toNinjask, Date(), ref: bw.state.box.count - 1); let noLocal = bw.state.box.count == boxN
+    bt = ticks(bw, bt + 10, 2)
+    let shed = bw.state.box.last
+    var tz2 = Mon(dex: 290, level: 20, female: false); tz2.uid = 1_000_091; bw.state.box.append(tz2); ms.down = true
+    bw.startEvolving(toNinjask, Date(), ref: bw.state.box.count - 1); bt = ticks(bw, bt + 10, 2)
+    c.append((noLocal && shed?.dex == 292 && (shed?.uid ?? 0) > 1_000_000 && bw.state.box.last?.dex == 291 && ms.paths.contains("v1/evolve"),
+              "cloud mint: 토중몬 → 아이스크: the 껍질몬 is the server's (none rolled here); offline, none"))
+    ms.down = false
     return c
 }

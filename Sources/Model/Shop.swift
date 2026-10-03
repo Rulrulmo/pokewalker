@@ -90,10 +90,15 @@ extension Walk {
     static let legendShop: [(dex: Int, level: Int, watts: Int, bp: Int)] = [(250, 50, 9999, 0), (150, 70, 0, 300)]
     func legendBought(_ dex: Int) -> Bool { (bought ?? []).contains("legend:\(dex)") }
     mutating func buyLegend(_ i: Int) -> Mon? {
+        guard payLegend(i) else { return nil }
+        var g = SystemRandomNumberGenerator(); let m = Walk.legendMon(i, &g); _ = keep(m); return m   // legends: 3 IVs at 31, a shiny now and then (Model/Mint.swift)
+    }
+    /// The legend's price paid, its bought marker; false = can't pay. (The server issues the Pokémon itself from 2.1: docs/plans/10 §4.)
+    mutating func payLegend(_ i: Int) -> Bool {
         let l = Walk.legendShop[i]
-        guard watts >= l.watts, (bp ?? 0) >= l.bp else { return nil }
+        guard watts >= l.watts, (bp ?? 0) >= l.bp else { return false }
         watts -= l.watts; bp = (bp ?? 0) - l.bp; if !legendBought(l.dex) { bought = (bought ?? []) + ["legend:\(l.dex)"] }
-        var g = SystemRandomNumberGenerator(); let m = Mon.wild(l.dex, level: l.level, shiny: Int.random(in: 0..<shinyOdds, using: &g) == 0 ? true : nil, perfect: 3, &g); _ = keep(m); return m   // legends: 3 IVs at 31, a shiny now and then
+        return true
     }
     /// Evolution items for the companion, sold in the 상점 (HGSS traded them for Pokéathlon points).
     static let evoItemPrice = 1000

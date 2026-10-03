@@ -25,10 +25,19 @@ extension Walker {
             let s = state.towerStreak ?? 0; state.towerEnd(); towerRun = false
             return .say(["\(s)연승에서 끝났다", "BP \(state.bp ?? 0)"], next: .home, since: now)
         }
+        if let c = cloud, let u = b.wild.uid {                                                   // the server's radar (10 §4): it says whether the chain goes on
+            radarMon = nil
+            if end == .caught { _ = state.keep(b.wild) }
+            let r = end == .caught ? "caught" : end == .won ? "defeated" : end == .lost ? "lost" : "fled"
+            c.mint(.result(uid: u, result: r), walk: nil, now: now)
+            guard end == .caught || end == .won else { return .home }
+            mintWaiting = .result(uid: u, result: r); chainWas = b.chain; mintBack = .home
+            return .say(["풀숲을", "살피는 중..."], next: .home, since: .distantFuture)
+        }
         switch end {
         case .caught, .won:
             if end == .caught { _ = state.keep(b.wild) }
-            guard Double.random(in: 0..<1, using: &rng) < Walk.chainGoesOn(b.chain) else {
+            guard Walk.chainContinues(b.chain, &rng) else {
                 return .say(b.chain > 0 ? ["풀숲이 조용해졌다", "연쇄 \(b.chain)에서 끝"] : ["풀숲이", "조용해졌다"], next: .home, since: now)
             }
             let n = b.chain + 1, item = state.chainReward(n)
@@ -115,6 +124,10 @@ extension Walker {
     /// Buys q of the row; a line to say, then back to the list.
     func buyWare(_ w: Walk.Ware, _ q: Int, bp: Bool, sel: Int, _ now: Date) {
         let back = Screen.shop(bp: bp, sel: sel, qty: nil), cost = "(-\(w.price * q)\(bp ? "BP" : "W"))"
+        if case .legend(let k) = w.kind, cloud != nil {                                           // the server issues it (10 §4): paid once it has
+            guard state.canBuy(w, bp: bp) >= 1 else { screen = .say([bp ? "BP가 부족하다" : "W가 부족하다"], next: back, since: now); return }
+            askMint(.buy(k), walk: true, lines: ["전설의 포켓몬", "부르는 중..."], back: back); return
+        }
         switch state.purchase(w, q, bp: bp) {
         case .items(let i, let n)?: screen = .say([josa(i, "을", "를") + (n > 1 ? " \(n)개" : ""), (bp ? "받았다! " : "샀다! ") + cost], next: back, since: now)
         case .legend(let m)?:
@@ -138,7 +151,7 @@ extension Walker {
     }
     /// The scroll wheel / trackpad on a list: a row up or down — the shop's (leaving how-many: the amount only changes on purpose) or the tower's picker.
     func listRow(_ d: Int) {
-        guard !frozen else { return }
+        guard !frozen, mintWaiting == nil else { return }
         if case .tower(_?) = screen { towerStep(d); return }
         if case .course(let i) = screen { lastInput = Date(); host?.redraw(.all); screen = .course(max(0, min(courses.count - 1, i + d))); return }
         if case .train(let k) = screen { lastInput = Date(); host?.redraw(.all); screen = .train(max(0, min(5, k + d))); return }
@@ -162,7 +175,7 @@ extension Walker {
     }
     /// A click on the shop panel: 2100 + k = row k (and how-many, if it can be bought), 2000-2004 = −10 −1 +1 +10 max, 2005 = buy, 2006 / 2007 = 예 / 아니오.
     func shopTap(_ code: Int) {
-        guard !frozen else { return }
+        guard !frozen, mintWaiting == nil else { return }
         throughSay()
         if case .shopConfirm(let bp, let sel, _) = screen {
             if code == 2006 { screen = .shopConfirm(bp: bp, sel: sel, yes: true); press(1) }
@@ -191,7 +204,8 @@ extension Walker {
     }
     func startEvolving(_ e: Evo, _ now: Date, ref: Int = -1) {
         guard let from = state.mon(ref) else { return }
-        state.evolve(e, ref: ref); screen = .evolve(from: from, to: state.mon(ref) ?? from, since: now); save()
+        state.evolve(e, ref: ref, shed: cloud == nil); screen = .evolve(from: from, to: state.mon(ref) ?? from, since: now); save()
+        if let c = cloud, let u = state.id(ref), let m = state.mon(ref) { c.mint(.evolve(uid: u, to: e.to, level: m.level), walk: nil, now: now) }   // the server follows; a 껍질몬 comes from it
     }
     /// A fight's EXP, EVs and levels back to ours. Those that levelled (the companion too: the fight showed its Lv.) queue to evolve right after it (settle).
     func writeBackFight(_ b: Battle) {
@@ -245,7 +259,7 @@ extension Walker {
     /// The grids' pick moves d along its list: ◀ ▶ wrap around; rows (↑ ↓) and the wheel stop at the ends; a page step (the page buttons, page up / down,
     /// `ends`) past the last page goes to #1, before the first to the last one. The box's ● menu closes.
     func gridStep(_ d: Int, wrap: Bool = false, ends: Bool = false) {
-        guard !frozen else { return }
+        guard !frozen, mintWaiting == nil else { return }
         func to(_ i: Int, _ n: Int) -> Int {
             let j = i + d, per = GridModel.perPage
             if wrap { return (j % n + n) % n }
@@ -282,6 +296,7 @@ extension Walker {
     }
     func press(_ k: Int) {                                    // 0 left, 1 enter, 2 right, 3 back (↩), 4 메뉴 / 홈
         if frozen { if k == 1 { lockPress() }; return }          // locked by the server (no ID, another PC has it, too old): ● is the lock's button, nothing else
+        if mintWaiting != nil { return }                         // the server's Pokémon on the way: keys wait
         let now = Date(); lastInput = now; defer { settle(now); save(); host?.redraw(.all) }        // back home: what a fight brought goes on at once
         if k == 4 {                                           // one key both ways: home opens the menu (on the pane; the LCD stays home), anywhere else it goes home
             if let open = homeKey() { if !open { growthThen = nil }; screen = open ? .menu(0) : .home }   // home means home: what a fight brought still plays there, then it stays
@@ -320,16 +335,11 @@ extension Walker {
         case .radar(let b, let c, let since, let chain):
             if k != 1 { screen = .radar(bush: b, cursor: (c + (k == 0 ? 3 : 1)) % 4, since: since, chain: chain); return }
             let u = now.timeIntervalSince(since)
-            if c == b, u >= 1.5 {
-                let s = state.encounter(&rng, chain: chain), l = state.legend(&rng, chain: chain)
-                let top = state.here.all.map(\.level).max() ?? 45                                      // legends: over the course's own (1.14 bands), 50 at least; 아르세우스 80
-                var m = Mon.wild(l ?? s.dex, level: l == nil ? min(100, s.level + Walk.chainLevel(chain)) : l == 493 ? 80 : max(50, top + 5), shiny: Int.random(in: 0..<Walk.chainShinyOdds(chain), using: &rng) == 0 ? true : nil,
-                                 perfect: max(l == nil ? 0 : 3, Walk.chainPerfectIVs(chain)), &rng)   // chains raise 이로치 odds and sure 31s; legends have 3
-                if l == nil { m.female = s.female }                                                // the walker's slots fix the sex
+            if c == b, u >= 1.5, let m = radarMon ?? (cloud == nil ? state.radarMon(&rng, chain: chain).mon : nil) {   // the server's (10 §4), or rolled here (Model/Mint.swift); never made up with the cloud on
                 partyRefs = ([-1] + state.caught.indices.map { -2 - $0 }).map { state.id($0)! }        // the companion, then the walker's: they can switch in
                 var b = Battle(wild: m, party: [state.companion] + state.caught, chain: chain); state.see(m.dex)
                 freshFight(); let from = b, beats = b.begin(weather: state.weather, &rng); screen = .beats(b, beats, since: now, from: from)
-            } else { screen = .say(chain > 0 ? ["빗나갔다...", "연쇄 끝 (\(chain))"] : ["아무것도", "없었다..."], next: .home, since: now) }
+            } else { radarMissed(now); screen = .say(chain > 0 ? ["빗나갔다...", "연쇄 끝 (\(chain))"] : ["아무것도", "없었다..."], next: .home, since: now) }
         case .battle(var b, let sel):
             let opts = battleMenu(b), n = opts.count
             if k == 0 { screen = .battle(b, sel: (sel + n - 1) % n); return }
@@ -480,7 +490,9 @@ extension Walker {
     }
     func open(_ i: Int, _ now: Date) {
         switch menuItems[i] {
-        case "포켓 레이더": screen = state.spend(10) ? .radar(bush: Int.random(in: 0..<4, using: &rng), cursor: 0, since: now, chain: 0) : .say(["W가 부족하다", "(10W 필요)"], next: .menu(i), since: now)
+        case "포켓 레이더":
+            if cloud != nil, state.watts >= 10 { askMint(.radar, walk: true, lines: ["포켓 레이더", "준비 중..."], back: .menu(i)) }   // the server's find (10 §4); 10 W once it answers
+            else { screen = cloud == nil && state.spend(10) ? .radar(bush: Int.random(in: 0..<4, using: &rng), cursor: 0, since: now, chain: 0) : .say(["W가 부족하다", "(10W 필요)"], next: .menu(i), since: now) }
         case "코스": screen = .course(state.course)
         case "트레이너 카드": screen = .card(0)
         case "포켓몬": screen = .box(-1, act: nil, confirm: false)                                  // the companion first
@@ -493,7 +505,7 @@ extension Walker {
     /// A click on the LCD: it's the screen to look at — the pane's page and the keys are what you press. Only a message goes on (as ● would).
     /// Returns false where the click drags the device instead.
     func touch(_ x: Int, _ y: Int) -> Bool {
-        if frozen { return true }
+        if frozen || mintWaiting != nil { return true }
         if case .say = screen { press(1); return true }
         guard let k = stickerAt(x, y) else { return false }                                        // the LCD is to look at, but for the walker's stickers on home:
         lastInput = Date(); state.pair(k, onWalker: true); emote = (1, Date().addingTimeInterval(2)); animOn = ("home", state.companion.dex, Date())   // a tap = walk with that one

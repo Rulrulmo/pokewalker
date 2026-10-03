@@ -35,6 +35,9 @@ import Foundation
     var seen = Walk(), cloudAsked: Cloud.Phase? = nil, cloudAsking = false  // the state as the last tick left it (a change since = the player's); the question asked
     var cloudShown: Cloud.Phase? = nil, idBoxShown = false                 // the server's state the LCD shows; the ID box opened by itself (once a launch)
     var updater: Updater? = nil, shuttingDown = false                      // auto-update (Core/Update.swift): set at launch; a logout / shutdown puts nothing in at quit
+    var mintWaiting: Cloud.MintAsk? = nil, mintBack: Screen? = nil         // a Pokémon asked of the server (10 §4): the LCD waits, keys held; where a "no" goes back to
+    var radarMon: Mon? = nil, chainWas = 0                                 // the server's radar find on the bushes now; the chain a result was asked at
+    var hatchAsked = false, hatchAt = Date.distantPast                     // an egg's hatch asked of the server; not before (offline: the egg waits)
 
     init(state: Walk) { self.state = state }
 
@@ -74,7 +77,7 @@ import Foundation
         stepRate = stepRate * 0.8 + Double(min(50, state.total - before)) * 10 * 0.2               // steps a second, smoothed (the tick is 10 Hz)
         switch screen {
         case .radar(_, _, let since, let chain) where now.timeIntervalSince(since) > 1.5 + radarWindow(chain):
-            screen = .say(chain > 0 ? ["...!", "연쇄가 끊겼다 (\(chain))"] : ["...!", "사라져버렸다"], next: .home, since: now)
+            radarMissed(now); screen = .say(chain > 0 ? ["...!", "연쇄가 끊겼다 (\(chain))"] : ["...!", "사라져버렸다"], next: .home, since: now)
         case .beats(let bt, let beats, let since, _) where now.timeIntervalSince(since) * battleSpeed >= beats.map(\.length).reduce(0, +):
             screen = beats.last!.ends ? after(bt, beats.last!, now) : bt.mustReplace ? .party(bt, sel: bt.mine.indices.first { bt.mine[$0].alive } ?? 0) : .battle(bt, sel: 0)
         case .say(_, let next, let since) where now.timeIntervalSince(since) > 3: screen = next
@@ -106,8 +109,8 @@ import Foundation
             }
         }
         if case .home = screen, state.hatchDue {
-            let m = state.hatch(&rng); screen = .hatch(m, since: now); save()
-            notify("hatch", "알에서 " + josa(monNames[m.dex], "이", "가") + " 태어났어요!" + (m.shiny == true ? " ✦" : ""), m.shiny == true ? "이로치예요! 상자에 있어요" : "Lv.1 · 상자에 있어요")
+            if let c = cloud { if !hatchAsked, now >= hatchAt { hatchAsked = true; c.mint(.hatch, walk: state, now: now) } }   // the server's egg (10 §4); offline it waits
+            else { let m = state.hatch(&rng); screen = .hatch(m, since: now); save(); notifyHatch(m) }
         }
         if state.earned > unlockedAt {                                                           // lifetime watts opened a course
             let new = courses.enumerated().filter { $0.element.watts > unlockedAt && $0.element.watts <= state.earned && state.unlocked($0.offset) }.map(\.element.name)
@@ -135,6 +138,7 @@ import Foundation
     /// (shift: the one before). false = not the walker's (the platform passes it on).
     func key(_ k: Key, shift: Bool = false, held: Bool = false) -> Bool {
         if frozen { if k == .enter, !held { press(1) }; return true }                              // another PC has it: ● = 여기서 계속, nothing else
+        if mintWaiting != nil { return true }                                                      // the server's Pokémon on the way
         if case .shop(_, _, let q) = screen, let d = [Key.up: -1, .down: 1][k] { shopStep(q == nil ? d : -10 * d); return true }
         if case .tower(_?) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -TowerModel.perPage, .pageDown: TowerModel.perPage][k] { towerStep(d); return true }   // the tower's picker: ↑ ↓ a row, page up / down a page
         switch screen { case .course, .train, .relearn: if let d = [Key.up: -1, .down: 1, .pageUp: -CourseModel.perPage, .pageDown: CourseModel.perPage][k] { listRow(d); return true }; default: break }   // the lists: the same
