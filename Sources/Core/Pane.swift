@@ -172,9 +172,10 @@ struct PaneContent: Equatable {
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
     static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
+    static let home: CGFloat = 406                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size)
     var height: CGFloat {
-        login != nil ? 330 : battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 406 : menu != nil ? 354
+        login != nil ? 330 : battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 406 : menu != nil ? PaneContent.home
             : team != nil ? 446 : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? 446 : board != nil ? 446 : post != nil ? 482
-            : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 353 : status != nil ? 354 : Layout.idle
+            : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 353 : status != nil ? PaneContent.home : Layout.idle
     }
 }

@@ -8,6 +8,12 @@ extension Walker {
     var raidPower: Int { state.raidPower ?? 0 }
     var raidCells: Int { raidPower / Engine.raidPowerCost }
     func isMe(_ name: String) -> Bool { trainerID(name)?.key == trainerID(myName)?.key }
+    /// 홈's status row: power and the boss (a ball waiting, the week's over).
+    var raidStatus: String {
+        guard let r = cloud?.raid else { return "파워 \(raidCells)칸" }
+        if r.hpLeft == 0 { return r.mine.canCatch && (r.mine.balls ?? 1) > 0 ? "잡을 기회! · " + monNames[r.boss.dex] : "이번 주 보스 쓰러뜨림" }
+        return "파워 \(raidCells)칸 · " + monNames[r.boss.dex]
+    }
     /// The menu tile's line: a ball waiting, the week over, or power and the boss.
     var raidNote: String {
         guard let r = cloud?.raid else { return "파워 \(raidCells)칸 · 팀 보스" }

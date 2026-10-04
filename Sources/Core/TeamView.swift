@@ -87,6 +87,13 @@ extension Walker {
         screen = .team(sel: wrap ? ((sel + d) % n + n) % n : max(0, min(n - 1, sel + d)), tab: tab, card: card)
     }
     // MARK: 친구 (12 §2.4, 3.5)
+    /// 홈's status row: requests waiting, else how many friends and who's walking now.
+    var friendStatus: String {
+        guard let t = cloud?.team else { return "-" }
+        if friendRequestsIn > 0 { return "친구 신청 \(friendRequestsIn)건" }
+        let n = max(0, t.cards.count - 1), walking = t.cards.filter { Walker.walkingNow($0) && !isMe($0) }.count
+        return n == 0 ? "아직 없어요" : walking > 0 ? "\(n)명 · 지금 걷는 중 \(walking)명" : "\(n)명"
+    }
     /// The 신청 tab's rows: requests to me first, then mine out.
     var friendReqRows: [FriendReqModel.Row] { (cloud?.team?.requests ?? []).map { .init(name: $0, mine: false) } + (cloud?.team?.sent ?? []).map { .init(name: $0, mine: true) } }
     var friendRequestsIn: Int { cloud?.team?.requests?.count ?? 0 }

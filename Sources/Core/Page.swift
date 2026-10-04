@@ -383,14 +383,14 @@ extension Canvas {
 
     // MARK: 메뉴: 2 x 5 tiles, the one on the LCD red
     func drawMenu(_ m: MenuModel) {
-        let rowsN = (m.rows.count + 1) / 2, five = rowsN >= 5                                       // 9–12 tiles: five or six shorter rows, the page's height kept (= home's status sheet)
-        let rh: CGFloat = rowsN >= 6 ? 20.5 : five ? 25 : 31, gap: CGFloat = rowsN >= 6 ? 2.5 : five ? 3 : 4, cw = (X1 - X0 - 4) / 2
+        let rowsN = (m.rows.count + 1) / 2, five = false                                            // up to 12 tiles in six rows of 28 (the page = home's status sheet, PaneContent.home)
+        let rh: CGFloat = rowsN >= 5 ? 28 : 31, gap: CGFloat = 4, cw = (X1 - X0 - 4) / 2
         for (i, row) in m.rows.enumerated() {
             let rc = r(X0 + CGFloat(i % 2) * (cw + 4), 203 + CGFloat(i / 2) * (rh + gap), cw, rh), on = i == m.sel
             c.fill(.rounded(rc, 9 * K), on ? Ink.red : Ink.tile)
-            let six = rowsN >= 6
-            c.say(row.name, rc.minX + x(9), rc.minY + x(six ? 7 : five ? 8.5 : 10.5), font(six ? 9.5 : 10, .bold), on ? .white : row.off ? Ink.sub : Ink.ink, maxW: rc.width - x(14))
-            c.say(row.note, rc.minX + x(9), rc.minY + x(six ? 15.5 : five ? 18.5 : 22), font(six ? 7.5 : 8, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(14))
+            let low = rh < 31
+            c.say(row.name, rc.minX + x(9), rc.minY + x(low ? 9.5 : five ? 8.5 : 10.5), font(10, .bold), on ? .white : row.off ? Ink.sub : Ink.ink, maxW: rc.width - x(14))
+            c.say(row.note, rc.minX + x(9), rc.minY + x(low ? 20 : five ? 18.5 : 22), font(8, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(14))
             hits.append((rc, 3000 + i))
         }
     }
@@ -419,8 +419,8 @@ extension Canvas {
         yy += 36; rule(y(yy)); yy += 6
         for row in s.rows {
             c.say(row.key, x(X0 + 2), y(yy + 10), font(9, .medium), Ink.sub)
-            c.say(row.value, x(X1 - 2), y(yy + 10), font(10, .medium), Ink.ink, 1)
-            yy += 20
+            c.say(row.value, x(X1 - 2), y(yy + 10), font(10, .medium), Ink.ink, 1, maxW: x(X1 - X0 - 60))
+            yy += 22
         }
     }
 }

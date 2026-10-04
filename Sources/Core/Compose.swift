@@ -527,7 +527,9 @@ extension Walker {
                            numbers: [.init(key: "오늘 걸음", value: state.today.formatted()), .init(key: "와트", value: "\(state.watts.formatted())W"), .init(key: "누적 걸음", value: state.total.formatted())],
                            rows: [.init(key: "알", value: state.egg.map { $0.left > 0 ? "앞으로 \($0.left.formatted())걸음" : "곧 태어난다!" } ?? "없음"),
                                   .init(key: "배틀 타워", value: "최고 \(state.towerBest ?? 0)연승 · \((state.bp ?? 0).formatted())BP"),
-                                  .init(key: "도감", value: "잡음 \(dexCount) · 봤음 \(seenList.count)")])
+                                  .init(key: "도감", value: "잡음 \(dexCount) · 봤음 \(seenList.count)"),
+                                  .init(key: "레이드", value: raidStatus),
+                                  .init(key: "친구", value: friendStatus)])
     }
     /// A click on a 메뉴 tile: open it (as ● on it would).
     func menuTap(_ i: Int) {
