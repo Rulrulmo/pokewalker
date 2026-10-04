@@ -18,6 +18,8 @@ chmod 755 "$IN"                                                        # the pok
 gh release download "$TAG" -D "$IN" -p PokeWalker-mac.zip -p PokeWalker-windows-x64.zip -p manifest.json -p manifest.sig \
     || { echo "$TAG: not a signed release (on the release Mac: ./build.sh publish)"; exit 1; }
 "$PS" verify-release "$IN"                                             # the signature, then each zip; non-zero (and nothing changes) when off
+V=$(jq -r .version "$IN/manifest.json")                                # the tag's version and the signed one agree (a "v" with an empty version: never)
+[ -n "$V" ] && [ "v$V" = "$TAG" ] || { echo "$TAG: its manifest says version \"$V\": not published"; exit 1; }
 
 COMMIT=$(jq -r .commit "$IN/manifest.json")
 git cat-file -e "$COMMIT^{commit}" 2>/dev/null || git fetch -q origin "$COMMIT"
