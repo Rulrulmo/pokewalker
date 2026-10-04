@@ -186,3 +186,12 @@ private func said(_ b: Battle, _ s: String) -> Bool {
     }
     #expect(ended >= 145)
 }
+
+@Test func choiceLockAct() {
+    var w = Engine.fresh(now: t0, starter: firstUID); w.companion = mon(25, 30, item: "구애머리띠", moves: [84, 98]); w.companion.uid = firstUID
+    var p = Play(), r = Seeded(s: 1), ids = Issued(next: firstUID + 1)
+    var b = Battle(wild: mon(129, 60), party: [w.companion]); b.seed = 3; p.battle = b; p.party = [firstUID]
+    _ = Engine.apply(.battle(cmd: .fight(slot: 1)), steps: 0, walk: &w, play: &p, rng: &r, now: t0, ids: &ids)
+    let o = Engine.apply(.battle(cmd: .fight(slot: 0)), steps: 0, walk: &w, play: &p, rng: &r, now: t0, ids: &ids)
+    #expect(o.cannot == "구애머리띠로\n전광석화만 쓸 수 있다!")
+}

@@ -170,6 +170,7 @@ struct EngineRun<R: RandomNumberGenerator> {
                 if x.disable > 0, x.disabledMove == id { return "사용할 수 없게\n되어 있다!" }
                 if x.taunt > 0, moveTable[id]?.isStatus == true { return "도발당해서\n쓸 수 없다!" }
                 if x.torment, id == x.lastMove { return "트집 때문에 같은\n기술은 못 쓴다!" }
+                if let c = b.choiceLock(.me), id != c { return josa(x.item ?? "구애", "으로", "로") + "\n" + josa(moveTable[c]?.name ?? "", "만", "만") + " 쓸 수 있다!" }   // 3.7: 구애 lock
                 beats = b.turn(.fight(id), &r)
             }
         case .ball:
