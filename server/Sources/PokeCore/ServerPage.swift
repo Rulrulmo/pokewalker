@@ -143,7 +143,7 @@ let pageStyle = """
     .band::after { content: ""; position: absolute; left: 50%; top: 50%; width: 62px; height: 62px; transform: translate(-50%, -50%); border-radius: 50%;
         background: var(--bg); border: 8px solid var(--band); box-shadow: inset 0 0 0 5px var(--bg), inset 0 0 0 8px var(--line); }
 
-    main.wrap { padding-top: 104px; padding-bottom: 24px; }
+    main.wrap { padding-top: 116px; padding-bottom: 24px; }
     section { margin-bottom: 84px; }
     .eyebrow { font-size: 13px; color: var(--red); letter-spacing: .4px; margin: 0; }
     h2 { font-size: clamp(25px, 3.3vw, 33px); line-height: 1.3; font-weight: 800; letter-spacing: -.02em; margin: 8px 0 10px; }
@@ -222,7 +222,7 @@ let pageStyle = """
         .shots { height: 400px; margin-bottom: -170px; }
         .features { grid-template-columns: repeat(2, 1fr); }
         .perks, .steps, .more .cols { grid-template-columns: 1fr; }
-        main.wrap { padding-top: 150px; }
+        main.wrap { padding-top: 176px; }
     }
     @media (max-width: 560px) {
         .btn { flex: 1 1 100%; }
@@ -231,7 +231,7 @@ let pageStyle = """
         .stats { grid-template-columns: repeat(2, 1fr); }
         .stats div:nth-child(3) { border-left: 0; } .stats div:nth-child(n+3) { border-top: 1px solid var(--line); }
         .features { grid-template-columns: 1fr; }
-        main.wrap { padding-top: 124px; }
+        main.wrap { padding-top: 156px; }
         .notes { padding: 4px 18px; }
     }
 
