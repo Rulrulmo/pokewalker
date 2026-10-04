@@ -298,14 +298,15 @@ import AppKit
     func check(_ ok: Bool, _ name: String, _ why: @autoclosure () -> String = "") { c.append((ok, ok ? name : name + " — " + why())) }
     func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
     func lobby(_ w: Walker) { w.screen = .menu(menuAt("레이드")); w.press(1); drain(w); drain(w) }
-    /// The fight played to its end: 공격 with the first move each turn (후퇴 if asked), the beats run out.
-    func fightOut(_ w: Walker, retreat: Bool = false) {
-        var n = 0
-        while n < 60, w.inBattle || { if case .beats = w.screen { return true }; return false }() {
+    /// The fight played to its end: 공격 with the first move each turn — 3.8.4: no turn limit, so after `attacks` of them 후퇴 (at once: the
+    /// damage so far counts); 후퇴 at once if asked. The beats run out.
+    func fightOut(_ w: Walker, retreat: Bool = false, attacks: Int = 3) {
+        var n = 0, hits = 0
+        while n < 80, w.inBattle || { if case .beats = w.screen { return true }; return false }() {
             n += 1
             switch w.screen {
             case .beats: playOut(w)
-            case .battle(let b, _): w.screen = .battle(b, sel: retreat ? w.battleMenu(b).count - 1 : 0); w.press(1); drain(w)
+            case .battle(let b, _): let out = retreat || hits >= attacks; if !out { hits += 1 }; w.screen = .battle(b, sel: out ? w.battleMenu(b).count - 1 : 0); w.press(1); drain(w)
             case .moves(let b, _): w.screen = .moves(b, sel: b.mine[b.me].pp.firstIndex { $0 > 0 } ?? 0); w.press(1); drain(w)   // (루기아's 프레셔: 2 PP a use)
             case .party(let b, _): w.screen = .party(b, sel: b.mine.indices.first { b.mine[$0].alive } ?? 0); w.press(1); drain(w)
             case .say: w.press(1)
@@ -339,7 +340,7 @@ import AppKit
     let hud = rb.raidOn && served(rb)?.raidPower == cost / 2
     fightOut(rb, retreat: true)
     let retreated = says(rb).first == "0 데미지!"; let back: Bool = { if case .say(_, .raid(0), _) = rb.screen { return true }; return false }()
-    check(menu == ["공격", "도구", "교체", "후퇴"] && title.0 == "레이드 배틀" && title.1.hasPrefix("남은 줄 3 / 3") && hud && retreated && back && !rb.raidOn && sv.raidFights.count == 1,
+    check(menu == ["공격", "도구", "교체", "후퇴"] && title.0 == "레이드 배틀" && title.1 == "남은 줄 3 / 3 · 1턴" && hud && retreated && back && !rb.raidOn && sv.raidFights.count == 1,
           "도전 → the raid on the battle screens (1칸 spent; 공격 · 도구 · 교체 · 후퇴, no ball; 레이드 배틀 · 남은 줄); 후퇴 → 0 데미지, back to the lobby", "\(menu) \(title) \(hud) \(says(rb))")
 
     // ra: the hit that clears it (its own reply says so)

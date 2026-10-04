@@ -151,7 +151,7 @@ import Foundation
         if let b = fight {
             if raidThen != nil { return ("레이드", "볼 던지기") }
             if duelOn { return ("실시간 대전", "vs \(duel?.opponent ?? "")" + (duelLeft().map { " · \($0)초" } ?? "")) }                                       // a raid ball's throw on the battle stage
-            if raidOn { return ("레이드 배틀", "남은 줄 \(b.theirs.filter(\.alive).count) / \(b.theirs.count) · \(min(b.turnNo + 1, Engine.raidTurns))/\(Engine.raidTurns)턴") }
+            if raidOn { return ("레이드 배틀", "남은 줄 \(b.theirs.filter(\.alive).count) / \(b.theirs.count) · " + (Engine.raidTurns > 0 ? "\(min(b.turnNo + 1, Engine.raidTurns))/\(Engine.raidTurns)턴" : "\(b.turnNo + 1)턴")) }   // (3.8.4: no limit — 0)
             guard let tr = b.trainer else { return ("야생 배틀", state.here.name) }
             let left = { (fs: [Fighter]) in fs.filter(\.alive).count }
             return (tr, "배틀 타워 · 남은 \(left(b.theirs)) : \(left(b.mine))")
