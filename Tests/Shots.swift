@@ -241,11 +241,8 @@ import AppKit
         v.screen = .squad(Squad(kind: .duelPick(id: 9), picked: [4, 1], at: 2)) }
     take("squad_pick_sent", fme) { v in v.duelOn = true; v.duel = DuelView(id: 9, state: "picking", opponent: "민수", challenger: false, deadline: tsF + 21, parties: DuelParties(mine: six, theirs: theirs, picked: [4, 1, 0], theyPicked: false))
         v.screen = .squad(Squad(kind: .duelPick(id: 9), picked: [4, 1, 0], at: 6)) }
-    // 3.8.1: the guests above the companion — three with a short one; with a tall one and a full bottom row (the last place takes turns)
-    fsrv.visitList.append(FakeCloud.FakeVisit(id: 4, owner: "도윤", ownerName: "도윤", host: meK, hostName: fme.myName, mon: Mon.wild(448, level: 40, &r38), steps: 120, ends: ends + 6000))
-    fme.cloud!.teamDue = true; drain(fme); drain(fme)
-    take("home_guests_three", fme) { v in v.duelOn = false; v.screen = .home }
-    take("home_guests_tall", fme) { v in v.state.companion = Mon(dex: 384, level: 70, female: false); v.state.caught = [Mon(dex: 16, level: 8, female: false), Mon(dex: 19, level: 9, female: false), Mon(dex: 41, level: 7, female: false)]
+    // 3.8.1: the two guests above a tall companion, the bottom row full
+    take("home_guests_tall", fme) { v in v.duelOn = false; v.state.companion = Mon(dex: 384, level: 70, female: false); v.state.caught = [Mon(dex: 16, level: 8, female: false), Mon(dex: 19, level: 9, female: false), Mon(dex: 41, level: 7, female: false)]
         v.state.egg = Egg(dex: 175, left: 300); v.screen = .home }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }

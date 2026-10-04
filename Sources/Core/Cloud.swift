@@ -881,7 +881,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             guard !visitList.contains(where: { $0.on && $0.owner == key }) else { return "이미 놀러 간\n포켓몬이 있어요" }
             guard let ref = w.ref(uid: uid) else { return "그 포켓몬은\n없어요" }
             guard ref != -1 else { return "동료는 보낼 수 없어요" }
-            guard visitList.filter({ $0.on && $0.host == to.key }).count < 3 else { return josa(host.name, "은", "는") + " 이미\n3마리를 맡고 있어요" }
+            guard visitList.filter({ $0.on && $0.host == to.key }).count < Walker.guestsMax else { return josa(host.name, "은", "는") + " 이미\n\(Walker.guestsMax)마리를 맡고 있어요" }
             guard let m = w.mon(ref) else { return "그 포켓몬은\n없어요" }
             if ref <= -2 { w.caught.remove(at: -2 - ref) } else { w.box.remove(at: ref) }
             w.duelParty = w.duelParty?.filter { $0 != uid }

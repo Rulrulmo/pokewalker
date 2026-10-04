@@ -1,7 +1,7 @@
 import Foundation
 // docs/plans/14 §3 (3.8): 맡겨 키우기 — one of ours (the walker's or the box's) sent to a friend walking now, raised by their steps for 5 hours
 // (a step = 1 EXP), back through 받기; they earn a BP per 2,000 steps (5 at most). The friends' 맡기기 tab lists mine away and the ones I'm
-// raising (either side can end it early); on home the guests walk along with mine; a friend's card sends one (picked like an item's target).
+// raising (2 at most since 3.8.1; either side can end it early); on home they sit above the companion; a friend's card sends one.
 
 extension Walker {
     static let visitHours = 5
@@ -22,7 +22,7 @@ extension Walker {
             rows.append(.init(dex: g.mon.dex, shiny: g.mon.shiny == true, line: josa(g.owner, "의", "의") + " " + monLine(g.mon), sub: "\(g.steps.formatted())걸음 · +\(min(5, g.steps / 2000))BP · " + visitLeft(g, now),
                               button: "돌려보내기", mine: false))
         }
-        let note = cloud?.team == nil ? "불러오는 중…" : "보낸 포켓몬 \(visits?.away == nil ? 0 : 1)/1 · 맡은 포켓몬 \(guests.count)/3"
+        let note = cloud?.team == nil ? "불러오는 중…" : "보낸 포켓몬 \(visits?.away == nil ? 0 : 1)/1 · 맡은 포켓몬 \(guests.count)/\(Walker.guestsMax)"
         return PaneContent(visits: VisitsModel(tabs: teamTabLabels, tab: 5, rows: rows, note: note,
                                                hint: "지금 걷는 친구의 카드에서 맡기기 · 5시간 · 키운 걸음만큼 경험치 · 맡은 쪽은 2,000걸음마다 1BP (최대 5)"))
     }
@@ -105,16 +105,10 @@ extension Walker {
 
     // MARK: home: the guests walk along; the news
     /// Where the guests' stickers sit (half-dots): the top-right corner first, then along the bottom between the walker's and the companion.
-    /// 3.8.1 (the user): above the companion — a row along the top right (beside the calendar), a second over its head when it's short enough;
-    /// then the bottom row's free places after the walker's catches and the egg. More than there's room for: the last place takes turns.
+    nonisolated static let guestsMax = 2                                                                    // 3.8.1 (the user): two at a time (the server's rule)
+    /// 3.8.1 (the user): above the companion, side by side beside the calendar (clear of even a tall one's head).
     func guestPlaces(_ now: Date) -> [(Visit, x: Int, y: Int)] {
-        let g = Array(guests.prefix(3)), n = min(3, state.caught.count) + (state.egg == nil ? 0 : 1)
-        var spots = [(x: 158, y: 1), (x: 126, y: 5)]
-        if 33 + spriteTop(state.companion.dex) >= 58 { spots.append((x: 142, y: 33)) }               // (its head below the first row: a little over the ears is fine)
-        spots += (min(4, n)..<4).map { j in (x: 4 + 30 * j, y: 90 - 3 * (j % 2)) }
-        guard g.count > spots.count else { return zip(g, spots).map { ($0, $1.x, $1.y) } }
-        let last = spots.count - 1, rest = Array(g[last...]), turn = rest[Int(now.timeIntervalSinceReferenceDate / 6) % rest.count]
-        return zip(g.prefix(last), spots).map { ($0, $1.x, $1.y) } + [(turn, spots[last].x, spots[last].y)]
+        zip(guests.prefix(Walker.guestsMax), [(x: 158, y: 1), (x: 126, y: 5)]).map { ($0, $1.x, $1.y) }
     }
     func drawGuests(_ fb: inout FB, _ now: Date, night: Bool, tone: String) {
         let t = now.timeIntervalSinceReferenceDate
