@@ -215,7 +215,7 @@ extension SaveDB { func setRaw(_ key: String, _ text: String) throws { try db.ro
     let (s2, carries) = try await login(100)
     #expect(carries == true)
     var o = try reply(await act(db, "타워", s2, 1, .tower, at: 101))                                   // the next trainer: no fee, the streak on
-    #expect(o.out.battle?.trainer != nil && o.walk == nil)                                            // nothing paid: the save didn't change
+    #expect(o.out.battle?.trainer != nil && !o.out.changed && o.walk?.watts == 500 && o.walk?.towerStreak == 3)   // nothing paid (the save: a new session's first reply)
     let (s3, mid) = try await login(200)                                                              // a relaunch mid-fight: that run is over
     #expect(mid == false)
     o = try reply(await act(db, "타워", s3, 1, .steps, at: 201))
@@ -224,3 +224,14 @@ extension SaveDB { func setRaw(_ key: String, _ text: String) throws { try db.ro
     #expect(o.walk?.watts == 450)                                                                     // a new run pays again
 }
 extension SaveDB { func setPlay(_ key: String, _ p: Play) throws { try db.rows("UPDATE play SET state = :s WHERE key = :k", ["s": .text(String(decoding: try JSONEncoder().encode(p), as: UTF8.self)), "k": .text(key)]) } }
+
+@Test func adminChangesReachTheApp() async throws {                                              // a `pokeserver set` between acts: the next reply carries the save
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let s = try await newTrainer(db, "관리")
+    #expect(try reply(await act(db, "관리", s, 1, .steps, steps: 10, at: 60)).walk != nil)          // a new session's first: always
+    #expect(try reply(await act(db, "관리", s, 2, .steps, at: 61)).walk == nil)                     // nothing new
+    _ = try await db.set("관리", path: "$.watts", value: "777", now: Int(base.timeIntervalSince1970) + 62)
+    let o = try reply(await act(db, "관리", s, 3, .steps, at: 63))
+    #expect(o.walk?.watts == 777 && o.out.changed == false)
+    #expect(try reply(await act(db, "관리", s, 4, .steps, at: 64)).walk == nil)                     // once
+}

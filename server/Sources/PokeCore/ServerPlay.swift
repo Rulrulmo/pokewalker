@@ -23,6 +23,7 @@ struct PlayRow {
     var bank = 0.0, bankAt = 0.0
     var play = Play()
     var endedRun = false                                                   // a new session found a tower fight on: that run is over (towerEnd on the save)
+    var sentRev = -1                                                       // the rev this session's app last got with a walk: another one (an admin's set, a trade) is sent
 }
 
 func actName(_ a: Act) -> String {
@@ -91,7 +92,8 @@ extension SaveDB {
                 try settleLedger(id.key, w, row.play, now: unix)
 
                 var rev = t.rev
-                let changed = out.changed || t.walk == nil || w != loaded, send = changed || mail.walk   // (a trade changed it meanwhile: send it, no new rev)
+                let changed = out.changed || t.walk == nil || w != loaded
+                let send = changed || mail.walk || t.rev != row.sentRev                              // the app's copy is older (an admin's set, a trade, a new session): send it
                 if changed {
                     rev += 1
                     let text = savedText(w)
@@ -104,6 +106,7 @@ extension SaveDB {
                 let e = JSONEncoder(); e.outputFormatting = .sortedKeys
                 let body = try e.encode(ActReply(rev: rev, walk: send ? w.shared : nil, taken: r.steps == nil ? nil : taken, out: out))
                 (row.seq, row.status, row.reply) = (r.seq, 200, String(decoding: body, as: UTF8.self))
+                if send { row.sentRev = rev }
                 try savePlay(id.key, r.session, row)
                 let note: String? = out.cannot.map { "\(actName(r.act)): cannot (\($0.replacingOccurrences(of: "\n", with: " ")))" }
                     ?? (taken < asked ? "steps \(asked) → \(taken)" : nil)
@@ -119,14 +122,14 @@ extension SaveDB {
 
     /// The trainer's play row; another session's (or none) starts over, its allowance kept (a first one: what the time since the last save allows).
     func playRow(_ key: String, session: String, since: Double, now: Date) throws -> PlayRow {
-        guard let r = try db.rows("SELECT session, seq, status, reply, bank, bank_at, state FROM play WHERE key = :k", ["k": .text(key)]).first else {
+        guard let r = try db.rows("SELECT session, seq, status, reply, bank, bank_at, state, sent_rev FROM play WHERE key = :k", ["k": .text(key)]).first else {
             let t = now.timeIntervalSince1970
             return PlayRow(session: session, bank: 0, bankAt: since > 0 ? min(since, t) : t - 600)   // from the last save (steps typed while away); a new one: 10 minutes
         }
         var row = PlayRow(session: r.text("session"), seq: r.int("seq") ?? 0, status: r.int("status") ?? 200, reply: r.text("reply"),
                           bank: r.real("bank") ?? 0, bankAt: r.real("bank_at") ?? now.timeIntervalSince1970)
         let old = (r.text("state").flatMap { try? JSONDecoder().decode(Play.self, from: Data($0.utf8)) }) ?? Play()
-        if row.session == session { row.play = old }
+        if row.session == session { row.play = old; row.sentRev = r.int("sent_rev") ?? -1 }
         else {                                                                              // a new session: no radar, chain or fight carries over;
             (row.session, row.seq, row.reply, row.play) = (session, 0, nil, Play())         // a tower run between fights does (an update, a restart at home),
             row.play.tower = old.tower && old.battle == nil; row.endedRun = old.tower && old.battle != nil   // one mid-fight ends (no way out of a losing one)
@@ -140,9 +143,9 @@ extension SaveDB {
     }
     func savePlay(_ key: String, _ session: String, _ row: PlayRow) throws {
         let state = String(decoding: try JSONEncoder().encode(row.play), as: UTF8.self)
-        try db.rows("INSERT OR REPLACE INTO play (key, session, seq, status, reply, bank, bank_at, state) VALUES (:k, :s, :q, :st, :r, :b, :ba, :p)",
+        try db.rows("INSERT OR REPLACE INTO play (key, session, seq, status, reply, bank, bank_at, state, sent_rev) VALUES (:k, :s, :q, :st, :r, :b, :ba, :p, :sr)",
                     ["k": .text(key), "s": .text(session), "q": .int(row.seq), "st": .int(row.status), "r": row.reply.map(SQLValue.text) ?? .null,
-                     "b": .real(row.bank), "ba": .real(row.bankAt), "p": .text(state)])
+                     "b": .real(row.bank), "ba": .real(row.bankAt), "p": .text(state), "sr": .int(row.sentRev)])
     }
     func stepsOn(_ key: String, _ day: String) throws -> Int {
         try db.rows("SELECT n FROM steps_day WHERE key = :k AND day = :d", ["k": .text(key), "d": .text(day)]).first?.int("n") ?? 0
