@@ -601,3 +601,23 @@ import AppKit
           "the shops: 지닌 도구 (and 열매) tabs, two rows of them", "\(String(describing: shop?.tabs)) \(String(describing: bpTabs?.tabs))")
     return c
 }
+
+/// docs/plans/14 §2.3 (3.8): a chain going on — news that would take the walker away from home (others': an offer, an invitation) wait for the
+/// chain's end; a level or a find still shows; the next bush is asked for at once.
+@MainActor func chainNewsChecks() -> [(Bool, String)] {
+    var c: [(Bool, String)] = []
+    func check(_ ok: Bool, _ name: String, _ why: @autoclosure () -> String = "") { c.append((ok, ok ? name : name + " — " + why())) }
+    let cw = online({ var s = Walk(); s.watts = 100; return s }())
+    cw.screen = .home; cw.chainNext = 2
+    cw.news = [.marketBid(listing: 1, from: "민수", mon: Mon(dex: 25, level: 5, female: false)), .duelInvite(id: 3, from: "지은"), .find(item: "상처약")]
+    cw.settle(Date())
+    let found: Bool = { if case .say(let l, _, _) = cw.screen { return l.last == "상처약" }; return false }()
+    let held = cw.news.count == 2 && cw.news.allSatisfy(Walker.leavesHome)
+    cw.screen = .home; cw.settle(Date()); drain(cw)
+    let bush: Bool = { if case .radar = cw.screen { return true }; if case .say(let l, _, _) = cw.screen { return l.first == "연쇄 2!" }; return false }()
+    check(found && held && bush && cw.news.count == 2, "a chain going on: a find shows, others' news (an offer, an invitation) wait; the next bush goes at once", "\(found) \(held) \(bush) \(cw.screen)")
+    cw.dropPlay(); cw.screen = .home; cw.settle(Date())
+    let after: Bool = { if case .say(let l, _, _) = cw.screen { return l.first?.hasSuffix("교환을 제안했다!") == true }; return false }()
+    check(after, "… and show once the chain's over", "\(cw.screen)")
+    return c
+}

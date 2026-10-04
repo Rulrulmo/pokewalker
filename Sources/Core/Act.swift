@@ -52,10 +52,21 @@ extension Walker {
     /// bush (asked for now: its clock starts when it shows; "연쇄 n!" meanwhile, never a bare home), or the tower's lobby.
     func settle(_ now: Date) {
         guard case .home = screen, waiting == nil else { return }
-        while case .home = screen, !news.isEmpty { show(news.removeFirst(), now) }
+        if chainNext != nil {                                                                      // 3.8 (docs/plans/14 §2.3): a chain going on — only what stays home now;
+            while case .home = screen, let i = news.firstIndex(where: { !Walker.leavesHome($0) }) { show(news.remove(at: i), now) }   // the rest after the chain
+        } else {
+            while case .home = screen, !news.isEmpty { show(news.removeFirst(), now) }
+        }
         guard case .home = screen else { return }
         if let n = chainNext { chainNext = nil; nextBush(n, now); return }
         if let t = growthThen { growthThen = nil; lastInput = now; screen = t }               // the lobby's idle time starts now, not at the fight's last press
+    }
+    /// News whose screen takes the walker away from home (a page, a show from others): held back while a chain goes on (its next bush first).
+    static func leavesHome(_ n: News) -> Bool {
+        switch n {
+        case .find, .egg, .hatch, .weather, .season, .level, .evolve, .learn, .unlock, .dex, .chain: false
+        default: true
+        }
     }
     func show(_ n: News, _ now: Date) {
         let me = monNames[state.companion.dex]
@@ -175,7 +186,7 @@ extension Walker {
         guard e.result == "caught" || e.result == "won" else { chainNote = nil; return .home }
         if let n = e.chain, n > 0 {
             news.removeAll { if case .chain(_, let bonus, let reward) = $0 { chainNote = "+\(bonus)W" + (reward.map { " · " + $0 } ?? ""); return true }; return false }
-            if news.isEmpty { nextBush(n, now); return screen }                                    // straight on: no home in between
+            if news.allSatisfy(Walker.leavesHome) { nextBush(n, now); return screen }              // straight on: no home in between (others' news wait for the chain's end)
             chainNext = n; return .home                                                             // its bush once home's news have played (settle)
         }
         chainNote = nil

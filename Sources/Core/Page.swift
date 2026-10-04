@@ -139,9 +139,10 @@ extension Canvas {
                 if i == sel { c.stroke(p, Ink.red, width: 2 * K) }
                 c.say(mv.name, rc.minX + x(9), rc.minY + x(12), font(11, .bold), dead ? Ink.faint : Ink.ink, maxW: rc.width - x(14))
                 c.typePill(mv.type, rc.minX + x(8), rc.minY + x(27), h: x(11), size: 7.5, grey: dead)
-                c.say(mv.status ? "변화" : "위력 " + (mv.power > 1 ? "\(mv.power)" : "—"), rc.maxX - x(8), rc.minY + x(27.5), font(8, .semibold), dead ? Ink.faint : Ink.sub, 1)   // a power that varies: —
-                let e = mv.effect == 0 ? "효과 없음" : (mv.effect > 1 ? "▲ " : mv.effect < 1 ? "▼ " : "") + "PP \(mv.pp)/\(mv.maxPP)"
-                c.say(e, rc.maxX - x(8), rc.minY + x(39.5), font(8, .semibold), mv.effect > 1 ? Ink.red : Ink.sub, 1)
+                let power = mv.status ? "변화" : "위력 " + (mv.power > 1 ? "\(mv.power)" : "—")                 // a power that varies: —
+                let hint = mv.effect == 0 ? "효과 없음 · " : mv.effect > 1 ? "▲ " : mv.effect < 1 ? "▼ " : ""             // 3.8 (docs/plans/14 ④): the type's hint by the power, not the PP
+                c.say(hint + power, rc.maxX - x(8), rc.minY + x(27.5), font(8, .semibold), dead ? Ink.faint : mv.effect > 1 ? Ink.red : Ink.sub, 1)
+                c.say("PP \(mv.pp)/\(mv.maxPP)", rc.maxX - x(8), rc.minY + x(39.5), font(8, .semibold), Ink.sub, 1)
                 hits.append((rc, i))
             }
         case .party(let ps, let sel):                                                             // a row each (three, or four with the walker's team, tighter): name, HP
