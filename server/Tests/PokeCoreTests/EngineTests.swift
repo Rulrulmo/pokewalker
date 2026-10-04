@@ -130,13 +130,17 @@ private struct Desk {
     }
 }
 
-@Test func engineWalkerEvolvesWhenItFits() {
+@Test func engineWalkerEvolvesWhenItFits() {                                                    // on a level-up, as the games do (3.8.1)
     var m = Mon(dex: 133, level: 30, female: false); m.uid = firstUID + 9                   // 이브이 on the walker, past nothing: no level evolution
-    var g = Mon(dex: 74, level: 25, female: false); g.uid = firstUID + 10                   // 꼬마돌 Lv.25: 데구리 (level 25)
-    var w = Engine.fresh(now: t0, starter: firstUID); w.caught = [m, g]
+    var g = Mon(dex: 74, level: 25, female: false); g.uid = firstUID + 10                   // 꼬마돌 Lv.25 (데구리 at 25), one EXP from Lv.26
+    g.exp = expTable[growthRate[74]][26] - 1
+    var gastly = Mon(dex: 92, level: 26, female: false); gastly.uid = firstUID + 11         // a wild Lv.26 고오스 (고우스트 at 25), in the box
+    var w = Engine.fresh(now: t0, starter: firstUID); w.caught = [m, g]; w.box = [gastly]; w.lastUID = firstUID + 11
     var d = Desk(w)
-    let o = d.act(.steps, steps: 2)
-    #expect(d.w.caught[1].dex == 75 && d.w.caught[0].dex == 133)
+    #expect(d.act(.mon(op: .fetch(uid: firstUID + 11))).news.isEmpty && d.w.caught[2].dex == 92)   // onto the walker: no level-up, still 고오스
+    #expect(d.act(.steps).news.isEmpty && d.w.caught[1].dex == 74)                              // nothing walked: 꼬마돌 waits too
+    let o = d.act(.steps, steps: 2)                                                             // 1 EXP: Lv.26 → 데구리
+    #expect(d.w.caught[1].dex == 75 && d.w.caught[0].dex == 133 && d.w.caught[2].dex == 92)
     #expect(o.news.contains { if case .evolve(firstUID + 10, 74, 75, _) = $0 { return true }; return false })
 }
 

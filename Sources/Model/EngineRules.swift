@@ -111,7 +111,10 @@ struct EngineRun<R: RandomNumberGenerator> {
     /// one at night, a place one on its course). Then the moves that came: into a free slot at once, else waiting in walk.learning.
     mutating func growth() {
         if let u = w.companion.uid, w.companion.level > (startLevels[u] ?? w.companion.level), let e = w.levelEvolution(now) { evolve(-1, e) }
-        for i in w.caught.indices { if let e = w.levelEvolution(now, ref: -2 - i) { evolve(-2 - i, e) } }
+        func levelled(_ m: Mon) -> Bool { (m.uid.flatMap { startLevels[$0] }).map { m.level > $0 } == true }
+        for i in w.caught.indices where levelled(w.caught[i]) {                   // the walker's too only on a level-up (3.8.1: a Lv.26 고오스 put on it stays one until it grows)
+            if let e = w.levelEvolution(now, ref: -2 - i) { evolve(-2 - i, e) }
+        }
         for i in w.box.indices where (w.box[i].uid.flatMap { startLevels[$0] }).map({ w.box[i].level > $0 }) == true {   // a box one levelled by hand (3.6: 이상한사탕 on it)
             if let e = w.levelEvolution(now, ref: i) { evolve(i, e) }
         }

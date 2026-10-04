@@ -996,9 +996,9 @@ import AppKit                                                                   
     var evRun = EngineRun(w: evW, p: Play(battle: evB, party: [evU[0], evU[1]]), r: Seeded(s: 5), now: Date(), ids: Issued(next: 2_000_000)); _ = evRun.ended(&evB, .won); evRun.finish()
     check(evRun.w.caught[0].dex == 17 && evRun.w.companion.dex == 25 && evRun.out.news.contains(.evolve(uid: evU[1], from: 16, to: 17, shed: nil)),
           "a walker's 구구 that levels past 18 in a fight evolves at its end (the server's; the companion stays)", "\(evRun.out.news)")
-    let ev = online({ var s = evW; s.caught[1].level = 25; return s }()); ev.cloud!.addSteps(1); ev.cloud!.saveNow(); drain(ev)
+    let ev = online({ var s = evW; s.caught[1].level = 25; s.caught[1].exp = expTable[growthRate[19]][26] - 1; return s }()); ev.cloud!.addSteps(2); ev.cloud!.saveNow(); drain(ev)
     let evShow: Bool = { if case .evolve(let f, let t, _) = ev.screen { return f.dex == 19 && t.dex == 20 }; return false }()
-    check(evShow && ev.state.caught[1].dex == 20 && ev.state.caught[0].dex == 16, "a walker's 꼬렛 already past 20 evolves with the next steps, home shows it")
+    check(evShow && ev.state.caught[1].dex == 20 && ev.state.caught[0].dex == 16, "a walker's 꼬렛 already past 20 evolves at its next level-up (3.8.1: not before), home shows it")
     // 1.14 (docs/plans/09): wild EXP = Gen V's scaled formula x 0.5; the tower gives no EXP / EVs, fights ours as Lv.50 copies, its trainers Lv.50 and better every 7 wins
     check([15, 30, 44, 70].map { Battle.wildExp(base: 150, foe: 30, mine: $0, share: 1) } == [822, 450, 285, 145] && Battle.wildExp(base: 150, foe: 30, mine: 30, share: 2) == 225,
           "1.14: wild EXP by level difference (Lv.30 foe, base 150: Lv.15 822 · 30 450 · 44 285 · 70 145), split among those that faced it")
