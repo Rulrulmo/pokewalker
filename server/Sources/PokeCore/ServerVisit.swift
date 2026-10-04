@@ -39,9 +39,9 @@ extension SaveDB {
             guard try areFriends(key, to.key) else { return "친구에게만\n보낼 수 있어요" }
             guard try idle(to.key, now: now) < 60 else { return "지금 걷고 있는 친구에게만\n보낼 수 있어요" }
             guard knows(try appSeen(to.key), visitApp) else { return "상대가 3.8로\n업데이트해야 해요" }
+            guard try visitRows("owner = :k AND state = 'on'", ["k": .text(key)]).isEmpty else { return "이미 놀러 간\n포켓몬이 있어요" }
             guard let ref = w.ref(uid: uid) else { return "그 포켓몬은\n없어요" }
             guard ref != -1 else { return "동료는 보낼 수 없어요" }
-            guard try visitRows("owner = :k AND state = 'on'", ["k": .text(key)]).isEmpty else { return "이미 놀러 간\n포켓몬이 있어요" }
             guard try visitRows("host = :k AND state = 'on'", ["k": .text(to.key)]).count < visitGuests else { return josa(host.name, "은", "는") + " 이미\n\(visitGuests)마리를 맡고 있어요" }
             guard let m = w.mon(ref) else { return "그 포켓몬은\n없어요" }
             if ref <= -2 { w.caught.remove(at: -2 - ref) } else { w.box.remove(at: ref) }

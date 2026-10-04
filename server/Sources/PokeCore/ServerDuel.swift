@@ -5,7 +5,8 @@ import Foundation
 // in time is made for it, two in a row and that side gives up), then the engine plays it. The other player sees it mirrored (Battle/Duel.swift).
 // The winner gets 3 BP; both records move. No items, no running: fight, switch, give up.
 // 3.8 (docs/plans/14 §5): its own menu. Each registers a 대전 파티 of 3–6 (Walk.duelParty); a friend asks as before, or two meet in the random queue
-// (60 s). Matched, both see the other's six (species only) and pick 3 in a minute (late: the first three); then the 3-on-3. Apps before 3.8: none.
+// (60 s). Matched, both see the other's six (species only) and pick 3 in a minute (late: the first three); then the 3-on-3. Apps before 3.8 still
+// play 3.6's way among themselves (the tower's three, no picking: kind 'legacy'); the two ways never meet.
 
 let duelSchema = """
     CREATE TABLE IF NOT EXISTS duels (id INTEGER PRIMARY KEY AUTOINCREMENT, a TEXT NOT NULL, b TEXT NOT NULL, a_name TEXT NOT NULL, b_name TEXT NOT NULL,
@@ -21,21 +22,21 @@ struct DuelRow {
     var battle: Battle?, turns: [[Beat]], planA: BattleCmd?, planB: BattleCmd?, needA: String?, needB: String?, idleA: Int, idleB: Int
     var deadline: Int, version: Int, winner: String?, why: String?
     var partyA: [Mon]? = nil, partyB: [Mon]? = nil, pickA: [Int]? = nil, pickB: [Int]? = nil   // 3.8: the six each brought (Lv.50 copies), the three picked
-    var at = 0, endedAt: Int? = nil
+    var at = 0, endedAt: Int? = nil, legacy = false
     func side(_ key: String) -> Int? { key == a ? 0 : key == b ? 1 : nil }
 }
 
 extension SaveDB {
     func duelRows(_ sql: String, _ args: [String: SQLValue] = [:]) throws -> [DuelRow] {
         let dec = JSONDecoder()
-        return try db.rows("SELECT id, a, b, a_name, b_name, state, battle, turns, plan_a, plan_b, need_a, need_b, idle_a, idle_b, deadline, version, winner, why, party_a, party_b, pick_a, pick_b, at, ended_at FROM duels WHERE " + sql, args).compactMap { r in
+        return try db.rows("SELECT id, a, b, a_name, b_name, state, battle, turns, plan_a, plan_b, need_a, need_b, idle_a, idle_b, deadline, version, winner, why, party_a, party_b, pick_a, pick_b, at, ended_at, kind FROM duels WHERE " + sql, args).compactMap { r in
             guard let id = r.int("id"), let a = r.text("a"), let b = r.text("b") else { return nil }
             func j<T: Decodable>(_ c: String, _ t: T.Type) -> T? { r.text(c).flatMap { try? dec.decode(T.self, from: Data($0.utf8)) } }
             return DuelRow(id: id, a: a, b: b, aName: r.text("a_name") ?? a, bName: r.text("b_name") ?? b, state: r.text("state") ?? "", battle: j("battle", Battle.self),
                            turns: j("turns", [[Beat]].self) ?? [], planA: j("plan_a", BattleCmd.self), planB: j("plan_b", BattleCmd.self), needA: r.text("need_a"), needB: r.text("need_b"),
                            idleA: r.int("idle_a") ?? 0, idleB: r.int("idle_b") ?? 0, deadline: r.int("deadline") ?? 0, version: r.int("version") ?? 0, winner: r.text("winner"), why: r.text("why"),
                            partyA: j("party_a", [Mon].self), partyB: j("party_b", [Mon].self), pickA: j("pick_a", [Int].self), pickB: j("pick_b", [Int].self),
-                           at: r.int("at") ?? 0, endedAt: r.int("ended_at"))
+                           at: r.int("at") ?? 0, endedAt: r.int("ended_at"), legacy: r.text("kind") == "legacy")
         }
     }
     func saveDuel(_ d: DuelRow, endedAt: Int? = nil) throws {
@@ -65,19 +66,28 @@ extension SaveDB {
 
     func duelAct(_ act: Act, key: String, name: String, app: String?, walk w: inout Walk, out: inout Outcome, now: Int) throws -> String? {
         if var d = try duelOf(key) { try tick(&d, actor: key, walk: &w, now: now) }
-        guard knows(app, duelApp38) else { return "대전은 3.8로\n업데이트해야 해요" }
+        let old = !knows(app, duelApp38)                                                           // 3.6 / 3.7: the old way, among themselves
+        if old, case .duelQueue = act { return "대전은 3.8로\n업데이트해야 해요" }
+        if old, case .duelQueueCancel = act { return "대전은 3.8로\n업데이트해야 해요" }
+        if old, case .duelPick = act { return "대전은 3.8로\n업데이트해야 해요" }
         let noParty = "대전 파티를\n먼저 정해 주세요"
         switch act {
         case .duelChallenge(let raw):
             guard let to = trainerID(raw), to.key != key, let them = try trainer(to.key), knows(them.app, "3.0") else { return "대전할 수 없는\n트레이너예요" }
             guard try areFriends(key, to.key) else { return "친구와만\n대전할 수 있어요" }
-            guard SaveDB.duelSix(w) != nil else { return noParty }
-            guard knows(try appSeen(to.key), duelApp38) else { return "상대가 3.8로\n업데이트해야 해요" }
-            guard try idle(to.key, now: now) < 60 else { return "지금 걷고 있는 친구와만\n대전할 수 있어요" }
-            guard them.walk.flatMap(decodeWalk).flatMap(SaveDB.duelSix) != nil else { return "상대가 대전 파티를\n아직 정하지 않았어요" }
+            let theirs38 = knows(try appSeen(to.key), duelApp38)
+            if old {
+                guard !theirs38 else { return "상대는 3.8이에요\n업데이트해 주세요" }
+            } else {
+                guard SaveDB.duelSix(w) != nil else { return noParty }
+                guard theirs38 else { return "상대가 3.8로\n업데이트해야 해요" }
+                guard try idle(to.key, now: now) < 60 else { return "지금 걷고 있는 친구와만\n대전할 수 있어요" }
+                guard them.walk.flatMap(decodeWalk).flatMap(SaveDB.duelSix) != nil else { return "상대가 대전 파티를\n아직 정하지 않았어요" }
+            }
             for k in [key, to.key] where try duelBusy(k) { return k == key ? "이미 대전 중이에요" : "상대가 대전 중이에요" }
-            try db.rows("INSERT INTO duels (a, b, a_name, b_name, state, deadline, at) VALUES (:a, :b, :an, :bn, 'invited', :dl, :now)",
-                        ["a": .text(key), "b": .text(to.key), "an": .text(name), "bn": .text(them.name), "dl": .int(now + duelInviteLife), "now": .int(now)])
+            try db.rows("INSERT INTO duels (a, b, a_name, b_name, state, deadline, at, kind) VALUES (:a, :b, :an, :bn, 'invited', :dl, :now, :kind)",
+                        ["a": .text(key), "b": .text(to.key), "an": .text(name), "bn": .text(them.name), "dl": .int(now + duelInviteLife), "now": .int(now),
+                         "kind": .text(old ? "legacy" : "v38")])
             let id = try db.rows("SELECT last_insert_rowid() AS id").first?.int("id") ?? 0
             try post(.duelInvite(id: id, from: name), to: to.key, from: key, fromName: name, app: duelApp, now: now)
             out.duel = try view(id, for: key, since: 0)
@@ -87,13 +97,21 @@ extension SaveDB {
             switch act {
             case .duelCancel: guard d.a == key else { return "그 대전은 이제\n없어요" }; d.state = "cancelled"
             case .duelDecline: guard d.b == key else { return "그 대전은 이제\n없어요" }; d.state = "declined"
+            case _ where d.legacy:                                                                  // 3.6's: the tower's three each, on at once
+                guard d.b == key, old else { return "그 대전은 이제\n없어요" }
+                guard let theirs = try trainer(d.a)?.walk.flatMap(decodeWalk) else { return "그 대전은 이제\n없어요" }
+                func party(_ x: Walk) -> [Mon] { x.party().map { p -> Mon in var m = p.mon; if m.known == nil { m.known = m.moves }; m.level = Walk.towerLevel; return m } }
+                var b = Battle(party: party(theirs), trainer: name, foes: party(w)); b.pvp = true
+                var g = SystemRandomNumberGenerator(); b.seed = g.next()
+                d.turns = [b.begin(weather: nil, &g)]; d.battle = b
+                d.state = "active"; (d.needA, d.needB) = ("move", "move"); d.deadline = now + duelTurnLife
             default:                                                                                // 14 §5.3: both sixes in, a minute to pick 3
-                guard d.b == key else { return "그 대전은 이제\n없어요" }
+                guard d.b == key, !old else { return "그 대전은 이제\n없어요" }
                 guard let mine = SaveDB.duelSix(w) else { return noParty }
                 guard let six = try trainer(d.a)?.walk.flatMap(decodeWalk).flatMap(SaveDB.duelSix) else { return "그 대전은 이제\n없어요" }
                 (d.partyA, d.partyB) = (six, mine); d.state = "picking"; d.deadline = now + duelPickLife
             }
-            d.version += 1; try saveDuel(d, endedAt: d.state == "picking" ? nil : now)
+            d.version += 1; try saveDuel(d, endedAt: d.state == "picking" || d.state == "active" ? nil : now)
             out.duel = try view(d.id, for: key, since: 0)
             return nil
         case .duelQueue:                                                                            // 14 §5.2: whoever else is waiting (test IDs among themselves)

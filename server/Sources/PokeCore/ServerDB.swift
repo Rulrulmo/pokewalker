@@ -122,7 +122,7 @@ actor SaveDB {
             try? c.exec("ALTER TABLE play ADD COLUMN sent_rev INTEGER")
             try c.exec(claimSchema); try c.exec(visitSchema)                                               // 3.8 (docs/plans/14)
             for col in ["note TEXT", "seen INTEGER NOT NULL DEFAULT 0"] { try? c.exec("ALTER TABLE listings ADD COLUMN \(col)") }
-            for col in ["party_a TEXT", "party_b TEXT", "pick_a TEXT", "pick_b TEXT"] { try? c.exec("ALTER TABLE duels ADD COLUMN \(col)") }
+            for col in ["party_a TEXT", "party_b TEXT", "pick_a TEXT", "pick_b TEXT", "kind TEXT"] { try? c.exec("ALTER TABLE duels ADD COLUMN \(col)") }
             try? c.exec("ALTER TABLE trainers ADD COLUMN app_seen TEXT")
         }   // tables added since (flags) come in on any open: IF NOT EXISTS
         db = c; self.path = path; self.reject = reject; self.rejectTests = rejectTests; self.minApp = minApp

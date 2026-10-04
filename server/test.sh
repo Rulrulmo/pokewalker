@@ -202,19 +202,28 @@ else
     echo "SKIP  raid (needs: sudo -u pokewalker $PS set $ID3 '\$.raidPower' 3000)"
 fi
 
-# 9 — plan 12 §5: a live battle between the two friends — asked, said yes, given up (the other wins)
-act3() { jq -n --arg id "$ID3" --arg s "$S3" --argjson q "$1" --argjson a "$2" '{id: $id, session: $s, seq: $q, act: $a, app: "3.6"}' > "$TMP/req"
+# 9 — plan 12 §5, 14 §5 (3.8): a live battle between the two friends — their 대전 파티, asked, said yes, three picked each, given up (the other wins)
+act3() { jq -n --arg id "$ID3" --arg s "$S3" --argjson q "$1" --argjson a "$2" '{id: $id, session: $s, seq: $q, act: $a, app: "3.8"}' > "$TMP/req"
     CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body"); }
-act4() { jq -n --arg id "$ID4" --arg s "$S4" --argjson q "$1" --argjson a "$2" '{id: $id, session: $s, seq: $q, act: $a, app: "3.6"}' > "$TMP/req"
+act4() { jq -n --arg id "$ID4" --arg s "$S4" --argjson q "$1" --argjson a "$2" '{id: $id, session: $s, seq: $q, act: $a, app: "3.8"}' > "$TMP/req"
     CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body"); }
-SEQ3=$((SEQ3 + 1)); act3 $SEQ3 "{\"duelChallenge\":{\"to\":\"$ID4\"}}"; ok "대전 신청" is 200 '.out.duel.state' invited
-DUEL=$(printf '%s' "$BODY" | jq .out.duel.id)
-act4 8 "{\"duelAccept\":{\"id\":$DUEL}}"; ok "수락 → on, its own party first" is 200 '[.out.duel.state, .out.duel.need] | tostring' '["active","move"]'
-jq -n --arg id "$ID3" --arg s "$S3" '{id: $id, session: $s, since: 0}' > "$TMP/req"
-CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/duel"); BODY=$(cat "$TMP/body")
-ok "/v2/duel: the challenger's view" is 200 '[.duel.state, .duel.challenger, (.duel.beats | length > 0)] | tostring' '["active",true,true]'
-SEQ3=$((SEQ3 + 1)); act3 $SEQ3 "{\"duelMove\":{\"id\":$DUEL,\"cmd\":{\"forfeit\":{}}}}"; ok "a forfeit waits for the other's pick" is 200 '.out.duel.need' null
-act4 9 "{\"duelMove\":{\"id\":$DUEL,\"cmd\":{\"fight\":{\"slot\":0}}}}"; ok "then it's over: the other won" is 200 '[.out.duel.state, .out.duel.result.won, .out.duel.result.why] | tostring' '["over",true,"forfeit"]'
+SIX='[{"dex":25,"level":30,"female":false,"uid":1000101},{"dex":16,"level":30,"female":false,"uid":1000102},{"dex":19,"level":30,"female":false,"uid":1000103}]'
+if admin set "$ID3" '$.box' "$SIX" >/dev/null && admin set "$ID4" '$.box' "$SIX" >/dev/null && admin set "$ID3" '$.lastUID' 1000103 >/dev/null && admin set "$ID4" '$.lastUID' 1000103 >/dev/null; then
+    SEQ3=$((SEQ3 + 1)); act3 $SEQ3 '{"duelParty":{"uids":[1000101,1000102,1000103]}}'; ok "대전 파티 (3마리)" is 200 '.out.cannot' null
+    act4 8 '{"duelParty":{"uids":[1000101,1000102,1000103]}}'; ok "the other's too" is 200 '.out.cannot' null
+    SEQ3=$((SEQ3 + 1)); act3 $SEQ3 "{\"duelChallenge\":{\"to\":\"$ID4\"}}"; ok "대전 신청" is 200 '.out.duel.state' invited
+    DUEL=$(printf '%s' "$BODY" | jq .out.duel.id)
+    act4 9 "{\"duelAccept\":{\"id\":$DUEL}}"; ok "수락 → both sixes, three to pick" is 200 '[.out.duel.state, (.out.duel.parties.theirs | length)] | tostring' '["picking",3]'
+    SEQ3=$((SEQ3 + 1)); act3 $SEQ3 "{\"duelPick\":{\"id\":$DUEL,\"slots\":[0,1,2]}}"; ok "three picked" is 200 '.out.duel.parties.picked | tostring' '[0,1,2]'
+    act4 10 "{\"duelPick\":{\"id\":$DUEL,\"slots\":[2,1,0]}}"; ok "both picked → on" is 200 '[.out.duel.state, .out.duel.need] | tostring' '["active","move"]'
+    jq -n --arg id "$ID3" --arg s "$S3" '{id: $id, session: $s, since: 0, record: true}' > "$TMP/req"
+    CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/duel"); BODY=$(cat "$TMP/body")
+    ok "/v2/duel: the challenger's view, its record" is 200 '[.duel.state, .duel.challenger, (.duel.beats | length > 0), .record.wins] | tostring' '["active",true,true,0]'
+    SEQ3=$((SEQ3 + 1)); act3 $SEQ3 "{\"duelMove\":{\"id\":$DUEL,\"cmd\":{\"forfeit\":{}}}}"; ok "a forfeit waits for the other's pick" is 200 '.out.duel.need' null
+    act4 11 "{\"duelMove\":{\"id\":$DUEL,\"cmd\":{\"fight\":{\"slot\":0}}}}"; ok "then it's over: the other won" is 200 '[.out.duel.state, .out.duel.result.won, .out.duel.result.why] | tostring' '["over",true,"forfeit"]'
+else
+    echo "SKIP  live battle (needs: sudo -u pokewalker $PS set … '\$.box')"
+fi
 
 if [ $MODE = remote ]; then
     # the test ID, its legacy row and the save delete keeps as a file: nothing of the test stays in the real database
