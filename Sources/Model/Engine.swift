@@ -16,6 +16,7 @@ enum Act: Codable, Equatable {
     case sellAll
     case mon(op: MonOp)
     case course(index: Int)
+    case greet(to: String)                                       // 인사 to a teammate (docs/plans/12 §2.3): the server delivers it, the save doesn't change
 }
 enum BattleCmd: Codable, Equatable { case fight(slot: Int), ball, item(name: String), swap(to: Int), replace(to: Int), run, forfeit }
 /// Pokémon by uid (their places move): 함께 걷기, 상자로, 워커로, 놓아주기, 중복 놓아주기, 기술 바꾸기, the waiting move (nil = 배우지 않는다), 통신 진화.
@@ -31,6 +32,7 @@ enum News: Codable, Equatable {
     case level(uid: Int, level: Int), evolve(uid: Int, from: Int, to: Int, shed: Mon?), learn(uid: Int, move: Int, learned: Bool)
     case unlock(course: Int), dex(count: Int)
     case chain(n: Int, bonus: Int, reward: String?)
+    case hello(from: String, dex: Int, shiny: Bool)                                         // a teammate's 인사, with its companion (12 §2.3; app 3.2 on)
 }
 struct RadarShown: Codable, Equatable { var bush: Int, window: Double, chain: Int }
 /// result: caught · won · lost · fled (it got away) · ran (we did) · forfeit. chain: a wild fight's (0 = over); streak · bp: the tower's.
@@ -55,7 +57,7 @@ struct Play: Codable, Equatable {
     var held = 0
 }
 /// POST /v2/act. steps: walked first, whatever the act (capped by the server first: `taken`).
-struct ActReq: Codable, Equatable { var id, session: String; var seq: Int; var steps: Int? = nil; var act: Act }
+struct ActReq: Codable, Equatable { var id, session: String; var seq: Int; var steps: Int? = nil; var act: Act; var app: String? = nil }   // app: news kinds it knows (12 §1)
 struct ActReply: Codable { var rev: Int; var walk: Walk? = nil; var taken: Int? = nil; var out: Outcome }
 /// New Pokémon get their uids from here (the server's ledger counts on: never reused), and it remembers what it made and why.
 struct Issued { var next: Int; var made: [(mon: Mon, kind: String)] = [] }

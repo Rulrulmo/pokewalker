@@ -1,0 +1,21 @@
+import Foundation
+// docs/plans/12 §2 (M1): what a teammate's card shows — POST /v2/team's reply, built by the server from each trainer's save and its own counts.
+
+struct TeamCard: Codable, Equatable {
+    var name: String
+    var companion: Mon, walker: [Mon]
+    var owned, seen, shinies: Int                                      // the dex: caught, seen (caught included), species caught as 이로치
+    var today, week, total: Int                                        // steps: the server's count today and this week (Mon–Sun, KST), all time
+    var towerBest, bestChain, bp: Int
+    var course: Int
+    var idle: Int                                                      // seconds since its last act (under 60: walking now — the app sends steps every 15 s)
+
+    init(name: String, walk w: Walk, today: Int, week: Int, idle: Int) {
+        self.name = name; companion = w.companion; walker = w.caught
+        owned = (w.owned ?? []).count; seen = Set((w.seen ?? []) + (w.owned ?? [])).count; shinies = (w.shinyOwned ?? []).count
+        self.today = today; self.week = week; total = w.total
+        towerBest = w.towerBest ?? 0; bestChain = w.bestChain ?? 0; bp = w.bp ?? 0; course = w.course; self.idle = idle
+    }
+}
+struct TeamReq: Codable, Equatable { var id, session: String }
+struct TeamReply: Codable, Equatable { var week: String; var cards: [TeamCard] }

@@ -98,3 +98,42 @@ private func act(_ db: SaveDB, _ id: String, _ s: String, _ seq: Int, _ a: Act, 
     #expect(kept > 0 && ledger == kept + 1)                                                      // the starter and every catch
     #expect(try await db.count("SELECT count(*) AS n FROM mons WHERE key = 'fighter' AND state = 'pending'") == 0)
 }
+
+@Test func teamCardsAndHello() async throws {                                                     // docs/plans/12 M1
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브")
+    _ = await act(db, "앨리스", a, 1, .steps, steps: 300, at: 60)
+    _ = await act(db, "보브", b, 1, .steps, steps: 100, at: 60)
+    var r = await db.team(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(70))
+    #expect(r.status == 200)
+    let team = try JSONDecoder().decode(TeamReply.self, from: r.body)
+    #expect(team.week.contains("-W") && team.cards.map(\.name).sorted() == ["보브", "앨리스"])
+    let alice = try #require(team.cards.first { $0.name == "앨리스" })
+    #expect(alice.today == 300 && alice.week == 300 && alice.total == 300 && alice.companion.dex == 25 && alice.idle == 10)
+    r = await db.team(TeamReq(id: "앨리스", session: "not-it"), now: base.addingTimeInterval(71))
+    #expect(r.status == 409)
+    let z = try await newTrainer(db, "zz123456")                                                     // a test ID: only test IDs see it
+    _ = await act(db, "zz123456", z, 1, .steps, steps: 10, at: 60)
+    r = await db.team(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(72))
+    #expect(try JSONDecoder().decode(TeamReply.self, from: r.body).cards.count == 2)
+    r = await db.team(TeamReq(id: "zz123456", session: z), now: base.addingTimeInterval(72))
+    #expect(try JSONDecoder().decode(TeamReply.self, from: r.body).cards.count == 3)
+
+    r = await act(db, "앨리스", a, 2, .greet(to: "보브"), at: 80)
+    #expect((try reply(r)).out.cannot == nil)
+    r = await act(db, "앨리스", a, 3, .greet(to: "보브"), at: 90)
+    #expect((try reply(r)).out.cannot == "조금 뒤에 다시\n인사할 수 있어요")                          // once an hour
+    r = await act(db, "앨리스", a, 4, .greet(to: "앨리스"), at: 91)
+    #expect((try reply(r)).out.cannot == "인사할 수 없는\n트레이너예요")
+    r = await act(db, "앨리스", a, 5, .greet(to: "없는사람"), at: 92)
+    #expect((try reply(r)).out.cannot == "인사할 수 없는\n트레이너예요")
+
+    r = await db.act(ActReq(id: "보브", session: b, seq: 2, act: .steps, app: "3.1.1"), now: base.addingTimeInterval(100))
+    #expect((try reply(r)).out.news.isEmpty)                                                          // 3.1.1 can't read it: kept
+    r = await db.act(ActReq(id: "보브", session: b, seq: 3, act: .steps, app: "3.2"), now: base.addingTimeInterval(101))
+    #expect((try reply(r)).out.news == [.hello(from: "앨리스", dex: 25, shiny: false)])
+    r = await db.act(ActReq(id: "보브", session: b, seq: 4, act: .steps, app: "3.2"), now: base.addingTimeInterval(102))
+    #expect((try reply(r)).out.news.isEmpty)                                                          // once
+    r = await act(db, "앨리스", a, 6, .greet(to: "보브"), at: 80 + 3600)
+    #expect((try reply(r)).out.cannot == nil)                                                         // an hour on: again
+}

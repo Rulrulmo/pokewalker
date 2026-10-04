@@ -53,8 +53,8 @@ struct EngineRun<R: RandomNumberGenerator> {
     /// The act itself; a reason when it can't be done.
     mutating func act1(_ act: Act) -> String? {
         if p.battle != nil { switch act { case .battle, .steps: break; default: return "배틀 중이에요" } }
-        switch act { case .steps, .radar, .radarPick, .mon(.learn): break; default: p.chain = nil }   // a held chain lets only these through
-        if p.radar != nil { switch act { case .steps, .radarPick: break; default: p.radar = nil; p.chain = nil } }   // the radar shown: anything else gives it up
+        switch act { case .steps, .radar, .radarPick, .mon(.learn), .greet: break; default: p.chain = nil }   // a held chain lets only these through
+        if p.radar != nil { switch act { case .steps, .radarPick, .greet: break; default: p.radar = nil; p.chain = nil } }   // the radar shown: anything else gives it up
         switch act {
         case .steps: return nil
         case .radar: return radar()
@@ -76,6 +76,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .course(let i):
             guard courses.indices.contains(i), w.unlocked(i), i != w.course else { return "갈 수 없는 코스예요" }
             w.setCourse(i, &r); return nil
+        case .greet: return nil                                          // the server's (another trainer's inbox); nothing here changes
         }
     }
 

@@ -130,11 +130,28 @@ jq -n --arg id "$ID3" '{id: $id, device: "test-d", device_name: "TEST-D", app: "
 post login;                                 ok "a 2.2 login to a trainer on 3.0 → 426" is 426 .need 3.0
 act $SEQ3 '{"steps":{}}';                   ok "its 3.0 session acts on" is 200
 
+# 6 — plan 12 M1: the team (every 3.0 trainer's card) and 인사 (once an hour, delivered to 3.2 on as hello news)
+ID4=zz$(printf '%06d' $(( ($(date +%s) + 250000) % 1000000 )))
+jq -n --arg id "$ID4" '{id: $id, device: "test-e", device_name: "TEST-E", app: "3.0", pin: "1234"}' > "$TMP/req"
+post create;                                ok "a second 3.0 trainer" is 200
+S4=$(printf '%s' "$BODY" | jq -r .session)
+jq -n --arg id "$ID4" --arg s "$S4" '{id: $id, session: $s, seq: 1, act: {steps: {}}, app: "3.2"}' > "$TMP/req"
+CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body")
+ok "its first act" is 200
+jq -n --arg id "$ID3" --arg s "$S3" '{id: $id, session: $s}' > "$TMP/req"
+CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/team"); BODY=$(cat "$TMP/body")
+ok "/v2/team: both cards" is 200 "[.cards[].name | select(. == \"$ID3\" or . == \"$ID4\")] | length" 2
+SEQ3=$((SEQ3 + 1)); act $SEQ3 "{\"greet\":{\"to\":\"$ID4\"}}"; ok "인사 → sent" is 200 '.out.cannot' null
+SEQ3=$((SEQ3 + 1)); act $SEQ3 "{\"greet\":{\"to\":\"$ID4\"}}"; ok "again at once → once an hour" is 200 '.out.cannot | startswith("조금 뒤에")' true
+jq -n --arg id "$ID4" --arg s "$S4" '{id: $id, session: $s, seq: 2, act: {steps: {}}, app: "3.2"}' > "$TMP/req"
+CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body")
+ok "the other's next act brings hello" is 200 '.out.news[0].hello.from' "$ID3"
+
 if [ $MODE = remote ]; then
     # the test ID, its legacy row and the save delete keeps as a file: nothing of the test stays in the real database
     if admin delete "$ID" --yes >/dev/null && sudo -n -u pokewalker sqlite3 /var/lib/pokewalker/pokewalker.db "DELETE FROM legacy WHERE key = '$ID'" \
-        && admin delete "$ID3" --yes >/dev/null \
-        && sudo -n -u pokewalker sh -c "rm -f /var/lib/pokewalker/deleted-$ID-*.json /var/lib/pokewalker/deleted-$ID3-*.json"; then echo "      $ID $ID3 removed"
+        && admin delete "$ID3" --yes >/dev/null && admin delete "$ID4" --yes >/dev/null \
+        && sudo -n -u pokewalker sh -c "rm -f /var/lib/pokewalker/deleted-$ID-*.json /var/lib/pokewalker/deleted-$ID3-*.json /var/lib/pokewalker/deleted-$ID4-*.json"; then echo "      $ID $ID3 $ID4 removed"
     else echo "      remove the test ID: sudo -u pokewalker $PS delete $ID --yes; sudo -u pokewalker sqlite3 /var/lib/pokewalker/pokewalker.db \"DELETE FROM legacy WHERE key = '$ID'\"; sudo rm /var/lib/pokewalker/deleted-$ID-*.json"; fi
 fi
 echo "$PASS ok, $FAILS failed"

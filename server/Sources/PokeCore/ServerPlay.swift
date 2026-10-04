@@ -28,7 +28,7 @@ func actName(_ a: Act) -> String {
     switch a {
     case .steps: "steps"; case .radar: "radar"; case .radarPick(let b): "pick \(b)"; case .tower: "tower"; case .towerPick, .towerReset: "tower pick"
     case .battle(let c): "battle \(c)"; case .buy(let bp, let i, let l, let s, let q): "buy \(i ?? l.map { "legend \($0)" } ?? s ?? "?") ×\(q)\(bp ? " (BP)" : "")"
-    case .use(let i, _): "use \(i)"; case .sellAll: "sell all"; case .mon(let op): "mon \(op)"; case .course(let c): "course \(c)"
+    case .use(let i, _): "use \(i)"; case .sellAll: "sell all"; case .mon(let op): "mon \(op)"; case .course(let c): "course \(c)"; case .greet(let to): "greet \(to)"
     }
 }
 func savedText(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return String(decoding: (try? e.encode(w.shared)) ?? Data(), as: UTF8.self) }
@@ -69,7 +69,11 @@ extension SaveDB {
                 }
 
                 var ids = Issued(next: try nextUID(id.key, w)), g = SystemRandomNumberGenerator()
-                let out = Engine.apply(r.act, steps: taken, walk: &w, play: &row.play, rng: &g, now: now, ids: &ids)
+                var out = Engine.apply(r.act, steps: taken, walk: &w, play: &row.play, rng: &g, now: now, ids: &ids)
+                if case .greet(let to) = r.act, out.cannot == nil {                                    // 12 §2.3: into their inbox
+                    out.cannot = try greet(from: id.key, name: t.name, to: to, companion: w.companion, now: unix)
+                }
+                if knows(r.app, "3.2") { out.news += try delivery(id.key, now: unix) }               // what teammates sent (an older app can't read it)
                 for (m, kind) in ids.made { try record(id.key, m, kind: kind, state: kind == "radar" || kind == "legend" ? "pending" : "kept", now: unix) }
                 try settleLedger(id.key, w, row.play, now: unix)
 
