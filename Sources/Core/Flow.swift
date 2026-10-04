@@ -25,9 +25,9 @@ extension Walker {
     /// The 상점's (bp false) or BP 교환소's rows (the BP device colours at the server's prices).
     func wares(_ bp: Bool) -> [Walk.Ware] { state.wares(bp: bp, shells: Engine.bpShells) }
     /// The shop's tabs that have something (docs/plans/13), the one a row is on, and a tab's rows (their places in wares).
-    func shopTabs(_ bp: Bool) -> [String] { let ws = wares(bp); return Walk.shopTabs(bp: bp).filter { t in ws.contains { Walk.shopTab($0) == t } } }
-    func shopTab(_ bp: Bool, _ sel: Int) -> Int { let ts = shopTabs(bp); return wares(bp)[safe: sel].flatMap { ts.firstIndex(of: Walk.shopTab($0)) } ?? 0 }
-    func shopRows(_ bp: Bool, _ tab: Int) -> [Int] { let ws = wares(bp), t = shopTabs(bp)[safe: tab]; return ws.indices.filter { Walk.shopTab(ws[$0]) == t } }
+    func shopTabs(_ bp: Bool) -> [String] { let ws = wares(bp); return Walk.shopTabs(bp: bp).filter { t in t != "지닌 도구" && ws.contains { Walk.shopTab($0, bp: bp) == t } } }   // (지닌 도구: 3.7, with holding)
+    func shopTab(_ bp: Bool, _ sel: Int) -> Int { let ts = shopTabs(bp); return wares(bp)[safe: sel].flatMap { ts.firstIndex(of: Walk.shopTab($0, bp: bp)) } ?? 0 }
+    func shopRows(_ bp: Bool, _ tab: Int) -> [Int] { let ws = wares(bp), t = shopTabs(bp)[safe: tab]; return ws.indices.filter { Walk.shopTab(ws[$0], bp: bp) == t } }
     /// A shell the 기기 menu offers: the dex reached, and a BP one bought.
     func shellOpen(_ s: Shell) -> Bool { s.dex <= dexCount && (s.bp == 0 || (state.bought ?? []).contains(s.name)) }
     /// Buys q of the row (the server's): a line to say, then back to the list.
