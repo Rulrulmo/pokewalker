@@ -5,7 +5,7 @@ import Foundation
 /// The battle: names, HP, types for the LCD's HP boxes; the message and the choices for the page.
 struct SideModel: Equatable {
     struct Card: Equatable { var name: String; var level, hp, max: Int; var out: Bool; var status: String? = nil; var types: [String] = []; var owned = false; var item: String? = nil }   // types / owned: shown for theirs; item: what it holds now (3.7)
-    struct MoveBtn: Equatable { var name, type: String; var power: Int; var effect: Double; var pp = 0, maxPP = 0; var status = false }
+    struct MoveBtn: Equatable { var name, type: String; var power: Int; var effect: Double; var pp = 0, maxPP = 0; var status = false; var about = ""; var text: String? = nil }   // about · text: 3.8.2's line under the four
     enum Mode: Equatable { case none, menu([String], Int), moves([MoveBtn], Int), party([Card], Int), items([String], Int), ask(Bool) }   // ask: 아니오 / 예 (true = 예 highlighted)
     var foe: Card; var mine: Card; var message: String; var mode: Mode
 }
@@ -65,7 +65,7 @@ struct RadarModel: Equatable { var live: Int?; var cursor: Int; var chain: Int; 
 struct CardModel: Equatable { var page: Int }
 /// A new move to learn: it, then the four known ones and 배우지 않는다.
 struct LearnModel: Equatable {
-    struct Move: Equatable { var name, type: String; var power, pp: Int }
+    struct Move: Equatable { var name, type: String; var power, pp: Int; var about = ""; var text: String? = nil }   // about: 물리 · 명중 100; text: what it does (3.8.2)
     var who: String; var new: Move; var known: [Move]; var sel: Int
 }
 /// 기술 바꾸기: its moves (the slots; a free one after them while it knows fewer than 4), the one picked, and once picked what could go there, a page of five.
@@ -215,8 +215,8 @@ extension PaneContent {
     static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
     static let home: CGFloat = 406                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size)
     var height: CGFloat {
-        login != nil ? 330 : battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
+        login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
             : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 446 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446
-            : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 353 : status != nil ? PaneContent.home : Layout.idle
+            : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 444 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
     }
 }

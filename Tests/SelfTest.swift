@@ -904,8 +904,8 @@ import AppKit                                                                   
     #else
     let viewed = true
     #endif
-    check(homeH == 406 && menuH == 406 && gridH == 422 && fightH == 311 && gk.cardH == 406 && viewed && hudUp,
-          "the card grows down to the page: 홈's status sheet 406 and the menu the same (the 메뉴 / 홈 key never resizes it), battle 311, a grid 422 (the page under the band)", "\(homeH) \(menuH) \(gridH) \(fightH) \(gk.cardH)")
+    check(homeH == 406 && menuH == 406 && gridH == 422 && fightH == 316 && gk.cardH == 406 && viewed && hudUp,
+          "the card grows down to the page: 홈's status sheet 406 and the menu the same (the 메뉴 / 홈 key never resizes it), battle 316 (3.8.2: a move's line under the four), a grid 422 (the page under the band)", "\(homeH) \(menuH) \(gridH) \(fightH) \(gk.cardH)")
     check(foldH == 199 && foldChev == false && gk.chevron == true, "⌄ folds home's status sheet: the idle card (199); open again: 406", "\(foldH)")
     SIZE = 3; check(PX == 3 && 422 * K < 850, "크게: 3 pt a dot, its tallest page still under a 13-inch screen's height"); SIZE = size0
     let pv = Walker(state: { var s = Walk(); s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); pv.persist = false; pv.statusOpen = true; pv.rng = Seeded(s: 61)

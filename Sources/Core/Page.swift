@@ -131,19 +131,23 @@ extension Canvas {
                 let rc = r(X0 + CGFloat(i - 1) * (cw + 5), y0 + 44, cw, 36)
                 button(rc, opts[i], sel == i ? Ink.red : Ink.tint(tints[opts[i]] ?? Ink.faint, 0.2), sel == i ? .white : Ink.ink, i)
             }
-        case .moves(let ms, let sel):                                                             // 2 x 2 in their type's tint, the pick ringed: name; type, 위력; PP
+        case .moves(let ms, let sel):                                                             // 2 x 2 in their type's tint, the pick ringed: name, PP; type, 위력 — then what the pick does
             let cw = (w - 5) / 2
             for (i, mv) in ms.enumerated() {
-                let rc = r(X0 + CGFloat(i % 2) * (cw + 5), top + 3 + CGFloat(i / 2) * 53, cw, 48), dead = mv.effect == 0 || mv.pp == 0, col = typeColor[mv.type] ?? .gray
+                let rc = r(X0 + CGFloat(i % 2) * (cw + 5), top + 3 + CGFloat(i / 2) * 39, cw, 36), dead = mv.effect == 0 || mv.pp == 0, col = typeColor[mv.type] ?? .gray
                 let p = Path.rounded(rc, 10 * K); c.fill(p, dead ? Ink.tile : Ink.tint(col, 0.2))
                 if i == sel { c.stroke(p, Ink.red, width: 2 * K) }
-                c.say(mv.name, rc.minX + x(9), rc.minY + x(12), font(11, .bold), dead ? Ink.faint : Ink.ink, maxW: rc.width - x(14))
-                c.typePill(mv.type, rc.minX + x(8), rc.minY + x(27), h: x(11), size: 7.5, grey: dead)
+                let ppw = c.say("\(mv.pp)/\(mv.maxPP)", rc.maxX - x(8), rc.minY + x(11), font(8, .semibold), mv.pp == 0 ? Ink.red : Ink.sub, 1)   // (the PP: no label, the name needs the room)
+                c.say(mv.name, rc.minX + x(9), rc.minY + x(11), font(10.5, .bold), dead ? Ink.faint : Ink.ink, maxW: rc.width - x(20) - ppw)
+                c.typePill(mv.type, rc.minX + x(8), rc.minY + x(25.5), h: x(11), size: 7.5, grey: dead)
                 let power = mv.status ? "변화" : "위력 " + (mv.power > 1 ? "\(mv.power)" : "—")                 // a power that varies: —
                 let hint = mv.effect == 0 ? "효과 없음 · " : mv.effect > 1 ? "▲ " : mv.effect < 1 ? "▼ " : ""             // 3.8 (docs/plans/14 ④): the type's hint by the power, not the PP
-                c.say(hint + power, rc.maxX - x(8), rc.minY + x(27.5), font(8, .semibold), dead ? Ink.faint : mv.effect > 1 ? Ink.red : Ink.sub, 1)
-                c.say("PP \(mv.pp)/\(mv.maxPP)", rc.maxX - x(8), rc.minY + x(39.5), font(8, .semibold), Ink.sub, 1)
+                c.say(hint + power, rc.maxX - x(8), rc.minY + x(26), font(8, .semibold), dead ? Ink.faint : mv.effect > 1 ? Ink.red : Ink.sub, 1)
                 hits.append((rc, i))
+            }
+            if let mv = ms[safe: sel] {                                                            // 3.8.2: what the pick does
+                let box = r(X0, top + 82, w, 33); c.fill(.rounded(box, 9 * K), Ink.tile)
+                moveNote(mv.about, mv.text, box.insetBy(dx: x(8), dy: x(1.5)), lines: 3)
             }
         case .party(let ps, let sel):                                                             // a row each (three, or four with the walker's team, tighter): name, HP
             let pitch: CGFloat = ps.count > 3 ? 21.5 : 27.5
@@ -479,15 +483,38 @@ extension Page {
         }
         c.say(label ?? mv.name, rc.minX + x(9), rc.midY, font(10, .bold), Ink.ink, maxW: xr - rc.minX - x(9))
     }
+    /// 3.8.2: a move's kind and accuracy in bold, then what it does — wrapped by words into the lines there are (… past the last).
+    func moveNote(_ about: String, _ text: String?, _ rc: CGRect, lines n: Int, size: CGFloat = 8) {
+        let fb = font(size, .bold), f = font(size, .medium), lh = x(size + 2.5), aw = about.isEmpty ? 0 : width(about, fb) + x(5)
+        if !about.isEmpty { c.say(about, rc.minX, rc.minY + lh / 2, fb, Ink.sub) }
+        var lines: [String] = [], cur = ""
+        for word in (text ?? "").split(separator: " ") {
+            let t = cur.isEmpty ? String(word) : cur + " " + word
+            if width(t, f) > (lines.isEmpty ? rc.width - aw : rc.width), !cur.isEmpty { lines.append(cur); cur = String(word) } else { cur = t }
+        }
+        if !cur.isEmpty { lines.append(cur) }
+        if lines.count > n { lines = Array(lines.prefix(n)); lines[n - 1] += "…" }
+        for (k, l) in lines.enumerated() { c.say(l, rc.minX + (k == 0 ? aw : 0), rc.minY + lh / 2 + lh * CGFloat(k), f, Ink.ink, maxW: k == 0 ? rc.width - aw : rc.width) }
+    }
+    /// 3.8.2: the box under a move list — the highlighted one's name, kind, accuracy and what it does (or a line when there's none).
+    func moveBox(_ mv: LearnModel.Move?, _ top: CGFloat, empty: String) {
+        let box = r(X0, top, X1 - X0, 52); c.fill(.rounded(box, 9 * K), Ink.tile)
+        guard let mv else { c.say(empty, box.midX, box.midY, font(9, .medium), Ink.sub, 0.5, maxW: box.width - x(12)); return }
+        let inner = box.insetBy(dx: x(9), dy: x(4))
+        c.say(mv.name, inner.minX, inner.minY + x(6), font(10, .bold), Ink.ink, maxW: inner.width)
+        moveNote(mv.about, mv.text, CGRect(x: inner.minX, y: inner.minY + x(12), width: inner.width, height: inner.height - x(12)), lines: 3)
+    }
     func drawLearn(_ m: LearnModel) {
-        let head = r(X0, 198, X1 - X0, 26); c.fill(.rounded(head, 9 * K), Ink.tint(typeColor[m.new.type] ?? Ink.faint, 0.18))
-        moveLine(m.new, head, "새 기술 · " + m.new.name)
-        c.say(m.who + "의 기술을 하나 잊는다", x(X0 + 2), y(236), font(9, .medium), Ink.sub)
+        let head = r(X0, 198, X1 - X0, 58); c.fill(.rounded(head, 9 * K), Ink.tint(typeColor[m.new.type] ?? Ink.faint, 0.18))
+        moveLine(m.new, CGRect(x: head.minX, y: head.minY, width: head.width, height: x(22)), "새 기술 · " + m.new.name)
+        moveNote(m.new.about, m.new.text, CGRect(x: head.minX + x(9), y: head.minY + x(21), width: head.width - x(18), height: x(34)), lines: 3)
+        c.say(m.who + "의 기술을 하나 잊는다", x(X0 + 2), y(266), font(9, .medium), Ink.sub)
         for (i, mv) in (m.known + [LearnModel.Move(name: "배우지 않는다", type: "", power: 0, pp: 0)]).enumerated() {
-            let rc = r(X0, 246 + CGFloat(i) * 21.5, X1 - X0, 19)
+            let rc = r(X0, 276 + CGFloat(i) * 21.5, X1 - X0, 19)
             tile(rc, 7, on: i == m.sel)
             moveLine(mv, rc); hits.append((rc, 5300 + i))
         }
+        moveBox(m.known[safe: m.sel], 386, empty: "지금 기술을 그대로 둔다")
     }
     /// 기술 바꾸기: its slots (the picked one ringed; a click: what goes there), or what could go in it, a page of five
     /// (its own marked with their slot: picking one swaps the two; the rest with the level it learns them).
@@ -500,6 +527,7 @@ extension Page {
                 hits.append((rc, 5500 + i))
             }
             c.say("레벨업으로 배우는 기술은 언제든 다시 고를 수 있어요", x(X0 + 2), y(311), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
+            moveBox(m.slots[safe: m.slot], 350, empty: "빈 칸 · 새 기술을 고를 수 있어요")
             return
         }
         c.say(m.slots[safe: m.slot].map { "\(m.slot + 1)번 \($0.name) → 무엇으로?" } ?? "빈 칸 · 무엇을 배울까?", x(X0 + 2), y(206), font(11, .medium), Ink.ink, maxW: x(X1 - X0 - 4))
@@ -516,6 +544,7 @@ extension Page {
         }
         let per = RelearnModel.perPage, pages = (p.count + per - 1) / per
         if pages > 1 { pager("\(p.first / per + 1) / \(pages)", 327, prev: true, next: true, codes: (5540, 5541)) }
+        moveBox(p.rows[safe: p.sel - p.first]?.move, 350, empty: "")
     }
     /// 배틀 타워's lobby: the run, the three who go (a click: who goes there instead; 추천으로 once it's the player's own), then 도전 (or the next trainer) and 나가기.
     func drawTower(_ m: TowerModel) {

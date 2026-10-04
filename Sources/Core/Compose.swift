@@ -375,11 +375,11 @@ extension Walker {
         case .learn(let sel):
             var st = state
             guard let (ref, id) = st.nextToLearn(), let m = state.mon(ref), let new = moveTable[id] else { break }
-            func mv(_ x: MoveInfo) -> LearnModel.Move { .init(name: x.name, type: x.type, power: x.power, pp: x.pp) }
+            func mv(_ x: MoveInfo) -> LearnModel.Move { .init(name: x.name, type: x.type, power: x.power, pp: x.pp, about: moveAbout(x), text: moveText(x.id)) }
             return PaneContent(learn: LearnModel(who: monNames[m.dex], new: mv(new), known: m.moves.compactMap { moveTable[$0] }.map(mv), sel: sel))
         case .relearn(let r, let s, let at):
             guard let m = state.mon(r) else { break }
-            func mv(_ id: Int) -> LearnModel.Move { let x = moveTable[id]!; return .init(name: x.name, type: x.type, power: x.power, pp: x.pp) }
+            func mv(_ id: Int) -> LearnModel.Move { let x = moveTable[id]!; return .init(name: x.name, type: x.type, power: x.power, pp: x.pp, about: moveAbout(x), text: moveText(id)) }
             let pick = at.map { at -> RelearnModel.Pick in
                 let all = m.relearnable, per = RelearnModel.perPage, sel = all.firstIndex(of: at) ?? 0, first = sel / per * per
                 return .init(sel: sel, count: all.count, first: first, rows: all[first..<min(all.count, first + per)].map { .init(move: mv($0), level: m.learnLevel($0), slot: m.moves.firstIndex(of: $0)) })
@@ -599,6 +599,10 @@ extension Walker {
 func sexMark(_ m: Mon) -> String { genderRate[m.dex] < 0 ? "" : m.female ? " ♀" : " ♂" }
 func movesLine(_ m: Mon) -> String { "기술: " + m.moves.map { moveTable[$0]!.name }.joined(separator: " · ") }
 /// 능력치 / 개체값 / 노력치, one line each (HP 공격 방어 특공 특방 스피드).
+/// 3.8.2: a move's kind and accuracy (and its priority when it has one), before its description.
+func moveAbout(_ m: MoveInfo) -> String {
+    ["물리", "특수", "변화"][min(2, max(0, m.kind))] + " · 명중 " + (m.accuracy == 0 ? "—" : "\(m.accuracy)") + (m.priority > 0 ? " · 선제 +\(m.priority)" : m.priority < 0 ? " · 후공 \(m.priority)" : "")
+}
 func statLines(_ m: Mon) -> [String] {
     let names = ["HP", "공격", "방어", "특공", "특방", "스피드"]
     func row(_ v: [Int]) -> String { zip(names, v).map { "\($0) \($1)" }.joined(separator: " · ") }

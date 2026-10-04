@@ -31,7 +31,7 @@ extension Walker {
             let f = x.mine[x.me]
             mode = .moves(f.moves.enumerated().map { k, id in                                       // hints from the types it has now, as the damage sees them
                 let m = moveTable[id]!, real = x.moveType(.me, m)
-                return .init(name: m.name, type: real.type.isEmpty ? m.type : real.type, power: Moves.fixedOrVariable.contains(id) ? 0 : real.power, effect: x.hint(id, real.type), pp: f.pp[k], maxPP: m.pp, status: m.isStatus)
+                return .init(name: m.name, type: real.type.isEmpty ? m.type : real.type, power: Moves.fixedOrVariable.contains(id) ? 0 : real.power, effect: x.hint(id, real.type), pp: f.pp[k], maxPP: m.pp, status: m.isStatus, about: moveAbout(m), text: moveText(id))
             }, sel)
         case .party(let x, let sel): b = x; msg = itemFor.map { josa($0, "을", "를") + " 누구에게 쓸까?" } ?? (x.mustReplace ? "다음은 누구를 내보낼까?" : "누구로 교체할까?"); mode = .party(x.mine.enumerated().map { card($1, out: $0 == x.me) }, sel)
         case .forfeit(let x, let yes):

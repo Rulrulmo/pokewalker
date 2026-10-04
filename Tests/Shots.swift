@@ -244,6 +244,14 @@ import AppKit
     // 3.8.1: the two guests above a tall companion, the bottom row full
     take("home_guests_tall", fme) { v in v.duelOn = false; v.state.companion = Mon(dex: 384, level: 70, female: false); v.state.caught = [Mon(dex: 16, level: 8, female: false), Mon(dex: 19, level: 9, female: false), Mon(dex: 41, level: 7, female: false)]
         v.state.egg = Egg(dex: 175, left: 300); v.screen = .home }
+    // 3.8.2: what a move does — the battle's four, 기술 배우기, 기술 바꾸기 (its slots, what could go there)
+    let mv382 = online({ var s = base(); s.companion = Mon(dex: 25, level: 30, female: false); s.companion.known = [85, 98, 86, 194]; return s }())
+    let fb382 = Battle(wild: Mon(dex: 6, level: 30, female: false), party: [mv382.state.companion])
+    take("battle_moves_text", mv382) { v in v.fight = fb382; v.screen = .moves(fb382, sel: 3) }
+    take("learn_text", mv382) { v in v.state.learning = [v.state.id(-1)!, 87]; v.screen = .learn(sel: 1) }
+    take("learn_text_keep", mv382) { v in v.state.learning = [v.state.id(-1)!, 87]; v.screen = .learn(sel: 4) }
+    take("relearn_slots", mv382) { v in v.state.learning = nil; v.screen = .relearn(ref: -1, slot: 3, at: nil) }
+    take("relearn_pick", mv382) { v in v.screen = .relearn(ref: -1, slot: 0, at: v.state.companion.relearnable.dropFirst(2).first) }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
     return n
