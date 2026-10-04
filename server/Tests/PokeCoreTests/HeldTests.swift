@@ -161,7 +161,8 @@ private func said(_ b: Battle, _ s: String) -> Bool {
     var r = Seeded(s: 9)
     let f = w.towerFoes(&r)
     #expect(f.foes.allSatisfy { $0.item != nil } && Set(f.foes.compactMap(\.item)).count == 3)
-    w.towerStreak = 0; #expect(w.towerFoes(&r).foes.allSatisfy { $0.item == nil })
+    w.towerStreak = 13; #expect(w.towerFoes(&r).foes.allSatisfy { $0.item == nil })                // (3.8: none before 14 wins)
+    w.towerStreak = 14; #expect(w.towerFoes(&r).foes.allSatisfy { $0.item != nil })
 }
 
 @Test func heldFuzz() {                                                                          // 3 vs 3, every held item at random, item moves in the sets: always ends, HP in range

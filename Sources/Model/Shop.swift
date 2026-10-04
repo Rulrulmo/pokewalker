@@ -294,8 +294,8 @@ extension Walk {
         }
         let cls = names.randomElement(using: &r)!, given = cls == "아가씨" ? she : ["등산가", "연구원", "드래곤 조련사", "모범 소년"].contains(cls) ? he : he + she
         let who = cls + " " + given.randomElement(using: &r)!
-        var used = Set<String>()                                                                    // 3.7: held items from 7 wins on, one of each (the tower's rule)
-        for k in foes.indices where tier >= 1 {
+        var used = Set<String>()                                                                    // held items from 14 wins on (3.8, the user), one of each (the tower's rule)
+        for k in foes.indices where tier >= 2 {
             let phys = baseStats[foes[k].dex][1] >= baseStats[foes[k].dex][3]
             let pool = tier >= 3 ? [phys ? "구애머리띠" : "구애안경", "생명의구슬", "기합의띠", "먹다남은음식", "자뭉열매", "리샘열매", "달인의띠", "구애스카프", "선제공격손톱", "초점렌즈"]
                                  : ["자뭉열매", "오랭열매", "리샘열매", "먹다남은음식"]
