@@ -62,6 +62,16 @@ import Foundation
     take("team_ranks", on: tme) { v in v.screen = .team(sel: 0, tab: 1, card: false) }
     take("team_card", on: tme) { v in v.screen = .team(sel: 1, tab: 0, card: true) }
     take("home_visitor") { v in v.visitor = Visitor(name: "민수", dex: 6, shiny: false, until: T.addingTimeInterval(60), hello: true) }
+    serve(tme) { w in var tr = Seeded(s: 21); w.box = (0..<30).map { k in Mon.wild([19, 41, 133, 147, 4, 1, 95, 129, 16, 25][k % 10], level: 5 + k, &tr) } }   // 3.3: 교환
+    if var m = tsrv.walk("민수") { var tr = Seeded(s: 22); m.box = (0..<12).map { k in var x = Mon.wild([94, 6, 149, 130, 65, 68][k % 6], level: 20 + k, &tr); x.uid = 500 + k; return x }; tsrv.set("민수", m) }
+    let me = tme.myName.lowercased(), now = Int(T.timeIntervalSince1970)
+    tsrv.offers = [(TradeOffer(id: 1, from: "민수", to: tme.myName, mon: tsrv.walk("민수")!.box[0], want: tme.state.box[3], at: now - 3 * 3600, state: "open"), "민수", me),
+                   (TradeOffer(id: 2, from: tme.myName, to: "지은", mon: tme.state.box[0], want: nil, at: now - 600, state: "open"), me, "지은")]
+    tme.cloud!.tradesDue = true; drain(tme); tme.cloud!.wantBox("민수"); drain(tme)
+    take("trade_list", on: tme) { v in v.screen = .trade(.list(0)) }
+    take("trade_offer", on: tme) { v in v.screen = .trade(.offer(id: 1, act: nil)) }
+    take("trade_pick", on: tme) { v in v.screen = .trade(.pick(TradePick(to: "민수", give: v.myTradeBox[4].uid, want: 502, side: 0, at: 4))) }
+    take("traded", on: tme) { v in v.screen = .traded(gave: v.state.box[2], got: tsrv.walk("민수")!.box[4], with: "민수", since: T - 5) }
     take("grid_drag") { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(T, force: true); v.drag = (10001, CGPoint(x: 150 * K, y: 30 * K)) }   // 3.1: one of the box carried onto the walker's row
     take("dex_grid") { v in v.screen = .dex(25, filter: 0, detail: false) }
     take("dex_entry") { v in still(v, "dex", 25); v.screen = .dex(25, filter: 0, detail: true) }

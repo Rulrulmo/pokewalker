@@ -31,6 +31,7 @@ extension Walker {
         let w = waiting?.act == a ? waiting : nil
         if w != nil { waiting = nil }
         guard let r else { if let w { screen = .say(Walker.offlineLines, next: w.back, since: now) }; return }   // (an act out goes again by itself: its answer may still come, late)
+        if Walker.isTrade(a) { cloud?.tradesDue = true }                                           // the offers changed (or weren't what we thought): asked again
         news += w?.quiet == true ? r.out.news.filter { if case .level = $0 { return false }; return true } : r.out.news
         if let why = r.out.cannot { if let w { screen = .say(why.components(separatedBy: "\n"), next: w.back, since: now) }; return }
         if let w { if let s = w.then(r.out, now) { screen = s }; return }
@@ -98,13 +99,7 @@ extension Walker {
             visitor = Visitor(name: from, dex: dex, shiny: shiny, until: now.addingTimeInterval(90), hello: true)
             screen = .say([josa(from, "이", "가") + " 인사했다! ♥"], next: .home, since: now)
             notify("pet", josa(from, "이", "가") + " 인사했어요 ♥", josa(monNames[dex], "과", "와") + " 함께 · 눌러서 답인사")
-        case .tradeOffer(_, let from, let m, _):                                                  // 교환 (docs/plans/12 §3; minimal: the trade UI is the Mac's)
-            screen = .say([josa(from, "이", "가") + " 교환을 신청했다!", monNames[m.dex] + " Lv.\(m.level)"], next: .home, since: now)
-            notify("pet", josa(from, "이", "가") + " 교환을 신청했어요", monNames[m.dex] + " Lv.\(m.level)")
-        case .traded(_, let with, _, let got):
-            screen = .say(["교환 성립!", with + "에게서 " + josa(monNames[got.dex], "이", "가") + " 왔다"], next: .home, since: now)
-            notify("pet", "교환 성립!", with + "에게서 " + monNames[got.dex] + " Lv.\(got.level)")
-        case .tradeClosed(_, let with, let why): screen = .say([josa(with, "과", "와") + "의 교환", why], next: .home, since: now)
+        case .tradeOffer, .traded, .tradeClosed: tradeNews(n, now)                                   // 교환 (12 §3): an offer come, one gone through or closed (Core/TradeView.swift)
         }
     }
 

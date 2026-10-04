@@ -242,10 +242,11 @@ final class UpdateInbox: @unchecked Sendable {
 extension Walker {
     /// A staged update newer than this app, the updater on: the menu's 업데이트 설치 offers it.
     var stagedUpdate: String? { updater.flatMap { Update.ready($0.dir) }.flatMap { verCmp($0.version, appVersion) == 1 ? $0.version : nil } }
-    /// Why not now (the row is greyed with it): a fight, a show or a tower run on — nothing in progress is lost to a restart.
+    /// Why not now (the row is greyed with it): a fight, a show on — nothing in progress is lost to a restart. A tower run between fights
+    /// goes on in the new session where the server keeps runs (its login says so); on one that doesn't, the run waits too.
     var installBlocker: String? {
-        if inBattle || towerRun { return "배틀이 끝나면" }
-        switch screen { case .beats, .evolve, .hatch, .radar: return "지금 하는 게 끝나면"; default: break }
+        if inBattle || (towerRun && cloud?.keepsRuns != true) { return "배틀이 끝나면" }
+        switch screen { case .beats, .evolve, .hatch, .radar, .traded: return "지금 하는 게 끝나면"; default: break }
         return waiting != nil ? "지금 하는 게 끝나면" : nil
     }
     /// The menu's row (no question asked: the click is the consent): a staged one installs; else one click checks, downloads and installs

@@ -58,6 +58,42 @@ import AppKit
     take("home_visitor", tme) { v in v.screen = .home; v.visitor = Visitor(name: "민수", dex: 6, shiny: false, until: Date().addingTimeInterval(60), hello: false) }
     take("home_hello", tme) { v in v.screen = .home; v.visitor = Visitor(name: "지은", dex: 282, shiny: true, until: Date().addingTimeInterval(60), hello: true) }
     take("home_visitor_tall", tme) { v in v.screen = .home; v.state.companion = Mon(dex: 384, level: 70, female: false); v.visitor = Visitor(name: "현우", dex: 149, shiny: false, until: Date().addingTimeInterval(60), hello: false) }
+    // 3.3 (12 M2): 교환
+    serve(tme) { w in var r = Seeded(s: 41); w.box = (0..<40).map { k in Mon.wild([19, 41, 133, 147, 4, 1, 95, 129, 16, 25, 74, 92, 66, 63, 61, 64][k % 16], level: 5 + k, shiny: k == 7 ? true : nil, &r) } }
+    if var minsu = tsrv.walk("민수") {
+        var r = Seeded(s: 42); minsu.box = (0..<30).map { k in var m = Mon.wild([94, 6, 149, 130, 131, 143, 65, 68, 76, 59][k % 10], level: 20 + k, shiny: k == 4 ? true : nil, &r); m.uid = 500 + k; return m }
+        tsrv.set("민수", minsu)
+    }
+    let me = tme.myName.lowercased(), at = Int(Date().timeIntervalSince1970)
+    func mon(_ d: Int, _ l: Int, _ u: Int, shiny: Bool? = nil) -> Mon { var r = Seeded(s: UInt64(u)); var m = Mon.wild(d, level: l, shiny: shiny, &r); m.uid = u; return m }
+    tsrv.offers = [(TradeOffer(id: 1, from: "민수", to: tme.myName, mon: mon(94, 41, 520), want: tme.state.box[3], at: at - 3 * 3600, state: "open"), "민수", me),
+                   (TradeOffer(id: 2, from: "지은", to: tme.myName, mon: mon(282, 36, 521, shiny: true), want: nil, at: at - 20 * 3600, state: "open"), "지은", me),
+                   (TradeOffer(id: 3, from: tme.myName, to: "도윤", mon: tme.state.box[0], want: mon(448, 50, 522), at: at - 600, state: "open"), me, "도윤")]
+    tme.cloud!.tradesDue = true; drain(tme)
+    take("menu_team_trades", tme) { v in v.screen = .menu(menuAt("팀")) }
+    take("team_card_trade", tme) { v in v.screen = .team(sel: 0, tab: 0, card: true) }
+    take("trade_list", tme) { v in v.screen = .trade(.list(0)) }
+    take("trade_offer_in", tme) { v in v.screen = .trade(.offer(id: 1, act: nil)) }
+    take("trade_offer_any", tme) { v in v.screen = .trade(.offer(id: 2, act: 1)) }
+    take("trade_offer_out", tme) { v in v.screen = .trade(.offer(id: 3, act: nil)) }
+    take("trade_pick_loading", tme) { v in v.cloud!.wantBox("현우"); v.screen = .trade(.pick(TradePick(to: "현우"))) }
+    tme.cloud!.wantBox("민수"); drain(tme)
+    take("trade_pick_theirs", tme) { v in v.screen = .trade(.pick(TradePick(to: "민수"))) }
+    take("trade_pick_theirs_p2", tme) { v in v.screen = .trade(.pick(TradePick(to: "민수", at: 26))) }
+    take("trade_pick_mine", tme) { v in v.screen = .trade(.pick(TradePick(to: "민수", want: 504, side: 0, at: 2))) }
+    take("trade_pick_ready", tme) { v in v.screen = .trade(.pick(TradePick(to: "민수", give: v.myTradeBox[5].uid, want: 504, side: 0, at: 5))) }
+    take("trade_pick_any_ready", tme) { v in v.screen = .trade(.pick(TradePick(to: "민수", give: v.myTradeBox[7].uid, want: nil, side: 1, at: 0))) }
+    take("trade_pick_answer", tme) { v in v.screen = .trade(.pick(TradePick(to: "지은", offer: 2, give: v.myTradeBox[1].uid, side: 0, at: 1))) }
+    for u in [0.5, 1.7, 2.3, 3.0, 3.3, 3.8, 5.0] {
+        take("traded_\(Int(u * 10))", tme) { v in v.screen = .traded(gave: v.myTradeBox[2], got: mon(64, 30, 600), with: "민수", since: Date().addingTimeInterval(-u)) }
+    }
+    take("box_ot", tme) { v in v.state.box[4].ot = "민수"; v.screen = .box(4, act: nil, confirm: false, detail: true) }
+    let fresh = online(base())
+    fresh.cloud!.tradesDue = true; drain(fresh)
+    take("trade_list_empty", fresh) { v in v.screen = .trade(.list(0)) }
+    take("trade_pick_mine_empty", fresh) { v in v.screen = .trade(.pick(TradePick(to: "민수", side: 0))) }
+    let onix = online({ var s = base(); s.companion = Mon(dex: 95, level: 30, female: false); s.bag = ["금속코트"]; return s }())
+    take("mon_trade_evo", onix) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
     return n

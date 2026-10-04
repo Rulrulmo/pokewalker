@@ -4,7 +4,7 @@ import Foundation
 // (Cloud.team, /v2/team); the walker only sorts and shows it.
 
 extension Walker {
-    static let teamTabs = ["팀", "걸음", "도감", "타워"]
+    static let teamTabs = ["팀", "걸음", "도감", "타워", "교환"]                                   // 교환 = the trades' list (Core/TradeView.swift)
     /// A teammate is walking now: an act within the last minute (the app sends steps every 15 s).
     static func walkingNow(_ c: TeamCard) -> Bool { c.idle < 60 }
     var myName: String { cloud?.seat.trainerID ?? "" }
@@ -49,13 +49,13 @@ extension Walker {
                 .init(key: "코스", value: courses[safe: c.course]?.name ?? "-"),
             ]
             return PaneContent(teamCard: TeamCardModel(name: c.name, me: isMe(c), walking: Walker.walkingNow(c) && !isMe(c), when: isMe(c) ? "" : ago(c.idle), walker: c.walker.prefix(3).map(mini), lines: lines,
-                                                       greet: isMe(c) ? nil : visitorGreeted(c.name) ? "인사했어요 ♥" : "인사하기 ♥"))
+                                                       greet: isMe(c) ? nil : visitorGreeted(c.name) ? "인사했어요 ♥" : "인사하기 ♥", trade: !isMe(c)))
         }
         let per = TeamModel.perPage, first = s / per * per
         let page = rows[first..<min(rows.count, first + per)].map { r in
             TeamModel.Row(rank: r.rank, name: r.card.name, dex: r.card.companion.dex, shiny: r.card.companion.shiny == true, value: teamValue(r.card, tab), walking: Walker.walkingNow(r.card) && !isMe(r.card), me: isMe(r.card))
         }
-        return PaneContent(team: TeamModel(tabs: Walker.teamTabs, tab: tab, rows: page, sel: s, first: first, count: rows.count, note: note, week: cloud?.team?.week ?? ""))
+        return PaneContent(team: TeamModel(tabs: teamTabLabels, tab: tab, rows: page, sel: s, first: first, count: rows.count, note: note, week: cloud?.team?.week ?? ""))
     }
     /// The LCD on the team's pages: the picked teammate's companion, its name, level, and whether it's walking now.
     func teamLCD(_ fb: inout FB, _ sel: Int, _ tab: Int, _ now: Date) {

@@ -126,7 +126,8 @@ import Foundation
     func walker(_ id: String) -> (Walker, Cloud, TestHost) {
         let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
         let c = Cloud(link: HTTPLink(), dir: tmp.appendingPathComponent(id, isDirectory: true))
-        w.startCloud(c, file: tmp.appendingPathComponent(id + ".json"), bak: tmp.appendingPathComponent(id + ".bak")); h.texts = [id]; h.pins = [pin, pin, pin]
+        h.texts = [id]; h.pins = [pin, pin, pin]                                                   // (before startCloud: it may ask at once)
+        w.startCloud(c, file: tmp.appendingPathComponent(id + ".json"), bak: tmp.appendingPathComponent(id + ".bak"))
         return (w, c, h)
     }
     let (wa, ca, ha) = walker(a), (wb, cb, hb) = walker(b)
@@ -152,5 +153,81 @@ import Foundation
     wb.screen = .home; cb.addSteps(2); cb.saveNow(); run(20) { wb.visitor != nil }
     check(wb.visitor.map { $0.hello && $0.name.lowercased() == a.lowercased() && $0.dex == 25 } == true, "live hello: B's next act brings A's 인사 — A's 피카츄 on B's home with ♥")
     print(failed == 0 ? "PASS live team" : "FAIL \(failed)")
+    return failed == 0
+}
+
+/// `PokeWalker --live-trade <idA> <idB> <pin>` (a dev build only): docs/plans/12's M2 against the real server, through the walker's own pages.
+/// Two zz test IDs whose boxes the server's admin seeded: A has 윤겔라 and 꼬렛, B has 롱스톤 with 금속코트 in its bag. A asks for 롱스톤 with 윤겔라;
+/// B takes it (both evolve by trade at their new trainers: 후딘 at B, 강철톤 at A, 금속코트 gone from B); then 꼬렛 for 아무거나, turned down;
+/// again, taken back.
+@MainActor func liveTradeTest(_ a: String, _ b: String, _ pin: String) -> Bool {
+    var failed = 0
+    func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-livetrade-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    func walker(_ id: String) -> (Walker, Cloud, TestHost) {                                        // (the host comes back: the walker holds it weakly)
+        let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
+        let c = Cloud(link: HTTPLink(), dir: tmp.appendingPathComponent(id, isDirectory: true))
+        h.texts = [id]; h.pins = [pin, pin, pin]                                                   // (before startCloud: it may ask at once)
+        w.startCloud(c, file: tmp.appendingPathComponent(id + ".json"), bak: tmp.appendingPathComponent(id + ".bak"))
+        return (w, c, h)
+    }
+    let (wa, ca, ha) = walker(a), (wb, cb, hb) = walker(b)
+    @discardableResult func run(_ secs: Double, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end { wa.tick(Date()); wb.tick(Date()); if done() { return true }; Thread.sleep(forTimeInterval: 0.1) }
+        return done()
+    }
+    func idle(_ c: Cloud) -> Bool { c.inFlight == nil && c.queued == nil && c.out == nil }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func next(_ w: Walker, _ c: Cloud, until: () -> Bool) -> Bool { w.screen = .home; c.addSteps(2); c.saveNow(); return run(25, until: until) }   // its next act: what came for it
+    check(run(40) { ca.phase == .on && cb.phase == .on && ca.base != nil && cb.base != nil }, "live trade: \(a) and \(b) logged in (\(ca.phase), \(cb.phase); asked \(ha.asked), \(hb.asked))")
+    let seeded = wa.state.box.contains { $0.dex == 64 } && wa.state.box.contains { $0.dex == 19 } && wb.state.box.contains { $0.dex == 95 } && wb.state.count("금속코트") > 0
+    check(seeded, "live trade: the boxes as seeded (A: 윤겔라 · 꼬렛, B: 롱스톤 + 금속코트) — A \(wa.state.box.map(\.dex)), B \(wb.state.box.map(\.dex)) \(wb.state.bag)")
+    guard seeded else { print("FAIL \(failed)"); return false }
+
+    // A: 롱스톤 for 윤겔라, from B's card (B's box from /v2/box)
+    wa.startTrade(b); run(15) { wa.theirBox(b) != nil && idle(ca) }
+    guard case .trade(.pick(var p)) = wa.screen, let onix = wa.theirBox(b)?.firstIndex(where: { $0.dex == 95 }) else { check(false, "live trade: B's box came"); print("FAIL \(failed)"); return false }
+    p.at = onix; wa.screen = .trade(.pick(p)); wa.pageTap(6150 + onix % TradePickModel.perPage)
+    if case .trade(.pick(let q)) = wa.screen, let k = wa.myTradeBox.firstIndex(where: { $0.dex == 64 }) { var q = q; q.at = k; wa.screen = .trade(.pick(q)); wa.pageTap(6150 + k % TradePickModel.perPage) }
+    let go = wa.paneContent(Date()).pick?.go; wa.pageTap(6190); run(15) { wa.waiting == nil && idle(ca) }
+    check(go == "교환 신청" && says(wa) == [b + "에게", "교환을 신청했다!"], "live 교환 신청: B's 롱스톤 for my 윤겔라 — the server took it (\(String(describing: go)), \(says(wa)))")
+    run(15) { ca.trades?.outgoing.count == 1 }
+    let id = ca.trades?.outgoing.first?.id ?? -1
+    check(ca.trades?.outgoing.first.map { $0.mon.dex == 64 && $0.want?.dex == 95 } == true, "live /v2/trades: my offer on my list (id \(id))")
+
+    // B: the news, its page, 수락 → both evolve at their new trainers
+    let came = next(wb, cb) { if case .say(_, .trade(.offer(id, nil)), _) = wb.screen { return true }; return false }
+    check(came && says(wb).first == josa(a, "이", "가") + " 교환을 신청했다!", "live tradeOffer news: B's next act brings it — \(says(wb))")
+    wb.press(1); let page = wb.paneContent(Date()).offer
+    check(page?.give.dex == 95 && page?.get.dex == 64 && page?.buttons == ["수락", "거절"], "live: the offer's page (롱스톤 ⇄ 윤겔라, 수락 · 거절)")
+    wb.pageTap(6130); run(20) { wb.waiting == nil && idle(cb) && { if case .traded = wb.screen { return true }; return false }() }
+    let show: Bool = { if case .traded(let g, let got, _, _) = wb.screen { return g.dex == 95 && got.dex == 64 }; return false }()
+    run(10) { if case .evolve = wb.screen { return true }; return false }
+    let alakazam = wb.state.box.first { $0.dex == 65 }
+    check(show && alakazam?.ot.map { trainerID($0)?.key == trainerID(a)?.key } == true && wb.state.count("금속코트") == 0 && !wb.state.box.contains { $0.dex == 95 },
+          "live 수락: the trade's show; 윤겔라 → 후딘 at B (어버이 \(alakazam?.ot ?? "-")), 금속코트 went with 롱스톤 — B \(wb.state.box.map(\.dex))")
+    let got = next(wa, ca) { wa.state.box.contains { $0.dex == 208 } }
+    let steelix = wa.state.box.first { $0.dex == 208 }
+    check(got && steelix?.ot.map { trainerID($0)?.key == trainerID(b)?.key } == true && !wa.state.box.contains { $0.dex == 64 },
+          "live: A's next act brings its new save — 롱스톤 → 강철톤 at A (어버이 \(steelix?.ot ?? "-")) — A \(wa.state.box.map(\.dex))")
+
+    // 꼬렛 for 아무거나: B turns it down; again, A takes it back
+    run(8) { false }; wb.screen = .home; wa.screen = .home
+    let rattata = wa.state.box.first { $0.dex == 19 }?.uid ?? -1
+    wa.act(.tradeOffer(to: b, give: rattata, want: nil), back: .home); run(15) { wa.waiting == nil && idle(ca) }
+    _ = next(wb, cb) { if case .say(_, .trade(.offer), _) = wb.screen { return true }; return false }
+    if case .say(_, .trade(.offer(let id2, _)), _) = wb.screen { wb.screen = .trade(.offer(id: id2, act: nil)); wb.pageTap(6131); run(15) { wb.waiting == nil && idle(cb) } }
+    let declined = says(wb).last == "거절했다"
+    let heard = next(wa, ca) { says(wa).last == "상대가 거절했어요" }
+    check(declined && heard, "live 거절 (a 아무거나 one): said at B; A's next act hears 상대가 거절했어요")
+    wa.act(.tradeOffer(to: b, give: rattata, want: nil), back: .home); run(15) { wa.waiting == nil && idle(ca) }
+    ca.tradesDue = true; run(10) { ca.trades?.outgoing.count == 1 && idle(ca) }
+    wa.screen = .trade(.list(0)); wa.pageTap(6110 + max(0, wa.tradeRows.firstIndex { wa.mineOffer($0) } ?? 0)); wa.pageTap(6132); run(15) { wa.waiting == nil && idle(ca) }
+    let took = says(wa) == ["교환 신청을", "거뒀다"]
+    let told = next(wb, cb) { says(wb).last == "상대가 거뒀어요" || { if case .say(_, .trade(.offer), _) = wb.screen { return false }; return false }() }
+    check(took && told, "live 거두기: said at A; B's next act hears 상대가 거뒀어요 (\(says(wb)))")
+    print(failed == 0 ? "PASS live trade" : "FAIL \(failed)")
     return failed == 0
 }

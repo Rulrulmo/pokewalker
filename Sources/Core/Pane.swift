@@ -107,6 +107,25 @@ struct TeamCardModel: Equatable {
     struct Mini: Equatable { var dex, level: Int; var shiny: Bool }
     struct Line: Equatable { var key, value: String }
     var name: String; var me, walking: Bool; var when: String; var walker: [Mini]; var lines: [Line]; var greet: String?
+    var trade = false                                                  // 교환 신청 beside 인사하기 (a teammate's card)
+}
+/// 교환 (12 §3): a Pokémon in an offer as its tile shows it; dex nil = none (name says what goes there instead: 아무거나, 골라 주세요).
+struct TradeSlot: Equatable { var label: String; var dex: Int? = nil; var level = 0; var shiny = false; var name: String; var v = 0 }
+/// 교환's list (팀's 교환 tab): a page of the open offers — to me (whose, for what), then mine (to whom) — the pager, a note.
+struct TradeListModel: Equatable {
+    struct Row: Equatable { var mine: Bool; var line: String; var sub: String; var dex: Int; var shiny: Bool }
+    static let perPage = 6
+    var tabs: [String]; var rows: [Row]; var sel, first, count: Int; var note: String
+}
+/// One offer: what I'd give and get, the one I'd get in full (its page's body), the buttons (수락 · 거절, or 거두기; sel = the LCD's pick).
+struct TradeOfferModel: Equatable { var title, note: String; var give, get: TradeSlot; var mon: MonModel; var buttons: [String]; var sel: Int? }
+/// Making an offer, or answering a 아무거나 one: the two slots (the side being picked from ringed), its box a page at a time, 아무거나
+/// (their side, while making one), the button (nil: not yet — hint says why).
+struct TradePickModel: Equatable {
+    static let perPage = 24, columns = 6                               // 6 x 4
+    var title, note: String; var mine, theirs: TradeSlot; var side: Int; var fixed: Bool   // fixed: theirs is set (answering)
+    var boxTitle: String; var cells: [GridModel.Cell]; var sel, picked: Int?; var first, count: Int; var empty: String
+    var any: Bool?; var go: String?; var hint: String; var bob: Bool
 }
 /// The save server holding the game: what's up, a line or two, and the one button (ID 입력 / 여기서 계속; nil = none).
 struct LoginModel: Equatable { var title: String; var lines: [String]; var button: String? }
@@ -116,13 +135,14 @@ struct PaneContent: Equatable {
     var battle: SideModel?; var dex: DexModel?; var shop: ShopModel?; var menu: MenuModel?; var status: StatusModel?; var grid: GridModel?; var mon: MonModel?
     var radar: RadarModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var items: ItemsModel?; var course: CourseModel?; var train: TrainModel?; var relearn: RelearnModel?
     var team: TeamModel? = nil, teamCard: TeamCardModel? = nil
+    var trades: TradeListModel? = nil, offer: TradeOfferModel? = nil, pick: TradePickModel? = nil
 }
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
     static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 406 : menu != nil ? 354
-            : team != nil ? 446 : teamCard != nil ? 420
+            : team != nil ? 446 : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480
             : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 353 : status != nil ? 354 : Layout.idle
     }
 }

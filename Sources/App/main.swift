@@ -15,6 +15,10 @@ if let i = CommandLine.arguments.firstIndex(of: "--live-team"), i + 3 < CommandL
     guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-team: a build run from the repository only"); exit(2) }
     exit(liveTeamTest(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2], CommandLine.arguments[i + 3]) ? 0 : 1)
 }
+if let i = CommandLine.arguments.firstIndex(of: "--live-trade"), i + 3 < CommandLine.arguments.count {    // a dev build: M2 (교환) with two seeded test IDs (Tests/LiveTest.swift)
+    guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-trade: a build run from the repository only"); exit(2) }
+    exit(liveTradeTest(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2], CommandLine.arguments[i + 3]) ? 0 : 1)
+}
 if let i = CommandLine.arguments.firstIndex(of: "--shots"), i + 1 < CommandLine.arguments.count {          // a dev build: screens to look at, as PNGs (Tests/Shots.swift)
     guard Store.devBuild(Bundle.main.bundleURL) else { print("--shots: a build run from the repository only"); exit(2) }
     print("\(shots(CommandLine.arguments[i + 1])) shots"); exit(0)

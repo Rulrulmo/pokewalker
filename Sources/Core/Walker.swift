@@ -87,7 +87,9 @@ import Foundation
         case .say(_, let next, let since) where now.timeIntervalSince(since) > 3: screen = next
         case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
+        case .traded(_, _, _, let since) where now.timeIntervalSince(since) > 6: screen = .home
         case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
+        case .trade: if now.timeIntervalSince(lastInput) > 60 { screen = .home }                // (a trade is weighed up: longer)
         default: break
         }
         cloudTick(now)                                                                             // the server's answers (their screens, the save) …
@@ -96,7 +98,7 @@ import Foundation
         updater?.tick(now); updateTick(now)
     }
     /// Fights, shows and animations play at 30 fps; the rest (the walking sprite too: HGSS steps it every 0.15 s) at the tick's 10.
-    var busy: Bool { switch screen { case .beats, .hatch, .evolve, .radar: true; default: animating || waiting != nil } }   // (an act out: its dots)
+    var busy: Bool { switch screen { case .beats, .hatch, .evolve, .radar, .traded: true; default: animating || waiting != nil } }   // (an act out: its dots)
 
     /// The keys as the walker knows them: ◀ ▶ ↑ ↓, page up / down, tab, ● (return / space), ↩ (esc), 메뉴 / 홈 (M).
     enum Key { case left, right, up, down, pageUp, pageDown, tab, enter, back, menu }
@@ -111,8 +113,9 @@ import Foundation
         if case .items = screen, let d = [Key.up: -1, .down: 1, .pageUp: -6, .pageDown: 6][k] { listRow(d); return true }   // 도구: six rows in view
         if case .team(let s, let t, false) = screen {                                             // 팀: ↑ ↓ a row, page up / down a page, tab the next tab
             if let d = [Key.up: -1, .down: 1, .pageUp: -TeamModel.perPage, .pageDown: TeamModel.perPage][k] { teamStep(d, wrap: false); return true }
-            if k == .tab { screen = .team(sel: 0, tab: (t + (shift ? 3 : 1)) % 4, card: false); _ = s; host?.redraw(.all); return true }
+            if k == .tab { let n = (t + (shift ? 4 : 1)) % 5; screen = n == 4 ? .trade(.list(0)) : .team(sel: 0, tab: n, card: false); _ = s; host?.redraw(.all); return true }
         }
+        if case .trade = screen, tradeKey(k, shift: shift) { return true }                       // 교환: its lists' rows and pages, tab (the other box; 팀's tabs)
         switch screen { case .dex(_, _, false), .box(_, .none, _, false): if let d = [Key.up: -6, .down: 6, .pageUp: -30, .pageDown: 30][k] { gridStep(d, ends: abs(d) == 30); return true }; default: break }   // the grids: ↑ ↓ a row, page up / down a page
         if k == .tab {
             switch screen {
@@ -144,12 +147,16 @@ import Foundation
         let when = "\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · \((state.weather ?? .sunny).name)"
         switch sc {
         case .dex: return ("도감", "잡음 \(dexCount) · 봤음 \(seenList.count)")
+        case .box(let i, _, _, true) where state.mon(i)?.ot != nil: return ("포켓몬", "어버이: " + (state.mon(i)?.ot ?? ""))   // a traded one: who it came from first
         case .box, .items: return ("포켓몬", "워커 \(state.caught.count) · 상자 \(state.box.count.formatted()) · 도구 \(state.items.count + state.bag.count)")
         case .menu: return ("메뉴", "")
         case .shop(let bp, _, _), .shopConfirm(let bp, _, _): return (bp ? "BP 교환소" : "상점", "")
         case .radar: return ("포켓 레이더", state.here.name)
         case .card: return ("트레이너 카드", "")
         case .team(_, let t, let card): return (card ? "팀원" : "팀", card ? "" : t == 0 ? "지금 걷는 중이 위" : "이번 주 순위 · \(Walker.teamTabs[t])")
+        case .trade(.list): return ("팀", "교환")
+        case .trade(.offer(let id, _)): return ("교환", tradeOffer(id).map { mineOffer($0) ? "보낸 신청" : "받은 신청" } ?? "")
+        case .trade(.pick(let p)): return ("교환", p.offer == nil ? "상자의 포켓몬끼리" : "내 상자에서 골라 주세요")
         case .learn: return ("기술 배우기", "")
         case .relearn(let r, _, _): return ("기술 바꾸기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .course: return ("코스", "\(courses.indices.filter(state.unlocked).count) / \(courses.count) 열림")

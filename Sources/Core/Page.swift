@@ -82,6 +82,7 @@ extension Canvas {
         else if let k = p.card { tabs(["트레이너 카드", "최근 7일", "알"], k.page, 198, code: 5200) } else if let l = p.learn { drawLearn(l) }
         else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let l = p.relearn { drawRelearn(l) }
         else if let t = p.team { drawTeam(t) } else if let t = p.teamCard { drawTeamCard(t) }
+        else if let t = p.trades { drawTrades(t) } else if let o = p.offer { drawOffer(o) } else if let k = p.pick { drawPick(k) }
         else if let s = p.status { drawStatus(s) }
     }
     let X0: CGFloat = 9, X1: CGFloat = 207                                                         // the content column (card points): the bezel's edges
@@ -595,8 +596,102 @@ extension Page {
         var yy: CGFloat = 272
         for l in m.lines { c.say(l.key, x(X0 + 2), y(yy), font(9, .medium), Ink.sub); c.say(l.value, x(X0 + 48), y(yy), font(10, .semibold), Ink.ink, maxW: x(X1 - X0 - 50)); yy += 17 }
         guard let g = m.greet else { return }
-        let rc = r(X0, 380, X1 - X0, 30), on = g == "인사하기 ♥"
+        let half = m.trade ? (X1 - X0 - 5) / 2 : X1 - X0
+        let rc = r(X0, 380, half, 30), on = g == "인사하기 ♥"
         c.fill(.rounded(rc, 10 * K), on ? Ink.red : Ink.tile); c.say(g, rc.midX, rc.midY, font(11, .bold), on ? .white : Ink.sub, 0.5); if on { hits.append((rc, 6030)) }
+        if m.trade { let tr = r(X0 + half + 5, 380, half, 30); c.fill(.rounded(tr, 10 * K), Ink.redTint); c.say("교환 신청", tr.midX, tr.midY, font(11, .bold), Ink.red, 0.5); hits.append((tr, 6031)) }
+    }
+    // MARK: 교환 (docs/plans/12 §3): the open offers, one offer, making or answering one
+    /// The 교환 tab: 팀's tabs (교환 picked), a page of offers — to me (green 받음) and mine (blue 보냄): whose Pokémon, for what, the time left.
+    func drawTrades(_ m: TradeListModel) {
+        c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
+        tabs(m.tabs, m.tabs.count - 1, 214, code: 6000)
+        if m.rows.isEmpty {
+            c.say(m.note.hasPrefix("받은") ? "걸린 교환이 없어요" : m.note, x(Layout.w / 2), y(300), font(10, .medium), Ink.sub, 0.5)
+            c.say("팀원의 카드에서 교환을 신청할 수 있어요", x(Layout.w / 2), y(318), font(9, .medium), Ink.faint, 0.5); return
+        }
+        for (i, row) in m.rows.enumerated() {
+            let rc = r(X0, 242 + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: m.first + i == m.sel)
+            c.image(iconImage(row.dex), CGRect(x: rc.minX + x(6), y: rc.midY - x(15), width: 28 * K, height: 28 * K), alpha: 1)
+            if row.shiny { c.say("★", rc.minX + x(32), rc.minY + x(6), font(7, .bold), Ink.gold, 1) }
+            let xr = pillAt(row.mine ? "보냄" : "받음", rc.maxX - x(9), rc.midY, Ink.tint(row.mine ? Ink.blue : Ink.green, 0.16), row.mine ? Ink.blue : Ink.green)
+            c.say(row.line, rc.minX + x(36), rc.midY - x(5.5), font(9.5, .bold), Ink.ink, maxW: xr - rc.minX - x(36))
+            c.say(row.sub, rc.minX + x(36), rc.midY + x(6), font(8, .medium), Ink.sub, maxW: xr - rc.minX - x(36))
+            hits.append((rc, 6110 + i))
+        }
+        let per = TradeListModel.perPage, pages = max(1, (m.count + per - 1) / per)
+        pager("\(m.first / per + 1) / \(pages)", 420, prev: pages > 1, next: pages > 1, codes: (6120, 6121))
+    }
+    /// Two Pokémon tiles side by side, ⇄ between (mine left, theirs right); `on` = ringed (the side being picked). Returns their rects.
+    @discardableResult func tradeSlots(_ a: TradeSlot, _ b: TradeSlot, _ top: CGFloat, _ h: CGFloat, on: Int?) -> [CGRect] {
+        let w = (X1 - X0 - 18) / 2
+        var out: [CGRect] = []
+        for (i, s) in [a, b].enumerated() {
+            let rc = r(X0 + CGFloat(i) * (w + 18), top, w, h); tile(rc, 10, on: on == i); out.append(rc)
+            c.say(s.label, rc.minX + x(8), rc.minY + x(8), font(7.5, .bold), on == i ? Ink.red : Ink.sub)
+            let cy = rc.minY + (rc.height + x(10)) / 2
+            if let d = s.dex {
+                c.image(iconImage(d), CGRect(x: rc.minX + x(3), y: cy - x(16), width: 28 * K, height: 28 * K), alpha: 1)
+                c.say((s.shiny ? "★" : "") + s.name, rc.minX + x(31), cy - x(5), font(9.5, .bold), Ink.ink, maxW: rc.width - x(34))
+                c.say("Lv.\(s.level)" + (s.v > 0 ? " · \(s.v)V" : ""), rc.minX + x(31), cy + x(6.5), font(8, .semibold), s.v >= 3 ? Ink.gold : Ink.sub)
+            } else { c.say(s.name, rc.midX, cy, font(9.5, .bold), Ink.faint, 0.5) }
+        }
+        let mx = x(X0 + w + 9), my = out[0].minY + (out[0].height + x(10)) / 2
+        c.say("⇄", mx, my, font(12, .bold), Ink.red, 0.5)
+        return out
+    }
+    /// One offer: give ⇄ get, the one I'd get in full (nature, ability, IVs and EVs), then 수락 · 거절 (or 거두기).
+    func drawOffer(_ m: TradeOfferModel) {
+        let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
+        c.say(m.title, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)
+        tradeSlots(m.give, m.get, 214, 36, on: 1)
+        let yy = monBody(m.mon, 254)
+        let cw = (X1 - X0 - 5 * CGFloat(m.buttons.count - 1)) / CGFloat(m.buttons.count)
+        for (i, t) in m.buttons.enumerated() {
+            let rc = r(X0 + CGFloat(i) * (cw + 5), yy + 4, cw, 30), strong = m.sel == i || (m.sel == nil && i == 0 && t != "거두기")
+            c.fill(.rounded(rc, 10 * K), strong ? Ink.red : Ink.tile); c.say(t, rc.midX, rc.midY, font(11, .bold), strong ? .white : Ink.ink, 0.5)
+            hits.append((rc, 6130 + (t == "수락" ? 0 : t == "거절" ? 1 : 2)))
+        }
+    }
+    /// Making (or answering) one: the two slots (a click: that side's box), the box a page at a time (the pick ringed red, the cursor
+    /// tinted), 아무거나 on theirs, the pager, the button.
+    func drawPick(_ m: TradePickModel) {
+        let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
+        c.say(m.title, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)
+        let slots = tradeSlots(m.mine, m.theirs, 214, 42, on: m.side)
+        hits.append((slots[0], 6140)); if !m.fixed { hits.append((slots[1], 6141)) }
+        var right = x(X1 - 2)
+        if let any = m.any {
+            let t = "아무거나", f = font(8.5, .bold), pw = width(t, f) + x(14), rc = CGRect(x: right - pw, y: y(268) - x(8), width: pw, height: x(16))
+            c.pill(rc, any ? Ink.red : Ink.tile); c.say(t, rc.midX, rc.midY, f, any ? .white : Ink.sub, 0.5); hits.append((rc, 6142)); right = rc.minX - x(6)
+        }
+        c.say(m.boxTitle, x(X0 + 2), y(268), font(9, .semibold), Ink.sub, maxW: right - x(X0 + 2))
+        let rows = TradePickModel.perPage / TradePickModel.columns, board = r(X0, 278, X1 - X0, CGFloat(rows) * 33)
+        c.fill(.rounded(board, 11 * K), Ink.board)
+        if m.cells.isEmpty {                                                                         // a line, and what to do about it under it
+            let l = m.empty.components(separatedBy: "\n")
+            c.say(l[0], board.midX, board.midY - (l.count > 1 ? x(8) : 0), font(10, .medium), Ink.sub, 0.5, maxW: board.width - x(12))
+            if l.count > 1 { c.say(l[1], board.midX, board.midY + x(9), font(8.5, .medium), Ink.faint, 0.5, maxW: board.width - x(12)) }
+        }
+        let side = 32 * K, scale = c.scale, snap = { (v: CGFloat) in (v * scale).rounded() / scale }
+        for (k, e) in m.cells.enumerated() {
+            let cell = r(X0 + CGFloat(k % TradePickModel.columns) * 33, 278 + CGFloat(k / TradePickModel.columns) * 33, 33, 33)
+            if k == m.picked { let p = Path.rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K); c.fill(p, Ink.redTint); c.stroke(p, Ink.red, width: 1.5 * K) }
+            else if k == m.sel { c.stroke(.rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K), Ink.faint, width: 1 * K) }
+            let lift = k == m.picked && m.bob ? K : 0
+            c.image(iconImage(e.dex, shadow: e.look == 1), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: e.look == 1 ? 0.6 : 1)
+            if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
+            if e.v3 {
+                let cx = cell.minX + x(6), cy = cell.maxY - x(6), rr = 2.4 * K
+                let d = Path.poly([CGPoint(x: cx, y: cy - rr), CGPoint(x: cx + rr, y: cy), CGPoint(x: cx, y: cy + rr), CGPoint(x: cx - rr, y: cy)])
+                c.fill(d, Ink.c(245, 178, 40)); c.stroke(d, Ink.c(160, 100, 10), width: 0.5 * K)
+            }
+            hits.append((cell, 6150 + k))
+        }
+        let per = TradePickModel.perPage, pages = max(1, (m.count + per - 1) / per)
+        pager("\(m.first / per + 1) / \(pages)", 278 + CGFloat(rows) * 33 + 4, prev: pages > 1, next: pages > 1, codes: (6180, 6181))
+        let rc = r(X0, 440, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.go == nil ? Ink.tile : Ink.red)
+        c.say(m.go ?? m.hint, rc.midX, rc.midY, font(11, .bold), m.go == nil ? Ink.sub : .white, 0.5); if m.go != nil { hits.append((rc, 6190)) }
     }
     /// 대단한 특훈: the companion's six stats (trained ones and 31s marked), the pick, then its button (or why not).
     func drawTrain(_ m: TrainModel) {

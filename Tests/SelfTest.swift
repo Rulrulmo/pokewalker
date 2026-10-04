@@ -1103,8 +1103,9 @@ import AppKit                                                                   
           && candyAct?.hasSuffix("먹이기") == true && iv.state.companion.level == 21 && iv.state.count("이상한사탕") == 0,
           "도구: the walker's and the bag's in one list (워커 marked); a row's button uses it (이상한사탕: +1 level)")
     iv.screen = .box(-1, act: nil, confirm: false, detail: true); let onix = iv.paneContent(Date()).mon
-    check(onix?.evos.first?.contains("강철톤") == true && onix?.evos.first?.contains("(있음)") == true && onix?.evoAction?.contains("통신 진화") == true, "a Pokémon's page: how it evolves (금속코트 in the bag: 있음); the companion's 통신 진화 button")
-    iv.gridTap(4406); drain(iv); check({ if case .evolve(_, let to, _) = iv.screen { return to.dex == 208 }; return false }(), "… the button evolves it (롱스톤 + 금속코트 → 강철톤), as Connect would")
+    check(onix?.evos.first?.contains("강철톤 · 교환") == true && onix?.evos.first?.contains("(있음)") == true && onix?.evos.contains { $0 == "교환하면 받는 쪽에서 진화해요" } == true && onix?.evoAction == nil,
+          "a Pokémon's page: how it evolves (교환 · 금속코트 in the bag: 있음); no solo 통신 진화 button any more (12 §3: a real trade evolves it)", "\(String(describing: onix?.evos)) \(String(describing: onix?.evoAction))")
+    let acts0 = server(iv).0.acts.count; iv.gridTap(4406); drain(iv); check(server(iv).0.acts.count == acts0 && iv.state.companion.dex == 95, "… and its spot does nothing (롱스톤 stays)")
     iv.screen = .box(0, act: nil, confirm: false, detail: true); let fetchable = iv.paneContent(Date()).mon?.fetch == true; iv.gridTap(4407); drain(iv)
     check(fetchable && iv.state.box.isEmpty && iv.state.caught.last?.dex == 16 && { if case .say(_, .box(-2, nil, false, false), _) = iv.screen { return true }; return false }(),
           "the box's: 워커로 brings it back onto the walker (picked there)")
@@ -1130,7 +1131,7 @@ import AppKit                                                                   
     #else
     let frameTimer = { (_: Walker) -> [(Bool, String)] in [] }                                    // P3: Windows' SetTimer shell
     #endif
-    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks(timer: frameTimer) + notebookChecks() + stepGateChecks() + signChecks() + ed25519Checks() + cloudChecks() + actChecks() + updateFixtureChecks() + updateChecks() { check(ok, name) }   // the drawing files' own checks
+    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks(timer: frameTimer) + notebookChecks() + stepGateChecks() + signChecks() + ed25519Checks() + cloudChecks() + actChecks() + tradeChecks() + updateFixtureChecks() + updateChecks() { check(ok, name) }   // the drawing files' own checks
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0
 }

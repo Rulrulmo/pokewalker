@@ -142,6 +142,8 @@ extension Walker {
             fb.fill(0, 51, 96, 1, 2)
             fb.text(towerRun ? "● 다음 상대  ↩ 나가기" : "● 도전 \(Walk.towerFee)W", 0, 53, 3, center: true, small: true)
         case .team(let sel, let tab, _): teamLCD(&fb, sel, tab, now)
+        case .trade(let s): tradeLCD(&fb, s, now)
+        case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
         case .card(let p):
             header(p == 0 ? cardTitle : ["트레이너 카드", "최근 7일", "알"][p])
             if p == 2 {
@@ -244,7 +246,7 @@ extension Walker {
         case .level: let parts = [e.level > 0 ? "Lv.\(e.level)" : nil, when, sex, place, e.item.map { $0 + " 소지" }, e.party.map { monNames[$0] + " 보유" }].compactMap { $0 }; return parts.isEmpty ? "레벨 업" : parts.joined(separator: " · ")
         case .friend: return (["친밀도(함께 1만 걸음)"] + [when].compactMap { $0 }).joined(separator: " · ")
         case .item: return e.item! + " 사용" + (sex.map { " · " + $0 } ?? "")
-        case .trade: return "통신 진화" + (e.item.map { " · " + $0 + " 소지" } ?? "")   // the companion's page has the button
+        case .trade: return "교환" + (e.item.map { " · " + $0 + " 소지" } ?? "")              // at a real trade (12 §3), at its new trainer; the item from the giver's bag
         }
     }
     /// The pane's 도감 entry page (● on the grid); nil elsewhere.
@@ -294,7 +296,7 @@ extension Walker {
     /// A click on a page still up under its own message (산 뒤, 연승!, W가 부족하다 …): the message ends and the click counts.
     func throughSay() {
         guard case .say(_, let next, _) = screen else { return }
-        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn: screen = next; default: break }
+        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade: screen = next; default: break }
     }
     func gridTap(_ code: Int) {
         guard !frozen, waiting == nil else { return }
@@ -317,7 +319,7 @@ extension Walker {
         case (.box(let i, _, _, true), 4400) where i != -1: screen = .box(i, act: 0, confirm: false, detail: true); press(1)      // = ● 함께
         case (.box(let i, _, _, true), 4404) where i < -1: screen = .box(i, act: 1, confirm: false, detail: true); press(1)       // the walker's: 상자로 보내기
         case (.box(let i, _, _, true), 4407) where i >= 0: guard let a = boxActs(i).firstIndex(of: "워커로") else { return }; screen = .box(i, act: a, confirm: false, detail: true); press(1)   // the box's: back onto the walker
-        case (.box(-1, _, _, true), 4406): if let e = companionEvolution() { evolveNow(e, back: screen) }                              // the companion: a stone / 통신 진화 now
+        case (.box(-1, _, _, true), 4406): if let e = companionEvolution() { evolveNow(e, back: screen) }                              // the companion: a stone now
         case (.box(let i, _, _, true), 4401) where i >= 0: screen = .box(i, act: 0, confirm: true, detail: true)     // 놓아줄까? 아니오 first
         case (.box(let i, _, _, true), 4402): screen = .box(i, act: nil, confirm: false, detail: true)
         case (.box(let i, _, true, true), 4403): screen = .box(i, act: 1, confirm: true, detail: true); press(1)
@@ -338,10 +340,11 @@ extension Walker {
         if let s = shopModel() { return PaneContent(shop: s) }
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }                       // a menu page's message (W가 부족하다 …): the list stays
         if case .team(let sel, let tab, let card) = sc { return teamPane(sel, tab, card) }
+        if case .trade(let s) = sc { return tradePane(s, now) }
         if case .menu(let i) = sc {
             let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "팀"]   // offline: what needs the server, dimmed
             let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
-            let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "팀": walking > 0 ? "지금 걷는 중 \(walking)명" : "팀원 · 이번 주 순위"]
+            let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "팀": tradesIn > 0 ? "교환 신청 \(tradesIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "팀원 · 이번 주 순위 · 교환"]
             return PaneContent(menu: MenuModel(rows: menuItems.map { off && needs.contains($0) ? .init(name: $0, note: "연결되면 할 수 있어요", off: true) : .init(name: $0, note: notes[$0] ?? "") }, sel: i))
         }
         switch sc {                                                                               // the rest of the walker's pages: what you press is here, the LCD shows it
@@ -402,6 +405,9 @@ extension Walker {
         case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
         case (.card, 5200...5202): screen = .card(code - 5200)
         case (.team(let sel, _, _), 6000...6003): screen = .team(sel: code - 6000 == 0 ? sel : 0, tab: code - 6000, card: false)   // a tab (a rank tab from its top)
+        case (.team, 6004): cloud?.tradesDue = true; screen = .trade(.list(0))                    // 교환: the open offers (Core/TradeView.swift)
+        case (.team(let sel, let tab, true), 6031): if let c = teamRows(tab)[safe: sel]?.card { startTrade(c.name) }
+        case (.trade, 6000...6199): tradeTap(code, Date())
         case (.team(let sel, let tab, _), 6010...6015):                                          // a row: the first click picks it, a click on the pick opens its card
             let at = sel / TeamModel.perPage * TeamModel.perPage + code - 6010
             guard at < teamRows(tab).count else { return }
@@ -449,14 +455,15 @@ extension Walker {
         p.evos = targets.map { to in "→ " + monNames[to] + " · " + mine.filter { $0.to == to }.map { e in evoText(e).replacingOccurrences(of: " 소지", with: "") + (e.item.map { state.count($0) > 0 ? " (있음)" : " (없음)" } ?? "") }.joined(separator: " / ") }
         if p.evos.count > 2 { p.evos = [p.evos[0], "외 \(p.evos.count - 1)갈래"] }
         if p.evos.isEmpty { p.evos = ["더 진화하지 않아요"] }
-        else if i != -1, mine.contains(where: { $0.way == .trade || $0.way == .item }) { p.evos.append("통신·도구 진화는 동료일 때 (함께 걷기 후)") }
-        if i == -1, let e = companionEvolution() { p.evoAction = (e.way == .trade ? "통신 진화" : e.item! + " 쓰기") + " → " + monNames[e.to] }
+        else if mine.contains(where: { $0.way == .trade }) { p.evos.append("교환하면 받는 쪽에서 진화해요") }
+        else if i != -1, mine.contains(where: { $0.way == .item }) { p.evos.append("도구 진화는 동료일 때 (함께 걷기 후)") }
+        if i == -1, let e = companionEvolution() { p.evoAction = e.item! + " 쓰기 → " + monNames[e.to] }
         return p
     }
     /// The ● menu on a Pokémon's page (the LCD's row; the pane's buttons are the same, less 닫기): what it can do from where it is.
     func boxActs(_ i: Int) -> [String] { i < -1 ? ["함께", "상자로", "닫기"] : i >= 0 ? ["함께"] + (state.caught.count < 3 ? ["워커로"] : []) + ["놓아주기", "닫기"] : [] }
-    /// What would evolve the companion right now from its page: a stone in the bag, else a link trade (Connect's own evolution, without the sending).
-    func companionEvolution() -> Evo? { state.stoneEvolutions(Date()).first ?? state.tradeEvolution(Date()) }
+    /// What would evolve the companion right now from its page: a stone in the bag (a trade evolution: a real trade, 12 §3).
+    func companionEvolution() -> Evo? { state.stoneEvolutions(Date()).first }
     /// 도구: every kind carried, the pick's use and a line about it.
     func itemsModel(_ sel: Int) -> ItemsModel {
         let names = state.inventory, s = min(sel, max(0, names.count - 1)), me = monNames[state.companion.dex]
@@ -478,7 +485,7 @@ extension Walker {
         case .sell(let p): return ("전부 팔기 +\((p * state.count(n)).formatted())W", "")
         case .evolution:
             if let e = state.stoneEvolutions(Date()).first(where: { $0.item == n }) { return ("\(monNames[e.to])(으)로 진화", "{동료}에게 써요") }
-            let uses = evolutions.filter { $0.item == n }.prefix(2).map { monNames[$0.from] + "→" + monNames[$0.to] + ($0.way == .trade ? " (통신 진화)" : "") }
+            let uses = evolutions.filter { $0.item == n }.prefix(2).map { monNames[$0.from] + "→" + monNames[$0.to] + ($0.way == .trade ? " (교환)" : "") }
             return (nil, uses.joined(separator: ", "))
         case .bottleCap(let gold):
             let iv = c.effectiveIVs, open = iv.contains { $0 < 31 }

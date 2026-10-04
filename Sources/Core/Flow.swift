@@ -109,9 +109,9 @@ extension Walker {
             return u.flatMap { b.usable($0) ? (i, $0) : nil }
         }
     }
-    /// The companion's 진화의 돌 or 통신 진화 (an item it holds for one is the trade's, not a stone), now: the server evolves it; home shows it.
+    /// The companion's 진화의 돌, now: the server evolves it; home shows it. (A trade evolution happens at a real trade now: 12 §3.)
     func evolveNow(_ e: Evo, back: Screen, _ now: Date = Date()) {
-        act(e.way == .trade ? .mon(op: .trade) : .use(item: e.item ?? "", stat: nil), back: back, now) { _, _ in .home }
+        act(.use(item: e.item ?? "", stat: nil), back: back, now) { _, _ in .home }
     }
     var seenList: [Int] { Array(Set((state.seen ?? []) + (state.owned ?? []))).sorted() }
     /// What walks on course k (the radar's, its guests, its legends): the 도감's 이 코스 tab, and 코스's 잡음 n/m.
@@ -169,8 +169,8 @@ extension Walker {
     func homeKey() -> Bool? {
         switch screen {
         case .home: true
-        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team: false
-        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn: false; default: nil }
+        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade: false
+        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade: false; default: nil }
         default: nil
         }
     }
@@ -184,12 +184,13 @@ extension Walker {
         }
         if k == 3 {                                           // ↩ 뒤로 (HGSS's B): one step up; where an answer is due only the cursor moves to the way out — nothing that can't be undone happens
             switch screen {
-            case .home, .beats, .radar, .evolve, .hatch: return                                    // a turn plays out; the radar ends by itself (the W paid and the chain stay); shows aren't cancellable
+            case .home, .beats, .radar, .evolve, .hatch, .traded: return                           // a turn plays out; the radar ends by itself (the W paid and the chain stay); shows aren't cancellable
             case .party(let b, _) where b.mustReplace: return                                       // someone has to come in
             case .say(_, let next, _): screen = next                                               // like ●
             case .menu: screen = .home
             case .card: screen = .menu(menuAt("트레이너 카드"))
             case .team(let s, let t, let card): screen = card ? .team(sel: s, tab: t, card: false) : .menu(menuAt("팀"))   // the card → the list → the menu
+            case .trade(let s): screen = tradeBack(s)
             case .items: screen = .box(-1, act: nil, confirm: false)                                  // back to 포켓몬
             case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : .menu(menuAt("포켓몬"))   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
             case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : .menu(menuAt("도감"))   // the entry page → the grid → the menu
@@ -301,6 +302,7 @@ extension Walker {
             if k != 1 { teamStep(k == 0 ? -1 : 1); return }
             guard let c = teamRows(t)[safe: s]?.card else { return }
             if !card { screen = .team(sel: s, tab: t, card: true) } else if !isMe(c), !visitorGreeted(c.name) { greet(c.name, back: screen) }
+        case .trade(let s): tradePress(k, s, now)
         case .say(_, let next, _): screen = next
         case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
             if k == 1 { if dexList(f).contains(n) { screen = .dex(n, filter: f, detail: !detail) } } else { gridStep(k == 0 ? -1 : 1, wrap: true) }
@@ -361,7 +363,7 @@ extension Walker {
                     : old.map { .say(["1, 2, 짠!", josa(moveTable[$0]!.name, "을", "를") + " 잊고", josa(new, "을", "를") + " 배웠다!"], next: back, since: now) }
                     ?? .say([josa(monNames[m.dex], "은", "는") + " 새로", josa(new, "을", "를") + " 배웠다!"], next: back, since: now)
             }
-        case .beats, .evolve, .hatch: break
+        case .beats, .evolve, .hatch, .traded: break
         }
     }
     func open(_ i: Int, _ now: Date) {

@@ -194,3 +194,95 @@ import AppKit
     check(egg && hatch && says(nv) == ["여름이 왔다!"], "3.0 home: an egg found, its hatch's show, the season — in order", "\(egg) \(hatch) \(says(nv))")
     return c
 }
+
+/// 12 §3 (M2): 교환 between two trainers on one fake server — an offer made from a teammate's card (their box, then mine), its news and its
+/// page on the other side, 수락 (both evolve by trade at their new trainers, 어버이), the offerer's save on its next act; a 아무거나 one answered
+/// from my box (금속코트 from the giver's bag); 거절 and 거두기 heard; a tower run kept through a new session.
+@MainActor func tradeChecks() -> [(Bool, String)] {
+    var c: [(Bool, String)] = []
+    func check(_ ok: Bool, _ name: String, _ why: @autoclosure () -> String = "") { c.append((ok, ok ? name : name + " — " + why())) }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func act(_ w: Walker) { w.screen = .home; w.cloud!.addSteps(1); w.cloud!.saveNow(); drain(w); drain(w) }   // its next act (steps): what came for it (and the reads after)
+    let sv = FakeCloud(), ha = TestHost(), hb = TestHost()
+    let ta = online({ var s = Walk(); s.companion = Mon(dex: 25, level: 30, female: false)
+                      s.box = [Mon(dex: 93, level: 25, female: false), Mon(dex: 19, level: 5, female: false), Mon(dex: 16, level: 5, female: false)]; return s }(), server: sv, host: ha)
+    let tb = online({ var s = Walk(); s.companion = Mon(dex: 6, level: 52, female: false); s.bag = ["금속코트"]
+                      s.box = [Mon(dex: 64, level: 20, female: false), Mon(dex: 95, level: 20, female: false), Mon(dex: 129, level: 10, female: false)]; return s }(), server: sv, host: hb)
+    let aName = ta.myName, bName = tb.myName
+    act(tb); ta.cloud!.teamDue = true; drain(ta)
+    let bi = ta.teamRows(0).firstIndex { $0.card.name.lowercased() == bName.lowercased() } ?? 0
+    ta.screen = .team(sel: bi, tab: 0, card: true); let card = ta.paneContent(Date()).teamCard
+    ta.pageTap(6031); drain(ta)
+    let opened: Bool = { if case .trade(.pick(let p)) = ta.screen { return p.side == 1 && p.to == card?.name }; return false }()
+    let theirs = ta.pickList({ if case .trade(.pick(let p)) = ta.screen { return p }; return TradePick(to: bName) }())
+    check(card?.trade == true && opened && theirs.map(\.dex) == [64, 95, 129] && ta.paneContent(Date()).pick?.any == true,
+          "교환 신청 (a teammate's card) → their box, from the server (/v2/box), by number; 아무거나 on until one is picked", "\(String(describing: card?.trade)) \(opened) \(theirs.map(\.dex))")
+    ta.pageTap(6150); let afterWant = ta.paneContent(Date()).pick
+    let k = ta.myTradeBox.firstIndex { $0.dex == 93 } ?? 0; ta.pageTap(6150 + k); let ready = ta.paneContent(Date()).pick
+    check(afterWant?.theirs.dex == 64 && afterWant?.side == 0 && afterWant?.go == nil && ready?.mine.dex == 93 && ready?.go == "교환 신청",
+          "a click on theirs picks it (윤겔라) and turns to my box; a click on mine (고우스트): 교환 신청 lights up", "\(String(describing: afterWant)) \(String(describing: ready?.go))")
+    ta.pageTap(6190); drain(ta); drain(ta)
+    check(says(ta) == [bName + "에게", "교환을 신청했다!"] && sv.offers.count == 1 && ta.cloud!.trades?.outgoing.count == 1 && ta.tradeRows.first.map(ta.mineOffer) == true,
+          "교환 신청 → the server's offer; it's on my list (보냄)", "\(says(ta)) \(sv.offers.count)")
+    let id = sv.offers.first?.o.id ?? -1
+    act(tb)
+    let offerSaid = says(tb) == [josa(aName, "이", "가") + " 교환을 신청했다!", "고우스트 Lv.25"]
+    let goesToOffer: Bool = { if case .say(_, .trade(.offer(id, nil)), _) = tb.screen { return true }; return false }()
+    tb.press(1); let page = tb.paneContent(Date()).offer
+    check(offerSaid && goesToOffer && page?.give.dex == 64 && page?.get.dex == 93 && page?.buttons == ["수락", "거절"] && page?.mon.nature.isEmpty == false && tb.tradesIn == 1,
+          "the other side's next act brings the offer: said, then its page — 윤겔라 ⇄ 고우스트, the one I'd get in full, 수락 · 거절", "\(says(tb)) \(String(describing: page))")
+    tb.pageTap(6130); drain(tb)
+    let show: Bool = { if case .traded(let g, let got, let with, _) = tb.screen { return g.dex == 64 && got.dex == 93 && with.lowercased() == aName.lowercased() }; return false }()
+    tb.tick(Date() + 7); let evo: Bool = { if case .evolve(let f, let t, _) = tb.screen { return f.dex == 93 && t.dex == 94 }; return false }()
+    let ghost = tb.state.box.first { $0.dex == 94 }
+    check(hb.asked.last == "교환할까요?" && show && evo && ghost?.ot?.lowercased() == aName.lowercased() && !tb.state.box.contains { $0.dex == 64 } && tb.tradesIn == 0,
+          "수락 (asked once: no undo) → the server swaps both: the trade's show, then 고우스트 evolves at its new trainer (팬텀, 어버이 the giver)", "\(hb.asked) \(show) \(evo) \(String(describing: ghost?.ot))")
+    if let gi = tb.state.box.firstIndex(where: { $0.dex == 94 }) { tb.screen = .box(gi, act: nil, confirm: false, detail: true) }
+    check(tb.title().meta == "어버이: " + aName, "a traded Pokémon's page says where it came from (어버이)", tb.title().meta)
+    act(ta); ta.tick(Date() + 7)
+    let alakazam = ta.state.box.first { $0.dex == 65 }
+    check(alakazam?.ot?.lowercased() == bName.lowercased() && !ta.state.box.contains { $0.dex == 93 } && served(ta)?.box.count == ta.state.box.count && ta.cloud!.trades?.outgoing.isEmpty == true,
+          "the offerer's next act brings its new save (the walk, with traded): 윤겔라 came and evolved (후딘, 어버이 B)", "\(ta.state.box.map(\.dex)) \(String(describing: alakazam?.ot))")
+
+    // 아무거나: answered from my box — 롱스톤 given while 금속코트 is in the giver's bag → 강철톤 at the receiver, the item gone from the giver
+    ta.screen = .home; ta.startTrade(bName); drain(ta); ta.pageTap(6142)
+    let rattata = ta.myTradeBox.firstIndex { $0.dex == 19 } ?? 0; ta.screen = { if case .trade(.pick(var p)) = ta.screen { p.side = 0; return .trade(.pick(p)) }; return ta.screen }()
+    ta.pageTap(6150 + rattata); let anyGo = ta.paneContent(Date()).pick?.go; ta.pageTap(6190); drain(ta)
+    act(tb); let id2 = sv.offers.last?.o.id ?? -1; tb.screen = .trade(.offer(id: id2, act: nil)); tb.pageTap(6130)
+    let answering: Bool = { if case .trade(.pick(let p)) = tb.screen { return p.offer == id2 && p.side == 0 }; return false }()
+    let onix = tb.myTradeBox.firstIndex { $0.dex == 95 } ?? 0; tb.pageTap(6150 + onix); let ans = tb.paneContent(Date()).pick; tb.pageTap(6190); drain(tb)
+    act(ta); ta.tick(Date() + 7)
+    check(anyGo == "교환 신청 (아무거나)" && answering && ans?.go == "이 포켓몬으로 교환" && ans?.theirs.dex == 19 && ta.state.box.contains { $0.dex == 208 } && tb.state.count("금속코트") == 0
+          && tb.state.box.contains { $0.dex == 19 },
+          "아무거나: the receiver's 수락 picks from its own box; 롱스톤 → 강철톤 at the offerer (금속코트 left the giver's bag)", "\(String(describing: anyGo)) \(answering) \(String(describing: ans?.go)) \(ta.state.box.map(\.dex))")
+
+    // 거절 and 거두기: the other side hears; a Pokémon already offered isn't offered twice
+    let pidgey = ta.state.box.first { $0.dex == 16 }?.uid ?? -1, carp = tb.state.box.first { $0.dex == 129 }?.uid
+    _ = ta.cloud!.act(.tradeOffer(to: bName, give: pidgey, want: carp)); drain(ta); act(tb)
+    let id3 = sv.offers.last?.o.id ?? -1; tb.screen = .trade(.offer(id: id3, act: nil)); tb.pageTap(6131); drain(tb)
+    let declined = says(tb) == [josa(aName, "의", "의") + " 신청을", "거절했다"]; act(ta)
+    check(declined && says(ta) == [josa(bName, "과", "와") + "의 교환", "상대가 거절했어요"], "거절: said here; the offerer's next act hears 상대가 거절했어요", "\(says(ta))")
+    _ = ta.cloud!.act(.tradeOffer(to: bName, give: pidgey, want: nil)); drain(ta)
+    ta.startTrade(bName); drain(ta); ta.screen = { if case .trade(.pick(var p)) = ta.screen { p.side = 0; return .trade(.pick(p)) }; return ta.screen }()
+    ta.pageTap(6150 + (ta.myTradeBox.firstIndex { $0.dex == 16 } ?? 0)); let twice = says(ta)
+    ta.screen = .trade(.list(0)); ta.pageTap(6110); ta.pageTap(6110); let mine = ta.paneContent(Date()).offer?.buttons; ta.pageTap(6132); drain(ta)
+    let tookBack = says(ta) == ["교환 신청을", "거뒀다"]; act(tb)
+    check(twice == ["이미 교환에", "걸어 둔 포켓몬이에요"] && mine == ["거두기"] && tookBack && says(tb) == [josa(aName, "과", "와") + "의 교환", "상대가 거뒀어요"],
+          "one already offered is dimmed and said so; my offer's page has 거두기 → the other side hears 상대가 거뒀어요", "\(twice) \(String(describing: mine)) \(says(tb))")
+    ta.screen = .home; ta.act(.tradeOffer(to: bName, give: ta.state.companion.uid ?? 0, want: nil), back: .home); drain(ta)
+    check(says(ta) == ["상자의 포켓몬만", "교환할 수 있어요"], "the server's refusal is said (the companion isn't in the box)", "\(says(ta))")
+
+    // a tower run between fights goes on through a new session (an update's restart); with a fight on it ends
+    let (_, ak) = server(ta)
+    sv.rows[ak]?.play.tower = true; ta.towerRun = true; ta.screen = .home
+    let free = ta.installBlocker == nil && ta.cloud!.keepsRuns
+    func relaunch() -> Walker {
+        let c2 = Cloud(link: sv, dir: ta.cloud!.dir), v = Walker(state: Walk()); v.persist = false; v.host = TestHost(); v.startCloud(c2); drain(v); return v
+    }
+    let re = relaunch()
+    check(free && re.towerRun && sv.rows[ak]?.play.tower == true, "a tower run between fights doesn't hold an update back: a new session keeps it (the login says so)", "\(free) \(re.towerRun)")
+    fightOn(re, Battle(wild: Mon(dex: 16, level: 50, female: false), companion: re.state.companion), tower: true)
+    let held = re.installBlocker == "배틀이 끝나면", re2 = relaunch()
+    check(held && !re2.towerRun && sv.rows[ak]?.play.tower == false, "… a fight on still holds it; a new session mid-fight ends the run", "\(held) \(re2.towerRun)")
+    return c
+}
