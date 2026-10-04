@@ -17,5 +17,12 @@ struct TeamCard: Codable, Equatable {
         towerBest = w.towerBest ?? 0; bestChain = w.bestChain ?? 0; bp = w.bp ?? 0; course = w.course; self.idle = idle
     }
 }
-struct TeamReq: Codable, Equatable { var id, session: String }
+struct TeamReq: Codable, Equatable { var id, session: String }              // /v2/team and /v2/trades
 struct TeamReply: Codable, Equatable { var week: String; var cards: [TeamCard] }
+
+/// 12 §3 (M2): an offer — what `from` gives, what it wants of `to` (nil: their choice); state open · done · declined · cancelled · expired · failed.
+struct TradeOffer: Codable, Equatable { var id: Int; var from, to: String; var mon: Mon; var want: Mon?; var at: Int; var state: String }
+struct TradesReply: Codable, Equatable { var incoming, outgoing: [TradeOffer] }
+/// /v2/box: a teammate's box, to pick what to ask for.
+struct BoxReq: Codable, Equatable { var id, session, of: String }
+struct BoxReply: Codable, Equatable { var name: String; var box: [Mon] }

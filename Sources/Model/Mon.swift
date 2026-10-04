@@ -11,6 +11,7 @@ struct Mon: Codable, Equatable {
     var nature: Int? = nil, ivs: [Int]? = nil, evs: [Int]? = nil
     var uid: Int? = nil                  // given the first time something has to find this one again (Walk.id(_:))
     var hyper: [Int]? = nil              // stats (0-5) raised by 대단한 특훈 (병뚜껑): they count as 31 in battle; the IVs themselves stay
+    var ot: String? = nil                // 어버이: the first trainer that traded it away (docs/plans/12 §3.2); nil = never traded
 
     var points: Int { exp ?? expTable[growthRate[dex]][level] }
     static func level(dex: Int, exp: Int) -> Int { let t = expTable[growthRate[dex]]; return (1...100).last { t[$0] <= exp } ?? 1 }

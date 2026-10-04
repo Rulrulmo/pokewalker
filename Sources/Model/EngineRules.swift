@@ -53,8 +53,8 @@ struct EngineRun<R: RandomNumberGenerator> {
     /// The act itself; a reason when it can't be done.
     mutating func act1(_ act: Act) -> String? {
         if p.battle != nil { switch act { case .battle, .steps: break; default: return "배틀 중이에요" } }
-        switch act { case .steps, .radar, .radarPick, .mon(.learn), .greet: break; default: p.chain = nil }   // a held chain lets only these through
-        if p.radar != nil { switch act { case .steps, .radarPick, .greet: break; default: p.radar = nil; p.chain = nil } }   // the radar shown: anything else gives it up
+        switch act { case .steps, .radar, .radarPick, .mon(.learn), .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel: break; default: p.chain = nil }   // a held chain lets only these through (the team's acts don't touch play)
+        if p.radar != nil { switch act { case .steps, .radarPick, .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel: break; default: p.radar = nil; p.chain = nil } }   // the radar shown: anything else gives it up
         switch act {
         case .steps: return nil
         case .radar: return radar()
@@ -76,7 +76,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .course(let i):
             guard courses.indices.contains(i), w.unlocked(i), i != w.course else { return "갈 수 없는 코스예요" }
             w.setCourse(i, &r); return nil
-        case .greet: return nil                                          // the server's (another trainer's inbox); nothing here changes
+        case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel: return nil   // the server's: another trainer's save or inbox (ServerTeam / ServerTrade)
         }
     }
 
@@ -114,23 +114,10 @@ struct EngineRun<R: RandomNumberGenerator> {
         if e.to == 291, let now = w.mon(ref) { var s = Walk.shedinja(from: now, &r); issue(&s, "shedinja"); _ = w.keep(s); shed = s }   // 토중몬 → 아이스크 leaves a 껍질몬
         monNews[u, default: []].append(.evolve(uid: u, from: m.dex, to: e.to, shed: shed))
     }
-    /// walk.learning, in order: gone ones and known moves dropped, a free slot learns it now, a full one waits (news once, when it came).
+    /// walk.learning, in order (Walk.settleLearning); news for the ones that came in this act.
     mutating func learnQueue() {
-        let q = w.learning ?? []
-        var keep: [Int] = [], k = 0
-        while k + 1 < q.count {
-            let (u, mv) = (q[k], q[k + 1]), new = k / 2 >= oldLearn; k += 2
-            guard let ref = w.ref(uid: u), var m = w.mon(ref), !m.moves.contains(mv) else { continue }
-            if m.moves.count < 4 {
-                m.known = m.moves + [mv]; w.setMon(ref, m)
-                monNews[u, default: []].append(.learn(uid: u, move: mv, learned: true))
-            } else {
-                keep += [u, mv]
-                if new { monNews[u, default: []].append(.learn(uid: u, move: mv, learned: false)) }
-            }
-        }
-        w.learning = keep.isEmpty ? nil : keep
-        oldLearn = keep.count / 2
+        for (u, n) in w.settleLearning(announceFrom: oldLearn) { monNews[u, default: []].append(n) }
+        oldLearn = (w.learning ?? []).count / 2
     }
     mutating func issue(_ m: inout Mon, _ kind: String) { m.uid = ids.next; ids.next += 1; ids.made.append((m, kind)) }
 
@@ -334,5 +321,26 @@ struct EngineRun<R: RandomNumberGenerator> {
         }
         out.news = news + events
         out.changed = w != start
+    }
+}
+
+extension Walk {
+    /// walk.learning, in order: gone ones and known moves dropped, a free slot learns it now, a full one waits. News (by uid) for those learned,
+    /// and for the waiting ones from pair `announceFrom` on (the ones that came since: the older ones were announced when they came).
+    mutating func settleLearning(announceFrom old: Int) -> [(uid: Int, news: News)] {
+        let q = learning ?? []
+        var keep: [Int] = [], out: [(Int, News)] = [], k = 0
+        while k + 1 < q.count {
+            let (u, mv) = (q[k], q[k + 1]), new = k / 2 >= old; k += 2
+            guard let r = ref(uid: u), var m = mon(r), !m.moves.contains(mv) else { continue }
+            if m.moves.count < 4 { m.known = m.moves + [mv]; setMon(r, m); out.append((u, .learn(uid: u, move: mv, learned: true))) }
+            else { keep += [u, mv]; if new { out.append((u, .learn(uid: u, move: mv, learned: false))) } }
+        }
+        learning = keep.isEmpty ? nil : keep
+        return out
+    }
+    /// What a Pokémon traded becomes at its new trainer (12 §3.2): its species' trade evolution, if it needs no item or the giver's bag has it.
+    static func tradeEvolution(of m: Mon, giverBag: [String]) -> Evo? {
+        evolutions.first { $0.from == m.dex && $0.way == .trade && ($0.item.map { giverBag.contains($0) } ?? true) }
     }
 }

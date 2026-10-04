@@ -147,6 +147,24 @@ jq -n --arg id "$ID4" --arg s "$S4" '{id: $id, session: $s, seq: 2, act: {steps:
 CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body")
 ok "the other's next act brings hello" is 200 '.out.news[0].hello.from' "$ID3"
 
+# 7 — plan 12 M2: a trade offered, seen, declined (a box Pokémon set by the admin)
+act3() { jq -n --arg id "$ID3" --arg s "$S3" --argjson q "$1" --argjson a "$2" '{id: $id, session: $s, seq: $q, act: $a, app: "3.3"}' > "$TMP/req"
+    CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body"); }
+act4() { jq -n --arg id "$ID4" --arg s "$S4" --argjson q "$1" --argjson a "$2" '{id: $id, session: $s, seq: $q, act: $a, app: "3.3"}' > "$TMP/req"
+    CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body"); }
+if admin set "$ID3" '$.box' '[{"dex":64,"level":20,"female":false,"uid":1000050}]' >/dev/null; then
+    SEQ3=$((SEQ3 + 1)); act3 $SEQ3 "{\"tradeOffer\":{\"to\":\"$ID4\",\"give\":1000050}}"; ok "a trade offered" is 200 '.out.cannot' null
+    jq -n --arg id "$ID4" --arg s "$S4" '{id: $id, session: $s}' > "$TMP/req"
+    CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/trades"); BODY=$(cat "$TMP/body")
+    ok "/v2/trades: it's there for the other" is 200 '.incoming[0].mon.dex' 64
+    OFFER=$(printf '%s' "$BODY" | jq .incoming[0].id)
+    act4 3 '{"steps":{}}';                  ok "its news on the other's next act" is 200 '.out.news[0].tradeOffer.from' "$ID3"
+    act4 4 "{\"tradeDecline\":{\"id\":$OFFER}}"; ok "declined" is 200 '.out.cannot' null
+    SEQ3=$((SEQ3 + 1)); act3 $SEQ3 '{"steps":{}}'; ok "the offerer hears it" is 200 '.out.news[0].tradeClosed.why' "상대가 거절했어요"
+else
+    echo "SKIP  trade (needs: sudo -u pokewalker $PS set $ID3 '\$.box' …)"
+fi
+
 if [ $MODE = remote ]; then
     # the test ID, its legacy row and the save delete keeps as a file: nothing of the test stays in the real database
     if admin delete "$ID" --yes >/dev/null && sudo -n -u pokewalker sqlite3 /var/lib/pokewalker/pokewalker.db "DELETE FROM legacy WHERE key = '$ID'" \

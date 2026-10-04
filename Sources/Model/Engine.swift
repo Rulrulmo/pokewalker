@@ -17,6 +17,8 @@ enum Act: Codable, Equatable {
     case mon(op: MonOp)
     case course(index: Int)
     case greet(to: String)                                       // 인사 to a teammate (docs/plans/12 §2.3): the server delivers it, the save doesn't change
+    case tradeOffer(to: String, give: Int, want: Int?)           // 교환 (12 §3): one of our box's for one of theirs (nil: what they choose)
+    case tradeAccept(id: Int, give: Int?), tradeDecline(id: Int), tradeCancel(id: Int)
 }
 enum BattleCmd: Codable, Equatable { case fight(slot: Int), ball, item(name: String), swap(to: Int), replace(to: Int), run, forfeit }
 /// Pokémon by uid (their places move): 함께 걷기, 상자로, 워커로, 놓아주기, 중복 놓아주기, 기술 바꾸기, the waiting move (nil = 배우지 않는다), 통신 진화.
@@ -33,6 +35,9 @@ enum News: Codable, Equatable {
     case unlock(course: Int), dex(count: Int)
     case chain(n: Int, bonus: Int, reward: String?)
     case hello(from: String, dex: Int, shiny: Bool)                                         // a teammate's 인사, with its companion (12 §2.3; app 3.2 on)
+    case tradeOffer(id: Int, from: String, mon: Mon, want: Mon?)                            // 교환 (12 §3; app 3.3 on): an offer came
+    case traded(id: Int, with: String, gave: Mon, got: Mon)                                 // it went through (got: after a trade evolution)
+    case tradeClosed(id: Int, with: String, why: String)                                    // declined, taken back, out of time, or a Pokémon gone
 }
 struct RadarShown: Codable, Equatable { var bush: Int, window: Double, chain: Int }
 /// result: caught · won · lost · fled (it got away) · ran (we did) · forfeit. chain: a wild fight's (0 = over); streak · bp: the tower's.

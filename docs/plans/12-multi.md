@@ -47,10 +47,22 @@
 - 서버: 받는 사람의 `inbox`에 넣는다(보낸 이, 보낸 이의 동료 종 · 이로치). 같은 사람에게는 1시간에 한 번(넘으면 `cannot`: "조금 뒤에 다시\n인사할 수 있어요"). 자기 자신 · 없는 ID는 `cannot`.
 - 받는 사람: 다음 행동(15초 안의 걸음)의 답 news에 `hello {from, dex, shiny}`. 홈에서 "민수가 인사했다! ♥"와 그 동료 스티커. 하루 지난 인사는 버린다.
 
-## 3. M2 — 교환 (개요, M1 뒤에 자세히)
-- 상자의 포켓몬만(동료 · 워커는 상자로 보낸 뒤). 제안(`trade offer {to, give: uid, want: uid?}`) → 받는 쪽 news → 수락(`trade accept {offer, give: uid}`) 또는 거절. 서버가 두 세이브를 한 트랜잭션에서 바꾼다. 24시간 지나면 제안은 사라진다.
-- uid는 트레이너마다 따로 매기므로 받는 쪽에서 새 uid를 받는다. 발급 장부: 준 쪽 `traded`, 받은 쪽 `trade`(어디서 왔는지). `Mon.ot`(어버이, Optional)를 더해 포켓몬 페이지에 "어버이: 민수".
-- 통신교환 진화: 받는 순간 그 종의 교환 진화(필요한 도구 포함)가 맞으면 받는 쪽에서 진화(news `evolve`).
+## 3. M2 — 교환
+
+### 3.1 흐름
+1. A가 팀 화면에서 B의 상자를 본다(`POST /v2/box {"id", "session", "of": "B"}` → `BoxReply {"name", "box": [Mon]}`, 읽기만).
+2. A가 제안한다: `"act": {"tradeOffer": {"to": "B", "give": A의 uid, "want": B의 uid?}}`. `want`가 없으면 "아무거나": B가 줄 것을 고른다.
+3. B는 다음 행동의 news로 `tradeOffer {id, from, mon, want?}`를 받는다. 지금 걸린 제안은 `POST /v2/trades {"id", "session"}` → `TradesReply {"incoming", "outgoing"}`(각각 `TradeOffer {id, from, to, mon, want?, at, state}`)로도 본다.
+4. B가 수락(`"tradeAccept": {"id", "give": B의 uid?}` — `want`가 있으면 그것, 없으면 B가 고른 것) → **서버가 두 세이브를 한 트랜잭션에서 바꾼다.** 또는 거절(`"tradeDecline": {"id"}`). A는 걸어 둔 제안을 거둘 수 있다(`"tradeCancel": {"id"}`).
+5. 결과: B는 수락의 답 news에 `traded {id, with, gave, got}`(+ 교환 진화면 `evolve`). A는 다음 행동의 news에 같은 `traded`, 그리고 그 답에는 바뀐 세이브(`walk`)가 온다. 거절 · 거둠 · 만료 · 성립 못 함은 `tradeClosed {id, with, why}`.
+
+### 3.2 규칙
+- 상자의 포켓몬만(동료 · 워커는 상자로 보낸 뒤). 성립할 때 양쪽 포켓몬이 아직 각자의 상자에 있어야 한다(아니면 `tradeClosed`, 이유 "포켓몬이 상자에 없어요").
+- 보낸 사람 하나당 걸린 제안은 5개까지, 같은 포켓몬으로 두 제안은 안 된다. 제안은 24시간 뒤 만료.
+- uid는 트레이너마다 따로라 받는 쪽 장부에서 새 uid(`kind: trade`)를 받고, 준 쪽 장부에는 `traded`. **`Mon.ot`**(어버이, Optional): 아직 없으면 준 사람 이름을 넣는다. 포켓몬 페이지에 "어버이: 민수".
+- **통신교환 진화**: 받는 순간 그 종에 교환 진화가 있고, 도구가 필요하면 **준 사람의 가방**에 그 도구가 있으면(지니고 간 셈: 준 사람의 가방에서 빠짐) 받는 쪽에서 진화한다(news `evolve`, 새 기술). 혼자 누르는 "통신 진화" 버튼은 3.3에서 없앤다.
+- 도감: 받은 종(과 진화한 종)은 받는 쪽 도감에 잡음으로.
+- 새 news(`tradeOffer`, `traded`, `tradeClosed`)는 앱 3.3부터 보낸다(12 §1).
 
 ## 4. M3 — 협동 레이드 (개요, 03 기획을 팀판으로)
 - 월요일 0시(KST)에 서버가 이번 주 보스(종 · ★ · 레벨)를 정한다. 다음 주 보스도 미리 보인다.

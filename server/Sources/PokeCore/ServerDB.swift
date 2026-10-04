@@ -117,7 +117,9 @@ actor SaveDB {
         guard create || FileManager.default.fileExists(atPath: path) else { throw ServerError(description: "\(path): no database (pokeserver init makes it)") }
         let c = try SQLite(path: path, create: create)
         try c.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000; PRAGMA max_page_count = 2621440;")   // 4 KiB × 2621440 = 10 GiB
-        if create || FileManager.default.fileExists(atPath: path) { try c.exec(schema); try c.exec(mintSchema); try c.exec(playSchema); try c.exec(teamSchema) }   // tables added since (flags) come in on any open: IF NOT EXISTS
+        if create || FileManager.default.fileExists(atPath: path) { try c.exec(schema); try c.exec(mintSchema); try c.exec(playSchema); try c.exec(teamSchema); try c.exec(tradeSchema)
+            for col in ["min_app TEXT", "walk INTEGER NOT NULL DEFAULT 0"] { try? c.exec("ALTER TABLE inbox ADD COLUMN \(col)") }   // M2's (already there: an error, ignored)
+        }   // tables added since (flags) come in on any open: IF NOT EXISTS
         db = c; self.path = path; self.reject = reject; self.rejectTests = rejectTests; self.minApp = minApp
     }
 

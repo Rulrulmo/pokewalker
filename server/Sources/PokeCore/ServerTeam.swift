@@ -59,23 +59,27 @@ extension SaveDB {
     /// The greet act's own part (the engine has done the steps): who to, once an hour; nil = sent.
     func greet(from key: String, name: String, to raw: String, companion: Mon, now: Int) throws -> String? {
         guard let to = trainerID(raw), to.key != key, let t = try trainer(to.key), knows(t.app, "3.0") else { return "인사할 수 없는\n트레이너예요" }
-        let last = try db.rows("SELECT max(at) AS at FROM inbox WHERE from_key = :f AND to_key = :t AND kind = 'hello'", ["f": .text(key), "t": .text(to.key)]).first?.int("at")
+        let last = try db.rows("SELECT max(at) AS at FROM inbox WHERE from_key = :f AND to_key = :t AND payload LIKE '{\"hello\"%'", ["f": .text(key), "t": .text(to.key)]).first?.int("at")
         if let last, now - last < greetEvery { return "조금 뒤에 다시\n인사할 수 있어요" }
-        let payload = String(decoding: try JSONEncoder().encode(["dex": companion.dex, "shiny": companion.shiny == true ? 1 : 0]), as: UTF8.self)
-        try db.rows("INSERT INTO inbox (to_key, from_key, from_name, kind, payload, at) VALUES (:t, :f, :n, 'hello', :p, :now)",
-                    ["t": .text(to.key), "f": .text(key), "n": .text(name), "p": .text(payload), "now": .int(now)])
+        try post(.hello(from: name, dex: companion.dex, shiny: companion.shiny == true), to: to.key, from: key, fromName: name, app: "3.2", now: now)
         return nil
     }
-    /// What waits for this trainer (a day at most), as news; marked delivered (its reply is stored: a resend brings it again).
-    func delivery(_ key: String, now: Int) throws -> [News] {
-        let rows = try db.rows("SELECT rowid AS id, from_name, kind, payload FROM inbox WHERE to_key = :k AND delivered = 0 AND at > :since ORDER BY at",
-                               ["k": .text(key), "since": .int(now - inboxKept)])
-        var out: [News] = []
+    /// What waits for this trainer and its app can read (a day at most; trade news a week: an offer's answer is worth waiting for), as news,
+    /// marked delivered (its reply is stored: a resend brings it again); walk: one came with a change to its save (a trade), the reply carries it.
+    func delivery(_ key: String, app: String?, now: Int) throws -> (news: [News], walk: Bool) {
+        let rows = try db.rows("SELECT rowid AS id, payload, min_app, walk, at FROM inbox WHERE to_key = :k AND delivered = 0 AND kind = 'news' ORDER BY at",
+                               ["k": .text(key)])
+        var out: [News] = [], walk = false, done: [Int] = []
         for r in rows {
-            guard r.text("kind") == "hello", let p = r.text("payload"), let d = try? JSONDecoder().decode([String: Int].self, from: Data(p.utf8)) else { continue }
-            out.append(.hello(from: r.text("from_name") ?? "?", dex: d["dex"] ?? 25, shiny: d["shiny"] == 1))
+            guard let id = r.int("id") else { continue }
+            if r.int("walk") == 1 { walk = true; done.append(id) }                              // the save changed either way: send it (once)
+            guard knows(app, r.text("min_app") ?? "3.2") else { continue }
+            if r.int("walk") != 1 { done.append(id) }
+            guard now - (r.int("at") ?? 0) <= (r.int("walk") == 1 ? 7 * 86400 : inboxKept),
+                  let n = r.text("payload").flatMap({ try? JSONDecoder().decode(News.self, from: Data($0.utf8)) }) else { continue }
+            out.append(n)
         }
-        if !rows.isEmpty { try db.rows("UPDATE inbox SET delivered = 1 WHERE to_key = :k AND delivered = 0", ["k": .text(key)]) }
-        return out
+        for id in done { try db.rows("UPDATE inbox SET delivered = 1 WHERE rowid = :i", ["i": .int(id)]) }
+        return (out, walk)
     }
 }

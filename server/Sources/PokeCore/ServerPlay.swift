@@ -29,6 +29,8 @@ func actName(_ a: Act) -> String {
     case .steps: "steps"; case .radar: "radar"; case .radarPick(let b): "pick \(b)"; case .tower: "tower"; case .towerPick, .towerReset: "tower pick"
     case .battle(let c): "battle \(c)"; case .buy(let bp, let i, let l, let s, let q): "buy \(i ?? l.map { "legend \($0)" } ?? s ?? "?") ×\(q)\(bp ? " (BP)" : "")"
     case .use(let i, _): "use \(i)"; case .sellAll: "sell all"; case .mon(let op): "mon \(op)"; case .course(let c): "course \(c)"; case .greet(let to): "greet \(to)"
+    case .tradeOffer(let to, let g, let wnt): "trade offer → \(to) \(g)\(wnt.map { " for \($0)" } ?? "")"; case .tradeAccept(let i, let g): "trade accept #\(i)\(g.map { " with \($0)" } ?? "")"
+    case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"
     }
 }
 func savedText(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return String(decoding: (try? e.encode(w.shared)) ?? Data(), as: UTF8.self) }
@@ -70,15 +72,23 @@ extension SaveDB {
 
                 var ids = Issued(next: try nextUID(id.key, w)), g = SystemRandomNumberGenerator()
                 var out = Engine.apply(r.act, steps: taken, walk: &w, play: &row.play, rng: &g, now: now, ids: &ids)
-                if case .greet(let to) = r.act, out.cannot == nil {                                    // 12 §2.3: into their inbox
-                    out.cannot = try greet(from: id.key, name: t.name, to: to, companion: w.companion, now: unix)
+                if out.cannot == nil {
+                    switch r.act {
+                    case .greet(let to): out.cannot = try greet(from: id.key, name: t.name, to: to, companion: w.companion, now: unix)   // 12 §2.3: into their inbox
+                    case .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel:                     // 12 §3: ServerTrade.swift (two saves at once)
+                        let was = w; var more: [News] = []
+                        if let why = try tradeAct(r.act, key: id.key, name: t.name, walk: &w, news: &more, now: unix) { out.cannot = why; w = was }
+                        else { out.news += more; if w != was { out.changed = true } }
+                    default: break
+                    }
                 }
-                if knows(r.app, "3.2") { out.news += try delivery(id.key, now: unix) }               // what teammates sent (an older app can't read it)
+                let mail = try delivery(id.key, app: r.app, now: unix)                                 // what teammates sent (only what this app can read)
+                out.news += mail.news
                 for (m, kind) in ids.made { try record(id.key, m, kind: kind, state: kind == "radar" || kind == "legend" ? "pending" : "kept", now: unix) }
                 try settleLedger(id.key, w, row.play, now: unix)
 
                 var rev = t.rev
-                let changed = out.changed || t.walk == nil
+                let changed = out.changed || t.walk == nil, send = changed || mail.walk          // (a trade changed it meanwhile: send it, no new rev)
                 if changed {
                     rev += 1
                     let text = savedText(w)
@@ -89,7 +99,7 @@ extension SaveDB {
                 if verCmp(t.app ?? "0", "3.0") ?? 0 < 0 { try db.rows("UPDATE trainers SET app = '3.0' WHERE key = :k", ["k": .text(id.key)]) }   // acting here: 2.x may not save over it
 
                 let e = JSONEncoder(); e.outputFormatting = .sortedKeys
-                let body = try e.encode(ActReply(rev: rev, walk: changed ? w.shared : nil, taken: r.steps == nil ? nil : taken, out: out))
+                let body = try e.encode(ActReply(rev: rev, walk: send ? w.shared : nil, taken: r.steps == nil ? nil : taken, out: out))
                 (row.seq, row.status, row.reply) = (r.seq, 200, String(decoding: body, as: UTF8.self))
                 try savePlay(id.key, r.session, row)
                 let note: String? = out.cannot.map { "\(actName(r.act)): cannot (\($0.replacingOccurrences(of: "\n", with: " ")))" }

@@ -137,3 +137,66 @@ private func act(_ db: SaveDB, _ id: String, _ s: String, _ seq: Int, _ a: Act, 
     r = await act(db, "앨리스", a, 6, .greet(to: "보브"), at: 80 + 3600)
     #expect((try reply(r)).out.cannot == nil)                                                         // an hour on: again
 }
+
+/// A trainer's save as the test sets it (box and bag), straight into the row.
+private func setWalk(_ db: SaveDB, _ key: String, _ change: (inout Walk) -> Void) async throws {
+    let t = try #require(try await db.trainer(key)), text = try #require(t.walk)
+    var w = try #require(decodeWalk(text)); change(&w)
+    try await db.setRaw(key, savedText(w))
+    for m in w.box { try await db.record(key, m, kind: "test", now: 0) }                           // in the ledger, as every Pokémon is
+}
+extension SaveDB { func setRaw(_ key: String, _ text: String) throws { try db.rows("UPDATE trainers SET walk = :w WHERE key = :k", ["w": .text(text), "k": .text(key)]) } }
+
+@Test func tradesBothWays() async throws {                                                       // docs/plans/12 M2
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브")
+    _ = await act(db, "앨리스", a, 1, .steps, steps: 10, at: 60)
+    _ = await act(db, "보브", b, 1, .steps, steps: 10, at: 60)
+    func mon(_ dex: Int, _ uid: Int) -> Mon { var m = Mon(dex: dex, level: 30, female: false); m.uid = uid; return m }
+    try await setWalk(db, "앨리스") { $0.box = [mon(64, 1_000_001), mon(95, 1_000_002), mon(16, 1_000_003)]; $0.bag = ["금속코트"]; $0.lastUID = 1_000_003 }
+    try await setWalk(db, "보브") { $0.box = [mon(19, 1_000_001), mon(41, 1_000_002)]; $0.lastUID = 1_000_002 }
+    func go(_ who: String, _ s: String, _ seq: Int, _ a: Act, at t: Double) async throws -> ActReply {
+        try reply(await db.act(ActReq(id: who, session: s, seq: seq, act: a, app: "3.3"), now: base.addingTimeInterval(t)))
+    }
+    #expect(try await go("앨리스", a, 2, .tradeOffer(to: "보브", give: firstUID, want: nil), at: 70).out.cannot == "상자의 포켓몬만\n교환할 수 있어요")   // the companion
+    #expect(try await go("앨리스", a, 3, .tradeOffer(to: "보브", give: 1_000_001, want: 1_000_001), at: 71).out.cannot == nil)   // 윤겔라 for 레트라
+    #expect(try await go("앨리스", a, 4, .tradeOffer(to: "보브", give: 1_000_001, want: nil), at: 72).out.cannot == "이미 교환에\n걸어 둔 포켓몬이에요")
+    let offered = try await go("보브", b, 2, .steps, at: 73)
+    guard case .tradeOffer(let id, "앨리스", let m, let want)? = offered.out.news.first else { Issue.record("\(offered.out.news)"); return }
+    #expect(m.dex == 64 && want?.dex == 19)
+    let list = try JSONDecoder().decode(TradesReply.self, from: await db.trades(TeamReq(id: "보브", session: b), now: base.addingTimeInterval(74)).body)
+    #expect(list.incoming.map(\.id) == [id] && list.outgoing.isEmpty)
+    let peek = try JSONDecoder().decode(BoxReply.self, from: await db.box(BoxReq(id: "앨리스", session: a, of: "보브"), now: base.addingTimeInterval(74)).body)
+    #expect(peek.name == "보브" && peek.box.map(\.dex) == [19, 41])
+
+    let done = try await go("보브", b, 3, .tradeAccept(id: id, give: nil), at: 75)                 // the wanted one goes: no choice
+    #expect(done.out.cannot == nil && done.walk != nil)
+    guard case .traded(id, "앨리스", let gave, let got)? = done.out.news.first else { Issue.record("\(done.out.news)"); return }
+    #expect(gave.dex == 19 && got.dex == 65 && got.ot == "앨리스")                                   // 윤겔라 became 후딘 here, by trade
+    #expect(done.out.news.contains { if case .evolve(_, 64, 65, _) = $0 { return true }; return false })
+    #expect(done.walk?.box.map(\.dex) == [41, 65] && (done.walk?.owned ?? []).contains(65))
+    let back = try await go("앨리스", a, 5, .steps, at: 76)                                          // the other side: the news and its new save
+    #expect(back.walk?.box.map(\.dex) == [95, 16, 19] && back.walk?.box.last?.ot == "보브")
+    guard case .traded(id, "보브", let gave2, let got2)? = back.out.news.first else { Issue.record("\(back.out.news)"); return }
+    #expect(gave2.dex == 64 && got2.dex == 19)
+    let traded = try await db.count("SELECT count(*) AS n FROM mons WHERE state = 'traded'"), arrived = try await db.count("SELECT count(*) AS n FROM mons WHERE kind = 'trade'")
+    #expect(traded == 2 && arrived == 2)
+
+    // an item along: 롱스톤 + 금속코트 → 강철톤 at 보브's, the 코트 gone from 앨리스's bag
+    #expect(try await go("앨리스", a, 6, .tradeOffer(to: "보브", give: 1_000_002, want: nil), at: 80).out.cannot == nil)
+    let o2 = try JSONDecoder().decode(TradesReply.self, from: await db.trades(TeamReq(id: "보브", session: b), now: base.addingTimeInterval(81)).body).incoming[0].id
+    #expect(try await go("보브", b, 4, .tradeAccept(id: o2, give: nil), at: 82).out.cannot == "줄 포켓몬을\n골라 주세요")
+    let steel = try await go("보브", b, 5, .tradeAccept(id: o2, give: done.walk!.box[0].uid), at: 83)
+    #expect(steel.walk?.box.contains { $0.dex == 208 } == true)
+    #expect(try await go("앨리스", a, 7, .steps, at: 84).walk?.bag.contains("금속코트") == false)
+
+    // declined, taken back, out of time
+    #expect(try await go("앨리스", a, 8, .tradeOffer(to: "보브", give: 1_000_003, want: nil), at: 90).out.cannot == nil)
+    let o3 = try JSONDecoder().decode(TradesReply.self, from: await db.trades(TeamReq(id: "보브", session: b), now: base.addingTimeInterval(91)).body).incoming[0].id
+    #expect(try await go("보브", b, 6, .tradeDecline(id: o3), at: 92).out.cannot == nil)
+    #expect(try await go("앨리스", a, 9, .steps, at: 93).out.news == [.tradeClosed(id: o3, with: "보브", why: "상대가 거절했어요")])
+    #expect(try await go("앨리스", a, 10, .tradeOffer(to: "보브", give: 1_000_003, want: nil), at: 94).out.cannot == nil)
+    #expect(try await go("보브", b, 7, .tradeAccept(id: o3 + 1, give: 1_000_002), at: 94 + 86_401).out.cannot == "그 교환은 이제\n없어요")
+    let late = try await go("앨리스", a, 11, .steps, at: 94 + 86_402).out.news
+    #expect(late == [.tradeClosed(id: o3 + 1, with: "보브", why: "시간이 지났어요")])
+}

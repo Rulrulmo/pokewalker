@@ -49,6 +49,8 @@ func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?, release: 
     post(router, "/v1/evolve", appKey: appKey, id: { (r: EvolveReq) in r.id }) { r in await db.evolve(r, now: unixNow()) }
     post(router, "/v2/act", appKey: appKey, id: { (r: ActReq) in r.id }) { r in await db.act(r, now: Date()) }   // plan 11 (3.0): ServerPlay.swift
     post(router, "/v2/team", appKey: appKey, id: { (r: TeamReq) in r.id }) { r in await db.team(r, now: Date()) }   // plan 12 M1: ServerTeam.swift
+    post(router, "/v2/trades", appKey: appKey, id: { (r: TeamReq) in r.id }) { r in await db.trades(r, now: Date()) }   // plan 12 M2: ServerTrade.swift
+    post(router, "/v2/box", appKey: appKey, id: { (r: BoxReq) in r.id }) { r in await db.box(r, now: Date()) }
 
     let app = Application(router: router, configuration: .init(address: .hostname("127.0.0.1", port: port), serverName: "pokeserver"))
     let log = app.logger
