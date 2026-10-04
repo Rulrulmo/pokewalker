@@ -14,6 +14,7 @@ if [ "$1" = publish ]; then
     git fetch -q origin && git merge-base --is-ancestor HEAD origin/main || { echo "push first: the windows build and the server take what they can fetch"; exit 1; }
     plist() { sed -n "s|.*<key>$1</key><string>\([^<]*\)</string>.*|\1|p" Info.plist; }
     V=$(plist CFBundleShortVersionString) B=$(plist CFBundleVersion) SHA=$(git rev-parse HEAD)
+    [ -n "$V" ] && [ -n "$B" ] || { echo "Info.plist: no version or build read (keep each <key>…</key><string>…</string> on one line: PlistBuddy splits them)"; exit 1; }
     RUN=$(gh run list --workflow windows.yml --commit "$SHA" --status success --limit 1 --json databaseId -q '.[0].databaseId') WAIT=
     if [ -z "$RUN" ] && [ -n "$DRY" ]; then                                       # a dry run spends no Actions minutes: the last good build stands in
         RUN=$(gh run list --workflow windows.yml --status success --limit 1 --json databaseId -q '.[0].databaseId'); echo "dry: no windows build of $SHA; run $RUN's stands in"
