@@ -7,6 +7,7 @@ struct TeamCard: Codable, Equatable {
     var owned, seen, shinies: Int                                      // the dex: caught, seen (caught included), species caught as 이로치
     var today, week, total: Int                                        // steps: the server's count today and this week (Mon–Sun, KST), all time
     var towerBest, bestChain, bp: Int
+    var duelWins = 0, duelLosses = 0                                   // 실시간 대전 (12 §5)
     var course: Int
     var idle: Int                                                      // seconds since its last act (under 60: walking now — the app sends steps every 15 s)
 
@@ -15,6 +16,7 @@ struct TeamCard: Codable, Equatable {
         owned = (w.owned ?? []).count; seen = Set((w.seen ?? []) + (w.owned ?? [])).count; shinies = (w.shinyOwned ?? []).count
         self.today = today; self.week = week; total = w.total
         towerBest = w.towerBest ?? 0; bestChain = w.bestChain ?? 0; bp = w.bp ?? 0; course = w.course; self.idle = idle
+        duelWins = w.duelWins ?? 0; duelLosses = w.duelLosses ?? 0
     }
 }
 struct TeamReq: Codable, Equatable { var id, session: String }              // /v2/team and /v2/trades
@@ -40,3 +42,17 @@ struct RaidReply: Codable, Equatable {
     var hpTotal: Int, hpLeft: Int, barHP: Int, ends: Int                     // ends: the week's end (unix)
     var fighters: [RaidFighter]; var recent: [RaidHit]; var mine: RaidMine
 }
+
+/// 12 §5 (3.6): a live battle as one player sees it. state: invited · active · over · declined · cancelled · expired. battle: from this player's side
+/// (the second player's mirrored); beats: the turns after the asked `since` (worded for this player); need: what this player owes now ("move" ·
+/// "replace", nil = waiting for the other or nothing); deadline: when an unmade pick is made for it (unix); result once over.
+struct DuelView: Codable, Equatable {
+    var id: Int; var state: String; var opponent: String; var challenger: Bool
+    var battle: Battle? = nil; var beats: [Beat] = []; var turn = 0; var need: String? = nil; var deadline: Int? = nil
+    var result: DuelResult? = nil; var version = 0
+}
+/// why: faint · forfeit · timeout; bp: what this player got.
+struct DuelResult: Codable, Equatable { var won: Bool; var why: String; var bp: Int }
+/// POST /v2/duel: my open or last live battle; since = the turns I've seen; wait = hold (up to 25 s) until it moves past `version`.
+struct DuelReq: Codable, Equatable { var id, session: String; var since: Int? = nil; var wait: Bool? = nil; var version: Int? = nil }
+struct DuelReply: Codable, Equatable { var duel: DuelView? }

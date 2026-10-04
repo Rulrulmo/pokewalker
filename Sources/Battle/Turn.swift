@@ -74,9 +74,13 @@ extension Battle {
     }
     private mutating func play(_ m: Move, ball: Double) {
         for s in [Side.me, .it] { mod(s) { $0.protected = false; $0.endure = false; $0.flinch = false; $0.hitThisTurn = false; $0.movedThisTurn = false; $0.magicCoat = false; $0.turnsOut += 1 } }
-        let foe = foeChoice(), (mi, ti) = (me, it)
+        let live = pvp == true, (mi, ti) = (me, it)
+        var foe = live ? (forcedMove(.it) ?? { if case .fight(let id)? = foePlan { return id }; return usable(.it).first ?? 165 }()) : foeChoice()
         planned = [0, foe]
-        if trainer != nil, let i = foeSwitch() {                                                   // switching goes before any move; it then doesn't act (ti is gone)
+        if live, case .swap(let i)? = foePlan {                                                   // the other player switches: before any move, and doesn't act
+            say(.it, josa(trainer ?? "상대", "은", "는") + " " + josa(monNames[f(.it).mon.dex], "을", "를") + " 돌아오게 했다!"); switchIn(.it, i); planned[1] = 0
+            foe = usable(.it).first ?? 165                                                         // (a move id for the order; ti is gone, so nothing's used)
+        } else if !live, trainer != nil, let i = foeSwitch() {                                    // switching goes before any move; it then doesn't act (ti is gone)
             say(.it, josa(trainer!, "은", "는") + " " + josa(monNames[f(.it).mon.dex], "을", "를") + " 돌아오게 했다!"); switchIn(.it, i); planned[1] = 0
         }
         switch m {
@@ -98,6 +102,8 @@ extension Battle {
     }
     /// Ours fainted and the player picked who's next (the turn's already over).
     mutating func replace(_ i: Int) -> [Beat] { out = []; mustReplace = false; switchIn(.me, i); return out }
+    /// A live battle: the other player's KO'd one, replaced by its pick.
+    mutating func replaceFoe(_ i: Int) -> [Beat] { out = []; foeMustReplace = nil; switchIn(.it, i); return out }
     /// Priority, then speed (Trick Room flips it; 늑장 goes last); ties at random.
     mutating func moveFirst(_ a: Int, _ b: Int) -> Bool {
         let pa = moveTable[a]!.priority, pb = moveTable[b]!.priority

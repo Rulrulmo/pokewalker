@@ -39,38 +39,48 @@ extension Walk {
         let n = (bag + items).filter { $0.hasSuffix("볼") }.count
         return (n, balls.reduce(0) { $0 + sell($1) })
     }
-    mutating func feedCandy() -> Bool {
-        guard companion.level < 100, take("이상한사탕") else { return false }
-        let e = expTable[growthRate[companion.dex]][companion.level + 1], lv = companion.level
-        if companion.known == nil { companion.known = companion.moves }
-        companion.exp = e; companion.level = Mon.level(dex: companion.dex, exp: e); queueMoves(-1, from: lv); return true          // levels, not steps: friendship untouched
+    /// The bag's feeds and trainings, on the one at ref (-1 the companion, -2-i the walker's, i the box's: 3.6, docs/plans/13).
+    mutating func feedCandy(_ ref: Int = -1) -> Bool {
+        guard var m = mon(ref), m.level < 100, take("이상한사탕") else { return false }
+        let e = expTable[growthRate[m.dex]][m.level + 1], lv = m.level
+        if m.known == nil { m.known = m.moves }
+        m.exp = e; m.level = Mon.level(dex: m.dex, exp: e); setMon(ref, m); queueMoves(ref, from: lv); return true   // levels, not steps: friendship untouched
     }
     /// Gen IV: a vitamin adds 10 while that stat is under 100 (and the total under 510); an EV berry drops it to 100, then 10 at a time.
     /// Used up only when it does something. Returns the new EV.
-    mutating func feedVitamin(_ i: String) -> Int? {
-        guard case .vitamin(let k, let d) = ItemKind.of(i) else { return nil }
-        var ev = companion.evs ?? Array(repeating: 0, count: 6); let e = ev[k]
+    mutating func feedVitamin(_ i: String, _ ref: Int = -1) -> Int? {
+        guard case .vitamin(let k, let d) = ItemKind.of(i), var m = mon(ref) else { return nil }
+        var ev = m.evs ?? Array(repeating: 0, count: 6); let e = ev[k]
         let new = d > 0 ? min(100, e + min(10, 510 - ev.reduce(0, +))) : e > 100 ? 100 : max(0, e - 10)
         guard d > 0 ? e < 100 && new > e : e > 0, take(i) else { return nil }
-        ev[k] = new; companion.evs = ev; return new
+        ev[k] = new; m.evs = ev; setMon(ref, m); return new
     }
     /// 순백떡: every EV back to 0. Used up only when there were some.
-    mutating func resetEVs() -> Bool {
-        guard (companion.evs ?? []).reduce(0, +) > 0, take("순백떡") else { return false }
-        companion.evs = Array(repeating: 0, count: 6); return true
+    mutating func resetEVs(_ ref: Int = -1) -> Bool {
+        guard var m = mon(ref), (m.evs ?? []).reduce(0, +) > 0, take("순백떡") else { return false }
+        m.evs = Array(repeating: 0, count: 6); setMon(ref, m); return true
     }
     /// 대단한 특훈 (Gen VII's Hyper Training, at SV's Lv.50): 은색병뚜껑 makes one IV count as 31, 금색병뚜껑 all six.
     /// The IVs themselves stay (잠재파워 keeps its type). Used up only when it does something.
     static let hyperLevel = 50
-    mutating func hyperTrain(_ stat: Int?) -> Bool {
-        let iv = companion.effectiveIVs, todo = stat.map { [$0] } ?? Array(0..<6)
-        guard companion.level >= Walk.hyperLevel, todo.contains(where: { iv[$0] < 31 }), take(stat == nil ? "금색병뚜껑" : "은색병뚜껑") else { return false }
-        companion.hyper = Array(Set((companion.hyper ?? []) + todo.filter { iv[$0] < 31 })).sorted(); return true
+    mutating func hyperTrain(_ stat: Int?, _ ref: Int = -1) -> Bool {
+        guard var m = mon(ref) else { return false }
+        let iv = m.effectiveIVs, todo = stat.map { [$0] } ?? Array(0..<6)
+        guard m.level >= Walk.hyperLevel, todo.contains(where: { iv[$0] < 31 }), take(stat == nil ? "금색병뚜껑" : "은색병뚜껑") else { return false }
+        m.hyper = Array(Set((m.hyper ?? []) + todo.filter { iv[$0] < 31 })).sorted(); setMon(ref, m); return true
     }
-    mutating func feedBerry(_ i: String) -> Bool {
-        guard ItemKind.of(i) == .berry, take(i) else { return false }
-        companion.walked = (companion.walked ?? 0) + 500; return true
+    mutating func feedBerry(_ i: String, _ ref: Int = -1) -> Bool {
+        guard ItemKind.of(i) == .berry, var m = mon(ref), take(i) else { return false }
+        m.walked = (m.walked ?? 0) + 500; setMon(ref, m); return true
     }
+    /// 민트 (docs/plans/13): the stats go by that nature from now on (its own nature stays). Not when they already do.
+    mutating func useMint(_ i: String, _ ref: Int = -1) -> Bool {
+        guard case .mint(let k) = ItemKind.of(i), var m = mon(ref), (m.mint ?? m.nature ?? 0) != k, take(i) else { return false }
+        m.mint = k == (m.nature ?? 0) ? nil : k; setMon(ref, m); return true
+    }
+    /// The mints the 상점 sells: one for every nature that moves a stat, and 성실 for none (SwSh's set).
+    static let mints: [String] = natures.indices.filter { natures[$0].up != natures[$0].down || natures[$0].name == "성실" }.map { natures[$0].name + "민트" }
+    static let mintPrice = 1000
     /// Sells every one of `i`; returns the watts.
     mutating func sell(_ i: String) -> Int {
         guard case .sell(let p) = ItemKind.of(i) else { return 0 }
@@ -116,8 +126,26 @@ extension Walk {
             return Walk.bpShop.map { Ware(kind: .item($0.item), price: $0.bp) } + shells.map { Ware(kind: .shell($0.name), price: $0.bp) }
                 + Walk.legendShop.indices.filter { Walk.legendShop[$0].bp > 0 }.map { Ware(kind: .legend($0), price: Walk.legendShop[$0].bp) }
         }
-        return Walk.shop.map { Ware(kind: .item($0.item), price: $0.watts) } + evolutionItems().map { Ware(kind: .item($0), price: Walk.evoItemPrice) }
+        return Walk.shop.map { Ware(kind: .item($0.item), price: $0.watts) } + Walk.mints.map { Ware(kind: .item($0), price: Walk.mintPrice) }
+            + evolutionItems().map { Ware(kind: .item($0), price: Walk.evoItemPrice) }
             + Walk.legendShop.indices.filter { Walk.legendShop[$0].watts > 0 }.map { Ware(kind: .legend($0), price: Walk.legendShop[$0].watts) }
+    }
+    /// The shops' tabs (docs/plans/13: the lists got long), in order; and the one a row goes under.
+    static func shopTabs(bp: Bool) -> [String] { bp ? ["회복", "육성", "지닌 도구", "기기 색", "전설"] : ["회복", "배틀", "육성", "민트", "진화", "전설"] }
+    static func shopTab(_ w: Ware) -> String {
+        switch w.kind {
+        case .legend: return "전설"
+        case .shell: return "기기 색"
+        case .item(let i):
+            switch ItemKind.of(i) {
+            case .heal, .revive: return "회복"
+            case .battle(let u): switch u { case .x, .guardSpec, .direHit: return "배틀"; default: return "회복" }
+            case .candy, .vitamin, .evReset, .bottleCap, .berry: return "육성"
+            case .mint: return "민트"
+            case .evolution: return "진화"
+            case .sell: return "기타"
+            }
+        }
     }
     func wareName(_ w: Ware) -> String {
         switch w.kind { case .item(let i): i; case .legend(let k): monNames[Walk.legendShop[k].dex] + " (전설)"; case .shell(let s): s + " (기기 색)" }

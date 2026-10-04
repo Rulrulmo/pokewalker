@@ -53,6 +53,16 @@ func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?, release: 
     post(router, "/v2/box", appKey: appKey, id: { (r: BoxReq) in r.id }) { r in await db.box(r, now: Date()) }
     post(router, "/v2/raid", appKey: appKey, id: { (r: TeamReq) in r.id }) { r in await db.raidLobby(r, now: Date()) }   // plan 12 M3: ServerRaid.swift
     post(router, "/v2/market", appKey: appKey, id: { (r: TeamReq) in r.id }) { r in await db.market(r, now: Date()) }    // plan 12 §3.3: ServerMarket.swift
+    post(router, "/v2/duel", appKey: appKey, id: { (r: DuelReq) in r.id }) { r in                                       // plan 12 §5: ServerDuel.swift
+        var reply = await db.duel(r, now: Date())
+        guard r.wait == true, let seen = r.version, let key = trainerID(r.id)?.key else { return reply }
+        for _ in 0..<50 {                                                                      // a long poll: until the battle moves past what it saw (25 s at most)
+            if (try? await db.duelVersion(key)) != seen { return await db.duel(r, now: Date()) }
+            try? await Task.sleep(for: .milliseconds(500))
+            reply = await db.duel(r, now: Date())                                              // (its due picks are made as time runs out)
+        }
+        return reply
+    }
 
     let app = Application(router: router, configuration: .init(address: .hostname("127.0.0.1", port: port), serverName: "pokeserver"))
     let log = app.logger

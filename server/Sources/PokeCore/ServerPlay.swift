@@ -30,12 +30,14 @@ func actName(_ a: Act) -> String {
     switch a {
     case .steps: "steps"; case .radar: "radar"; case .radarPick(let b): "pick \(b)"; case .tower: "tower"; case .towerPick, .towerReset: "tower pick"
     case .battle(let c): "battle \(c)"; case .buy(let bp, let i, let l, let s, let q): "buy \(i ?? l.map { "legend \($0)" } ?? s ?? "?") ×\(q)\(bp ? " (BP)" : "")"
-    case .use(let i, _): "use \(i)"; case .sellAll: "sell all"; case .mon(let op): "mon \(op)"; case .course(let c): "course \(c)"; case .greet(let to): "greet \(to)"
+    case .use(let i, _, let on): "use \(i)" + (on.map { " on \($0)" } ?? ""); case .sellAll: "sell all"; case .mon(let op): "mon \(op)"; case .course(let c): "course \(c)"; case .greet(let to): "greet \(to)"
     case .tradeOffer(let to, let g, let wnt): "trade offer → \(to) \(g)\(wnt.map { " for \($0)" } ?? "")"; case .tradeAccept(let i, let g): "trade accept #\(i)\(g.map { " with \($0)" } ?? "")"
     case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"; case .raid: "raid"; case .raidBall: "raid ball"
     case .friendRequest(let to): "friend request → \(to)"; case .friendAccept(let f): "friend accept \(f)"; case .friendDecline(let f): "friend decline \(f)"
     case .friendRemove(let n): "friend remove \(n)"; case .marketList(let g, let w): "market list \(g) wish \(w)"; case .marketUnlist(let i): "market unlist #\(i)"
     case .marketBid(let l, let g): "market bid #\(l) with \(g)"; case .marketWithdraw(let b): "market withdraw bid #\(b)"; case .marketAccept(let b): "market accept bid #\(b)"
+    case .duelChallenge(let to): "duel challenge → \(to)"; case .duelAccept(let i): "duel accept #\(i)"; case .duelDecline(let i): "duel decline #\(i)"
+    case .duelCancel(let i): "duel cancel #\(i)"; case .duelMove(let i, let c): "duel #\(i) \(c)"
     }
 }
 func savedText(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return String(decoding: (try? e.encode(w.shared)) ?? Data(), as: UTF8.self) }
@@ -102,6 +104,9 @@ extension SaveDB {
                         let was = w; var more: [News] = []
                         if let why = try marketAct(r.act, key: id.key, name: t.name, walk: &w, news: &more, now: unix) { out.cannot = why; w = was }
                         else { out.news += more; if w != was { out.changed = true } }
+                    case .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove:             // 12 §5: ServerDuel.swift
+                        let was = w
+                        if let why = try duelAct(r.act, key: id.key, name: t.name, walk: &w, out: &out, now: unix) { out.cannot = why; w = was } else if w != was { out.changed = true }
                     case .raidBall:                                                                     // 12 §4.3: ServerRaid.swift
                         let was = w
                         if let why = try raidBall(id.key, walk: &w, out: &out, now: now) { out.cannot = why; w = was } else if w != was { out.changed = true }

@@ -16,6 +16,9 @@ struct Battle: Equatable, Codable {                                 // Codable: 
     var foeSwapTurn = -9                             // when the trainer last pulled one back
     var inTurn = false, foeNext: Int? = nil          // a trainer's KO'd one is replaced once the turn is over, not mid-turn
     var subTook = false                              // the hit being resolved went into a substitute (no secondary or contact effects)
+    var pvp: Bool? = nil                             // a live battle (docs/plans/12 §5): the other side is a player — its pick comes in foePlan, its KO'd one waits for foeMustReplace
+    var foePlan: Move? = nil, foeMustReplace: Bool? = nil
+    var itemOn: Int? = nil                           // the next item's target among ours (nil = the one out): set before turn(.item)
     var wild: Mon { theirs[it].mon }
 
     init(wild: Mon, companion: Mon, chain: Int = 0) { self.init(wild: wild, party: [companion], chain: chain) }

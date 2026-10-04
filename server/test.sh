@@ -202,6 +202,20 @@ else
     echo "SKIP  raid (needs: sudo -u pokewalker $PS set $ID3 '\$.raidPower' 3000)"
 fi
 
+# 9 — plan 12 §5: a live battle between the two friends — asked, said yes, given up (the other wins)
+act3() { jq -n --arg id "$ID3" --arg s "$S3" --argjson q "$1" --argjson a "$2" '{id: $id, session: $s, seq: $q, act: $a, app: "3.6"}' > "$TMP/req"
+    CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body"); }
+act4() { jq -n --arg id "$ID4" --arg s "$S4" --argjson q "$1" --argjson a "$2" '{id: $id, session: $s, seq: $q, act: $a, app: "3.6"}' > "$TMP/req"
+    CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body"); }
+SEQ3=$((SEQ3 + 1)); act3 $SEQ3 "{\"duelChallenge\":{\"to\":\"$ID4\"}}"; ok "대전 신청" is 200 '.out.duel.state' invited
+DUEL=$(printf '%s' "$BODY" | jq .out.duel.id)
+act4 8 "{\"duelAccept\":{\"id\":$DUEL}}"; ok "수락 → on, its own party first" is 200 '[.out.duel.state, .out.duel.need] | tostring' '["active","move"]'
+jq -n --arg id "$ID3" --arg s "$S3" '{id: $id, session: $s, since: 0}' > "$TMP/req"
+CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/duel"); BODY=$(cat "$TMP/body")
+ok "/v2/duel: the challenger's view" is 200 '[.duel.state, .duel.challenger, (.duel.beats | length > 0)] | tostring' '["active",true,true]'
+SEQ3=$((SEQ3 + 1)); act3 $SEQ3 "{\"duelMove\":{\"id\":$DUEL,\"cmd\":{\"forfeit\":{}}}}"; ok "a forfeit waits for the other's pick" is 200 '.out.duel.need' null
+act4 9 "{\"duelMove\":{\"id\":$DUEL,\"cmd\":{\"fight\":{\"slot\":0}}}}"; ok "then it's over: the other won" is 200 '[.out.duel.state, .out.duel.result.won, .out.duel.result.why] | tostring' '["over",true,"forfeit"]'
+
 if [ $MODE = remote ]; then
     # the test ID, its legacy row and the save delete keeps as a file: nothing of the test stays in the real database
     if admin delete "$ID" --yes >/dev/null && sudo -n -u pokewalker sqlite3 /var/lib/pokewalker/pokewalker.db "DELETE FROM legacy WHERE key = '$ID'" \

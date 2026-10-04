@@ -319,9 +319,8 @@ import AppKit                                                                   
     check(lb.mine[0].mon.level > 5 && lb.mine[0].hp == 10 + lb.mine[0].maxHP - lmax && lb.mine[0].mon.known != nil, "a level-up mid-fight raises current HP by the same amount (and freezes the moveset)")
     var fvRun = EngineRun(w: { var s = Walk(); s.bag = ["기력의조각"]; return s }(), p: Play(), r: Seeded(s: 11), now: Date(), ids: Issued(next: 1))   // (the server's after(): Model/EngineRules.swift)
     var fainted = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: pika50); fainted.mine[0].hp = 0; fainted.mine[0].down = true; fainted.over = true
-    if case .heal(.me, let h, _)? = fvRun.ended(&fainted, .lost).first {
-        check(fainted.mine[0].hp == h && h == pika50.stats[0] / 2 && !fainted.over && !fainted.mine[0].down && fvRun.w.bag.isEmpty, "a revive leaves the fight at the revived HP (not 0)")
-    } else { check(false, "a revive leaves the fight at the revived HP (not 0)") }
+    let fvBack = fvRun.ended(&fainted, .lost)                                                      // 3.6 (docs/plans/13): revives by hand only, on the bench
+    check(fvBack.isEmpty && fvRun.out.end?.result == "lost" && fvRun.w.bag == ["기력의조각"], "no revive by itself: the last one down loses the fight, the 기력의조각 stays", "\(fvBack)")
     var tb = Battle(party: [pika50, lax50], trainer: "베테랑 민수", foes: [Mon(dex: 16, level: 3, female: false), Mon(dex: 19, level: 3, female: false)])
     check(tb.turn(.swap(1), &r).first == .sendOut(.me, 1) && tb.me == 1, "switching sends the other one in")
     tb.theirs[0].hp = 1; var tbeats: [Beat] = [], tn = 0
@@ -456,7 +455,7 @@ import AppKit                                                                   
     let rvLostBeats = rvLost.turn(.fight(33), &r)
     var rvRun = EngineRun(w: { var s = Walk(); s.items = ["기력의조각"]; return s }(), p: Play(tower: true), r: Seeded(s: 1), now: Date(), ids: Issued(next: 1))
     let rvBack = rvRun.ended(&rvLost, .lost)
-    check(rvLostBeats.last == .lost && rvBack.contains(.sendOut(.it, 1)), "ours KO'd in the turn it beat the trainer's one: revived, the next foe still comes out", "\(rvBack)")
+    check(rvLostBeats.last == .lost && rvBack.isEmpty && rvRun.out.end?.result == "lost" && rvRun.w.items == ["기력의조각"], "ours KO'd in the turn it beat the trainer's one: no revive by itself (3.6), the run's over", "\(rvBack)")
     var rvAsleep = Battle(party: [Mon(dex: 19, level: 5, female: false)], trainer: "x", foes: [Mon(dex: 101, level: 100, female: false), rat]); rvAsleep.theirs[0].moves = [262]; rvAsleep.theirs[0].pp = [10]
     rvAsleep.mine[0].moves = [33]; rvAsleep.mine[0].pp = [35]; rvAsleep.mine[0].status = .sleep; rvAsleep.mine[0].sleep = 3; _ = rvAsleep.turn(.fight(33), &r)
     check(rvAsleep.mine[0].sleep == 2, "its target gone first (추억의선물), ours' sleep still counts down that turn")
@@ -828,8 +827,8 @@ import AppKit                                                                   
     check(!mv0.menu().contains { $0.title.hasPrefix("상점") || $0.title.hasPrefix("BP 교환소") || $0.title.hasPrefix("교환소") }, "the shops left the right-click menu")
     var sw = Walk(); sw.watts = 5000; sw.bp = 200; sw.companion = Mon(dex: 133, level: 20, female: false)             // 이브이: it has evolution items to sell
     let wW = sw.wares(bp: false, shells: []), wB = sw.wares(bp: true, shells: [(name: "배틀 골드", bp: 40)])
-    check(wW.count == Walk.shop.count + sw.evolutionItems().count + 1 && wW.last?.kind == .legend(0) && wW.contains { $0.kind == .item("불꽃의돌") && $0.price == Walk.evoItemPrice }
-          && wB.count == Walk.bpShop.count + 2 && wB.contains { $0.kind == .shell("배틀 골드") } && wB.last?.kind == .legend(1), "상점: goods + the companion's evolution items + 칠색조; BP 교환소: goods + 배틀 골드 + 뮤츠")
+    check(wW.count == Walk.shop.count + Walk.mints.count + sw.evolutionItems().count + 1 && wW.last?.kind == .legend(0) && wW.contains { $0.kind == .item("불꽃의돌") && $0.price == Walk.evoItemPrice }
+          && wB.count == Walk.bpShop.count + 2 && wB.contains { $0.kind == .shell("배틀 골드") } && wB.last?.kind == .legend(1), "상점: goods + 민트 21 + the companion's evolution items + 칠색조; BP 교환소: goods + 배틀 골드 + 뮤츠")
     check(shells.filter { $0.bp > 0 }.map { "\($0.name) \($0.bp)" } == Engine.bpShells.map { "\($0.name) \($0.bp)" }, "BP 교환소's device colours: the 기기 menu's prices are the server's (Engine.bpShells)")
     let mochi = wW.first { $0.kind == .item("순백떡") }!, cap = wB.first { $0.kind == .item("금색병뚜껑") }!
     check(sw.canBuy(mochi, bp: false) == 25 && sw.canBuy(Walk.Ware(kind: .item("해독제"), price: 10), bp: false) == 99 && sw.canBuy(cap, bp: true) == 1 && sw.canBuy(wW.last!, bp: false) == 0,

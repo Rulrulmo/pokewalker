@@ -69,7 +69,7 @@ struct EngineRun<R: RandomNumberGenerator> {
             w.towerSet(slot, ref); return nil
         case .towerReset: w.towerPick = nil; return nil
         case .buy(let bp, let item, let legend, let shell, let qty): return buy(bp, item, legend, shell, qty)
-        case .use(let item, let stat): return use(item, stat)
+        case .use(let item, let stat, let on): return use(item, stat, on)
         case .sellAll:
             var sum = 0
             for i in w.inventory { if case .sell = ItemKind.of(i) { sum += w.sell(i) } }
@@ -80,7 +80,8 @@ struct EngineRun<R: RandomNumberGenerator> {
             guard courses.indices.contains(i), w.unlocked(i), i != w.course else { return "갈 수 없는 코스예요" }
             w.setCourse(i, &r); return nil
         case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
-             .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept: return nil   // the server's: other trainers' saves, the inbox, the raid, friends, the board
+             .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept,
+             .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove: return nil   // the server's: other trainers' saves, the inbox, the raid, friends, the board, live battles
         case .raid: return raid()
         }
     }
@@ -108,6 +109,9 @@ struct EngineRun<R: RandomNumberGenerator> {
     mutating func growth() {
         if let u = w.companion.uid, w.companion.level > (startLevels[u] ?? w.companion.level), let e = w.levelEvolution(now) { evolve(-1, e) }
         for i in w.caught.indices { if let e = w.levelEvolution(now, ref: -2 - i) { evolve(-2 - i, e) } }
+        for i in w.box.indices where (w.box[i].uid.flatMap { startLevels[$0] }).map({ w.box[i].level > $0 }) == true {   // a box one levelled by hand (3.6: 이상한사탕 on it)
+            if let e = w.levelEvolution(now, ref: i) { evolve(i, e) }
+        }
         w.evolving = nil                                                  // (the app's queue: the news drives the shows now)
         learnQueue()
     }
@@ -174,10 +178,12 @@ struct EngineRun<R: RandomNumberGenerator> {
             if b.locked { return locked }
             let roll = Walk.rollBall(chain: b.chain, &r); out.ball = roll.name   // free: which ball it turns out to be is luck (and the chain)
             beats = b.turn(.capture, &r, ball: roll.boost)
-        case .item(let name):
+        case .item(let name, let on):
             if b.locked { return locked }
-            let u: ItemUse? = switch ItemKind.of(name) { case .heal(let n): .heal(n); case .battle(let u): u; default: nil }
-            guard let u, b.usable(u), w.take(name) else { return "지금 쓸 수 있는\n도구가 아니다" }
+            let k = on ?? b.me
+            let u: ItemUse? = switch ItemKind.of(name) { case .heal(let n): .heal(n); case .battle(let u): u; case .revive(let p): .revive(p); default: nil }
+            guard let u, b.usable(u, on: k), w.take(name) else { return "지금 쓸 수 있는\n도구가 아니다" }
+            b.itemOn = k
             beats = [.note(.me, text: josa(name, "을", "를") + " 사용했다!")] + b.turn(.item(u), &r)
         case .swap(let i), .replace(let i):
             guard b.mine.indices.contains(i) else { return "교체할 수 없어요" }
@@ -208,17 +214,8 @@ struct EngineRun<R: RandomNumberGenerator> {
         if out.end == nil { p.battle = b }
         return nil
     }
-    /// A fight's last beat (Flow's after()): a revive goes on with it (more beats, no end); else EXP back, held steps, the catch, the chain, the tower.
+    /// A fight's last beat (Flow's after()): EXP back, held steps, the catch, the chain, the tower. (Revives are the player's now, by hand: 3.6.)
     mutating func ended(_ b: inout Battle, _ last: Beat) -> [Beat] {
-        if last == .lost, let rv = w.useRevive() {                                                  // a revive in the bag: back up, the fight goes on
-            let hp = max(1, b.mine[b.me].maxHP * rv.pct / 100)
-            b.mine[b.me].clearVolatile(); b.mine[b.me].status = nil; b.mine[b.me].down = false; b.over = false
-            let beat = Beat.heal(.me, amount: hp, text: josa(rv.item, "으로", "로") + " 되살아났다!")
-            b.apply(beat)
-            var bs = [beat]
-            if let n = b.foeNext { b.foeNext = nil; b.out = []; b.switchIn(.it, n); bs += b.out }   // a trainer's one KO'd that same turn: its next comes out now
-            return bs
-        }
         let result = switch last { case .caught: "caught"; case .won: "won"; case .lost: "lost"; case .fled: "fled"; default: "ran" }
         p.battle = nil
         var end = BattleEnd(result: result)
@@ -288,19 +285,21 @@ struct EngineRun<R: RandomNumberGenerator> {
         }
         return w.purchase(ware, qty, bp: bp) == nil ? (bp ? "BP가 부족하다" : "W가 부족하다") : nil
     }
-    mutating func use(_ item: String, _ stat: Int?) -> String? {
+    mutating func use(_ item: String, _ stat: Int?, _ on: Int?) -> String? {
         guard w.count(item) > 0 else { return "가지고 있지 않아요" }
+        guard let ref = on.map({ w.ref(uid: $0) }) ?? -1 else { return "그 포켓몬은\n없어요" }       // 3.6: any of ours (nil = the companion)
         switch ItemKind.of(item) {
-        case .candy: guard w.feedCandy() else { return "이미 Lv.100이다" }
-        case .vitamin: guard w.feedVitamin(item) != nil else { return "먹어도 효과가\n없을 것 같다" }
-        case .evReset: guard w.resetEVs() else { return "노력치가 이미\n0이다" }
-        case .berry: guard w.feedBerry(item) else { return "먹을 수 없어요" }
+        case .candy: guard w.feedCandy(ref) else { return "이미 Lv.100이다" }
+        case .vitamin: guard w.feedVitamin(item, ref) != nil else { return "먹어도 효과가\n없을 것 같다" }
+        case .evReset: guard w.resetEVs(ref) else { return "노력치가 이미\n0이다" }
+        case .berry: guard w.feedBerry(item, ref) else { return "먹을 수 없어요" }
+        case .mint: guard w.useMint(item, ref) else { return "이미 그 성격이다" }
         case .sell: out.watts = w.sell(item)
         case .evolution:
-            guard let e = w.stoneEvolutions(now).first(where: { $0.item == item }) else { return "지금은\n쓸 수 없다" }
-            evolve(-1, e)
+            guard let e = w.stoneEvolutions(now, ref: ref).first(where: { $0.item == item }) else { return "지금은\n쓸 수 없다" }
+            evolve(ref, e)
         case .bottleCap(let gold):
-            guard gold || stat.map({ (0..<6).contains($0) }) == true, w.hyperTrain(gold ? nil : stat) else { return "특훈할 수 없다" }
+            guard gold || stat.map({ (0..<6).contains($0) }) == true, w.hyperTrain(gold ? nil : stat, ref) else { return "특훈할 수 없다" }
         default: return "여기서는\n쓸 수 없다"
         }
         growth()
@@ -382,7 +381,7 @@ extension Act {
     var social: Bool {
         switch self {
         case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
-             .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept: true
+             .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept, .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove: true
         default: false
         }
     }

@@ -101,10 +101,13 @@
 ### 4.4 로비 `POST /v2/raid {"id", "session"}` → `RaidReply`
 `week`, `boss`(Mon), `next`(다음 주 보스 종), `hpTotal`, `hpLeft`, `barHP`, `ends`(이번 주 끝, unix), `fighters [{name, dealt}]`(많은 순), `recent [{name, dex, dealt, at}]`(최근 10판, dex = 그 판의 선봉), `mine {dealt, fights, balls?, caught, canCatch}`. 파워는 세이브의 `raidPower`.
 
-## 5. M4 — 실시간 대전 (개요)
-- 팀 화면에서 지금 걷는 중인 사람에게 신청 → 수락하면 시작. Lv.50 맞춤 3대3(타워 규칙), 경험치 없음, 기록과 작은 BP.
-- 배틀 엔진: 상대 쪽 선택(`foeChoice` · `foeSwitch` · 쓰러진 뒤 다음)을 AI 대신 상대 플레이어의 입력으로. 서버의 배틀 하나를 B에게는 좌우를 뒤집어 보낸다(beats의 me/it도).
-- 턴: 둘 다 고르면 서버가 한 번에 계산. 기다리는 쪽은 롱폴링. 턴마다 30초, 넘기면 AI가 대신 고른다(두 번 연속이면 기권).
+## 5. M4 — 실시간 대전 (3.6)
+
+- **신청**: 친구에게만. `"act": {"duelChallenge": {"to": "민수"}}` → 상대의 다음 행동에 news `duelInvite {id, from}`(3.6부터). 1분 안에 `{"duelAccept": {"id"}}`(시작) · `{"duelDecline": {"id"}}`, 신청한 쪽은 `{"duelCancel": {"id"}}`. 한 사람에 열린 대전 하나. cannot: "친구와만\n대전할 수 있어요", "이미 대전 중이에요", "상대가 대전 중이에요", "대전할 수 없는\n트레이너예요", "그 대전은 이제\n없어요".
+- **규칙**: 양쪽 파티 = 각자의 타워 파티(`Walk.party()`), 전부 **Lv.50 사본**. 도구 · 도망 없음: 싸운다 · 교체 · 기권. 경험치 없음. 이긴 쪽 **+3 BP**, 기록(`Walk.duelWins` · `duelLosses`, 카드에도).
+- **턴**: `{"duelMove": {"id", "cmd": BattleCmd}}` — `need`가 "move"면 `fight {slot}` · `swap {to}` · `forfeit`, "replace"(내 포켓몬이 쓰러짐)면 `replace {to}`. 둘 다 내면 서버가 그 턴을 돌린다. **30초** 안에 안 내면 서버가 대신(쓸 수 있는 첫 기술 / 나올 수 있는 첫 포켓몬), 두 번 연속이면 그쪽 기권("timeout").
+- **보기** `POST /v2/duel {"id", "session", "since"?, "wait"?, "version"?}` → `DuelReply {duel: DuelView?}` — 열린 대전, 없으면 마지막 대전. `DuelView {id, state(invited·active·over·declined·cancelled·expired), opponent, challenger, battle(내 쪽에서 본 것), beats(since 다음 턴들), turn, need, deadline(unix), result {won, why(faint·forfeit·timeout), bp}, version}`. `wait: true` + `version`: 그 버전에서 바뀔 때까지 최대 25초 기다렸다 답한다(롱폴링). 턴의 답(`out.duel`)과 같은 모양.
+- **서버 안**: 배틀 하나를 신청한 쪽(A)에서 본 대로 돌린다(`Battle.pvp`: 상대 쪽 선택은 `foePlan`, 상대 포켓몬이 쓰러지면 `foeMustReplace`). B에게는 `Battle.mirrored` + beats의 쪽을 뒤집고(`Beat.flipped`) 문장의 "상대 X" ↔ "X"를 바꿔(`duelWords`) 보낸다(`Sources/Battle/Duel.swift`).
 
 ## 6. 단계
 

@@ -12,6 +12,7 @@ struct Mon: Codable, Equatable {
     var uid: Int? = nil                  // given the first time something has to find this one again (Walk.id(_:))
     var hyper: [Int]? = nil              // stats (0-5) raised by 대단한 특훈 (병뚜껑): they count as 31 in battle; the IVs themselves stay
     var ot: String? = nil                // 어버이: the first trainer that traded it away (docs/plans/12 §3.2); nil = never traded
+    var mint: Int? = nil                 // 민트: the nature its stats go by (its own nature stays): docs/plans/13
 
     var points: Int { exp ?? expTable[growthRate[dex]][level] }
     static func level(dex: Int, exp: Int) -> Int { let t = expTable[growthRate[dex]]; return (1...100).last { t[$0] <= exp } ?? 1 }
@@ -48,7 +49,7 @@ extension Mon {
     var perfectIVs: Int { effectiveIVs.filter { $0 == 31 }.count }
     /// HP Atk Def SpA SpD Spe: the Gen IV formula with those IVs, its EVs and nature.
     var stats: [Int] {
-        let b = baseStats[dex], l = level, iv = effectiveIVs, ev = evs ?? Array(repeating: 0, count: 6), n = natures[nature ?? 0]
+        let b = baseStats[dex], l = level, iv = effectiveIVs, ev = evs ?? Array(repeating: 0, count: 6), n = natures[mint ?? nature ?? 0]
         return (0..<6).map { k in
             let core = (2 * b[k] + iv[k] + ev[k] / 4) * l / 100
             if k == 0 { return dex == 292 ? 1 : core + l + 10 }                                    // 껍질몬: always 1

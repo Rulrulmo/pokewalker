@@ -209,8 +209,51 @@ private struct Desk {
     o.news = [.find(item: "상처약"), .dex(count: 3)]; o.changed = true; o.radar = shown.radar; o.missed = true
     o.end = BattleEnd(result: "won", chain: 1, streak: 2, bp: 3, dealt: 4); o.ball = "슈퍼볼"; o.mon = d.w.companion; o.watts = 5
     o.raidThrow = RaidThrow(caught: true, shakes: 3, balls: 2, mon: d.w.companion, reward: true); o.cannot = "왜"
+    o.duel = DuelView(id: 1, state: "active", opponent: "민수", challenger: true, battle: start.battle, beats: start.beats ?? [], turn: 2, need: "move", deadline: 9, result: DuelResult(won: true, why: "faint", bp: 3), version: 4)
     let back = try JSONDecoder().decode(Outcome.self, from: JSONEncoder().encode(o))
     #expect(back == o)
     let mirror = Mirror(reflecting: o).children.compactMap(\.label)
-    #expect(mirror.count == 12, "Outcome has \(mirror.count) fields: \(mirror) — set the new one above and read it in Outcome.init(from:)")
+    #expect(mirror.count == 13, "Outcome has \(mirror.count) fields: \(mirror) — set the new one above and read it in Outcome.init(from:)")
+}
+
+@Test func itemsOnAnyPokemonAndMints() throws {                                                   // docs/plans/13 (3.6)
+    // the wire: an older app sends no target
+    #expect(try JSONDecoder().decode(Act.self, from: Data(#"{"use":{"item":"이상한사탕"}}"#.utf8)) == .use(item: "이상한사탕", stat: nil, on: nil))
+    #expect(try JSONDecoder().decode(BattleCmd.self, from: Data(#"{"item":{"name":"상처약"}}"#.utf8)) == .item(name: "상처약", on: nil))
+    var c = Mon(dex: 4, level: 15, female: false); c.uid = firstUID + 5; c.nature = 0
+    var w = Engine.fresh(now: t0, starter: firstUID); w.box = [c]; w.watts = 5000; w.bag = ["이상한사탕"]
+    var d = Desk(w)
+    let o = d.act(.use(item: "이상한사탕", stat: nil, on: firstUID + 5))                             // a box 파이리 Lv.16: 리자드 (levelled by hand: it evolves)
+    #expect(o.cannot == nil && d.w.box[0].level == 16 && d.w.box[0].dex == 5 && d.w.companion.level == 5)
+    #expect(Walk.mints.count == 21 && Walk.mints.contains("고집민트") && Walk.mints.contains("성실민트") && !Walk.mints.contains("노력민트"))
+    #expect(d.act(.buy(bp: false, item: "고집민트", legend: nil, shell: nil, qty: 1)).cannot == nil && d.w.watts == 4000)
+    let before = d.w.box[0].stats
+    #expect(d.act(.use(item: "고집민트", stat: nil, on: firstUID + 5)).cannot == nil)
+    #expect(d.w.box[0].mint == 3 && d.w.box[0].nature == 0 && d.w.box[0].stats[1] > before[1] && d.w.box[0].stats[3] < before[3])   // 고집: 공격 ↑ 특공 ↓
+    #expect(d.act(.use(item: "이상한사탕", stat: nil, on: 12345)).cannot == "가지고 있지 않아요")
+    #expect(Walk.shopTab(Walk.Ware(kind: .item("고집민트"), price: 1000)) == "민트" && Walk.shopTab(Walk.Ware(kind: .item("상처약"), price: 20)) == "회복")
+}
+
+@Test func battleItemsOnTheBench() {                                                                 // 3.6: on any of ours in the fight; revives by hand only
+    var d = Desk(); d.w.bag = ["기력의조각", "상처약"]
+    var a = Mon(dex: 16, level: 20, female: false); a.uid = firstUID + 1; d.w.caught = [a]
+    var g = Seeded(s: 3); var b = Battle(wild: Mon.wild(19, level: 3, &g), party: [d.w.companion, a])
+    b.mine[1].hp = 0; b.mine[1].down = true
+    d.p.battle = b; d.p.party = [firstUID, firstUID + 1]
+    #expect(d.act(.battle(cmd: .item(name: "상처약", on: 1))).cannot == "지금 쓸 수 있는\n도구가 아니다")   // a fainted one: only a revive
+    let r = d.act(.battle(cmd: .item(name: "기력의조각", on: 1)))
+    #expect(r.cannot == nil && (r.battle?.mine[1].hp ?? 0) > 0 && r.battle?.mine[1].down == false && d.w.count("기력의조각") == 0)
+    #expect(r.beats?.contains { if case .note(.me, let t) = $0 { return t.contains("기운을 되찾았다") }; return false } == true)
+    var h = d.p.battle!; h.mine[1].hp = 5; d.p.battle = h
+    let heal = d.act(.battle(cmd: .item(name: "상처약", on: 1)))
+    #expect(heal.cannot == nil && (heal.battle?.mine[1].hp ?? 0) > 5)
+}
+
+@Test func noAutoRevive() {                                                                          // 3.6: the last one down = lost, a revive in the bag or not
+    var d = Desk(); d.w.bag = ["부활초"]; d.act(.steps, steps: 3000)
+    var g = Seeded(s: 5); let foe = Mon.wild(150, level: 100, perfect: 6, &g)
+    var b = Battle(wild: foe, party: [d.w.companion]); _ = b.begin(weather: nil, &g); d.p.battle = b; d.p.party = [firstUID]
+    var end: BattleEnd? = nil
+    for _ in 0..<20 where end == nil { end = d.act(.battle(cmd: .fight(slot: 0))).end }
+    #expect(end?.result == "lost" && d.w.count("부활초") == 1)
 }

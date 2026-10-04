@@ -94,15 +94,13 @@ import AppKit
     check(stoned && sv.state.count("불꽃의돌") == 0 && sv.state.companion.dex == 136 && says(sv).first == "2마리를 놓아줬다" && sv.state.box.count == 1,
           "3.0 bag: 불꽃의돌 → the server evolves 이브이, home shows it; 중복 놓아주기 (2 of 3)", "\(stoned) \(says(sv)) \(sv.state.box.count)")
 
-    // a revive mid-fight: ours goes down, 기력의조각 brings it back, the fight goes on (no end)
+    // 3.6 (docs/plans/13): no revive by itself — ours goes down with 기력의조각 in the bag: the fight's lost, the 기력의조각 stays (revives: by hand, on the bench)
     let rv = online({ var s = Walk(); s.bag = ["기력의조각"]; return s }(), rng: 7)
     var foe = Mon(dex: 150, level: 100, female: false); foe.known = [94]
     var down = Battle(wild: foe, companion: rv.state.companion); down.mine[0].hp = 1; down.mine[0].moves = [33]; down.mine[0].pp = [35]
-    fightOn(rv, down); rv.screen = .moves(down, sel: 0); rv.press(1); drain(rv)
-    let healed: Bool = { if case .beats(_, let bs, _, _) = rv.screen { return bs.contains { if case .heal(.me, _, _) = $0 { return true }; return false } }; return false }()
-    playOut(rv)
-    check(healed && rv.inBattle && rv.fightEnd == nil && rv.state.count("기력의조각") == 0 && server(rv).0.rows[server(rv).1]?.play.battle != nil,
-          "3.0 fight: ours goes down with 기력의조각 in the bag — back up, the fight goes on (no end)", "\(healed) \(rv.screen)")
+    fightOn(rv, down); rv.screen = .moves(down, sel: 0); rv.press(1); drain(rv); playOut(rv)
+    check(!rv.inBattle && rv.state.count("기력의조각") == 1 && server(rv).0.rows[server(rv).1]?.play.battle == nil,
+          "3.6 fight: ours goes down with 기력의조각 in the bag — no revive by itself: the fight's over, the 기력의조각 stays", "\(rv.screen)")
 
     // steps piled up offline, more than the allowance: the server takes some (taken), the rest are gone; the walker shows the server's
     let ov = online(Walk()), (os, _) = server(ov)

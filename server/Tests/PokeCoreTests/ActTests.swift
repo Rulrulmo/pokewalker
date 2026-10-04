@@ -364,3 +364,71 @@ extension SaveDB { func squeezeRaid(_ week: String, to total: Int) throws { try 
     #expect(try await board("앨리스", a, at: 84 + 3 * 86_400 + 1).listings.isEmpty)
     #expect(try await go("캐럴", c, 7, .steps, at: 84 + 3 * 86_400 + 2).out.news.contains { if case .tradeClosed(_, _, "시간이 지났어요") = $0 { return true }; return false })
 }
+
+@Test func liveBattle() async throws {                                                               // docs/plans/12 §5
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브"), c = try await newTrainer(db, "캐럴")
+    for (who, s) in [("앨리스", a), ("보브", b), ("캐럴", c)] { _ = await act(db, who, s, 1, .steps, steps: 10, at: 60) }
+    func mon(_ dex: Int, _ uid: Int) -> Mon { var m = Mon(dex: dex, level: 60, female: false); m.uid = uid; return m }
+    try await setWalk(db, "앨리스") { $0.companion = mon(6, firstUID); $0.caught = [mon(9, firstUID + 1), mon(3, firstUID + 2)] }
+    try await setWalk(db, "보브") { $0.companion = mon(130, firstUID); $0.caught = [mon(65, firstUID + 1), mon(68, firstUID + 2)] }
+    var seq: [String: Int] = ["앨리스": 2, "보브": 2, "캐럴": 2], t = 100.0
+    let sess = ["앨리스": a, "보브": b, "캐럴": c]
+    func go(_ who: String, _ x: Act) async throws -> ActReply {
+        t += 1; defer { seq[who]! += 1 }
+        return try reply(await db.act(ActReq(id: who, session: sess[who]!, seq: seq[who]!, act: x, app: "3.6"), now: base.addingTimeInterval(t)))
+    }
+    func look(_ who: String, since: Int = 0) async throws -> DuelView? {
+        try JSONDecoder().decode(DuelReply.self, from: await db.duel(DuelReq(id: who, session: sess[who]!, since: since), now: base.addingTimeInterval(t)).body).duel
+    }
+    #expect(try await go("앨리스", .duelChallenge(to: "보브")).out.cannot == "친구와만\n대전할 수 있어요")
+    _ = try await go("앨리스", .friendRequest(to: "보브")); _ = try await go("보브", .friendRequest(to: "앨리스"))
+    let invite = try await go("앨리스", .duelChallenge(to: "보브"))
+    let id = try #require(invite.out.duel?.id)
+    #expect(invite.out.duel?.state == "invited" && invite.out.duel?.challenger == true)
+    #expect(try await go("앨리스", .duelChallenge(to: "보브")).out.cannot == "이미 대전 중이에요")
+    #expect(try await go("보브", .steps).out.news.contains(.duelInvite(id: id, from: "앨리스")))
+    let on = try await go("보브", .duelAccept(id: id))
+    #expect(on.out.duel?.state == "active" && on.out.duel?.battle?.mine.first?.mon.dex == 130 && on.out.duel?.battle?.theirs.first?.mon.dex == 6)   // mirrored: 보브's own first
+    #expect(on.out.duel?.battle?.mine.first?.mon.level == 50 && on.out.duel?.need == "move")
+    let av = try #require(try await look("앨리스"))
+    #expect(av.battle?.mine.first?.mon.dex == 6 && av.need == "move" && av.opponent == "보브")
+    // play it out: each picks a usable move, or who's next
+    var over: DuelView? = nil
+    for _ in 0..<200 where over == nil {
+        for who in ["앨리스", "보브"] {
+            guard let v = try await look(who), v.state == "active", let need = v.need, let bt = v.battle else { continue }
+            let cmd: BattleCmd = need == "replace" ? .replace(to: bt.mine.indices.first { bt.mine[$0].alive && $0 != bt.me } ?? 0)
+                : .fight(slot: bt.mine[bt.me].moves.indices.first { bt.usable(.me).contains(bt.mine[bt.me].moves[$0]) } ?? 0)
+            let r = try await go(who, .duelMove(id: id, cmd: cmd))
+            #expect(r.out.cannot == nil, "\(who) \(cmd): \(r.out.cannot ?? "")")
+            if r.out.duel?.state == "over" { over = r.out.duel }
+        }
+    }
+    let end = try #require(over)
+    let other = try #require(try await look(end.challenger ? "보브" : "앨리스"))
+    #expect(end.result != nil && other.result != nil && end.result?.won != other.result?.won && end.result?.why == "faint")
+    let bobView = try #require(try await look("보브"))
+    let ownLines = bobView.beats.compactMap { b -> String? in if case .note(.me, let s) = b { return s }; return nil }
+    #expect(!ownLines.contains { $0.hasPrefix("상대 갸라도스") || $0.hasPrefix("상대 후딘") || $0.hasPrefix("상대 괴력몬") })   // 보브's own aren't "상대" to 보브
+    let winner = end.result?.won == true ? (end.challenger ? "앨리스" : "보브") : (end.challenger ? "보브" : "앨리스")
+    let ww = try await db.trainer(winner)?.walk.flatMap(decodeWalk), lw = try await db.trainer(winner == "앨리스" ? "보브" : "앨리스")?.walk.flatMap(decodeWalk)
+    #expect(ww?.duelWins == 1 && (ww?.bp ?? 0) >= 3 && lw?.duelLosses == 1)
+
+    // out of time: a pick made for the idle side, twice → it gives up
+    let id2 = try #require(try await go("보브", .duelChallenge(to: "앨리스")).out.duel?.id)
+    _ = try await go("앨리스", .duelAccept(id: id2))
+    _ = try await go("보브", .duelMove(id: id2, cmd: .fight(slot: 0)))
+    t += 31; var v = try #require(try await look("보브"))
+    #expect(v.turn >= 2 && v.state == "active")                                                         // 앨리스's pick was made: the turn went on
+    if v.need == "move" { _ = try await go("보브", .duelMove(id: id2, cmd: .fight(slot: 0))) }
+    t += 31; v = try #require(try await look("보브"))
+    #expect(v.state == "over" && v.result?.won == true && v.result?.why == "timeout")
+    // declined; out of time unanswered
+    let id3 = try #require(try await go("앨리스", .duelChallenge(to: "보브")).out.duel?.id)
+    _ = try await go("보브", .duelDecline(id: id3))
+    #expect(try await look("앨리스")?.state == "declined")
+    _ = try await go("앨리스", .duelChallenge(to: "보브"))
+    t += 61
+    #expect(try await look("보브")?.state == "expired")
+}

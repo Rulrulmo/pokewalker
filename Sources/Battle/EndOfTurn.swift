@@ -101,7 +101,10 @@ extension Battle {
         if !f(.it).alive, !f(.it).down {
             mod(.it) { $0.down = true }; out.append(.fainted(.it))
             award()
-            if let n = theirs.indices.first(where: { theirs[$0].alive }) { if inTurn { foeNext = n } else { switchIn(.it, n) } } else { out.append(.won); over = true; return }   // mid-turn: at its end
+            if let n = theirs.indices.first(where: { theirs[$0].alive }) {
+                if pvp == true { foeMustReplace = true }                                           // a live battle: the other player picks who's next
+                else if inTurn { foeNext = n } else { switchIn(.it, n) }                           // mid-turn: at its end
+            } else { out.append(.won); over = true; return }
         }
         if !f(.me).alive, !f(.me).down {
             mod(.me) { $0.down = true }; out.append(.fainted(.me))
@@ -130,8 +133,11 @@ extension Battle {
         return roll(256) < (Int(a * 128 / b) + 30 * escapes) % 256
     }
     mutating func useItem(_ u: ItemUse) {
+        let k = itemOn ?? me; itemOn = nil
+        guard k == me else { useItem(u, bench: k); return }
         let n = nm(.me)
         switch u {
+        case .revive: break                                                                         // (never on the one out: it isn't down)
         case .heal(let h): restore(.me, h, josa(n, "의", "의") + " 체력이 회복되었다!")
         case .restore:
             if f(.me).hp < f(.me).maxHP { restore(.me, f(.me).maxHP, josa(n, "의", "의") + " 체력이 회복되었다!") }
@@ -150,6 +156,24 @@ extension Battle {
         case .x(let k, let by): boost(.me, k, by, from: .me)
         case .guardSpec: sides[0].mist = 5; say(.me, "흰안개에 둘러싸였다!")
         case .direHit: mod(.me) { $0.focus = true }; say(.me, josa(n, "은", "는") + " 의욕이 넘치고 있다!")
+        }
+    }
+    /// An item on one of ours on the bench (3.6): HP, status, PP, or a fainted one back up. Said, not shown (the reply's state has it).
+    mutating func useItem(_ u: ItemUse, bench k: Int) {
+        let n = monNames[mine[k].mon.dex]
+        switch u {
+        case .heal(let h): mine[k].hp = min(mine[k].maxHP, mine[k].hp + h); say(.me, josa(n, "의", "의") + " 체력이 회복되었다!")
+        case .restore: mine[k].hp = mine[k].maxHP; mine[k].status = nil; say(.me, josa(n, "의", "의") + " 체력이 회복되었다!")
+        case .cure: mine[k].status = nil; say(.me, josa(n, "은", "는") + " 건강해졌다!")
+        case .pp(let p, let all):
+            let x = mine[k]
+            func short(_ i: Int) -> Int { (moveTable[x.moves[i]]?.pp ?? 5) - x.pp[i] }
+            for i in all ? Array(x.moves.indices) : [x.moves.indices.max { short($0) < short($1) } ?? 0] { mine[k].pp[i] = min(moveTable[x.moves[i]]?.pp ?? 5, mine[k].pp[i] + p) }
+            say(.me, josa(n, "의", "의") + " PP가 회복되었다!")
+        case .revive(let pct):
+            mine[k].hp = max(1, mine[k].maxHP * pct / 100); mine[k].status = nil; mine[k].down = false
+            say(.me, josa(n, "은", "는") + " 기운을 되찾았다!")
+        case .x, .guardSpec, .direHit: break                                                        // the one out only
         }
     }
     /// The other side's pick. Wild ones pick at random, as in the games; a trainer mostly takes what hits hardest on paper
@@ -226,10 +250,25 @@ extension Battle {
         return nil
     }
     /// Whether this item would do anything for ours right now (the bag hides the rest).
-    func usable(_ u: ItemUse) -> Bool {
-        let x = mine[me]
+    func usable(_ u: ItemUse) -> Bool { usable(u, on: me) }
+    /// Whether that item would do anything for ours at k (the one out, or one on the bench; a fainted one only takes a revive).
+    func usable(_ u: ItemUse, on k: Int) -> Bool {
+        guard mine.indices.contains(k) else { return false }
+        let x = mine[k]
+        if case .revive = u { return !x.alive }
+        guard x.alive else { return false }
+        if k != me {
+            switch u {
+            case .heal: return x.hp < x.maxHP
+            case .restore: return x.hp < x.maxHP || x.status != nil
+            case .cure(let sts, _): return x.status.map { sts.contains($0) || ($0 == .toxic && sts.contains(.poison)) } ?? false
+            case .pp: return x.moves.indices.contains { x.pp[$0] < (moveTable[x.moves[$0]]?.pp ?? 5) }
+            case .x, .guardSpec, .direHit, .revive: return false
+            }
+        }
         guard x.embargo == 0 else { return false }                                                 // 금제: no items at all
         switch u {
+        case .revive: return false
         case .heal: return x.hp < x.maxHP
         case .restore: return x.hp < x.maxHP || x.status != nil || x.confused > 0
         case .cure(let sts, let conf): return x.status.map { sts.contains($0) || ($0 == .toxic && sts.contains(.poison)) } ?? false || (conf && x.confused > 0)

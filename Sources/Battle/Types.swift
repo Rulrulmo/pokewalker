@@ -78,6 +78,7 @@ enum ItemUse: Equatable, Codable {
     case pp(Int, all: Bool)                          // +n PP (99 = full) to the lowest move / every move
     case x(Int, Int)                                 // stat index, stages (Gen IV X items: +1)
     case guardSpec, direHit
+    case revive(Int)                                 // 기력의조각 · 부활초: a fainted one of ours back up (by hand, on the bench), HP %
 }
 enum Beat: Equatable, Codable {
     case appear                                      // a wild one slides in

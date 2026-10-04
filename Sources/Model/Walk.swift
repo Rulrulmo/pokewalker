@@ -39,6 +39,7 @@ struct Walk: Codable, Equatable {
     var audited: Int? = nil, corrected: Bool? = nil                    // 1.7's one-time check ran; it took back a macro's gains (the trainer card says so)
     var bought: [String]? = nil                                        // one-off BP buys (device colours)
     var raidPower: Int? = nil                                          // the co-op raid's power: steps banked, 3,000 at most (1,000 = 1칸: docs/plans/12 §4.2)
+    var duelWins: Int? = nil, duelLosses: Int? = nil                   // 실시간 대전 (12 §5): the record
 
     var here: Course { courses[course] }
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.
@@ -193,7 +194,7 @@ struct Walk: Codable, Equatable {
         let fits = evolutions.filter { $0.from == m.dex && ($0.way == .level && m.level >= $0.level || $0.way == .friend && (m.walked ?? 0) >= friendSteps) && allows($0, m, now) }
         return fits.isEmpty ? nil : fits[(m.walked ?? 0) % fits.count]
     }
-    func stoneEvolutions(_ now: Date) -> [Evo] { evolutions.filter { $0.from == companion.dex && $0.way == .item && allows($0, companion, now) } }
+    func stoneEvolutions(_ now: Date, ref: Int = -1) -> [Evo] { guard let m = mon(ref) else { return [] }; return evolutions.filter { $0.from == m.dex && $0.way == .item && allows($0, m, now) } }
     func tradeEvolution(_ now: Date) -> Evo? { evolutions.first { $0.from == companion.dex && $0.way == .trade && allows($0, companion, now) } }
     /// Items the companion could evolve with (for the W shop).
     func evolutionItems() -> [String] { Array(Set(evolutions.filter { $0.from == companion.dex }.compactMap(\.item))).sorted() }

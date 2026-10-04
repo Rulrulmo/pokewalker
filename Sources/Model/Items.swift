@@ -5,7 +5,7 @@ import Foundation
 enum ItemKind: Equatable {
     case heal(Int)                 // battle: restores this many HP (999 = all)
     case battle(ItemUse)           // battle: status cures, 회복약, PP, X items
-    case revive(Int)               // used by itself when the last one faints: back up with this % of max HP
+    case revive(Int)               // battle: a fainted one of ours back up with this % of max HP (by hand: 3.6 drops the auto-use)
     case candy                     // 이상한사탕: +1 level
     case vitamin(Int, Int)         // fed: that stat's EVs ± 10 (영양제 up to 100, 노력치 내리는 열매 down)
     case evReset                   // 순백떡 (SV's Fresh Start Mochi): every EV back to 0
@@ -13,17 +13,19 @@ enum ItemKind: Equatable {
     case berry                     // fed: +500 friendship steps
     case evolution                 // stones and held items
     case sell(Int)                 // watts at the exchange
+    case mint(Int)                 // 민트 (SwSh): the stats go by this nature (its own stays shown): docs/plans/13
 
     /// One line on what it does (the bag list, the shops).
     var summary: String {
         switch self {
-        case .heal(let n): "배틀 HP +\(n)"; case .revive(let n): "쓰러지면 HP \(n)%로 부활";
+        case .heal(let n): "배틀 HP +\(n)"; case .revive(let n): "배틀: 기절한 포켓몬 HP \(n)%로";
+        case .mint(let k): natures[k].up == natures[k].down ? "능력 보정 없는 성격으로" : "\(statNames[natures[k].up]) ↑ · \(statNames[natures[k].down]) ↓ 성격으로"
         case .candy: "레벨 +1"; case .evReset: "노력치 전부 0"; case .bottleCap(let gold): gold ? "특훈: 모든 개체값 → 31 (Lv.50부터)" : "특훈: 개체값 하나 → 31 (Lv.50부터)"
         case .vitamin(let k, let d): "\(["HP", "공격", "방어", "특공", "특방", "스피드"][k]) 노력치 \(d > 0 ? "+" : "−")10"; case .berry: "친밀도 +500걸음"; case .evolution: "진화 도구"; case .sell(let p): "팔면 \(p)W"
         case .battle(let u):
             switch u { case .cure(let s, let conf): s.count >= 5 ? "배틀 상태이상 전부 회복" : s.isEmpty && conf ? "배틀 혼란 회복" : "배틀 " + s.map(\.badge).joined(separator: "·") + " 회복"
             case .restore: "배틀 HP·상태 전부 회복"; case .pp(let n, let all): (all ? "모든 기술" : "기술 하나") + " PP " + (n >= 99 ? "전부" : "+\(n)")
-            case .x(let k, _): "배틀 \(statNames[k]) +1"; case .guardSpec: "배틀 능력 저하 막기 (5턴)"; case .direHit: "배틀 급소율 +"; case .heal: "" }
+            case .x(let k, _): "배틀 \(statNames[k]) +1"; case .guardSpec: "배틀 능력 저하 막기 (5턴)"; case .direHit: "배틀 급소율 +"; case .heal, .revive: "" }
         }
     }
     static func of(_ i: String) -> ItemKind {
@@ -38,6 +40,7 @@ enum ItemKind: Equatable {
         if let k = ["맥스업", "타우린", "사포닌", "리보플라빈", "키토산", "알칼로이드"].firstIndex(of: i) { return .vitamin(k, 10) }
         if let k = ["유석열매", "시마열매", "파비열매", "로매열매", "또뽀열매", "토망열매"].firstIndex(of: i) { return .vitamin(k, -10) }
         if i == "순백떡" { return .evReset }
+        if i.hasSuffix("민트"), let k = natures.firstIndex(where: { $0.name + "민트" == i }) { return .mint(k) }
         if i == "은색병뚜껑" || i == "금색병뚜껑" { return .bottleCap(i == "금색병뚜껑") }
         let heal = ["상처약": 20, "좋은상처약": 50, "고급상처약": 200, "풀회복약": 999, "오랭열매": 10, "자뭉열매": 30, "맛있는물": 50, "미네랄사이다": 60,
                     "후르츠밀크": 80, "튼튼밀크": 100, "힘의가루": 50, "힘의뿌리": 200]   // Gen IV amounts
