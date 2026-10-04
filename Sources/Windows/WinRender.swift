@@ -81,6 +81,16 @@ import Foundation
         v.raidOn = true; var b = Battle(wild: tsrv.raidBoss, party: v.state.party().map(\.mon)); b.theirs += [Fighter(tsrv.raidBoss), Fighter(tsrv.raidBoss)]
         b.theirs[0].hp = 0; b.it = 1; v.fight = b; v.screen = .battle(b, sel: 0)
     }
+    for n in ["민수", "지은", "도윤"] { tsrv.befriend(tme.myName, n) }; tsrv.friendAsks[tme.myName.lowercased()] = ["서연"]   // 3.5: 친구, the 게시판
+    tsrv.listings = [(Listing(id: 7, from: "민수", mon: tsrv.walk("민수")!.box[1], wish: [25, 133], at: now - 5000, bids: 0, mine: false), "민수", true),
+                     (Listing(id: 8, from: tme.myName, mon: tme.state.box[2], wish: [149], at: now - 900, bids: 0, mine: false), tme.myName.lowercased(), true)]
+    tsrv.bids = [(Bid(id: 4, listing: 8, from: "지은", mon: tsrv.walk("민수")!.box[2], at: now - 300, state: "open"), "지은", tme.myName.lowercased())]
+    tme.cloud!.teamDue = true; tme.cloud!.marketDue = true; drain(tme); drain(tme)
+    take("menu_11", on: tme) { v in v.screen = .menu(menuAt("교환")) }
+    take("friends_requests", on: tme) { v in v.screen = .team(sel: 0, tab: 4, card: false) }
+    take("market_board", on: tme) { v in v.screen = .market(.board(tab: 0, sel: 0)) }
+    take("market_post_mine", on: tme) { v in v.screen = .market(.post(id: 8, sel: 0)) }
+    take("market_pick_wish", on: tme) { v in v.screen = .market(.pick(MarketPick(give: v.myTradeBox[3].uid, wish: [25, 133], side: 1, at: 24))) }
     take("traded", on: tme) { v in v.screen = .traded(gave: v.state.box[2], got: tsrv.walk("민수")!.box[4], with: "민수", since: T - 5) }
     take("grid_drag") { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(T, force: true); v.drag = (10001, CGPoint(x: 150 * K, y: 30 * K)) }   // 3.1: one of the box carried onto the walker's row
     take("dex_grid") { v in v.screen = .dex(25, filter: 0, detail: false) }

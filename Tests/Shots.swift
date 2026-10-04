@@ -50,7 +50,7 @@ import AppKit
         tsrv.add(m.0, w); tsrv.lastAct[m.0] = m.6 ? Date() : Date().addingTimeInterval(Double(-600 * (k + 1)))
     }
     tme.cloud!.teamDue = true; drain(tme)
-    take("menu_team", tme) { v in v.screen = .menu(menuAt("팀")) }
+    take("menu_team", tme) { v in v.screen = .menu(menuAt("친구")) }
     for t in 0..<4 { take("team_tab\(t)", tme) { v in v.screen = .team(sel: 0, tab: t, card: false) } }
     take("team_page2", tme) { v in v.screen = .team(sel: 7, tab: 0, card: false) }
     take("team_card", tme) { v in v.screen = .team(sel: 1, tab: 0, card: true) }
@@ -70,7 +70,7 @@ import AppKit
                    (TradeOffer(id: 2, from: "지은", to: tme.myName, mon: mon(282, 36, 521, shiny: true), want: nil, at: at - 20 * 3600, state: "open"), "지은", me),
                    (TradeOffer(id: 3, from: tme.myName, to: "도윤", mon: tme.state.box[0], want: mon(448, 50, 522), at: at - 600, state: "open"), me, "도윤")]
     tme.cloud!.tradesDue = true; drain(tme)
-    take("menu_team_trades", tme) { v in v.screen = .menu(menuAt("팀")) }
+    take("menu_team_trades", tme) { v in v.screen = .menu(menuAt("친구")) }
     take("team_card_trade", tme) { v in v.screen = .team(sel: 0, tab: 0, card: true) }
     take("trade_list", tme) { v in v.screen = .trade(.list(0)) }
     take("trade_offer_in", tme) { v in v.screen = .trade(.offer(id: 1, act: nil)) }
@@ -123,6 +123,44 @@ import AppKit
     take("raid_balls_left", rme) { v in v.screen = .raid(tab: 0) }
     rsrv.raidCaught.insert(rme.myName.lowercased()); rme.cloud!.raidDue = true; drain(rme); drain(rme)
     take("raid_caught", rme) { v in v.screen = .raid(tab: 0) }
+    // 3.5 (12 §2.4 · 3.3): 친구, the 교환 게시판
+    let fsrv = FakeCloud(), fme = online({ var s = base(); s.seen = Array(1...151); s.owned = Array(1...60)
+        var r = Seeded(s: 61); s.box = (0..<20).map { k in Mon.wild([19, 41, 133, 147, 4, 1, 95, 129, 16, 25][k % 10], level: 5 + k, shiny: k == 3 ? true : nil, &r) }; return s }(), server: fsrv)
+    take("friends_empty", fme) { v in v.cloud!.teamDue = true; drain(v); v.screen = .team(sel: 0, tab: 0, card: false) }
+    for (k, m) in mates.prefix(6).enumerated() {
+        var w = Walk(), r = Seeded(s: UInt64(k + 30)); w.companion = Mon.wild(m.1, level: m.2, &r); w.today = m.3; w.owned = Array(1...m.4)
+        w.box = [Mon.wild([94, 6, 149, 130, 65, 68][k], level: 30 + k, shiny: k == 1 ? true : nil, &r)]; w.box[0].uid = 900 + k
+        fsrv.add(m.0, w); fsrv.lastAct[m.0] = m.6 ? Date() : Date().addingTimeInterval(-3600)
+        if k < 4 { fsrv.befriend(fme.myName, m.0) }
+    }
+    fsrv.friendAsks[fme.myName.lowercased()] = ["현우", "유나"]; fsrv.friendAsks["트레이너긴이름"] = [fme.myName.lowercased()]
+    fsrv.add("트레이너긴이름", Walk())
+    fme.cloud!.teamDue = true; drain(fme); drain(fme)
+    take("menu_friends", fme) { v in v.screen = .menu(menuAt("친구")) }
+    take("menu_market", fme) { v in v.screen = .menu(menuAt("교환")) }
+    take("friends_list", fme) { v in v.screen = .team(sel: 0, tab: 0, card: false) }
+    take("friends_requests", fme) { v in v.screen = .team(sel: 0, tab: 4, card: false) }
+    take("friends_card", fme) { v in let i = v.teamRows(0).firstIndex { !v.isMe($0.card) } ?? 0; v.screen = .team(sel: i, tab: 0, card: true) }
+    let tsF = Int(Date().timeIntervalSince1970), meK = fme.myName.lowercased()
+    func lst(_ id: Int, _ who: String, _ m: Mon, _ wish: [Int], _ ago: Int) -> (l: Listing, key: String, open: Bool) { (Listing(id: id, from: who, mon: m, wish: wish, at: tsF - ago, bids: 0, mine: false), who.lowercased(), true) }
+    fsrv.listings = [lst(1, "민수", fsrv.walk("민수")!.box[0], [25, 133, 6], 50_000), lst(2, "지은", fsrv.walk("지은")!.box[0], [], 9000),
+                     lst(3, fme.myName, fme.state.box[2], [94, 149], 7200), lst(4, "도윤", fsrv.walk("도윤")!.box[0], [1], 600), lst(5, fme.myName, fme.state.box[5], [], 300)]
+    fsrv.listings[2].key = meK; fsrv.listings[4].key = meK
+    fsrv.bids = [(Bid(id: 1, listing: 3, from: "민수", mon: fsrv.walk("민수")!.box[0], at: tsF - 3000, state: "open"), "민수", meK),
+                 (Bid(id: 2, listing: 3, from: "서연", mon: fsrv.walk("서연")!.box[0], at: tsF - 900, state: "open"), "서연", meK),
+                 (Bid(id: 3, listing: 1, from: fme.myName, mon: fme.state.box[7], at: tsF - 600, state: "open"), meK, "민수")]
+    fme.cloud!.marketDue = true; drain(fme); drain(fme)
+    take("market_all", fme) { v in v.screen = .market(.board(tab: 0, sel: 0)) }
+    take("market_mine", fme) { v in v.screen = .market(.board(tab: 1, sel: 0)) }
+    take("market_bids", fme) { v in v.screen = .market(.board(tab: 2, sel: 0)) }
+    take("market_post_other", fme) { v in v.screen = .market(.post(id: 4, sel: nil)) }
+    take("market_post_bid", fme) { v in v.screen = .market(.post(id: 1, sel: nil)) }
+    take("market_post_mine", fme) { v in v.screen = .market(.post(id: 3, sel: nil)) }
+    take("market_post_mine_pick", fme) { v in v.screen = .market(.post(id: 3, sel: 1)) }
+    take("market_post_mine_none", fme) { v in v.screen = .market(.post(id: 5, sel: nil)) }
+    take("market_pick_post", fme) { v in v.screen = .market(.pick(MarketPick(give: v.myTradeBox[4].uid, side: 0, at: 4))) }
+    take("market_pick_wish", fme) { v in v.screen = .market(.pick(MarketPick(give: v.myTradeBox[4].uid, wish: [25, 133, 6], side: 1, at: 5))) }
+    take("market_pick_bid", fme) { v in v.screen = .market(.pick(MarketPick(listing: 4, give: v.myTradeBox[3].uid, side: 0, at: 3))) }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
     return n

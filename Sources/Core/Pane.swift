@@ -101,16 +101,17 @@ struct TeamModel: Equatable {
     struct Row: Equatable { var rank: Int?; var name: String; var dex: Int; var shiny: Bool; var value: String; var walking: Bool; var me: Bool }
     static let perPage = 6
     var tabs: [String]; var tab: Int; var rows: [Row]; var sel, first, count: Int; var note: String; var week: String
+    var hint: String? = nil                                            // under the rows (no friends yet: how to add one)
 }
 /// A teammate's card: the walker's three, a few lines, and 인사하기 (nil: it's us).
 struct TeamCardModel: Equatable {
     struct Mini: Equatable { var dex, level: Int; var shiny: Bool }
     struct Line: Equatable { var key, value: String }
     var name: String; var me, walking: Bool; var when: String; var walker: [Mini]; var lines: [Line]; var greet: String?
-    var trade = false                                                  // 교환 신청 beside 인사하기 (a teammate's card)
+    var remove = false                                                 // 친구 끊기 beside 인사하기 (a friend's card)
 }
 /// 교환 (12 §3): a Pokémon in an offer as its tile shows it; dex nil = none (name says what goes there instead: 아무거나, 골라 주세요).
-struct TradeSlot: Equatable { var label: String; var dex: Int? = nil; var level = 0; var shiny = false; var name: String; var v = 0 }
+struct TradeSlot: Equatable { var label: String; var dex: Int? = nil; var level = 0; var shiny = false; var name: String; var v = 0; var more: [Int] = [] }   // more: the 게시판's wished species after the first
 /// 교환's list (팀's 교환 tab): a page of the open offers — to me (whose, for what), then mine (to whom) — the pager, a note.
 struct TradeListModel: Equatable {
     struct Row: Equatable { var mine: Bool; var line: String; var sub: String; var dex: Int; var shiny: Bool }
@@ -126,6 +127,26 @@ struct TradePickModel: Equatable {
     var title, note: String; var mine, theirs: TradeSlot; var side: Int; var fixed: Bool   // fixed: theirs is set (answering)
     var boxTitle: String; var cells: [GridModel.Cell]; var sel, picked: Int?; var first, count: Int; var empty: String
     var any: Bool?; var go: String?; var hint: String; var bob: Bool
+    var marks: [Int] = []                                              // cells marked too (the 게시판's wished species)
+    var base = 6100                                                    // its click codes: 교환's 6100s, the 게시판's 8100s
+}
+/// 친구's 신청 tab (12 §2.4): requests to me (수락 · 거절), mine out (거두기), a page at a time; 친구 신청 by ID.
+struct FriendReqModel: Equatable {
+    struct Row: Equatable { var name: String; var mine: Bool }
+    static let perPage = 6
+    var tabs: [String]; var rows: [Row]; var first, count: Int; var note: String; var friends: Int
+}
+/// The 교환 게시판 (12 §3.3): 전체 · 내 글 · 내 제안, a page of rows (its Pokémon, a line, a subline, a pill), 글 올리기.
+struct MarketBoardModel: Equatable {
+    struct Row: Equatable { var dex: Int; var shiny: Bool; var line, sub: String; var pill: String?; var tint: Int }   // tint: 0 grey, 1 green (offers for me), 2 blue (mine)
+    static let perPage = 6
+    var tabs: [String]; var tab: Int; var rows: [Row]; var sel, first, count: Int; var note: String; var empty: String; var post: String?   // post: 글 올리기 (nil: 3 up)
+}
+/// One post in full: its Pokémon and the species wished for; another's: the Pokémon's page body and 제안 (or my offer, 거두기);
+/// mine: the offers on it (the picked one ringed) and 이 제안으로 교환 · 글 내리기.
+struct MarketPostModel: Equatable {
+    struct Offer: Equatable { var dex: Int; var shiny: Bool; var line, sub: String }
+    var title, note: String; var mon, wish: TradeSlot; var body: MonModel?; var offers: [Offer]; var sel: Int?; var buttons: [String]; var strong: Int?
 }
 /// 레이드 (12 §4): this week's boss, the team's HP, my power (3 칸), a tab of rows (기여 순위: rank, name, damage and share; 최근 공격: the
 /// fight's lead, name, damage, when), the button (도전 / 볼 던지기; nil: not now — hint says why).
@@ -146,13 +167,14 @@ struct PaneContent: Equatable {
     var team: TeamModel? = nil, teamCard: TeamCardModel? = nil
     var trades: TradeListModel? = nil, offer: TradeOfferModel? = nil, pick: TradePickModel? = nil
     var raid: RaidModel? = nil
+    var friendReqs: FriendReqModel? = nil, board: MarketBoardModel? = nil, post: MarketPostModel? = nil
 }
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
     static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 406 : menu != nil ? 354
-            : team != nil ? 446 : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464
+            : team != nil ? 446 : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? 446 : board != nil ? 446 : post != nil ? 482
             : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 353 : status != nil ? 354 : Layout.idle
     }
 }

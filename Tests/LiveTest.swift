@@ -309,3 +309,88 @@ import Foundation
     print(failed == 0 ? "PASS live raid" : "FAIL \(failed)")
     return failed == 0
 }
+
+/// `PokeWalker --live-social <idA> <idB> <pin>` (a dev build only): docs/plans/12 §2.4 and §3.3 against the real server, through the walker's own
+/// pages. Two zz IDs the admin seeded (A's box: 고우스트 and 꼬렛, 윤겔라 seen; B's: 윤겔라 and 잉어킹). A asks B by ID, B accepts on its 신청 tab,
+/// each lists the other, A greets B; A puts 고우스트 up wishing for 윤겔라, B offers 윤겔라 from the post's page, A picks it (both evolve by trade
+/// at their new trainers); B puts 잉어킹 up, A offers 꼬렛 and takes it back, B hears it and takes its post down; A unfriends B.
+@MainActor func liveSocialTest(_ a: String, _ b: String, _ pin: String) -> Bool {
+    var failed = 0
+    func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-livesocial-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    func walker(_ id: String) -> (Walker, Cloud, TestHost) {                                        // (the host comes back: the walker holds it weakly)
+        let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
+        let c = Cloud(link: HTTPLink(), dir: tmp.appendingPathComponent(id, isDirectory: true))
+        h.texts = [id]; h.pins = [pin, pin, pin]
+        w.startCloud(c, file: tmp.appendingPathComponent(id + ".json"), bak: tmp.appendingPathComponent(id + ".bak"))
+        return (w, c, h)
+    }
+    let (wa, ca, ha) = walker(a), (wb, cb, hb) = walker(b)
+    @discardableResult func run(_ secs: Double, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end { wa.tick(Date()); wb.tick(Date()); if done() { return true }; Thread.sleep(forTimeInterval: 0.1) }
+        return done()
+    }
+    func idle(_ c: Cloud) -> Bool { c.inFlight == nil && c.queued == nil && c.out == nil }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func settle(_ w: Walker, _ c: Cloud) { run(15) { w.waiting == nil && idle(c) } }
+    /// Its next act (steps): what came for it, the first of it on the LCD.
+    func next(_ w: Walker, _ c: Cloud, until: () -> Bool) -> Bool { w.news = []; w.screen = .home; c.addSteps(2); c.saveNow(); return run(25, until: until) }
+    func lists(_ w: Walker, _ c: Cloud) { c.teamDue = true; c.marketDue = true; run(15) { !c.teamDue && !c.marketDue && idle(c) }; run(2) { false } }
+    check(run(40) { ca.phase == .on && cb.phase == .on && ca.base != nil && cb.base != nil }, "live social: \(a) and \(b) logged in (\(ha.asked), \(hb.asked))")
+    let seeded = wa.state.box.contains { $0.dex == 93 } && wa.state.box.contains { $0.dex == 19 } && wb.state.box.contains { $0.dex == 64 } && wb.state.box.contains { $0.dex == 129 }
+    check(seeded, "live social: the boxes as seeded — A \(wa.state.box.map(\.dex)), B \(wb.state.box.map(\.dex))")
+    guard seeded else { print("FAIL \(failed)"); return false }
+
+    // 친구
+    wa.screen = .menu(menuAt("친구")); wa.press(1); settle(wa, ca); wa.pageTap(6004); ha.texts = [b]; wa.pageTap(6240); settle(wa, ca)
+    check(says(wa) == [josa(b, "에게", "에게"), "친구 신청을 했다!"], "live friendRequest: A asks B by ID — \(says(wa))")
+    let asked = next(wb, cb) { says(wb).first == josa(a, "이", "가") + " 친구 신청을 했다!" }
+    wb.press(1); lists(wb, cb); let row = wb.friendReqRows.first
+    wb.screen = .team(sel: 0, tab: 4, card: false); wb.pageTap(6200); settle(wb, cb)
+    check(asked && row?.name.lowercased() == a.lowercased() && row?.mine == false, "live: B's next act brings the request; its 신청 tab has it; 수락")
+    let added = next(wa, ca) { says(wa).first == josa(b, "과", "와") + " 친구가 되었다!" }
+    lists(wa, ca); lists(wb, cb)
+    check(added && wa.teamRows(0).count == 2 && wb.teamRows(0).count == 2, "live friendAdded: A hears it; each lists the other (\(wa.teamRows(0).count), \(wb.teamRows(0).count))")
+    wa.screen = .home; wa.greet(b, back: .home); settle(wa, ca)
+    check(says(wa).last == "인사했다! ♥", "live 인사 to a friend — \(says(wa))")
+
+    // the 게시판: A puts 고우스트 up wishing for 윤겔라; B offers 윤겔라; A picks it
+    wa.screen = .menu(menuAt("교환")); wa.press(1); settle(wa, ca); lists(wa, ca); wa.pageTap(8030)
+    if case .market(.pick(var p)) = wa.screen, let k = wa.myTradeBox.firstIndex(where: { $0.dex == 93 }) {
+        p.give = wa.myTradeBox[k].uid; p.wish = [64]; wa.screen = .market(.pick(p)); wa.pageTap(8190); settle(wa, ca)
+    }
+    lists(wa, ca); let post = wa.myPosts.first
+    check(says(wa) == ["게시판에", "글을 올렸다!"] && post?.mon.dex == 93 && post?.wish == [64], "live marketList: 고우스트 up, wishing 윤겔라 (id \(post?.id ?? -1))")
+    lists(wb, cb); let seen = wb.market?.listings.first { $0.id == post?.id }
+    if let id = seen?.id { wb.screen = .market(.post(id: id, sel: nil)); wb.pageTap(8130) }
+    if case .market(.pick(var p)) = wb.screen, let m = wb.myTradeBox.first(where: { $0.dex == 64 }) { p.give = m.uid; wb.screen = .market(.pick(p)); wb.pageTap(8190); settle(wb, cb) }
+    check(seen != nil && says(wb).first == "교환을 제안했다!", "live marketBid: B sees the post and offers 윤겔라 — \(says(wb))")
+    let bidHeard = next(wa, ca) { says(wa).first == josa(b, "이", "가") + " 교환을 제안했다!" }
+    wa.press(1); lists(wa, ca)
+    if let id = post?.id { wa.screen = .market(.post(id: id, sel: 0)); wa.pageTap(8130); run(20) { wa.waiting == nil && idle(ca) && { if case .traded = wa.screen { return true }; return false }() } }
+    let show: Bool = { if case .traded(let g, let got, _, _) = wa.screen { return g.dex == 93 && got.dex == 64 }; return false }()
+    run(10) { if case .evolve = wa.screen { return true }; return false }
+    check(bidHeard && show && wa.state.box.contains { $0.dex == 65 }, "live marketAccept: A hears the offer, picks it — the trade's show, 윤겔라 → 후딘 at A (A \(wa.state.box.map(\.dex)))")
+    let gotGengar = next(wb, cb) { wb.state.box.contains { $0.dex == 94 } }
+    check(gotGengar, "live: B's next act brings its save — 고우스트 → 팬텀 at B (B \(wb.state.box.map(\.dex)))")
+
+    // B puts 잉어킹 up; A offers 꼬렛 and takes it back; B takes the post down
+    wb.screen = .home; wb.act(.marketList(give: wb.state.box.first { $0.dex == 129 }?.uid ?? -1, wish: []), back: .home); settle(wb, cb); lists(wb, cb)
+    let p2 = wb.myPosts.first?.id ?? -1; lists(wa, ca)
+    wa.screen = .home; wa.act(.marketBid(listing: p2, give: wa.state.box.first { $0.dex == 19 }?.uid ?? -1), back: .home); settle(wa, ca); lists(wa, ca)
+    wa.screen = .market(.post(id: p2, sel: nil)); wa.pageTap(8130); settle(wa, ca)
+    let took = says(wa) == ["제안을 거뒀다"]
+    _ = next(wb, cb) { says(wb).last == "제안을 거뒀어요" }
+    let told = says(wb).last == "제안을 거뒀어요"
+    lists(wb, cb); wb.screen = .market(.post(id: p2, sel: nil)); wb.pageTap(8131); settle(wb, cb); lists(wb, cb)
+    check(took && told && says(wb) == ["글을 내렸다"] && wb.myPosts.isEmpty, "live 제안 거두기 (B hears 제안을 거뒀어요) and 글 내리기 — \(says(wb))")
+
+    // A unfriends B
+    lists(wa, ca); let bi = wa.teamRows(0).firstIndex { !wa.isMe($0.card) } ?? 0
+    wa.screen = .team(sel: bi, tab: 0, card: true); wa.pageTap(6031); settle(wa, ca); lists(wa, ca)
+    check(says(wa).last == "끊었다" && wa.teamRows(0).count == 1, "live friendRemove: 친구 끊기 → only me on A's list")
+    print(failed == 0 ? "PASS live social" : "FAIL \(failed)")
+    return failed == 0
+}

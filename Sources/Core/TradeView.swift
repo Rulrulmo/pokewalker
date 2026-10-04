@@ -27,7 +27,7 @@ extension Walker {
     /// Box Pokémon of mine already in an offer of mine (the server takes each in one at a time).
     var offeredUIDs: Set<Int> { Set((cloud?.trades?.outgoing ?? []).compactMap(\.mon.uid)) }
     /// The 팀 tabs as shown: 교환's with how many wait for me.
-    var teamTabLabels: [String] { Array(Walker.teamTabs.dropLast()) + [tradesIn > 0 ? "교환 \(tradesIn)" : "교환"] }
+    var teamTabLabels: [String] { Array(Walker.teamTabs.dropLast()) + [friendRequestsIn > 0 ? "신청 \(friendRequestsIn)" : "신청"] }
     static func isTrade(_ a: Act) -> Bool { switch a { case .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel: true; default: false } }
     func monLine(_ m: Mon) -> String { (m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)" }
     /// What's left of an offer's day.
@@ -186,7 +186,7 @@ extension Walker {
     /// ↩: an offer → the list; making one → the teammate's card; answering → its offer; the list → the menu.
     func tradeBack(_ s: TradeStep) -> Screen {
         switch s {
-        case .list: return .menu(menuAt("팀"))
+        case .list: return .menu(menuAt("친구"))
         case .offer(let id, _): return .trade(.list(tradeRows.firstIndex { $0.id == id } ?? 0))
         case .pick(let p):
             if let id = p.offer { return .trade(.offer(id: id, act: nil)) }
@@ -282,7 +282,7 @@ extension Walker {
 
     // MARK: home: the news
     func tradeNews(_ n: News, _ now: Date) {
-        cloud?.tradesDue = true
+        cloud?.tradesDue = true; cloud?.marketDue = true                                           // (the 게시판's results come as these too: id = the post)
         switch n {
         case .tradeOffer(let id, let from, let m, let want):
             if news.contains(where: { if case .tradeClosed(id, _, _) = $0 { return true }; return false }) { return }   // taken back already: its close says so

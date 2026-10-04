@@ -48,7 +48,7 @@ final class CloudInbox: @unchecked Sendable {
     /// The PIN the server wants (docs/plans/10 §3): this trainer's (wrong: the last one wasn't), a new one (a 2.0 ID has none yet), or none for a while (too many wrong).
     enum PinAsk: Equatable { case enter(wrong: Bool), set, locked(until: Date) }
     /// A request out, kept to read its reply by: an act carries its seq.
-    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, legacy, setPin, act(Int), team, trades, box(String), raid }
+    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, legacy, setPin, act(Int), team, trades, box(String), raid, market }
     /// This PC's, in cloud.json next to the save: the ID as typed, the server's session, a random id made once, whether the 1.x save went up, the
     /// server's trust token for this PC (the PIN goes in once a PC: 10 §3), and steps walked here that haven't gone up yet (a quit while offline).
     struct Seat: Codable, Equatable { var trainerID: String? = nil, session: String? = nil, device: String? = nil, legacyUploaded: Bool? = nil, trust: String? = nil, steps: Int? = nil }
@@ -84,6 +84,8 @@ final class CloudInbox: @unchecked Sendable {
     private(set) var boxDue: String? = nil, boxGone: String? = nil          // whose box to fetch; one the server doesn't have (gone, or not on 3.0)
     // 12 (M3): the week's raid as the server last told it (a read)
     private(set) var raid: RaidReply? = nil; var raidDue = false
+    // 12 §3.3 (3.5): the 교환 게시판 as the server last listed it (a read)
+    private(set) var market: MarketReply? = nil; var marketDue = false
     // a tower run through a new session (docs/plans/12's note): the login says whether one goes on; nil = a server that doesn't keep them
     private(set) var keepsRuns = false; var towerCarried: Bool? = nil
     var deviceName: String { String(appDeviceName.prefix(64)) }
@@ -162,10 +164,11 @@ final class CloudInbox: @unchecked Sendable {
         if let a = queued { queued = nil; sendAct(a, now); return }
         if legacy != nil, seat.legacyUploaded != true { send(.legacy); return }
         if unsent > 0 || base == nil, now >= stepsAt { sendAct(.steps, now); return }           // (no save yet: a new trainer's comes with its first act)
-        if base != nil, teamDue || teamAt.map({ now.timeIntervalSince($0) > Cloud.teamEvery }) ?? true { teamDue = false; teamAt = teamAt ?? now; tradesDue = true; raidDue = true; send(.team); return }   // (every 3 minutes: who's walking now; the offers after it)
+        if base != nil, teamDue || teamAt.map({ now.timeIntervalSince($0) > Cloud.teamEvery }) ?? true { teamDue = false; teamAt = teamAt ?? now; tradesDue = true; raidDue = true; marketDue = true; send(.team); return }   // (every 3 minutes: who's walking now; the offers after it)
         if base != nil, tradesDue { tradesDue = false; send(.trades); return }
         if base != nil, let b = boxDue { boxDue = nil; send(.box(b)); return }
-        if base != nil, raidDue { raidDue = false; send(.raid) }
+        if base != nil, raidDue { raidDue = false; send(.raid); return }
+        if base != nil, marketDue { marketDue = false; send(.market) }
     }
     /// Quitting: the steps go up (after the act out), waiting at most `timeout`. The reply comes on URLSession's queue, so the main thread can wait.
     func flush(timeout: TimeInterval = 2) {
@@ -206,6 +209,7 @@ final class CloudInbox: @unchecked Sendable {
         case .setPin: post(a, "v1/pin", json(["id": id, "session": seat.session ?? "", "pin": pendingPIN ?? ""]))
         case .legacy: post(a, "v1/legacy", json(["id": id, "device": device, "walk": legacy ?? ""]))
         case .team: post(a, "v2/team", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
+        case .market: post(a, "v2/market", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .raid: post(a, "v2/raid", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .trades: post(a, "v2/trades", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .box(let of): post(a, "v2/box", (try? JSONEncoder().encode(BoxReq(id: id, session: seat.session ?? "", of: of))) ?? Data())
@@ -248,9 +252,10 @@ final class CloudInbox: @unchecked Sendable {
             case (.box(let of), 200):
                 if let r = try? JSONDecoder().decode(BoxReply.self, from: body) { box = r; tradesNews = true } else { boxGone = of }
             case (.raid, 200): if let r = try? JSONDecoder().decode(RaidReply.self, from: body) { raid = r; tradesNews = true }
+            case (.market, 200): if let r = try? JSONDecoder().decode(MarketReply.self, from: body) { market = r; tradesNews = true }
             case (.box(let of), 404): boxGone = of; tradesNews = true                              // theirs isn't there (ours being gone: the next act says so)
-            case (.team, 409), (.trades, 409), (.box, 409), (.raid, 409): if j["reason"] as? String == "replaced" { drop(); phase = .replaced }
-            case (.team, 403), (.trades, 403), (.box, 403), (.raid, 403): if j["error"] as? String == "pin_needed" { phase = .pin(.set) }
+            case (.team, 409), (.trades, 409), (.box, 409), (.raid, 409), (.market, 409): if j["reason"] as? String == "replaced" { drop(); phase = .replaced }
+            case (.team, 403), (.trades, 403), (.box, 403), (.raid, 403), (.market, 403): if j["error"] as? String == "pin_needed" { phase = .pin(.set) }
             case (_, 426): phase = .oldApp; NSLog("pokewalker: cloud: the server wants app %@ (this is %@)", j["need"] as? String ?? "?", appVersion)
             case (.login(_, let resume), 200): loggedIn(j, resume: resume, now)
             case (.create, 200) where j["session"] is String:
@@ -275,7 +280,7 @@ final class CloudInbox: @unchecked Sendable {
                 switch a {
                 case .login, .create: asking = a
                 case .legacy: legacy = nil
-                case .team, .trades, .box, .raid: break                                             // (again in 3 minutes; a box when asked again)
+                case .team, .trades, .box, .raid, .market: break                                             // (again in 3 minutes; a box when asked again)
                 case .act: if let o = out { answers.append((o.act, nil)) }; out = nil; sending = 0   // not one the server will take: dropped
                 case .setPin: pendingPIN = nil; phase = .pin(.set)
                 }
@@ -306,7 +311,7 @@ final class CloudInbox: @unchecked Sendable {
         case .login(_, true): phase = .replaced                                               // 여기서 계속 again, once it's back
         case .login where seat.session != nil && base != nil: phase = .on; asking = a          // played here before: steps pile up, acts wait for the server
         case .login, .create: asking = a
-        case .legacy, .team, .trades, .box, .raid: break
+        case .legacy, .team, .trades, .box, .raid, .market: break
         case .setPin: phase = .pin(.set)                                                        // the button again, once it's back
         case .act: if let o = out { answers.append((o.act, nil)) }; if let q = queued { answers.append((q, nil)); queued = nil }
         }
@@ -528,7 +533,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if down { done(0, Data()); return }
         if let h = html { done(h, Data("<html><body>Bad gateway</body></html>".utf8)); return }          // Cloudflare's own: the server never saw it
         var (s, d): (Int, Data)
-        if path == "v2/act" { (s, d) = act(json) } else if path == "v2/team" { (s, d) = team(json) } else if path == "v2/trades" { (s, d) = trades(json) } else if path == "v2/box" { (s, d) = box(json) } else if path == "v2/raid" { (s, d) = raidLobby(json) }
+        if path == "v2/act" { (s, d) = act(json) } else if path == "v2/team" { (s, d) = team(json) } else if path == "v2/trades" { (s, d) = trades(json) } else if path == "v2/box" { (s, d) = box(json) } else if path == "v2/raid" { (s, d) = raidLobby(json) } else if path == "v2/market" { (s, d) = marketBoard(json) }
         else { let (st, body) = answer(path, (try? JSONSerialization.jsonObject(with: json)) as? [String: Any] ?? [:]); (s, d) = (st, (try? JSONSerialization.data(withJSONObject: body)) ?? Data()) }
         if lose { lose = false; s = 0; d = Data() }
         let st = s, dd = d
@@ -552,13 +557,15 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         var o = Engine.apply(q.act, steps: taken, walk: &w, play: &r.play, rng: &rng, now: now ?? Date(), ids: &ids)
         nextUID = ids.next; acts.append(q.act); steps.append(q.steps ?? 0); clock += 1; lastAct[id.key] = now ?? Date()
         if case .greet(let to) = q.act, o.cannot == nil {                                                  // 12 §2.3: into their inbox, once an hour a pair
-            if let t = trainerID(to), t.key != id.key, rows[t.key]?.walk != nil {
+            if let t = trainerID(to), t.key != id.key, rows[t.key]?.walk != nil, !isFriend(id.key, t.key) { o = .no("친구에게만\n인사할 수 있어요") }
+            else if let t = trainerID(to), t.key != id.key, rows[t.key]?.walk != nil {
                 let pair = id.key + ">" + t.key
                 if let g = greeted[pair], (now ?? Date()).timeIntervalSince(g) < 3600 { o = .no("조금 뒤에 다시\n인사할 수 있어요") }
                 else { greeted[pair] = now ?? Date(); inbox[t.key, default: []].append(.hello(from: r.name, dex: w.companion.dex, shiny: w.companion.shiny == true)) }
             } else { o = .no("인사할 수 없는\n트레이너예요") }
         }
         raided(q.act, id.key, r.name, &w, &o)
+        if o.cannot == nil, let why = social(q.act, id.key, r.name, &w, &o.news) { o.cannot = why } else if case .marketAccept = q.act, o.cannot == nil { o.changed = true }
         if o.cannot == nil, let why = trade(q.act, id.key, r.name, &w, &o.news) { o.cannot = why } else if case .tradeAccept = q.act, o.cannot == nil { o.changed = true }
         if let a = q.app, verCmp(a, "3.2").map({ $0 >= 0 }) == true, let mail = inbox.removeValue(forKey: id.key) { o.news += mail }   // (3.2 on: hello)
         if let a = q.app, verCmp(a, "3.3").map({ $0 >= 0 }) == true, let m = mail.removeValue(forKey: id.key) { o.news += m }        // (3.3 on: 교환's)
@@ -575,10 +582,11 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if pins, r.pin == nil { return err(403, ["error": "pin_needed"]) }
         let at = now ?? Date()
         let cards = rows.keys.sorted().compactMap { k -> TeamCard? in
-            guard let row = rows[k], let w = row.walk.flatMap(Cloud.walk) else { return nil }
+            guard k == id.key || isFriend(id.key, k), let row = rows[k], let w = row.walk.flatMap(Cloud.walk) else { return nil }   // 3.5: me and my friends
             return TeamCard(name: row.name, walk: w, today: w.today, week: w.today, idle: lastAct[k].map { Int(at.timeIntervalSince($0)) } ?? 999_999)
         }
-        return (200, (try? JSONEncoder().encode(TeamReply(week: "2026-W40", cards: cards))) ?? Data())
+        let asked = (friendAsks[id.key] ?? []).sorted().compactMap { rows[$0]?.name }, sent = friendAsks.filter { $0.value.contains(id.key) }.keys.sorted().compactMap { rows[$0]?.name }
+        return (200, (try? JSONEncoder().encode(TeamReply(week: "2026-W40", cards: cards, requests: asked, sent: sent))) ?? Data())
     }
     /// 12 §3: 교환's acts on the acting trainer's save (w; its news), the other's save here (rev + 1, its next reply brings it). A reason = cannot.
     func trade(_ a: Act, _ key: String, _ name: String, _ w: inout Walk, _ news: inout [News]) -> String? {
@@ -603,29 +611,113 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         case .tradeAccept(let id, let giveRaw):
             guard let i = row(id), offers[i].to == key else { return "그 교환은 이제\n없어요" }
             let t = offers[i]
-            guard let give = t.o.want?.uid ?? giveRaw, let r = w.ref(uid: give), r >= 0 else { return t.o.want == nil ? "줄 포켓몬을\n골라 주세요" : "그 포켓몬이\n상자에 없어요" }
-            guard var theirs = rows[t.from]?.walk.flatMap(Cloud.walk), let u2 = t.o.mon.uid, let r2 = theirs.ref(uid: u2), r2 >= 0 else {
+            guard let give = t.o.want?.uid ?? giveRaw, w.ref(uid: give).map({ $0 >= 0 }) == true else { return t.o.want == nil ? "줄 포켓몬을\n골라 주세요" : "그 포켓몬이\n상자에 없어요" }
+            guard let theirs = rows[t.from]?.walk.flatMap(Cloud.walk), let u2 = t.o.mon.uid, theirs.ref(uid: u2).map({ $0 >= 0 }) == true else {
                 close(i, "failed"); mail[t.from, default: []].append(.tradeClosed(id: id, with: name, why: "포켓몬이 상자에 없어요")); return "상대 포켓몬이\n상자에 없어요"
             }
-            let mineOut = w.box.remove(at: r), theirsOut = theirs.box.remove(at: r2)
-            func receive(_ m0: Mon, _ giver: inout Walk, _ giverName: String, _ into: inout Walk) -> (Mon, [News]) {
-                var m = m0; m.uid = nextUID; nextUID += 1; m.ot = m.ot ?? giverName; _ = into.keep(m)
-                guard let e = Walk.tradeEvolution(of: m, giverBag: giver.items + giver.bag), let ref = into.ref(uid: m.uid!) else { return (m, []) }
-                if let item = e.item { _ = giver.take(item) }
-                into.evolve(Evo(from: e.from, to: e.to, way: e.way, level: e.level, item: nil, female: e.female, time: e.time, place: e.place, party: e.party), ref: ref, shed: false)
-                let after = into.mon(ref) ?? m; return (after, [.evolve(uid: m.uid!, from: m.dex, to: after.dex, shed: nil)])
-            }
-            let (got, gotNews) = receive(theirsOut, &theirs, t.o.from, &w), (sent, sentNews) = receive(mineOut, &w, name, &theirs)
             close(i, "done")
-            for k in offers.indices where offers[k].o.state == "open" && ((offers[k].from == key && offers[k].o.mon.uid == give) || (offers[k].from == t.from && offers[k].o.mon.uid == u2)) {
-                close(k, "failed"); mail[offers[k].from == key ? offers[k].to : offers[k].from, default: []].append(.tradeClosed(id: offers[k].o.id, with: name, why: "포켓몬이 교환됐어요"))
-            }
-            news += [.traded(id: id, with: t.o.from, gave: mineOut, got: got)] + gotNews
-            mail[t.from, default: []] += [.traded(id: id, with: name, gave: theirsOut, got: sent)] + sentNews
-            rows[t.from]?.rev += 1; rows[t.from]?.walk = FakeCloud.text(theirs); stale.insert(t.from)
+            _ = exchange(id: id, key, name, &w, mine: give, other: t.from, theirs: u2, &news)
         default: break
         }
         return nil
+    }
+    /// 12 §3.2: one of w's box (mine) for one of `other`'s (theirs), both saves at once — new uids, 어버이, a trade evolution at the receiver
+    /// (the item from the giver's bag). This side's news in `news`, the other's in its mail (its next reply brings its save); offers, posts and
+    /// bids with either Pokémon close. false: one isn't in its box.
+    func exchange(id: Int, _ key: String, _ name: String, _ w: inout Walk, mine: Int, other: String, theirs u2: Int, _ news: inout [News]) -> Bool {
+        guard let r = w.ref(uid: mine), r >= 0, var theirs = rows[other]?.walk.flatMap(Cloud.walk), let r2 = theirs.ref(uid: u2), r2 >= 0 else { return false }
+        let otherName = rows[other]?.name ?? other
+        let mineOut = w.box.remove(at: r), theirsOut = theirs.box.remove(at: r2)
+        func receive(_ m0: Mon, _ giver: inout Walk, _ giverName: String, _ into: inout Walk) -> (Mon, [News]) {
+            var m = m0; m.uid = nextUID; nextUID += 1; m.ot = m.ot ?? giverName; _ = into.keep(m)
+            guard let e = Walk.tradeEvolution(of: m, giverBag: giver.items + giver.bag), let ref = into.ref(uid: m.uid!) else { return (m, []) }
+            if let item = e.item { _ = giver.take(item) }
+            into.evolve(Evo(from: e.from, to: e.to, way: e.way, level: e.level, item: nil, female: e.female, time: e.time, place: e.place, party: e.party), ref: ref, shed: false)
+            let after = into.mon(ref) ?? m; return (after, [.evolve(uid: m.uid!, from: m.dex, to: after.dex, shed: nil)])
+        }
+        let (got, gotNews) = receive(theirsOut, &theirs, otherName, &w), (sent, sentNews) = receive(mineOut, &w, name, &theirs)
+        func moved(_ k: String, _ u: Int?) -> Bool { (k == key && u == mine) || (k == other && u == u2) }
+        for k in offers.indices where offers[k].o.state == "open" && moved(offers[k].from, offers[k].o.mon.uid) {
+            offers[k].o.state = "failed"; mail[offers[k].from == key ? offers[k].to : offers[k].from, default: []].append(.tradeClosed(id: offers[k].o.id, with: name, why: "포켓몬이 교환됐어요"))
+        }
+        for k in listings.indices where listings[k].open && moved(listings[k].key, listings[k].l.mon.uid) {
+            listings[k].open = false; for b in bids.indices where bids[b].b.listing == listings[k].l.id && bids[b].b.state == "open" { bids[b].b.state = "failed"; mail[bids[b].key, default: []].append(.tradeClosed(id: listings[k].l.id, with: name, why: "포켓몬이 교환됐어요")) }
+        }
+        for b in bids.indices where bids[b].b.state == "open" && moved(bids[b].key, bids[b].b.mon.uid) {
+            bids[b].b.state = "failed"; mail[bids[b].poster, default: []].append(.tradeClosed(id: bids[b].b.listing, with: name, why: "포켓몬이 교환됐어요"))
+        }
+        news += [.traded(id: id, with: otherName, gave: mineOut, got: got)] + gotNews
+        mail[other, default: []] += [.traded(id: id, with: name, gave: theirsOut, got: sent)] + sentNews
+        rows[other]?.rev += 1; rows[other]?.walk = FakeCloud.text(theirs); stale.insert(other)
+        return true
+    }
+    // 12 §2.4 (3.5): 친구 — pairs, requests (to → from)
+    var friends: Set<String> = [], friendAsks: [String: Set<String>] = [:]
+    static func pair(_ a: String, _ b: String) -> String { a < b ? a + "|" + b : b + "|" + a }
+    func befriend(_ a: String, _ b: String) { friends.insert(FakeCloud.pair(a.lowercased(), b.lowercased())) }
+    func isFriend(_ a: String, _ b: String) -> Bool { friends.contains(FakeCloud.pair(a, b)) }
+    // 12 §3.3 (3.5): the 교환 게시판 — posts (the poster's key, open), offers on them (the bidder's key, the poster's)
+    var listings: [(l: Listing, key: String, open: Bool)] = [], bids: [(b: Bid, key: String, poster: String)] = [], nextListing = 1, nextBid = 1
+    /// 친구 and the 게시판's acts (the server's: other trainers, the board), on the acting trainer's save (w) and its news. A reason = cannot.
+    func social(_ a: Act, _ key: String, _ name: String, _ w: inout Walk, _ news: inout [News]) -> String? {
+        let at = Int((now ?? Date()).timeIntervalSince1970)
+        func used(_ u: Int) -> Bool { listings.contains { $0.open && $0.key == key && $0.l.mon.uid == u } || bids.contains { $0.b.state == "open" && $0.key == key && $0.b.mon.uid == u } }
+        switch a {
+        case .friendRequest(let raw):
+            guard let t = trainerID(raw), t.key != key, let them = rows[t.key], them.walk != nil else { return "친구를 맺을 수 없는\n트레이너예요" }
+            if isFriend(key, t.key) { return "이미 친구예요" }
+            if friendAsks[t.key]?.contains(key) == true { return "이미 신청했어요" }
+            if friendAsks[key]?.remove(t.key) != nil { befriend(key, t.key); news.append(.friendAdded(name: them.name)); mail[t.key, default: []].append(.friendAdded(name: name)); return nil }   // they'd asked me: friends at once
+            friendAsks[t.key, default: []].insert(key); mail[t.key, default: []].append(.friendRequest(from: name))
+        case .friendAccept(let raw):
+            guard let f = trainerID(raw), friendAsks[key]?.remove(f.key) != nil else { return "그 신청은 이제\n없어요" }
+            befriend(key, f.key); mail[f.key, default: []].append(.friendAdded(name: name))
+        case .friendDecline(let raw):
+            guard let f = trainerID(raw), friendAsks[key]?.remove(f.key) != nil else { return "그 신청은 이제\n없어요" }
+        case .friendRemove(let raw):
+            guard let f = trainerID(raw) else { return "친구가 아니에요" }
+            if friendAsks[f.key]?.remove(key) != nil { return nil }                                       // my own request, taken back
+            guard friends.remove(FakeCloud.pair(key, f.key)) != nil else { return "친구가 아니에요" }
+        case .marketList(let give, let wish):
+            guard let r = w.ref(uid: give), r >= 0, let mon = w.mon(r) else { return "상자의 포켓몬만\n올릴 수 있어요" }
+            guard !used(give) else { return "이미 올리거나\n제안한 포켓몬이에요" }
+            guard listings.filter({ $0.open && $0.key == key }).count < 3 else { return "올린 글이\n너무 많아요 (3개)" }
+            listings.append((Listing(id: nextListing, from: name, mon: mon, wish: Array(wish.prefix(3)), at: at, bids: 0, mine: false), key, true)); nextListing += 1
+        case .marketUnlist(let id):
+            guard let i = listings.firstIndex(where: { $0.l.id == id && $0.open && $0.key == key }) else { return "그 글은 이제\n없어요" }
+            listings[i].open = false
+            for b in bids.indices where bids[b].b.listing == id && bids[b].b.state == "open" { bids[b].b.state = "declined"; mail[bids[b].key, default: []].append(.tradeClosed(id: id, with: name, why: "상대가 글을 내렸어요")) }
+        case .marketBid(let id, let give):
+            guard let i = listings.firstIndex(where: { $0.l.id == id && $0.open }) else { return "그 글은 이제\n없어요" }
+            guard listings[i].key != key else { return "내 글에는\n제안할 수 없어요" }
+            guard let r = w.ref(uid: give), r >= 0, let mon = w.mon(r) else { return "상자의 포켓몬만\n제안할 수 있어요" }
+            guard !used(give) else { return "이미 올리거나\n제안한 포켓몬이에요" }
+            guard !bids.contains(where: { $0.b.listing == id && $0.key == key && $0.b.state == "open" }) else { return "이 글에는 이미\n제안했어요" }
+            guard bids.filter({ $0.key == key && $0.b.state == "open" }).count < 5 else { return "걸어 둔 제안이\n너무 많아요 (5개)" }
+            bids.append((Bid(id: nextBid, listing: id, from: name, mon: mon, at: at, state: "open"), key, listings[i].key)); nextBid += 1
+            mail[listings[i].key, default: []].append(.marketBid(listing: id, from: name, mon: mon))
+        case .marketWithdraw(let id):
+            guard let b = bids.firstIndex(where: { $0.b.id == id && $0.key == key && $0.b.state == "open" }) else { return "그 제안은 이제\n없어요" }
+            bids[b].b.state = "cancelled"; mail[bids[b].poster, default: []].append(.tradeClosed(id: bids[b].b.listing, with: name, why: "제안을 거뒀어요"))
+        case .marketAccept(let id):
+            guard let b = bids.firstIndex(where: { $0.b.id == id && $0.poster == key && $0.b.state == "open" }), let i = listings.firstIndex(where: { $0.l.id == bids[b].b.listing && $0.open }) else { return "그 제안은 이제\n없어요" }
+            let post = listings[i], bid = bids[b]
+            guard let mine = post.l.mon.uid, w.ref(uid: mine).map({ $0 >= 0 }) == true else { listings[i].open = false; return "올린 포켓몬이\n상자에 없어요" }
+            listings[i].open = false; bids[b].b.state = "done"
+            for k in bids.indices where bids[k].b.listing == post.l.id && bids[k].b.state == "open" { bids[k].b.state = "declined"; mail[bids[k].key, default: []].append(.tradeClosed(id: post.l.id, with: name, why: "다른 제안이 선택됐어요")) }
+            guard let u2 = bid.b.mon.uid, exchange(id: post.l.id, key, name, &w, mine: mine, other: bid.key, theirs: u2, &news) else { return "상대 포켓몬이\n상자에 없어요" }
+        default: break
+        }
+        return nil
+    }
+    /// POST /v2/market: every open post (newest first), the offers on mine, mine on others'.
+    func marketBoard(_ d: Data) -> (Int, Data) {
+        guard let q = try? JSONDecoder().decode(TeamReq.self, from: d), let id = trainerID(q.id), let r = rows[id.key] else { return err(404, ["error": "no_trainer"]) }
+        guard q.session == r.session else { return err(409, ["error": "conflict", "reason": "replaced"]) }
+        let k = id.key, open = bids.filter { $0.b.state == "open" }
+        let ls = listings.filter(\.open).reversed().map { p -> Listing in var l = p.l; l.mine = p.key == k; l.bids = open.filter { $0.b.listing == p.l.id }.count; return l }
+        let reply = MarketReply(listings: Array(ls), offers: open.filter { $0.poster == k }.map(\.b), myBids: open.filter { $0.key == k }.map(\.b))
+        return (200, (try? JSONEncoder().encode(reply)) ?? Data())
     }
     /// 12 §4: a raid fight's end counted (its damage up to what's left; the team's clear told to every fighter — this one in its reply) and a ball.
     func raided(_ a: Act, _ key: String, _ name: String, _ w: inout Walk, _ o: inout Outcome) {
@@ -792,7 +884,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     vs.down = true; v.cloud!.addSteps(30); v.cloud!.saveNow(); v.tick(Date()); v.tick(Date())
     v.screen = .menu(menuAt("포켓 레이더")); let tiles = v.paneContent(Date()).menu?.rows ?? []; v.press(1)
     let refused = says(v) == Walker.offlineLines && v.waiting == nil, row = v.cloudMenuTitle
-    let dimmed = tiles.filter(\.off).map(\.name) == ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "팀", "레이드"] && tiles.first { $0.off }?.note == "연결되면 할 수 있어요"
+    let dimmed = tiles.filter(\.off).map(\.name) == ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드"] && tiles.first { $0.off }?.note == "연결되면 할 수 있어요"
     vs.down = false; v.tick(Date() + 121); drain(v)
     chk(refused && dimmed && row.hasSuffix("연결 안 됨 · 올릴 걸음 30") && served(v)?.total == 37 && v.cloud!.ahead == 0,
               "3.0 offline: what needs the server dimmed on the menu (연결되면 할 수 있어요), and says so at once; steps pile up (the right-click: 연결 안 됨 · 올릴 걸음 n); back, they go up", row)

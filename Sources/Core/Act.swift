@@ -32,6 +32,8 @@ extension Walker {
         if w != nil { waiting = nil }
         guard let r else { if let w { screen = .say(Walker.offlineLines, next: w.back, since: now) }; return }   // (an act out goes again by itself: its answer may still come, late)
         if Walker.isTrade(a) { cloud?.tradesDue = true }                                           // the offers changed (or weren't what we thought): asked again
+        if Walker.isMarket(a) { cloud?.marketDue = true }
+        switch a { case .friendRequest, .friendAccept, .friendDecline, .friendRemove: cloud?.teamDue = true; default: break }
         news += w?.quiet == true ? r.out.news.filter { if case .level = $0 { return false }; return true } : r.out.news
         if let why = r.out.cannot { if let w { screen = .say(why.components(separatedBy: "\n"), next: w.back, since: now) }; return }
         if let w { if let s = w.then(r.out, now) { screen = s }; return }
@@ -101,12 +103,8 @@ extension Walker {
             notify("pet", josa(from, "이", "가") + " 인사했어요 ♥", josa(monNames[dex], "과", "와") + " 함께 · 눌러서 답인사")
         case .tradeOffer, .traded, .tradeClosed: tradeNews(n, now)                                   // 교환 (12 §3): an offer come, one gone through or closed (Core/TradeView.swift)
         case .raidCleared(let dex): raidNews(dex, now)                                            // the co-op raid (12 §4.3): the team beat the boss (Core/RaidView.swift)
-        case .friendRequest(let from):                                                            // 친구 · 게시판 (12 §2.4 · 3.3; minimal: the UI is the Mac's)
-            screen = .say([josa(from, "이", "가") + " 친구 신청을 했다!"], next: .home, since: now); notify("pet", josa(from, "이", "가") + " 친구 신청을 했어요", "친구 화면에서 수락할 수 있어요")
-        case .friendAdded(let name): screen = .say([josa(name, "과", "와") + " 친구가 되었다!"], next: .home, since: now)
-        case .marketBid(_, let from, let m):
-            screen = .say([josa(from, "이", "가") + " 교환을 제안했다!", monNames[m.dex] + " Lv.\(m.level)"], next: .home, since: now)
-            notify("pet", josa(from, "이", "가") + " 교환을 제안했어요", monNames[m.dex] + " Lv.\(m.level)")
+        case .friendRequest, .friendAdded: friendNews(n, now)                                     // 친구 (12 §2.4): someone asked; it's mutual now (Core/TeamView.swift)
+        case .marketBid(let id, let from, let m): marketNews(id, from, m, now)                    // the 게시판 (12 §3.3): an offer on my post (Core/MarketView.swift)
         }
     }
 

@@ -144,6 +144,7 @@ extension Walker {
         case .team(let sel, let tab, _): teamLCD(&fb, sel, tab, now)
         case .trade(let s): tradeLCD(&fb, s, now)
         case .raid: raidLCD(&fb, now)
+        case .market(let s): marketLCD(&fb, s, now)
         case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
         case .card(let p):
             header(p == 0 ? cardTitle : ["트레이너 카드", "최근 7일", "알"][p])
@@ -297,7 +298,7 @@ extension Walker {
     /// A click on a page still up under its own message (산 뒤, 연승!, W가 부족하다 …): the message ends and the click counts.
     func throughSay() {
         guard case .say(_, let next, _) = screen else { return }
-        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade, .raid: screen = next; default: break }
+        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade, .raid, .market, .team: screen = next; default: break }
     }
     func gridTap(_ code: Int) {
         guard !frozen, waiting == nil else { return }
@@ -343,10 +344,11 @@ extension Walker {
         if case .team(let sel, let tab, let card) = sc { return teamPane(sel, tab, card) }
         if case .trade(let s) = sc { return tradePane(s, now) }
         if case .raid(let tab) = sc { return raidPane(tab, now) }
+        if case .market(let s) = sc { return marketPane(s, now) }
         if case .menu(let i) = sc {
-            let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "팀", "레이드"]   // offline: what needs the server, dimmed
+            let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드"]   // offline: what needs the server, dimmed
             let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
-            let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "팀": tradesIn > 0 ? "교환 신청 \(tradesIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "팀원 · 이번 주 순위 · 교환",
+            let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "친구": friendRequestsIn > 0 ? "친구 신청 \(friendRequestsIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "친구 · 이번 주 순위", "교환": marketNote,
                          "레이드": raidNote]
             return PaneContent(menu: MenuModel(rows: menuItems.map { off && needs.contains($0) ? .init(name: $0, note: "연결되면 할 수 있어요", off: true) : .init(name: $0, note: notes[$0] ?? "") }, sel: i))
         }
@@ -407,9 +409,15 @@ extension Walker {
         switch (screen, code) {
         case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
         case (.card, 5200...5202): screen = .card(code - 5200)
-        case (.team(let sel, _, _), 6000...6003): screen = .team(sel: code - 6000 == 0 ? sel : 0, tab: code - 6000, card: false)   // a tab (a rank tab from its top)
-        case (.team, 6004): cloud?.tradesDue = true; screen = .trade(.list(0))                    // 교환: the open offers (Core/TradeView.swift)
-        case (.team(let sel, let tab, true), 6031): if let c = teamRows(tab)[safe: sel]?.card { startTrade(c.name) }
+        case (.team(let sel, _, _), 6000...6004): screen = .team(sel: code - 6000 == 0 ? sel : 0, tab: code - 6000, card: false)   // a tab (a rank tab from its top; 4 = 신청)
+        case (.team(let sel, let tab, true), 6031): if let c = teamRows(tab)[safe: sel]?.card, !isMe(c) { unfriend(c.name) }   // 친구 끊기
+        case (.team(let sel, 4, false), 6200..<6216):                                             // 신청: 수락 (or 거두기, mine) · 거절
+            if let r = friendReqRows[safe: sel / FriendReqModel.perPage * FriendReqModel.perPage + (code - 6200) % 10] { friendReq(r, accept: code < 6210, Date()) }
+        case (.team(let sel, 4, false), 6230...6231):
+            let per = FriendReqModel.perPage, n = friendReqRows.count, pages = max(1, (n + per - 1) / per)
+            screen = .team(sel: min(max(0, n - 1), ((sel / per + (code == 6230 ? pages - 1 : 1)) % pages) * per), tab: 4, card: false)
+        case (.team(_, 4, false), 6240): askFriend()
+        case (.market, 8000...8199): marketTap(code, Date())
         case (.trade, 6000...6199): tradeTap(code, Date())
         case (.raid, 7000...7010): raidTap(code, Date())
         case (.team(let sel, let tab, _), 6010...6015):                                          // a row: the first click picks it, a click on the pick opens its card

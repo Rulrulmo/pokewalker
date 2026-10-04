@@ -163,8 +163,9 @@ import AppKit
     let ta = online({ var s = Walk(); s.companion = Mon(dex: 25, level: 30, female: false); s.today = 500; return s }(), server: tsv)
     let tb = online({ var s = Walk(); s.companion = Mon(dex: 6, level: 52, female: false); s.today = 900; return s }(), server: tsv)
     for k in 0..<12 { var w = Walk(); w.companion = Mon(dex: 16 + k, level: 10, female: false); w.today = 100 * k; w.owned = Array(1...(10 + k)); w.towerBest = k; tsv.add("팀원\(k)", w) }
+    for k in 0..<12 { tsv.befriend(ta.myName, "팀원\(k)") }; tsv.befriend(ta.myName, tb.myName)   // (3.5: the list is me and my friends)
     tb.cloud!.addSteps(3); tb.cloud!.saveNow(); drain(tb)                                         // tb acted just now: walking
-    ta.cloud!.teamDue = true; ta.screen = .menu(menuAt("팀")); ta.press(1); drain(ta)          // (its list from its login is under 10 s old: fetched again here)
+    ta.cloud!.teamDue = true; ta.screen = .menu(menuAt("친구")); ta.press(1); drain(ta)          // (its list from its login is under 10 s old: fetched again here)
     let tRows = ta.teamRows(0), ranks = ta.teamRows(2), opened: Bool = { if case .team(0, 0, false) = ta.screen { return true }; return false }()
     let bName = tb.myName, aName = ta.myName
     check(opened && tRows.first?.card.name.lowercased() == bName.lowercased() && tRows.count == 14 && ranks.count == 11 && ranks.last.map { ta.isMe($0.card) } == true && ranks.first?.rank == 1
@@ -209,14 +210,14 @@ import AppKit
     let tb = online({ var s = Walk(); s.companion = Mon(dex: 6, level: 52, female: false); s.bag = ["금속코트"]
                       s.box = [Mon(dex: 64, level: 20, female: false), Mon(dex: 95, level: 20, female: false), Mon(dex: 129, level: 10, female: false)]; return s }(), server: sv, host: hb)
     let aName = ta.myName, bName = tb.myName
-    act(tb); ta.cloud!.teamDue = true; drain(ta)
+    sv.befriend(aName, bName); act(tb); ta.cloud!.teamDue = true; drain(ta)
     let bi = ta.teamRows(0).firstIndex { $0.card.name.lowercased() == bName.lowercased() } ?? 0
     ta.screen = .team(sel: bi, tab: 0, card: true); let card = ta.paneContent(Date()).teamCard
-    ta.pageTap(6031); drain(ta)
-    let opened: Bool = { if case .trade(.pick(let p)) = ta.screen { return p.side == 1 && p.to == card?.name }; return false }()
+    ta.startTrade(bName); drain(ta)                                                              // (3.5: the 게시판 replaces 1:1 offers; their screens stay for offers sent from 3.4)
+    let opened: Bool = { if case .trade(.pick(let p)) = ta.screen { return p.side == 1 && p.to == bName }; return false }()
     let theirs = ta.pickList({ if case .trade(.pick(let p)) = ta.screen { return p }; return TradePick(to: bName) }())
-    check(card?.trade == true && opened && theirs.map(\.dex) == [64, 95, 129] && ta.paneContent(Date()).pick?.any == true,
-          "교환 신청 (a teammate's card) → their box, from the server (/v2/box), by number; 아무거나 on until one is picked", "\(String(describing: card?.trade)) \(opened) \(theirs.map(\.dex))")
+    check(card?.remove == true && opened && theirs.map(\.dex) == [64, 95, 129] && ta.paneContent(Date()).pick?.any == true,
+          "교환 신청 (a teammate's card) → their box, from the server (/v2/box), by number; 아무거나 on until one is picked", "\(String(describing: card?.remove)) \(opened) \(theirs.map(\.dex))")
     ta.pageTap(6150); let afterWant = ta.paneContent(Date()).pick
     let k = ta.myTradeBox.firstIndex { $0.dex == 93 } ?? 0; ta.pageTap(6150 + k); let ready = ta.paneContent(Date()).pick
     check(afterWant?.theirs.dex == 64 && afterWant?.side == 0 && afterWant?.go == nil && ready?.mine.dex == 93 && ready?.go == "교환 신청",
@@ -362,5 +363,89 @@ import AppKit
     check(notFought == "이번 주에 싸워야 잡을 수 있어요" && menuBack, "one who didn't fight this week can't throw; ↩ → the menu", "\(String(describing: notFought))")
     ra.screen = .raid(tab: 1); let recent = ra.paneContent(Date()).raid?.rows ?? []
     check(recent.count == 2 && recent.first?.value.hasPrefix("40 ·") == true && recent.allSatisfy { $0.dex != nil }, "최근 공격: the last fights (their lead, damage, when)", "\(recent)")
+    return c
+}
+
+/// 12 §2.4 · 3.3 (3.5): 친구 and the 교환 게시판 on one fake server — a request by ID (the box), its news and the 신청 tab (수락), the list
+/// then holding each other (and 인사 only to friends), a request taken back, 거절, 친구 끊기; a post with wished species, an offer on it from
+/// another's page, the poster's news and pick (both evolve by trade), a second offer closed, 거두기 and 내리기 heard.
+@MainActor func socialChecks() -> [(Bool, String)] {
+    var c: [(Bool, String)] = []
+    func check(_ ok: Bool, _ name: String, _ why: @autoclosure () -> String = "") { c.append((ok, ok ? name : name + " — " + why())) }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func act(_ w: Walker) { w.news = []; w.screen = .home; w.cloud!.addSteps(1); w.cloud!.saveNow(); drain(w); drain(w) }   // (news from before, still waiting for home, cleared: this act's come first)
+    func list(_ w: Walker) { w.cloud!.teamDue = true; drain(w); drain(w) }
+    let sv = FakeCloud(), ha = TestHost(), hb = TestHost()
+    let fa = online({ var s = Walk(); s.companion = Mon(dex: 25, level: 30, female: false); s.seen = [25, 64, 93, 19]
+                      s.box = [Mon(dex: 93, level: 25, female: false), Mon(dex: 19, level: 5, female: false)]; return s }(), server: sv, host: ha)
+    let fb = online({ var s = Walk(); s.companion = Mon(dex: 6, level: 52, female: false)
+                      s.box = [Mon(dex: 64, level: 20, female: false), Mon(dex: 129, level: 10, female: false)]; return s }(), server: sv, host: hb)
+    let fc = online(Walk(), server: sv)
+    let aName = fa.myName, bName = fb.myName, cName = fc.myName
+    list(fa); fa.screen = .team(sel: 0, tab: 0, card: false); let alone = fa.teamRows(0).count, note = fa.paneContent(Date()).team?.note
+    fa.screen = .menu(menuAt("친구")); fa.press(1); drain(fa); fa.pageTap(6004); ha.texts = [bName]; fa.pageTap(6240); drain(fa)
+    check(alone == 1 && note == "아직 친구가 없어요" && says(fa) == [josa(bName, "에게", "에게"), "친구 신청을 했다!"] && sv.friendAsks[bName.lowercased()]?.contains(aName.lowercased()) == true,
+          "친구: only me at first; 신청 → ID로 친구 신청 (the box) → the server's request", "\(alone) \(String(describing: note)) \(says(fa))")
+    list(fa); let sent = fa.paneContent(Date()).friendReqs?.rows
+    act(fb); let heard = says(fb) == [josa(aName, "이", "가") + " 친구 신청을 했다!"]
+    let toTab: Bool = { if case .say(_, .team(_, 4, false), _) = fb.screen { return true }; return false }()
+    fb.press(1); list(fb); let req = fb.paneContent(Date()).friendReqs; fb.pageTap(6200); drain(fb)
+    check(sent == [.init(name: bName, mine: true)] && heard && toTab && req?.rows == [.init(name: aName, mine: false)] && req?.tabs.last == "신청 1" && sv.isFriend(aName.lowercased(), bName.lowercased()),
+          "the request's news on the other side (→ 신청, which says 신청 1); 수락 → friends", "\(String(describing: sent)) \(says(fb)) \(String(describing: req))")
+    act(fa); let added = says(fa) == [josa(bName, "과", "와") + " 친구가 되었다!"]; list(fa); list(fb)
+    check(added && fa.teamRows(0).count == 2 && fb.teamRows(0).count == 2 && fa.paneContent(Date()).menu == nil,
+          "friendAdded on the asker's next act; each now lists the other", "\(says(fa)) \(fa.teamRows(0).count)")
+    fa.screen = .home; fa.act(.greet(to: cName), back: .home); drain(fa)
+    check(says(fa) == ["친구에게만", "인사할 수 있어요"], "인사 goes to friends only (the server's)", "\(says(fa))")
+    ha.texts = [cName]; fa.screen = .team(sel: 0, tab: 4, card: false); fa.askFriend(); drain(fa); list(fa)
+    let mine = fa.friendReqRows.first { $0.mine }; fa.screen = .team(sel: 0, tab: 4, card: false); fa.pageTap(6200); drain(fa); list(fa)
+    check(mine?.name == cName && says(fa) == [cName + "에게 보낸", "신청을 거뒀다"] && fa.friendReqRows.isEmpty, "a request of mine taken back (거두기)", "\(says(fa)) \(fa.friendReqRows)")
+    fc.screen = .home; fc.act(.friendRequest(to: aName), back: .home); drain(fc); list(fa); fa.screen = .team(sel: 0, tab: 4, card: false); fa.pageTap(6210); drain(fa); list(fa)
+    check(says(fa) == [josa(cName, "의", "의") + " 신청을", "거절했다"] && fa.friendReqRows.isEmpty && !sv.isFriend(aName.lowercased(), cName.lowercased()), "거절: gone, and no friend", "\(says(fa))")
+    let bi = fa.teamRows(0).firstIndex { !fa.isMe($0.card) } ?? 0; fa.screen = .team(sel: bi, tab: 0, card: true); fa.pageTap(6031); drain(fa); list(fa)
+    check(ha.asked.last == "친구를 끊을까요?" && says(fa) == [josa(bName, "과", "와") + " 친구를", "끊었다"] && fa.teamRows(0).count == 1, "친구 끊기 (asked first) → off the list", "\(says(fa))")
+
+    // the 게시판: fa posts 고우스트 wishing for 윤겔라; fb and fc offer; fa picks fb's
+    fa.screen = .menu(menuAt("교환")); fa.press(1); drain(fa); fa.pageTap(8030)
+    let k = fa.myTradeBox.firstIndex { $0.dex == 93 } ?? 0; fa.pageTap(8150 + k)
+    let toWish: Bool = { if case .market(.pick(let p)) = fa.screen { return p.side == 1 }; return false }()
+    let w64 = fa.marketPickList({ if case .market(.pick(let p)) = fa.screen { return p }; return MarketPick() }()).firstIndex { $0.dex == 64 }
+    if case .market(.pick(var p)) = fa.screen { p.at = w64 ?? 0; fa.screen = .market(.pick(p)); fa.pageTap(8150 + (w64 ?? 0) % TradePickModel.perPage) }
+    let posting = fa.paneContent(Date()).pick; fa.pageTap(8190); drain(fa); drain(fa)
+    check(toWish && posting?.theirs.dex == 64 && posting?.go == "글 올리기" && says(fa) == ["게시판에", "글을 올렸다!"] && sv.listings.first?.l.wish == [64] && fa.myPosts.count == 1,
+          "교환 → 글 올리기: mine from the box, then the species wished (seen ones) → up on the board", "\(toWish) \(String(describing: posting?.go)) \(says(fa))")
+    let post = sv.listings.first?.l.id ?? -1
+    fb.screen = .menu(menuAt("교환")); fb.press(1); drain(fb); let row = fb.paneContent(Date()).board?.rows.first
+    fb.pageTap(8010); fb.pageTap(8010); let page = fb.paneContent(Date()).post; fb.pageTap(8130)
+    let alakazamish = fb.myTradeBox.firstIndex { $0.dex == 64 } ?? 0; fb.pageTap(8150 + alakazamish); let bidGo = fb.paneContent(Date()).pick?.go; fb.pageTap(8190); drain(fb); drain(fb)
+    check(row?.line == josa(aName, "의", "의") + " 고우스트 Lv.25" && row?.sub.hasSuffix("원해요 윤겔라") == true && page?.buttons == ["내 포켓몬으로 제안"] && page?.body != nil
+          && bidGo == "이 포켓몬으로 제안" && says(fb).first == "교환을 제안했다!" && fb.market?.myBids.count == 1,
+          "another's post: its row (원해요 …), its page in full, 내 포켓몬으로 제안 → my box → the offer", "\(String(describing: row)) \(String(describing: page?.buttons)) \(says(fb))")
+    fc.screen = .home; fc.act(.marketBid(listing: post, give: 1_000_000), back: .home); drain(fc)
+    let boxOnly = says(fc) == ["상자의 포켓몬만", "제안할 수 있어요"]
+    serve(fc) { $0.box = [Mon(dex: 133, level: 15, female: false)] }; fc.cloud!.marketDue = true; drain(fc)
+    fc.act(.marketBid(listing: post, give: fc.state.box[0].uid ?? -1), back: .home); drain(fc)
+    act(fa); let bidNews = says(fa).first == josa(bName, "이", "가") + " 교환을 제안했다!"
+    let toPost: Bool = { if case .say(_, .market(.post(post, nil)), _) = fa.screen { return true }; return false }()
+    fa.press(1); fa.cloud!.marketDue = true; drain(fa); drain(fa)
+    let mp = fa.paneContent(Date()).post, pick = mp?.offers.firstIndex { $0.line.hasPrefix(josa(bName, "의", "의")) } ?? 0
+    fa.pageTap(8110 + pick); let picked = fa.paneContent(Date()).post?.strong; fa.pageTap(8130); drain(fa)
+    let afterAccept = "\(says(fa)) \(String(describing: picked)) \(ha.asked.last ?? "-") \(fa.screen)".prefix(300)
+    let show: Bool = { if case .traded(let g, let got, _, _) = fa.screen { return g.dex == 93 && got.dex == 64 }; return false }()
+    fa.tick(Date() + 7)
+    check(boxOnly && bidNews && toPost && mp?.offers.count == 2 && picked == 0 && ha.asked.last == "교환할까요?" && show && fa.state.box.contains { $0.dex == 65 && $0.ot?.lowercased() == bName.lowercased() },
+          "the poster hears each offer (→ its post), picks one (asked first) → the trade's show, 윤겔라 evolves at it (후딘, 어버이)", "\(boxOnly) \(afterAccept) \(show)")
+    act(fb); fb.tick(Date() + 7); act(fc)
+    check(fb.state.box.contains { $0.dex == 94 } && says(fc) == [josa(aName, "과", "와") + "의 교환", "다른 제안이 선택됐어요"] && sv.listings.allSatisfy { !$0.open },
+          "the other side: 고우스트 → 팬텀 (its next act); the other offer closed (다른 제안이 선택됐어요)", "\(fb.state.box.map(\.dex)) \(says(fc))")
+    // 거두기 and 내리기
+    fa.screen = .home; fa.act(.marketList(give: fa.state.box.first { $0.dex == 19 }?.uid ?? -1, wish: []), back: .home); drain(fa)
+    let p2 = sv.listings.last?.l.id ?? -1; fb.cloud!.marketDue = true; drain(fb)
+    fb.screen = .home; fb.act(.marketBid(listing: p2, give: fb.state.box.first { $0.dex == 129 }?.uid ?? -1), back: .home); drain(fb); drain(fb)
+    fb.screen = .market(.post(id: p2, sel: nil)); let withdrawLabel = fb.paneContent(Date()).post?.buttons.first; fb.pageTap(8130); drain(fb)
+    act(fa); let withdrawn = says(fa)
+    check(withdrawLabel?.hasPrefix("제안 거두기") == true && withdrawn.last == "제안을 거뒀어요", "제안 거두기 → the poster hears it", "\(String(describing: withdrawLabel)) \(withdrawn)")
+    fa.cloud!.marketDue = true; drain(fa); fa.screen = .market(.post(id: p2, sel: nil)); fa.pageTap(8131); drain(fa)
+    check(says(fa) == ["글을 내렸다"] && sv.listings.allSatisfy { !$0.open }, "글 내리기 → off the board", "\(says(fa))")
     return c
 }
