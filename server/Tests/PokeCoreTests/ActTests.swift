@@ -200,3 +200,27 @@ extension SaveDB { func setRaw(_ key: String, _ text: String) throws { try db.ro
     let late = try await go("앨리스", a, 11, .steps, at: 94 + 86_402).out.news
     #expect(late == [.tradeClosed(id: o3 + 1, with: "보브", why: "시간이 지났어요")])
 }
+
+@Test func towerRunAcrossSessions() async throws {                                               // a run between fights survives a relaunch; one mid-fight ends
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let s1 = try await newTrainer(db, "타워")
+    _ = await act(db, "타워", s1, 1, .steps, steps: 10, at: 60)
+    try await setWalk(db, "타워") { $0.watts = 500; $0.towerStreak = 3 }
+    var p = Play(); p.tower = true
+    try await db.setPlay("타워", p)
+    func login(_ t: Double) async throws -> (String, Bool?) {
+        let r = await db.login(LoginReq(id: "타워", device: "mac", device_name: "MAC", app: "3.3", force: true, pin: "2468"), now: Int(base.timeIntervalSince1970 + t))
+        return (try #require(string(r, "session")), flag(r, "tower"))
+    }
+    let (s2, carries) = try await login(100)
+    #expect(carries == true)
+    var o = try reply(await act(db, "타워", s2, 1, .tower, at: 101))                                   // the next trainer: no fee, the streak on
+    #expect(o.out.battle?.trainer != nil && o.walk == nil)                                            // nothing paid: the save didn't change
+    let (s3, mid) = try await login(200)                                                              // a relaunch mid-fight: that run is over
+    #expect(mid == false)
+    o = try reply(await act(db, "타워", s3, 1, .steps, at: 201))
+    #expect(o.walk?.towerStreak == 0 && o.walk?.towerBest == 3)
+    o = try reply(await act(db, "타워", s3, 2, .tower, at: 202))
+    #expect(o.walk?.watts == 450)                                                                     // a new run pays again
+}
+extension SaveDB { func setPlay(_ key: String, _ p: Play) throws { try db.rows("UPDATE play SET state = :s WHERE key = :k", ["s": .text(String(decoding: try JSONEncoder().encode(p), as: UTF8.self)), "k": .text(key)]) } }

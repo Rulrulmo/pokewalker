@@ -200,6 +200,7 @@ actor SaveDB {
                                              "last_device": .str(t.lastDevice), "updated_at": .i(t.updatedAt)]   // who had it, until when: before this login
                 if let token { reply["trust"] = .s(token) }
                 if pinNeeded { reply["pin_needed"] = .b(true) }
+                reply["tower"] = .b(try runCarries(id.key))                                          // plan 11: a tower run between fights goes on in this session
                 return Reply(200, reply,
                              note: t.device != nil && t.device != r.device ? "login from \(r.device_name.prefix(64)), took it from \(t.lastDevice ?? "?")" : nil)
             }

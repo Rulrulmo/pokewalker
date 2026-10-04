@@ -22,6 +22,7 @@ struct PlayRow {
     var session: String? = nil, seq = 0, status = 200, reply: String? = nil
     var bank = 0.0, bankAt = 0.0
     var play = Play()
+    var endedRun = false                                                   // a new session found a tower fight on: that run is over (towerEnd on the save)
 }
 
 func actName(_ a: Act) -> String {
@@ -59,6 +60,8 @@ extension SaveDB {
                     w = Engine.fresh(now: now, starter: firstUID)
                     if try !minting(id.key) { try record(id.key, w.companion, kind: "starter", now: unix) }
                 }
+                let loaded = w
+                if row.endedRun { w.towerEnd() }                                                    // the old session's run, cut off mid-fight
 
                 // steps: the allowance (15 a second since the last act, a day's at most) and the day's cap, both on the server's own counts
                 let asked = r.steps ?? 0, day = Walk.key(now), done = try stepsOn(id.key, day)
@@ -88,7 +91,7 @@ extension SaveDB {
                 try settleLedger(id.key, w, row.play, now: unix)
 
                 var rev = t.rev
-                let changed = out.changed || t.walk == nil, send = changed || mail.walk          // (a trade changed it meanwhile: send it, no new rev)
+                let changed = out.changed || t.walk == nil || w != loaded, send = changed || mail.walk   // (a trade changed it meanwhile: send it, no new rev)
                 if changed {
                     rev += 1
                     let text = savedText(w)
@@ -122,9 +125,18 @@ extension SaveDB {
         }
         var row = PlayRow(session: r.text("session"), seq: r.int("seq") ?? 0, status: r.int("status") ?? 200, reply: r.text("reply"),
                           bank: r.real("bank") ?? 0, bankAt: r.real("bank_at") ?? now.timeIntervalSince1970)
-        if row.session == session { row.play = (r.text("state").flatMap { try? JSONDecoder().decode(Play.self, from: Data($0.utf8)) }) ?? Play() }
-        else { (row.session, row.seq, row.reply, row.play) = (session, 0, nil, Play()) }      // a new session: no radar, fight or tower run carries over
+        let old = (r.text("state").flatMap { try? JSONDecoder().decode(Play.self, from: Data($0.utf8)) }) ?? Play()
+        if row.session == session { row.play = old }
+        else {                                                                              // a new session: no radar, chain or fight carries over;
+            (row.session, row.seq, row.reply, row.play) = (session, 0, nil, Play())         // a tower run between fights does (an update, a restart at home),
+            row.play.tower = old.tower && old.battle == nil; row.endedRun = old.tower && old.battle != nil   // one mid-fight ends (no way out of a losing one)
+        }
         return row
+    }
+    /// The login's "tower" (a run carries into the new session: one between fights, see playRow).
+    func runCarries(_ key: String) throws -> Bool {
+        guard let p = try db.rows("SELECT state FROM play WHERE key = :k", ["k": .text(key)]).first?.text("state").flatMap({ try? JSONDecoder().decode(Play.self, from: Data($0.utf8)) }) else { return false }
+        return p.tower && p.battle == nil
     }
     func savePlay(_ key: String, _ session: String, _ row: PlayRow) throws {
         let state = String(decoding: try JSONEncoder().encode(row.play), as: UTF8.self)
