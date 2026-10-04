@@ -2,7 +2,7 @@ import Foundation
 
 // docs/plans/14 §3 (3.8): 맡겨 키우기 (놀러가기). A trainer sends one of its walker's or box Pokémon to a friend walking now; for 5 hours every step
 // the friend walks is 1 EXP for it. Then (or when either ends it early) it goes home through the owner's 받기 함 with those steps, and the friend
-// gets 1 BP a 2,000 steps raised (5 at most) on its next act. One away per owner, three guests per host.
+// gets 1 BP a 2,000 steps raised (5 at most) on its next act. One away per owner, two guests per host (3.8.1, the user; three before).
 
 let visitSchema = """
     CREATE TABLE IF NOT EXISTS visits (id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, owner_name TEXT NOT NULL, host TEXT NOT NULL, host_name TEXT NOT NULL,
@@ -11,7 +11,7 @@ let visitSchema = """
     CREATE INDEX IF NOT EXISTS visits_owner ON visits (owner, state);
     CREATE INDEX IF NOT EXISTS visits_host ON visits (host, state);
     """
-let visitLife = 5 * 3600, visitGuests = 3, visitStepsPerBP = 2000, visitBPMax = 5, visitApp = "3.8"
+let visitLife = 5 * 3600, visitGuests = 2, visitStepsPerBP = 2000, visitBPMax = 5, visitApp = "3.8"
 
 struct VisitRow { let id: Int, owner: String, ownerName: String, host: String, hostName: String, uid: Int, mon: Mon, steps: Int, state: String, ends: Int, bp: Int, paid: Bool }
 
