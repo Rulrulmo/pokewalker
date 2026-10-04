@@ -234,7 +234,7 @@ struct EngineRun<R: RandomNumberGenerator> {
             if last == .caught { _ = w.keep(b.wild) }
             if last == .caught || last == .won, Walk.chainContinues(b.chain, &r) {
                 let n = b.chain + 1, item = w.chainReward(n)
-                events.append(.chain(n: n, bonus: 2 * n, reward: item)); p.chain = n; end.chain = n
+                events.append(.chain(n: n, bonus: w.chainBonus(n), reward: item)); p.chain = n; end.chain = n
             } else { p.chain = nil; end.chain = 0 }
         } else {                                                                                    // the tower: Lv.50 copies, no EXP to write back
             let h = p.held; p.held = 0; walkNow(h)
@@ -316,6 +316,10 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .fetch(let u):
             guard let ref = w.ref(uid: u), ref >= 0, w.caught.count < 3 else { return "워커가 꽉 찼어요" }
             w.fetch(ref)
+        case .hold(let u, let item):
+            guard let ref = w.ref(uid: u) else { return "그 포켓몬은\n없어요" }
+            if let i = item, !Held.holdable(i) { return "지니게 할 수 없는\n도구예요" }
+            guard w.hold(item, ref) else { return item == nil ? "지닌 도구가 없어요" : w.mon(ref)?.item == item ? "이미 지니고 있어요" : "가지고 있지 않아요" }
         case .release(let u):
             guard let ref = w.ref(uid: u), ref >= 0 else { return "놓아줄 수 없어요" }
             out.watts = w.release(ref)
@@ -372,7 +376,7 @@ extension Walk {
     }
     /// What a Pokémon traded becomes at its new trainer (12 §3.2): its species' trade evolution, if it needs no item or the giver's bag has it.
     static func tradeEvolution(of m: Mon, giverBag: [String]) -> Evo? {
-        evolutions.first { $0.from == m.dex && $0.way == .trade && ($0.item.map { giverBag.contains($0) } ?? true) }
+        m.item == "변함없는돌" ? nil : evolutions.first { $0.from == m.dex && $0.way == .trade && ($0.item.map { m.item == $0 || giverBag.contains($0) } ?? true) }
     }
 }
 

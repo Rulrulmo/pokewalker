@@ -14,11 +14,12 @@ enum ItemKind: Equatable {
     case evolution                 // stones and held items
     case sell(Int)                 // watts at the exchange
     case mint(Int)                 // 민트 (SwSh): the stats go by this nature (its own stays shown): docs/plans/13
+    case held(String)              // only to hold (3.7, Held.swift): 구애머리띠, 먹다남은음식 … (berries and evolution items keep their own use, and can be held too)
 
     /// One line on what it does (the bag list, the shops).
     var summary: String {
         switch self {
-        case .heal(let n): "배틀 HP +\(n)"; case .revive(let n): "배틀: 기절한 포켓몬 HP \(n)%로";
+        case .heal(let n): "배틀 HP +\(n)"; case .revive(let n): "배틀: 기절한 포켓몬 HP \(n)%로"; case .held(let i): "지니게 하기: " + (Held.summary(i) ?? "");
         case .mint(let k): natures[k].up == natures[k].down ? "능력 보정 없는 성격으로" : "\(statNames[natures[k].up]) ↑ · \(statNames[natures[k].down]) ↓ 성격으로"
         case .candy: "레벨 +1"; case .evReset: "노력치 전부 0"; case .bottleCap(let gold): gold ? "특훈: 모든 개체값 → 31 (Lv.50부터)" : "특훈: 개체값 하나 → 31 (Lv.50부터)"
         case .vitamin(let k, let d): "\(["HP", "공격", "방어", "특공", "특방", "스피드"][k]) 노력치 \(d > 0 ? "+" : "−")10"; case .berry: "친밀도 +500걸음"; case .evolution: "진화 도구"; case .sell(let p): "팔면 \(p)W"
@@ -52,6 +53,7 @@ enum ItemKind: Equatable {
         if i == "이상한사탕" { return .candy }
         if evolutions.contains(where: { $0.item == i }) { return .evolution }
         if i.hasSuffix("열매") { return .berry }
+        if Held.only(i) { return .held(i) }
         let price = ["금구슬": 100, "큰진주": 80, "별의조각": 60, "하트비늘": 30, "진주": 30, "큰버섯": 30, "별의모래": 20, "작은버섯": 10]
         if let p = price[i] { return .sell(p) }
         if i.hasPrefix("기술머신") { return .sell(50) }

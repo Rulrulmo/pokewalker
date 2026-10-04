@@ -113,8 +113,9 @@ struct Walk: Codable, Equatable {
     /// After a catch / KO at chain length `chain`, does the grass rustle again? 85 %, then 8 points less per link, never under 35 %.
     static func chainGoesOn(_ chain: Int) -> Double { max(0.35, 0.85 - 0.08 * Double(chain)) }
     /// The reward for reaching link `n`: 2n watts, and every 5th link the course's rarest item. Returns the item, if any.
+    func chainBonus(_ n: Int) -> Int { 2 * n * (["부적금화", "행운의향로"].contains(companion.item ?? "") ? 2 : 1) }   // 부적금화 · 행운의향로 on the companion: twice
     mutating func chainReward(_ n: Int) -> String? {
-        watts = min(9999, watts + 2 * n); bestChain = max(bestChain ?? 0, n)
+        watts = min(9999, watts + chainBonus(n)); bestChain = max(bestChain ?? 0, n)
         guard n % 5 == 0 else { return nil }
         let i = here.items[0].item; _ = keep(i); return i
     }
@@ -139,7 +140,7 @@ struct Walk: Codable, Equatable {
         return (n, w)
     }
     /// Lets box[i] go; a few watts back as thanks (level / 2, at least 1).
-    mutating func release(_ i: Int) -> Int { let w = max(1, box.remove(at: i).level / 2); watts = min(9999, watts + w); return w }
+    mutating func release(_ i: Int) -> Int { let m = box.remove(at: i), w = max(1, m.level / 2); watts = min(9999, watts + w); if let it = m.item { bag.append(it) }; return w }   // what it held: back in the bag
 
     // MARK: weather
     var weatherDue: Bool { total / weatherSteps != (weatherAt ?? 0) / weatherSteps }
@@ -183,25 +184,25 @@ struct Walk: Codable, Equatable {
     func allows(_ e: Evo, _ m: Mon, _ now: Date) -> Bool {
         if let f = e.female, f != m.female { return false }
         if let t = e.time, (t == "day") != isDay { return false }
-        if let i = e.item, !(bag + items).contains(i) { return false }
+        if let i = e.item, !(bag + items).contains(i), m.item != i { return false }                   // (3.7: or held)
         if let p = e.party, !(caught + box).contains(where: { $0.dex == p }) { return false }
         if let p = e.place { switch p { case "cave": if here.art != .cave { return false }; case "forest": if here.art != .forest { return false }; default: if here.name != "얼음 산길" { return false } } }
         return true
     }
     /// What the companion (or the one at ref) becomes on this level-up, if anything. Several fits (Wurmple, Tyrogue): picked by its steps, fixed per moment.
     func levelEvolution(_ now: Date, ref: Int = -1) -> Evo? {
-        guard let m = mon(ref) else { return nil }
+        guard let m = mon(ref), m.item != "변함없는돌" else { return nil }                             // 변함없는돌: never by level or friendship
         let fits = evolutions.filter { $0.from == m.dex && ($0.way == .level && m.level >= $0.level || $0.way == .friend && (m.walked ?? 0) >= friendSteps) && allows($0, m, now) }
         return fits.isEmpty ? nil : fits[(m.walked ?? 0) % fits.count]
     }
     func stoneEvolutions(_ now: Date, ref: Int = -1) -> [Evo] { guard let m = mon(ref) else { return [] }; return evolutions.filter { $0.from == m.dex && $0.way == .item && allows($0, m, now) } }
-    func tradeEvolution(_ now: Date) -> Evo? { evolutions.first { $0.from == companion.dex && $0.way == .trade && allows($0, companion, now) } }
+    func tradeEvolution(_ now: Date) -> Evo? { companion.item == "변함없는돌" ? nil : evolutions.first { $0.from == companion.dex && $0.way == .trade && allows($0, companion, now) } }
     /// Items the companion could evolve with (for the W shop).
     func evolutionItems() -> [String] { Array(Set(evolutions.filter { $0.from == companion.dex }.compactMap(\.item))).sorted() }
     /// shed: 토중몬 → 아이스크 leaves a 껍질몬 rolled here (false: the server issues it — docs/plans/10 §4 — or, offline, none).
     mutating func evolve(_ e: Evo, ref: Int = -1, shed: Bool = true) {
         guard var m = mon(ref) else { return }
-        if let i = e.item { if let k = bag.firstIndex(of: i) { bag.remove(at: k) } else if let k = items.firstIndex(of: i) { items.remove(at: k) } }
+        if let i = e.item { if m.item == i { m.item = nil } else if let k = bag.firstIndex(of: i) { bag.remove(at: k) } else if let k = items.firstIndex(of: i) { items.remove(at: k) } }   // a held one first
         if m.known == nil { m.known = m.moves }                                                    // its moves stay (the new form's defaults would replace them)
         m.dex = e.to; setMon(ref, m); own(e.to, shiny: m.shiny)
         queueMoves(ref, from: m.level - 1)                                                         // the new form's move at this level

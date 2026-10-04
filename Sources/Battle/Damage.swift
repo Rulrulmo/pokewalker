@@ -35,6 +35,7 @@ extension Battle {
         if weatherOn == .sand, dAb(t, 8, by: s) { acc *= 0.8 }; if weatherOn == .hail, dAb(t, 81, by: s) { acc *= 0.8 }
         if dAb(t, 77, by: s), f(t).confused > 0 { acc *= 0.5 }
         if gravity > 0 { acc *= 5.0 / 3 }; if weatherOn == .fog { acc *= 0.6 }
+        acc *= itemAccuracy(s, t)
         return Double(roll(100)) < acc
     }
     func typeEff(_ type: String, _ t: Side, by s: Side) -> Double {
@@ -52,7 +53,7 @@ extension Battle {
     }
     mutating func critical(_ s: Side, _ t: Side, _ m: MoveInfo) -> Bool {
         if dAb(t, 4, by: s) || dAb(t, 75, by: s) || sides[si(t)].luckyChant > 0 { return false }
-        let st = min(4, m.crit + (f(s).focus ? 2 : 0) + (f(s).has(105) ? 1 : 0))
+        let st = min(4, m.crit + (f(s).focus ? 2 : 0) + (f(s).has(105) ? 1 : 0) + itemCrit(s))
         return roll([16, 8, 4, 3, 2][st]) == 0
     }
     /// Gen IV damage: base, then burn, screens, weather, +2, crit, random, STAB, type, 필터/색안경 — rounding down after each, as DPPt/HGSS do.
@@ -62,7 +63,7 @@ extension Battle {
         var aS = a.stage[phys ? 1 : 3], dS = d.stage[phys ? 2 : 4]
         if crit { aS = max(0, aS); dS = min(0, dS) }
         if dAb(t, 109, by: s) { aS = 0 }; if a.has(109) { dS = 0 }
-        A *= mult(aS); D *= mult(dS)
+        A *= mult(aS) * itemAttack(s, physical: phys); D *= mult(dS) * itemDefense(t, physical: phys)
         if phys {
             if a.has(37) || a.has(74) { A *= 2 }; if a.has(55) { A *= 1.5 }; if a.has(62), a.status != nil { A *= 1.5 }
             if a.slowStart > 0 { A *= 0.5 }; if weatherOn == .sun, a.has(122) { A *= 1.5 }
@@ -80,6 +81,7 @@ extension Battle {
         if a.has(79), genderRate[a.mon.dex] >= 0, genderRate[d.mon.dex] >= 0 { P *= a.mon.female == d.mon.female ? 1.25 : 0.75 }
         if dAb(t, 85, by: s), type == "fire" { P *= 0.5 }; if dAb(t, 87, by: s), type == "fire" { P *= 1.25 }
         if a.charge > 0, type == "electric" { P *= 2 }; if mudSport, type == "electric" { P *= 0.5 }; if waterSport, type == "fire" { P *= 0.5 }
+        P = floor(P * itemPower(s, physical: phys, type: type))
         var x = floor(floor(Double(2 * a.mon.level / 5 + 2) * P * A / max(1, D)) / 50)
         if a.status == .burn, phys, !a.has(62) { x = floor(x / 2) }
         if !crit, (phys && sides[si(t)].reflect > 0) || (!phys && sides[si(t)].light > 0) { x = floor(x / 2) }
@@ -87,11 +89,13 @@ extension Battle {
         if weatherOn == .sun { if type == "fire" { x *= 1.5 }; if type == "water" { x *= 0.5 } }
         x += 2
         if crit { x *= a.has(97) ? 3 : 2 }
+        x = floor(x * itemDamage(s))                                                                 // 생명의구슬 · 메트로놈
         x = floor(x * Double(85 + roll(16)) / 100)                                                  // Gen III-IV: 85-100 %
         if !type.isEmpty, a.typeList.contains(type) { x = floor(x * (a.has(91) ? 2 : 1.5)) }        // each step rounds down
         x = floor(x * eff)
         if eff > 1, dAb(t, 111, by: s) || dAb(t, 116, by: s) { x = floor(x * 0.75) }
         if eff < 1, a.has(110) { x *= 2 }
+        if eff > 1, holds(s, "달인의띠") { x = floor(x * 1.2) }
         return max(1, Int(x))
     }
     /// 잠재파워 with IVs: type and power the Gen IV way (IVs 15 everywhere = 악 70).
@@ -111,6 +115,8 @@ extension Battle {
         if id == 237 { (type, power) = hiddenPower(f(s).mon) }
         if id == 311 { switch weatherOn { case .sun: type = "fire"; power = 100; case .rain: type = "water"; power = 100; case .sand: type = "rock"; power = 100; case .hail: type = "ice"; power = 100; case .fog: power = 100; default: break } }
         if id == 284 || id == 323 { power = max(1, 150 * f(s).hp / f(s).maxHP) }                   // 분화 / 해수스파우팅: by the HP left
+        if id == 449, let p = held(s).flatMap({ Held.plates[$0] }) { type = p }                    // 심판의뭉치: its plate's type
+        if id == 363, let g = held(s).flatMap({ Held.gift[$0] }) { (type, power) = g }             // 자연의은혜: its berry's
         if f(s).has(96), id != 165 { type = "normal" }                                             // 노말스킨 last: it turns even those Normal (심판의뭉치 without plates is Normal anyway)
         return (type, power)
     }
@@ -138,6 +144,12 @@ extension Battle {
         if id == 364, !f(t).protected { say(s, "그러나 실패했다!"); return }
         if [120, 153].contains(id), !f(s).has(104), [mine[me], theirs[it]].contains(where: { $0.has(6) }) { say(s, "습기 때문에 " + josa(m.name, "을", "를") + " 쓸 수 없다!"); return }
         if id == 255 && f(s).stockpile == 0 { say(s, "그러나 비축하지 못했다!"); return }
+        if id == 363, held(s).flatMap({ Held.gift[$0] }) == nil { say(s, "그러나 실패했다!"); return }
+        var thrown: String? = nil
+        if id == 374 {                                                                               // 내던지기: what it holds, gone whatever happens next
+            guard let i = held(s), let p = Held.fling(i), !fixedItem(s) else { say(s, "그러나 실패했다!"); return }
+            thrown = i; power = p; useUp(s); say(s, josa(n, "은", "는") + " " + josa(i, "을", "를") + " 내던졌다!")
+        }
         // fixed damage
         let fixed: Int? = switch id {
         case 49: 20
@@ -210,11 +222,12 @@ extension Battle {
             guard f(t).alive, f(s).alive else { break }
             if id == 167 && k > 0 && !hits(s, t, m) { break }                                    // 트리플킥 checks every kick
             let crit = critical(s, t, m), p = id == 167 ? 10 * (k + 1) : id == 251 ? 10 : power
-            let d = calc(s, t, m, power: p, type: type, eff: eff, crit: crit)
+            let d = resistBerry(t, type: type, eff: eff, calc(s, t, m, power: p, type: type, eff: eff, crit: crit))
             land(s, t, m, d, eff: eff, crit: crit); total += d; landed += 1
             if crit, f(t).alive, dAb(t, 83, by: s) { mod(t) { $0.stage[1] = 6 }; say(t, josa(tn, "은", "는") + " 분노의 경혈로 공격이 최대가 되었다!") }
         }
         if landed > 1 { say(t, "\(landed)번 맞았다!") }
+        if let i = thrown { flung(i, at: t, from: s) }
         post(s, t, m, dealt: total)
     }
     /// One hit landing: substitute first; 버티기 / 칼등치기 leave 1 HP.
@@ -226,10 +239,13 @@ extension Battle {
             return
         }
         subTook = false                                                                              // this hit reached the Pokémon (a multi-hit's later ones after the sub broke)
-        var d = min(d0, f(t).hp), endured = false
+        var d = min(d0, f(t).hp), endured = false, hung: String? = nil
         if d >= f(t).hp, f(t).endure || m.id == 206 { d = f(t).hp - 1; endured = f(t).endure }
+        else if let line = hangOn(t, d) { d = f(t).hp - 1; hung = line }                           // 기합의띠 / 기합의머리띠
         out.append(.hit(t, move: m.id, damage: d, effect: eff, crit: crit)); apply(out.last!)
         if endured { say(t, josa(nm(t), "은", "는") + " 공격을 버텼다!") }
+        if let hung { say(t, hung) }
+        heldCheck(t)
         mod(t) { $0.hitThisTurn = true; $0.lastHitDmg = d; $0.lastHitSpecial = m.special; if $0.bide > 0 { $0.bideDmg += d } }
         if f(t).rage, f(t).alive { boost(t, 1, 1, from: t) }
         let ty = moveType(s, m).type                                                                 // 변색: the type it really had
@@ -241,7 +257,7 @@ extension Battle {
     mutating func post(_ s: Side, _ t: Side, _ m: MoveInfo, dealt: Int) {
         let id = m.id, n = nm(s), tn = nm(t)
         if m.drain > 0, dealt > 0 {
-            let h = max(1, dealt * m.drain / 100)
+            let h = max(1, dealt * m.drain / 100 * (holds(s, "큰뿌리") ? 13 : 10) / 10)
             if f(t).has(64) { hurt(s, h, josa(n, "은", "는") + " 해감액을 흡수했다!") } else { restore(s, h, josa(tn, "의", "의") + " 체력을 흡수했다!") }
         }
         if m.drain < 0, dealt > 0, !f(s).has(69), !f(s).has(98) { hurt(s, max(1, dealt * -m.drain / 100), josa(n, "은", "는") + " 반동으로 데미지를 입었다!") }
@@ -279,7 +295,7 @@ extension Battle {
             sides[si(s)].spikes = 0; sides[si(s)].stealthRock = false; sides[si(s)].toxicSpikes = 0; mod(s) { $0.seeded = false; $0.bound = 0 }
         }
         if m.ailment == "trap", f(t).alive, !subTook, f(t).bound == 0 {                            // each binding move its own line (one "조임" for all read as 조이기 on a ghost)
-            let k = 3 + roll(4); mod(t) { $0.bound = k; $0.boundBy = id }                            // 2-5 turns of damage
+            let k = holds(s, "끈기갈고리손톱") ? 6 : 3 + roll(4); mod(t) { $0.bound = k; $0.boundBy = id }   // 2-5 turns of damage (끈기갈고리손톱: 5)
             let caught = switch id {
             case 20: n + "에게 조이기를 당했다!"
             case 35: n + "에게 김밥말이를 당했다!"
@@ -300,6 +316,7 @@ extension Battle {
         if id == 253 { if f(s).lock == 0 { let k = 2 + roll(4); mod(s) { $0.lock = k; $0.lockMove = id; $0.uproar = k }; say(s, josa(n, "은", "는") + " 소란을 피우기 시작했다!") }; mod(s) { $0.lock -= 1 } }
         if id == 255 { let k = f(s).stockpile; mod(s) { $0.stockpile = 0 }; boost(s, 2, -k, from: s); boost(s, 4, -k, from: s) }   // the stock's 방어 / 특수방어 back
         if id == 99 { mod(s) { $0.rage = true } }
+        itemsAfterHit(s, t, m, dealt: dealt)
         if id == 369, f(s).alive, nextAlive(s) != nil { faints(); if !over, f(s).alive, let i = nextAlive(s) { say(s, josa(n, "은", "는") + " 돌아왔다!"); switchIn(s, i) } }   // a KO (and its EXP) before the switch
     }
 

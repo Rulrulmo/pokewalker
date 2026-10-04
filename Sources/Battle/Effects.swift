@@ -36,6 +36,7 @@ extension Battle {
         let a = f(s).mon, b = f(t).mon
         guard genderRate[a.dex] >= 0, genderRate[b.dex] >= 0, a.female != b.female, !f(t).attracted, !f(t).has(12) else { if loud { say(t, "그러나 실패했다!") }; return }
         mod(t) { $0.attracted = true }; say(t, josa(nm(t), "은", "는") + " 헤롱헤롱해졌다!")
+        if holds(t, "빨간실"), f(s).alive, !f(s).attracted, !f(s).has(12) { mod(s) { $0.attracted = true }; say(s, "빨간실 때문에 " + josa(nm(s), "도", "도") + " 헤롱헤롱해졌다!") }
     }
     mutating func statusMove(_ s: Side, _ t: Side, _ m: MoveInfo) {
         let id = m.id, n = nm(s), tn = nm(t)
@@ -73,7 +74,7 @@ extension Battle {
             mod(s) { $0.protectChain += 1; if id == 203 { $0.endure = true } else { $0.protected = true } }
             say(s, josa(n, "은", "는") + (id == 203 ? " 버티기 태세에 들어갔다!" : " 방어 태세에 들어갔다!")); return
         case 113, 115, 219, 54, 381, 366:
-            let k = si(s), turns = id == 366 ? 3 : 5
+            let k = si(s), turns = id == 366 ? 3 : [113, 115].contains(id) && holds(s, "빛의점토") ? 8 : 5
             switch id {
             case 113: guard sides[k].light == 0 else { fail(); return }; sides[k].light = turns; say(s, "빛의장막으로 특수공격에 강해졌다!")
             case 115: guard sides[k].reflect == 0 else { fail(); return }; sides[k].reflect = turns; say(s, "리플렉터로 물리공격에 강해졌다!")
@@ -135,7 +136,7 @@ extension Battle {
         case 201, 240, 241, 258:
             let sk: Sky = [201: .sand, 240: .rain, 241: .sun, 258: .hail][id]!
             guard sky != sk else { fail(); return }
-            sky = sk; skyTurns = 5; forecast()
+            sky = sk; skyTurns = holds(s, [201: "보송보송바위", 240: "축축한바위", 241: "뜨거운바위", 258: "차가운바위"][id]!) ? 8 : 5; forecast()
             say(s, [201: "모래바람이 불기 시작했다!", 240: "비가 내리기 시작했다!", 241: "햇살이 강해졌다!", 258: "싸라기눈이 내리기 시작했다!"][id]!)
         case 215, 312:
             for i in (s == .me ? mine : theirs).indices { if s == .me { mine[i].status = nil } else { theirs[i].status = nil } }
@@ -192,6 +193,8 @@ extension Battle {
             boost(t, 7, -1, from: s)
             let k = si(t); sides[k].reflect = 0; sides[k].light = 0; sides[k].safeguard = 0; sides[k].mist = 0; sides[k].spikes = 0; sides[k].toxicSpikes = 0; sides[k].stealthRock = false
             if sky == .fog { sky = .clear; say(s, "안개가 걷혔다!") }
+        case 271, 415: trick(s, t)
+        case 278: recycle(s)
         case 433: trickRoom = trickRoom > 0 ? 0 : 5; say(s, trickRoom > 0 ? "시공이 뒤틀렸다!" : "뒤틀린 시공이 원래대로 돌아왔다!")
         default: say(s, "그러나 아무 일도 일어나지 않았다!")
         }

@@ -2,7 +2,7 @@ import Foundation
 
 // Gen IV single battles, as close to HGSS as this app can run them: stats from base stats / IVs / EVs / nature, 4 known moves with PP,
 // the type chart, status conditions, stat stages, weather, screens and hazards, abilities, and most move effects (data from PokeAPI's
-// move meta, the rest by hand below). Not here: double battles, held items (the walker has none), forms.
+// move meta, the rest by hand below), held items (Holding.swift). Not here: double battles, forms.
 
 // MARK: - data
 struct MoveInfo {
@@ -25,12 +25,14 @@ enum Sky: String, Codable, Equatable { case clear, sun, rain, sand, hail, fog }
 let statNames = ["HP", "공격", "방어", "특수공격", "특수방어", "스피드", "명중률", "회피율"]
 
 enum Moves {
-    /// Moves this engine can't run faithfully: doubles-only, held-item ones, Colosseum's shadow moves. They're left out of movesets.
-    static let unsupported: Set<Int> = [166, 266, 270, 274, 278, 271, 415, 374, 363, 286, 289, 382]
+    /// Moves this engine can't run faithfully: doubles-only, Colosseum's shadow moves. They're left out of movesets.
+    static let unsupported: Set<Int> = [166, 266, 270, 274, 286, 289, 382]
     static func supported(_ id: Int) -> Bool { id < 10000 && moveTable[id] != nil && !unsupported.contains(id) }
+    /// The held-item moves (3.7): learnable, but never in a default set (one that never chose its moves keeps the four it always had).
+    static let itemMoves: Set<Int> = [271, 415, 374, 363, 278]
     static let semiInvulnerable: Set<Int> = [19, 91, 291, 340, 467]  // 공중날기 구멍파기 다이빙 뛰어오르다 섀도다이브
     static let fixedDamage: Set<Int> = [12, 32, 49, 68, 69, 82, 90, 101, 117, 149, 162, 243, 283, 329, 368]   // only an immunity changes what they do
-    static let fixedOrVariable: Set<Int> = [12, 32, 49, 67, 68, 69, 82, 90, 101, 117, 149, 162, 175, 179, 216, 217, 218, 222, 243, 255, 283, 329, 360, 368, 376, 378, 447, 462]
+    static let fixedOrVariable: Set<Int> = [12, 32, 49, 67, 68, 69, 82, 90, 101, 117, 149, 162, 175, 179, 216, 217, 218, 222, 243, 255, 283, 329, 360, 363, 368, 374, 376, 378, 447, 462]
 }
 
 func effectiveness(_ type: String, on d: Int) -> Double { monTypes[d].reduce(1) { $0 * (typeChart[type]?[$1] ?? 1) } }
@@ -51,18 +53,25 @@ struct Fighter: Equatable, Codable {
     var healBlock = 0, magnetRise = 0, roosted = false, lockOn = 0, minimized = false, curled = false, rage = false, identified = false, miracleEye = false
     var magicCoat = false, grudge = false, attracted = false, trapped = false, embargo = 0, form: Mon? = nil, turnsOut = 0, uproar = 0
     var down = false                                                   // its KO has been handled
+    var item: String? = nil                                            // what it holds now (its Mon's to start; 트릭 / 도둑질 / 탁쳐서떨구기 move it: the Mon's own comes back after)
+    var spent: String? = nil, spentOwn: Bool? = nil                    // the last one it used up (리사이클 brings it back); spentOwn = its own (gone after a wild fight)
+    var choice: Int? = nil, metronome: Int? = nil, micle: Bool? = nil, unburden: Bool? = nil   // 구애 lock, 메트로놈 streak, 미클열매, 곡예 (Optionals: fights saved before 3.7 decode)
     var ownMoves: [Int]? = nil, ownPP: [Int]? = nil                    // its own moves and PP before 변신 / 흉내내기 changed them (back on switching out)
 
-    init(_ m: Mon) { mon = m; hp = m.stats[0]; moves = m.moves; pp = m.moves.map { moveTable[$0]?.pp ?? 5 } }
+    init(_ m: Mon) { mon = m; hp = m.stats[0]; moves = m.moves; pp = m.moves.map { moveTable[$0]?.pp ?? 5 }; item = m.item }
     var maxHP: Int { mon.stats[0] }
     var alive: Bool { hp > 0 }
-    var typeList: [String] { (types ?? monTypes[(form ?? mon).dex]).filter { !(roosted && $0 == "flying") } }
+    var typeList: [String] { (types ?? plateType.map { [$0] } ?? monTypes[(form ?? mon).dex]).filter { !(roosted && $0 == "flying") } }
+    /// 멀티타입: 아르세우스 takes its plate's type.
+    var plateType: String? { (form ?? mon).dex == 493 && ability == 121 ? item.flatMap { Held.plates[$0] } : nil }
     var ability: Int { abilityOver ?? (form ?? mon).abilityID }
     func has(_ a: Int) -> Bool { ability == a }
     /// Back to the start: what switching out clears (Baton Pass keeps some of it, see there).
     mutating func clearVolatile() {
         let (m, h, st, sl, mv, p, d, om, op, transformed) = (mon, hp, status, sleep, moves, pp, down, ownMoves, ownPP, form != nil)
+        let (it, sp, so) = (item, spent, spentOwn)
         self = Fighter(m); hp = h; status = st; toxic = st == .toxic ? 1 : 0; sleep = sl; down = d    // 맹독's count starts over
+        item = it; spent = sp; spentOwn = so                                         // what it holds stays as it is
         guard let om, let op else { moves = mv; pp = p; return }                                   // PP stays spent
         moves = om; pp = om.indices.map { k in !transformed && k < mv.count && mv[k] == om[k] ? p[k] : op[k] }   // 변신 / 흉내내기 wear off: its own moves back (after 흉내내기, the PP the others spent since)
     }

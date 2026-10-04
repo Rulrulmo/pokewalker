@@ -31,11 +31,13 @@ extension Battle {
         faints()
         for s in [Side.me, .it] where f(s).alive && !over {
             let x = f(s), n = nm(s), t = other(s), guardian = x.has(98)
-            if x.ingrain { restore(s, max(1, x.maxHP / 16), josa(n, "은", "는") + " 뿌리로 양분을 흡수했다!") }
-            if x.aquaRing { restore(s, max(1, x.maxHP / 16), josa(n, "은", "는") + " 물의 베일로 체력을 회복했다!") }
-            if x.seeded, f(t).alive, !guardian {
+            let root = holds(s, "큰뿌리") ? 13 : 10
+            if x.ingrain { restore(s, max(1, x.maxHP / 16 * root / 10), josa(n, "은", "는") + " 뿌리로 양분을 흡수했다!") }
+            if x.aquaRing { restore(s, max(1, x.maxHP / 16 * root / 10), josa(n, "은", "는") + " 물의 베일로 체력을 회복했다!") }
+            itemResidual(s)                                                                          // 먹다남은음식 · 검은오물 · 끈적끈적바늘
+            if f(s).alive, x.seeded, f(t).alive, !guardian {
                 let d = min(x.hp, max(1, x.maxHP / 8)); hurt(s, d, "씨뿌리기가 " + josa(n, "의", "의") + " 체력을 빼앗는다!")
-                if x.has(64) { hurt(t, d, "") } else { restore(t, d, "") }
+                if x.has(64) { hurt(t, d, "") } else { restore(t, d * (holds(t, "큰뿌리") ? 13 : 10) / 10, "") }
             }
             if f(s).alive, !guardian {
                 switch x.status {
@@ -56,6 +58,7 @@ extension Battle {
             if f(s).alive, x.status == .sleep, f(t).alive, f(t).has(123), !guardian { hurt(s, max(1, x.maxHP / 8), josa(n, "은", "는") + " 나이트메어에 시달리고 있다!") }
             if f(s).alive, x.yawn > 0 { mod(s) { $0.yawn -= 1 }; if f(s).yawn == 0 { inflict(s, .sleep, from: t, loud: false) } }
             if f(s).alive, x.perish > 0 { mod(s) { $0.perish -= 1 }; say(s, josa(n, "의", "의") + " 멸망 카운트가 \(f(s).perish)" + (f(s).perish == 2 ? "가" : "이") + " 되었다!"); if f(s).perish == 0 { hurt(s, f(s).hp, "") } }
+            orbs(s); heldCheck(s)                                                                     // 맹독구슬 / 화염구슬 last; then a berry for whatever the turn did
             mod(s) {
                 if $0.taunt > 0 { $0.taunt -= 1 }; if $0.encore > 0 { $0.encore -= 1 }; if $0.encore > 0, let k = $0.moves.firstIndex(of: $0.encoreMove), $0.pp[k] == 0 { $0.encore = 0 }; if $0.disable > 0 { $0.disable -= 1 }
                 if $0.healBlock > 0 { $0.healBlock -= 1 }; if $0.magnetRise > 0 { $0.magnetRise -= 1 }; if $0.embargo > 0 { $0.embargo -= 1 }
@@ -85,12 +88,16 @@ extension Battle {
         return max(1, Int(raw * wildExpScale) / max(1, share))
     }
     /// EXP for ours that faced the one in front, split among them, EVs in full — for a KO, and (Gen VI on) a catch. Wild only: the tower gives neither (BP only, as HGSS's).
+    /// 학습장치 (Gen IV): with one held anywhere in the party, those that faced it split half, the holders the other half. 행복의알: ×1.5.
     mutating func award() {
-        let share = faced.filter { mine[$0].alive }.sorted()
+        let share = faced.filter { mine[$0].alive }.sorted(), sharers = mine.indices.filter { mine[$0].alive && mine[$0].item == "학습장치" }
         guard trainer == nil, !share.isEmpty else { return }
         let foe = f(.it).mon
-        for k in share {
-            let e = Battle.wildExp(base: baseExp[foe.dex], foe: foe.level, mine: mine[k].mon.level, share: share.count)
+        for k in Set(share + sharers).sorted() {
+            func part(_ n: Int) -> Int { Battle.wildExp(base: baseExp[foe.dex], foe: foe.level, mine: mine[k].mon.level, share: n) / (sharers.isEmpty ? 1 : 2) }
+            var e = (share.contains(k) ? part(share.count) : 0) + (sharers.contains(k) ? part(sharers.count) : 0)
+            if mine[k].item == "행복의알" { e = e * 3 / 2 }
+            e = max(1, e)
             var probe = mine[k].mon; let up = probe.gainBattleExp(e)
             out.append(.gained(exp: e, level: up ? probe.level : nil, foe: foe.dex, to: k)); apply(out.last!)
         }
@@ -126,7 +133,7 @@ extension Battle {
     }
     /// Gen IV: sure if we're faster, else by the speed ratio and how many tries; trapping moves and abilities stop it.
     mutating func canEscape() -> Bool {
-        if f(.me).has(50) { return true }
+        if f(.me).has(50) || holds(.me, "연막탄") { return true }                                    // 도주 / 연막탄: even held in place
         if trapped(.me) { return false }
         let a = speed(.me), b = max(1, speed(.it)); escapes += 1
         if a >= b { return true }
@@ -213,20 +220,21 @@ extension Battle {
     /// Why ours can't switch out now (nil = it can).
     var switchBlock: String? {
         if locked { return "지금은 교체할 수 없다!" }
-        return trapped(.me) ? josa(nm(.me), "은", "는") + " 돌아올 수 없다!" : nil
+        return trapped(.me) && !holds(.me, "아름다운허물") ? josa(nm(.me), "은", "는") + " 돌아올 수 없다!" : nil
     }
     /// The moves that side may pick this turn: PP left, not disabled, no status move under 도발, not the same one under 트집, the encored one only.
     func usable(_ s: Side) -> [Int] {
-        let x = f(s)
+        let x = f(s), lock = choiceLock(s)
         return x.moves.indices.filter { i in
             let id = x.moves[i], m = moveTable[id]!
             return x.pp[i] > 0 && !(x.disable > 0 && x.disabledMove == id) && !(x.taunt > 0 && m.isStatus) && !(x.torment && id == x.lastMove) && !(x.encore > 0 && id != x.encoreMove)
+                && (lock == nil || id == lock)                                                     // 구애: the first one only
         }.map { x.moves[$0] }
     }
     /// A trainer pulls back one that can't hurt ours but gets hit hard, for a teammate that resists all of ours' attacks. Not two turns running.
     mutating func foeSwitch() -> Int? {
         let x = f(.it), y = f(.me)
-        guard x.alive, !trapped(.it), x.charging == 0, x.lock == 0, x.bide == 0, !x.recharge, turnNo - foeSwapTurn > 2 else { return nil }
+        guard x.alive, !trapped(.it) || holds(.it, "아름다운허물"), x.charging == 0, x.lock == 0, x.bide == 0, !x.recharge, turnNo - foeSwapTurn > 2 else { return nil }
         func eff(_ type: String, _ on: [String]) -> Double { on.reduce(1) { $0 * (typeChart[type]?[$1] ?? 1) } }
         func threat(_ on: [String]) -> Double { y.moves.compactMap { moveTable[$0] }.filter { !$0.isStatus && $0.power > 0 }.map { eff($0.type, on) }.max() ?? 1 }
         func offense(_ z: Fighter) -> Double { z.moves.compactMap { moveTable[$0] }.filter { !$0.isStatus && $0.power > 0 }.map { eff($0.type, y.typeList) }.max() ?? 0 }

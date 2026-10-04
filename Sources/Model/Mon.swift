@@ -13,6 +13,7 @@ struct Mon: Codable, Equatable {
     var hyper: [Int]? = nil              // stats (0-5) raised by 대단한 특훈 (병뚜껑): they count as 31 in battle; the IVs themselves stay
     var ot: String? = nil                // 어버이: the first trainer that traded it away (docs/plans/12 §3.2); nil = never traded
     var mint: Int? = nil                 // 민트: the nature its stats go by (its own nature stays): docs/plans/13
+    var item: String? = nil              // 지닌 도구 (docs/plans/13 ⑤): out of the bag while held; used up in a fight = gone (Battle/Holding.swift)
 
     var points: Int { exp ?? expTable[growthRate[dex]][level] }
     static func level(dex: Int, exp: Int) -> Int { let t = expTable[growthRate[dex]]; return (1...100).last { t[$0] <= exp } ?? 1 }
@@ -20,7 +21,7 @@ struct Mon: Codable, Equatable {
     mutating func gain(_ n: Int) -> Bool {
         let e = points + n, before = level
         if known == nil { known = moves }
-        exp = e; walked = (walked ?? 0) + n; level = max(level, Mon.level(dex: dex, exp: e))
+        exp = e; walked = (walked ?? 0) + (item == "평온의방울" ? n * 3 / 2 : n); level = max(level, Mon.level(dex: dex, exp: e))   // 평온의방울: friendship 1.5x
         return level > before
     }
 }
@@ -62,7 +63,7 @@ extension Mon {
     static func defaultMoves(_ dex: Int, _ level: Int) -> [Int] {
         var out: [Int] = []
         let ls = learnsets[dex]
-        for k in stride(from: 0, to: ls.count, by: 2) where ls[k] <= level && Moves.supported(ls[k + 1]) { out.removeAll { $0 == ls[k + 1] }; out.append(ls[k + 1]) }
+        for k in stride(from: 0, to: ls.count, by: 2) where ls[k] <= level && Moves.supported(ls[k + 1]) && !Moves.itemMoves.contains(ls[k + 1]) { out.removeAll { $0 == ls[k + 1] }; out.append(ls[k + 1]) }
         return out.isEmpty ? [33] : Array(out.suffix(4))
     }
     /// Moves it learns on reaching levels (from, to], that it doesn't know yet.
@@ -110,8 +111,9 @@ extension Mon {
     }
     /// EVs from beating `foe`: its yield, 255 a stat, 510 in all.
     mutating func gainEVs(from foe: Int) {
-        var e = evs ?? Array(repeating: 0, count: 6)
-        for k in 0..<6 { let room = 510 - e.reduce(0, +); e[k] = min(255, e[k] + min(room, evYield[foe][k])) }
+        var e = evs ?? Array(repeating: 0, count: 6), y = evYield[foe]
+        if item == "교정깁스" { y = y.map { $0 * 2 } }; if let k = item.flatMap({ Held.power[$0] }) { y[k] += 4 }    // 교정깁스 doubles; a 파워 item +4 its stat
+        for k in 0..<6 { let room = 510 - e.reduce(0, +); e[k] = min(255, e[k] + min(room, y[k])) }
         evs = e
     }
 }

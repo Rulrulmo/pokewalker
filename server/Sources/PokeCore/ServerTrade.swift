@@ -113,8 +113,10 @@ extension SaveDB {
         try record(key, m, kind: "trade", now: now)
         _ = w.keep(m)
         guard let e = Walk.tradeEvolution(of: m, giverBag: giver.items + giver.bag), let ref = w.ref(uid: m.uid!) else { return (m, []) }
-        if let item = e.item { _ = giver.take(item) }                                              // it went along, held
+        let held = e.item != nil && m.item == e.item
+        if let item = e.item, !held { _ = giver.take(item) }                                       // it went along, held (3.7: really held — then it's used up)
         w.evolve(Evo(from: e.from, to: e.to, way: e.way, level: e.level, item: nil, female: e.female, time: e.time, place: e.place, party: e.party), ref: ref, shed: false)
+        if held, var a = w.mon(ref) { a.item = nil; w.setMon(ref, a) }
         let after = w.mon(ref) ?? m
         return (after, [.evolve(uid: m.uid!, from: m.dex, to: after.dex, shed: nil)])
     }

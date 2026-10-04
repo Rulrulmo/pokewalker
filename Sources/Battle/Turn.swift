@@ -42,9 +42,11 @@ extension Battle {
         case 112: mod(s) { $0.slowStart = 5 }; say(s, josa(n, "은", "는") + " 좀처럼 힘을 낼 수 없다!")
         case 107 where f(t).alive: if f(t).moves.contains(where: { let m = moveTable[$0]!; return !m.isStatus && typeEff(m.type, s, by: t) > 1 }) { say(s, josa(n, "은", "는") + " 몸서리를 쳤다!") }
         case 108 where f(t).alive: if let best = f(t).moves.max(by: { (moveTable[$0]?.power ?? 0) < (moveTable[$1]?.power ?? 0) }) { say(s, josa(monNames[f(t).mon.dex] + "의 " + moveTable[best]!.name, "을", "를") + " 꿰뚫어 보았다!") }
+        case 119 where f(t).alive: if let i = f(t).item { say(s, josa(n, "은", "는") + " " + josa(nm(t) + "의 " + i, "을", "를") + " 통찰했다!") }   // 통찰
         default: break
         }
         forecast()
+        heldCheck(s); heldCheck(t)                                                                   // (위협 → 하양허브; 독압정 → a berry)
     }
     mutating func forecast() {
         for s in [Side.me, .it] where f(s).mon.dex == 351 && f(s).has(59) {
@@ -108,6 +110,8 @@ extension Battle {
     mutating func moveFirst(_ a: Int, _ b: Int) -> Bool {
         let pa = moveTable[a]!.priority, pb = moveTable[b]!.priority
         if pa != pb { return pa > pb }
+        let qa = quick(.me), qb = quick(.it)                                                         // 선제공격손톱 · 애슈열매 / 느림보꼬리
+        if qa != qb { return qa > qb }
         if f(.me).has(100) != f(.it).has(100) { return f(.it).has(100) }
         let sa = speed(.me), sb = speed(.it)
         if sa == sb { return roll(2) == 0 }
@@ -152,6 +156,7 @@ extension Battle {
         execute(s, id, called: false)
         if lk > 0, f(s).lock == lk { mod(s) { $0.lock = 0; $0.rollout = 0; $0.uproar = 0 } }      // a locked move that missed or was blocked ends there (no confusion)
         if bd > 0, f(s).bide == bd { mod(s) { $0.bide = 0 } }                                     // so does 참기 that met an immunity
+        heldCheck(s); heldCheck(other(s))                                                            // berries and herbs for what the move did
         faints()
     }
     /// A move that didn't happen ends whatever it was in the middle of: charging, flying up, a rampage, 참기, 소란, 구르기, 연속자르기.
@@ -177,13 +182,15 @@ extension Battle {
                         13: "회오리를 일으켰다!", 130: "목을 움츠렸다!", 143: "강렬한 빛에 휩싸였다!"][id] ?? "힘을 모으고 있다!"
             out.append(.use(s, move: id)); say(s, josa(n, "은", "는") + " " + line)
             if id == 130 { boost(s, 2, 1, from: s) }
-            return
+            guard holds(s, "파워풀허브") else { return }
+            useUp(s); say(s, josa(n, "은", "는") + " 파워풀허브로 힘이 넘친다!")                         // goes straight on (charging = id: no second PP)
         }
         let second = f(s).charging == id
         mod(s) { $0.charging = 0; $0.semi = 0 }
         if !called && !second && f(s).lock == 0 && f(s).bide == 0 { deductPP(s, id) }           // a rampage's / 참기's later turns are free
         out.append(.use(s, move: id))
-        if !called { mod(s) { $0.lastMove = id } }                                                 // 앙코르 / 사슬묶기 / 트집 see the caller, not what 손가락흔들기 & co. called
+        if !called { mod(s) { $0.metronome = $0.lastMove == id ? ($0.metronome ?? 0) + 1 : nil; $0.lastMove = id } }   // (메트로놈's streak)
+        if !called, f(s).choice == nil, held(s)?.hasPrefix("구애") == true, id != 165 { mod(s) { $0.choice = id } }       // 구애: locked into it                                                 // 앙코르 / 사슬묶기 / 트집 see the caller, not what 손가락흔들기 & co. called
         if id != 210 { mod(s) { $0.furyCutter = 0 } }                                              // 연속자르기's streak breaks on anything else
         let before = lastUsed; lastUsed = id
         switch id {                                                                                  // moves that pick another move

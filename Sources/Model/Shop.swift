@@ -96,6 +96,34 @@ extension Walk {
         ("유석열매", 20), ("시마열매", 20), ("파비열매", 20), ("로매열매", 20), ("또뽀열매", 20), ("토망열매", 20), ("순백떡", 200)]
     static let bpShop: [(item: String, bp: Int)] = [("고급상처약", 3), ("풀회복약", 5), ("회복약", 6), ("부활초", 6), ("PP에이더", 4), ("PP맥스", 8), ("이상한사탕", 8),
         ("맥스업", 1), ("타우린", 1), ("사포닌", 1), ("리보플라빈", 1), ("키토산", 1), ("알칼로이드", 1), ("은색병뚜껑", 25), ("금색병뚜껑", 120)]
+    /// 지닌 도구 (3.7, docs/plans/13 ⑤): the battle ones for BP; the type items, plates, training ones and berries for W (berries in their own tab).
+    static let heldBP: [(item: String, bp: Int)] = [
+        ("구애머리띠", 32), ("구애안경", 32), ("구애스카프", 32), ("생명의구슬", 32), ("기합의띠", 32), ("먹다남은음식", 32),
+        ("달인의띠", 32), ("선제공격손톱", 24), ("초점렌즈", 24), ("예리한손톱", 24), ("왕의징표석", 24), ("예리한이빨", 24),
+        ("광각렌즈", 24), ("포커스렌즈", 24), ("반짝가루", 24), ("무사태평향로", 24), ("기합의머리띠", 24), ("조개껍질방울", 24),
+        ("검은오물", 24), ("빛의점토", 24), ("메트로놈", 24), ("하양허브", 16), ("멘탈허브", 16), ("파워풀허브", 16),
+        ("힘의머리띠", 16), ("박식안경", 16), ("맹독구슬", 16), ("화염구슬", 16), ("검은철구", 16), ("느림보꼬리", 16),
+        ("만복향로", 16), ("끈적끈적바늘", 16), ("아름다운허물", 16), ("큰뿌리", 16), ("끈기갈고리손톱", 16), ("축축한바위", 16),
+        ("뜨거운바위", 16), ("보송보송바위", 16), ("차가운바위", 16), ("빨간실", 16), ("연막탄", 8), ("교정깁스", 16),
+        ("파워웨이트", 16), ("파워리스트", 16), ("파워벨트", 16), ("파워렌즈", 16), ("파워밴드", 16), ("파워앵클릿", 16),
+        ("전기구슬", 16), ("굵은뼈", 16), ("심해의이빨", 16), ("심해의비늘", 16), ("금속파우더", 16), ("스피드파우더", 16),
+        ("럭키펀치", 16), ("대파", 16), ("마음의물방울", 32), ("금강옥", 32), ("백옥", 32), ("백금옥", 32)]
+    static let heldW: [(item: String, watts: Int)] = [
+        ("은빛가루", 500), ("부드러운모래", 500), ("딱딱한돌", 500), ("기적의씨", 500), ("검은안경", 500), ("검은띠", 500),
+        ("자석", 500), ("신비의물방울", 500), ("예리한부리", 500), ("독바늘", 500), ("녹지않는얼음", 500), ("저주의부적", 500),
+        ("휘어진스푼", 500), ("목탄", 500), ("용의이빨", 500), ("실크스카프", 500), ("바닷물향로", 500), ("괴상한향로", 500),
+        ("암석향로", 500), ("잔물결향로", 500), ("꽃향로", 500), ("불구슬플레이트", 1000), ("물방울플레이트", 1000), ("우레플레이트", 1000),
+        ("초록플레이트", 1000), ("고드름플레이트", 1000), ("주먹플레이트", 1000), ("맹독플레이트", 1000), ("대지플레이트", 1000), ("푸른하늘플레이트", 1000),
+        ("이상한플레이트", 1000), ("비단벌레플레이트", 1000), ("암석플레이트", 1000), ("원령플레이트", 1000), ("용의플레이트", 1000), ("공포플레이트", 1000),
+        ("강철플레이트", 1000), ("학습장치", 2000), ("행복의알", 3000), ("평온의방울", 500), ("부적금화", 2000), ("행운의향로", 2000),
+        ("변함없는돌", 200), ("버치열매", 50), ("유루열매", 50), ("복슝열매", 50), ("복분열매", 50), ("배리열매", 50),
+        ("시몬열매", 50), ("리샘열매", 200), ("오랭열매", 50), ("자뭉열매", 150), ("과사열매", 100), ("무화열매", 100),
+        ("위키열매", 100), ("마고열매", 100), ("아바열매", 100), ("파야열매", 100), ("오카열매", 200), ("꼬시개열매", 200),
+        ("초나열매", 200), ("린드열매", 200), ("플카열매", 200), ("로플열매", 200), ("으름열매", 200), ("슈캐열매", 200),
+        ("바코열매", 200), ("야파열매", 200), ("리체열매", 200), ("루미열매", 200), ("수불열매", 200), ("하반열매", 200),
+        ("마코열매", 200), ("바리비열매", 200), ("카리열매", 200), ("치리열매", 300), ("용아열매", 300), ("캄라열매", 300),
+        ("야타비열매", 300), ("규살열매", 300), ("랑사열매", 500), ("스타열매", 500), ("미클열매", 300), ("애슈열매", 400),
+        ("의문열매", 300), ("자보열매", 300), ("애터열매", 300)]
     /// Two legends for the patient: 칠색조 for a full tank of watts (9,999 is the cap), 뮤츠 for 300 BP (~30 tower sets). As often as you can pay (a shiny, better IVs).
     static let legendShop: [(dex: Int, level: Int, watts: Int, bp: Int)] = [(250, 50, 9999, 0), (150, 70, 0, 300)]
     func legendBought(_ dex: Int) -> Bool { (bought ?? []).contains("legend:\(dex)") }
@@ -123,26 +151,31 @@ extension Walk {
     /// The rows, in order: the goods, then (상점) the companion's evolution items, then the once-only ones. `shells` = the device colours sold for BP.
     func wares(bp: Bool, shells: [(name: String, bp: Int)]) -> [Ware] {
         if bp {
-            return Walk.bpShop.map { Ware(kind: .item($0.item), price: $0.bp) } + shells.map { Ware(kind: .shell($0.name), price: $0.bp) }
+            return Walk.bpShop.map { Ware(kind: .item($0.item), price: $0.bp) } + Walk.heldBP.map { Ware(kind: .item($0.item), price: $0.bp) }
+                + shells.map { Ware(kind: .shell($0.name), price: $0.bp) }
                 + Walk.legendShop.indices.filter { Walk.legendShop[$0].bp > 0 }.map { Ware(kind: .legend($0), price: Walk.legendShop[$0].bp) }
         }
         return Walk.shop.map { Ware(kind: .item($0.item), price: $0.watts) } + Walk.mints.map { Ware(kind: .item($0), price: Walk.mintPrice) }
-            + evolutionItems().map { Ware(kind: .item($0), price: Walk.evoItemPrice) }
+            + Walk.heldW.map { Ware(kind: .item($0.item), price: $0.watts) }
+            + evolutionItems().filter { i in !Walk.heldW.contains { $0.item == i } }.map { Ware(kind: .item($0), price: Walk.evoItemPrice) }
             + Walk.legendShop.indices.filter { Walk.legendShop[$0].watts > 0 }.map { Ware(kind: .legend($0), price: Walk.legendShop[$0].watts) }
     }
     /// The shops' tabs (docs/plans/13: the lists got long), in order; and the one a row goes under.
-    static func shopTabs(bp: Bool) -> [String] { bp ? ["회복", "육성", "지닌 도구", "기기 색", "전설"] : ["회복", "배틀", "육성", "민트", "진화", "전설"] }
-    static func shopTab(_ w: Ware) -> String {
+    static func shopTabs(bp: Bool) -> [String] { bp ? ["회복", "육성", "지닌 도구", "기기 색", "전설"] : ["회복", "배틀", "육성", "민트", "지닌 도구", "열매", "진화", "전설"] }
+    /// bp: which shop the row is in (3.7: a held item is under 지닌 도구 / 열매 by the list it's sold from).
+    static func shopTab(_ w: Ware, bp: Bool = false) -> String {
         switch w.kind {
         case .legend: return "전설"
         case .shell: return "기기 색"
         case .item(let i):
+            if bp ? heldBP.contains(where: { $0.item == i }) : heldW.contains(where: { $0.item == i }) { return i.hasSuffix("열매") ? "열매" : "지닌 도구" }
             switch ItemKind.of(i) {
             case .heal, .revive: return "회복"
             case .battle(let u): switch u { case .x, .guardSpec, .direHit: return "배틀"; default: return "회복" }
             case .candy, .vitamin, .evReset, .bottleCap, .berry: return "육성"
             case .mint: return "민트"
             case .evolution: return "진화"
+            case .held: return "지닌 도구"
             case .sell: return "기타"
             }
         }
@@ -247,7 +280,7 @@ extension Walk {
         // 60 of our party's mean) with what they'd know at Lv.25 — still Lv.50. Simulated first-trainer wins: 0 → 32 % for a Lv.15 party, 6 → 62 % at Lv.25.
         let ours = party().map { baseStats[$0.mon.dex].reduce(0, +) }, mean = ours.isEmpty ? 400 : ours.reduce(0, +) / ours.count
         let near = (1...493).filter { d in !legends.contains(d) && d != 292 && abs(baseStats[d].reduce(0, +) - mean) <= 60 }
-        let foes = (0..<3).map { _ -> Mon in
+        var foes = (0..<3).map { _ -> Mon in
             if tier == 0, let d = near.randomElement(using: &r) { var m = Mon.wild(d, level: 25, &r); m.known = m.moves; m.level = lv; return m }
             let d = pool.randomElement(using: &r)!, phys = baseStats[d][1] >= baseStats[d][3]           // 물리형 or 특수형
             var m = Mon.wild(d, level: lv, perfect: [0, 0, 0, 3, 5, 6][tier], &r)
@@ -260,7 +293,15 @@ extension Walk {
             return m
         }
         let cls = names.randomElement(using: &r)!, given = cls == "아가씨" ? she : ["등산가", "연구원", "드래곤 조련사", "모범 소년"].contains(cls) ? he : he + she
-        return (cls + " " + given.randomElement(using: &r)!, foes)
+        let who = cls + " " + given.randomElement(using: &r)!
+        var used = Set<String>()                                                                    // 3.7: held items from 7 wins on, one of each (the tower's rule)
+        for k in foes.indices where tier >= 1 {
+            let phys = baseStats[foes[k].dex][1] >= baseStats[foes[k].dex][3]
+            let pool = tier >= 3 ? [phys ? "구애머리띠" : "구애안경", "생명의구슬", "기합의띠", "먹다남은음식", "자뭉열매", "리샘열매", "달인의띠", "구애스카프", "선제공격손톱", "초점렌즈"]
+                                 : ["자뭉열매", "오랭열매", "리샘열매", "먹다남은음식"]
+            if let i = pool.filter({ !used.contains($0) }).randomElement(using: &r) { foes[k].item = i; used.insert(i) }
+        }
+        return (who, foes)
     }
     /// A win: streak + 1, BP = 1 (+1 per full 7 already won), +3 on every 7th. Returns the BP.
     mutating func towerWin() -> Int {

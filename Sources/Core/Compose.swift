@@ -506,6 +506,7 @@ extension Walker {
             return gold ? ("\(monNames[c.dex]) 특훈 · 모두 31로", "지금 \(c.perfectIVs)V") : ("\(monNames[c.dex]) 특훈할 능력 고르기", "지금 \(c.perfectIVs)V")
         case .mint(let k): return (c.mint ?? c.nature ?? 0) == k ? (nil, "이미 그 성격 효과예요") : ("{동료}에게 쓰기".replacingOccurrences(of: "{동료}", with: monNames[c.dex]), "지금 " + natures[c.mint ?? c.nature ?? 0].name)   // (minimal: the per-Pokémon target is the Mac's, docs/plans/13)
         case .revive: return (nil, "배틀 중 기절한 포켓몬에게")
+        case .held: return (nil, "포켓몬에게 지니게 해요")                                          // (minimal: 지니게 하기 is the Mac's, docs/plans/13 ⑤)
         case .heal, .battle: return (nil, "배틀에서 도구로")
         }
     }

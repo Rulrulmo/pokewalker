@@ -55,7 +55,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
         }
     }
     /// HP changes go through these, so the beats replay to exactly the same state.
-    mutating func hurt(_ s: Side, _ n: Int, _ text: String) { let d = min(f(s).hp, max(1, n)); out.append(.hurt(s, damage: d, text: text)); apply(out.last!) }
+    mutating func hurt(_ s: Side, _ n: Int, _ text: String) { let d = min(f(s).hp, max(1, n)); out.append(.hurt(s, damage: d, text: text)); apply(out.last!); heldCheck(s) }   // (a berry for low HP)
     mutating func restore(_ s: Side, _ n: Int, _ text: String) {
         guard f(s).healBlock == 0 else { say(s, josa(nm(s), "은", "는") + " 회복할 수 없다!"); return }
         let h = min(f(s).maxHP - f(s).hp, max(1, n)); guard h > 0 else { return }                // full: nothing to say (a heal move checks first)
@@ -76,9 +76,9 @@ struct Battle: Equatable, Codable {                                 // Codable: 
         if weatherOn == .rain, x.has(33) { v *= 2 }; if weatherOn == .sun, x.has(34) { v *= 2 }  // 쓱쓱 / 엽록소
         if x.slowStart > 0 { v *= 0.5 }
         if sides[si(s)].tailwind > 0 { v *= 2 }
-        return v
+        return v * itemSpeed(s)
     }
-    func grounded(_ s: Side) -> Bool { let x = f(s); return gravity > 0 || x.ingrain || !(x.typeList.contains("flying") || x.has(26) || x.magnetRise > 0) }
+    func grounded(_ s: Side) -> Bool { let x = f(s); return gravity > 0 || x.ingrain || x.item == "검은철구" || !(x.typeList.contains("flying") || x.has(26) || x.magnetRise > 0) }
 
     // MARK: status and stat changes
     /// Tries to give `st` to s. Returns false (quietly, unless `loud`) when it can't stick. A substitute is the move's business (the callers check);

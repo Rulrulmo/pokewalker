@@ -15,7 +15,7 @@ extension Battle {
     /// Why that side can't switch out now (nil = it can).
     func switchBlock(_ s: Side) -> String? {
         if locked(s) { return "지금은 교체할 수 없다!" }
-        return trapped(s) ? josa(nm(s), "은", "는") + " 돌아올 수 없다!" : nil
+        return trapped(s) && !holds(s, "아름다운허물") ? josa(nm(s), "은", "는") + " 돌아올 수 없다!" : nil
     }
 
     /// The second player's view: its party as ours. `name` = the first player's (the "trainer" it faces).

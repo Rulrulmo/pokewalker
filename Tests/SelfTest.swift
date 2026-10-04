@@ -827,15 +827,16 @@ import AppKit                                                                   
     check(!mv0.menu().contains { $0.title.hasPrefix("상점") || $0.title.hasPrefix("BP 교환소") || $0.title.hasPrefix("교환소") }, "the shops left the right-click menu")
     var sw = Walk(); sw.watts = 5000; sw.bp = 200; sw.companion = Mon(dex: 133, level: 20, female: false)             // 이브이: it has evolution items to sell
     let wW = sw.wares(bp: false, shells: []), wB = sw.wares(bp: true, shells: [(name: "배틀 골드", bp: 40)])
-    check(wW.count == Walk.shop.count + Walk.mints.count + sw.evolutionItems().count + 1 && wW.last?.kind == .legend(0) && wW.contains { $0.kind == .item("불꽃의돌") && $0.price == Walk.evoItemPrice }
-          && wB.count == Walk.bpShop.count + 2 && wB.contains { $0.kind == .shell("배틀 골드") } && wB.last?.kind == .legend(1), "상점: goods + 민트 21 + the companion's evolution items + 칠색조; BP 교환소: goods + 배틀 골드 + 뮤츠")
+    check(wW.count == Walk.shop.count + Walk.mints.count + Walk.heldW.count + sw.evolutionItems().count + 1 && wW.last?.kind == .legend(0) && wW.contains { $0.kind == .item("불꽃의돌") && $0.price == Walk.evoItemPrice }
+          && wB.count == Walk.bpShop.count + Walk.heldBP.count + 2 && wB.contains { $0.kind == .shell("배틀 골드") } && wB.last?.kind == .legend(1), "상점: goods + 민트 21 + the companion's evolution items + 칠색조; BP 교환소: goods + 배틀 골드 + 뮤츠")
     check(shells.filter { $0.bp > 0 }.map { "\($0.name) \($0.bp)" } == Engine.bpShells.map { "\($0.name) \($0.bp)" }, "BP 교환소's device colours: the 기기 menu's prices are the server's (Engine.bpShells)")
     let mochi = wW.first { $0.kind == .item("순백떡") }!, cap = wB.first { $0.kind == .item("금색병뚜껑") }!
     check(sw.canBuy(mochi, bp: false) == 25 && sw.canBuy(Walk.Ware(kind: .item("해독제"), price: 10), bp: false) == 99 && sw.canBuy(cap, bp: true) == 1 && sw.canBuy(wW.last!, bp: false) == 0,
           "how many: what the money covers, at most 99; 칠색조 needs 9,999W")
     check(sw.purchase(mochi, 3, bp: false) == .items("순백떡", 3) && sw.watts == 4400 && sw.count("순백떡") == 3 && sw.purchase(mochi, 23, bp: false) == nil && sw.watts == 4400,
           "3 순백떡 at once: -600W; more than the money covers: nothing happens")
-    check(sw.purchase(wB[Walk.bpShop.count], 1, bp: true) == .shell("배틀 골드") && sw.bp == 160 && sw.canBuy(wB[Walk.bpShop.count], bp: true) == 0 && sw.purchase(wB[Walk.bpShop.count], 1, bp: true) == nil,
+    let shell = wB[Walk.bpShop.count + Walk.heldBP.count]                                                         // (3.7: after the 지닌 도구)
+    check(sw.purchase(shell, 1, bp: true) == .shell("배틀 골드") && sw.bp == 160 && sw.canBuy(shell, bp: true) == 0 && sw.purchase(shell, 1, bp: true) == nil,
           "once-only (a device colour): bought once, then 보유")
     let shopV = online({ var s = Walk(); s.watts = 1000; s.bp = 30; return s }(), rng: 41)
     shopV.screen = .menu(menuAt("배틀 타워")); shopV.press(1); let tower = on(shopV) { if case .tower = $0 { return true }; return false }
