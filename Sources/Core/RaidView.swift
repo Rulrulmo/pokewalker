@@ -29,7 +29,7 @@ extension Walker {
     // MARK: the pane
     func raidPane(_ tab: Int, _ now: Date) -> PaneContent {
         let power = raidPower, cells = raidCells, toNext = Engine.raidPowerCost - power % Engine.raidPowerCost
-        let powerText = power >= 3000 ? "가득 찼어요" : "다음 칸까지 \(toNext.formatted())걸음"
+        let powerText = power >= Engine.raidPowerMax ? "가득 찼어요" : "다음 칸까지 \(toNext.formatted())걸음"
         guard let r = cloud?.raid else {
             let note = cloud?.online == false ? "연결되면 볼 수 있어요" : "불러오는 중…"
             return PaneContent(raid: RaidModel(boss: "레이드", left: "", hp: 0, hpText: note, cleared: false, power: power, powerText: powerText, tabs: Walker.raidTabs, tab: tab, rows: [], empty: note, go: nil, hint: note))
@@ -46,7 +46,7 @@ extension Walker {
         }
         let name = monNames[r.boss.dex], m = r.mine
         var go: String? = nil, hint = ""
-        if r.hpLeft > 0 { if cells > 0 { go = "도전 · 파워 1칸" } else { hint = "파워가 부족해요 (1,000걸음마다 1칸)" } }
+        if r.hpLeft > 0 { if cells > 0 { go = "도전 · 파워 1칸" } else { hint = "파워가 부족해요 (\(Engine.raidPowerCost.formatted())걸음마다 1칸)" } }
         else if m.caught { hint = josa(name, "을", "를") + " 잡았어요!" }
         else if !m.canCatch { hint = "이번 주에 싸워야 잡을 수 있어요" }
         else if let b = m.balls, b == 0 { hint = "볼을 모두 던졌어요" }
@@ -75,8 +75,8 @@ extension Walker {
         if k != 1 { screen = .raid(tab: 1 - tab); return }
         guard let r = cloud?.raid else { return }
         if r.hpLeft > 0 {
-            guard raidCells > 0 else { screen = .say(["파워가 부족하다", "(1,000걸음마다 1칸)"], next: .raid(tab: tab), since: now); return }
-            raidFight(tab, now)
+            guard raidCells > 0 else { screen = .say(["파워가 부족하다", "(\(Engine.raidPowerCost.formatted())걸음마다 1칸)"], next: .raid(tab: tab), since: now); return }
+            raidPick(now)                                                                           // 3.8: who goes first (1–3)
         } else if r.mine.canCatch, (r.mine.balls ?? 1) > 0 { raidBall(tab, now) }
     }
     func raidTap(_ code: Int, _ now: Date) {
@@ -87,9 +87,9 @@ extension Walker {
         default: return
         }
     }
-    /// A fight with the week's boss: the server takes 1칸 and starts it; it plays on the battle screens (raidOn: its menu, lines, HUD).
-    func raidFight(_ tab: Int, _ now: Date) {
-        act(.raid(), back: .raid(tab: tab), now, lines: ["레이드", "보스에게 가는 중..."], quiet: true) { [weak self] o, now in
+    /// A fight with the week's boss: the server takes 1칸 and starts it with the picked (3.8: 1–3, as they are); it plays on the battle screens (raidOn: its menu, lines, HUD).
+    func raidFight(_ tab: Int, party: [Int]? = nil, back: Screen? = nil, _ now: Date) {
+        act(.raid(party: party), back: back ?? .raid(tab: tab), now, lines: ["레이드", "보스에게 가는 중..."], quiet: true) { [weak self] o, now in
             guard let self, let f = o.battle else { return nil }
             raidOn = true; fight = f; freshFight()
             return (o.beats ?? []).isEmpty ? .battle(f, sel: 0) : .beats(f, o.beats!, since: now, from: f)

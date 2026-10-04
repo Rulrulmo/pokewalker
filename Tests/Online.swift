@@ -323,8 +323,13 @@ import AppKit
     lobby(rc); let weak = rc.paneContent(Date()).raid; rc.press(1)
     check(weak?.go == nil && weak?.hint == "파워가 부족해요 (1,000걸음마다 1칸)" && says(rc) == ["파워가 부족하다", "(1,000걸음마다 1칸)"], "under 1칸 of power: no 도전, and ● says why", "\(String(describing: weak?.hint)) \(says(rc))")
 
-    // rb: in, and 후퇴 at once (it still fought this week)
-    lobby(rb); rb.pageTap(7010); drain(rb)
+    // rb: who goes (3.8: the tower's three offered, one dropped), in, and 후퇴 at once (it still fought this week)
+    lobby(rb); rb.pageTap(7010); let offered = rb.paneContent(Date()).squad; rb.pageTap(8742); let two = rb.paneContent(Date()).squad
+    let fewer = rb.state.party().count
+    rb.pageTap(8790); drain(rb)
+    let fought2 = (rb.fight?.mine.count ?? 0) == 2
+    check(offered?.title == "레이드 출전" && offered?.strip.count == 3 && offered?.strip.compactMap { $0?.level } == ["Lv.100", "Lv.100", "Lv.100"] && offered?.go == "이 3마리로 도전" && two?.go == "이 2마리로 도전" && fewer == 3 && fought2,
+          "3.8: 도전 → who goes (1–3, the tower's three offered at their own levels); one dropped → those two fight", "\(String(describing: offered)) \(String(describing: two?.go)) \(fought2)")
     var menu: [String] = [], title = ("", "")
     while case .beats = rb.screen { playOut(rb) }
     if case .battle(let b, _) = rb.screen { menu = rb.battleMenu(b); title = rb.title() }
@@ -336,7 +341,7 @@ import AppKit
 
     // ra: the hit that clears it (its own reply says so)
     sv.raidLeft = 40
-    ra.screen = .raid(tab: 0); ra.pageTap(7010); drain(ra); fightOut(ra)
+    ra.screen = .raid(tab: 0); ra.pageTap(7010); ra.pageTap(8790); drain(ra); fightOut(ra)
     let clearedSaid = says(ra) == ["40 데미지!" + (ra.state.bp ?? 0 > 0 ? " +\(ra.state.bp ?? 0)BP" : ""), "보스를 쓰러뜨렸다!", "볼을 던질 수 있다"] || (says(ra).first?.hasPrefix("40 데미지!") == true && says(ra).dropFirst().first == "보스를 쓰러뜨렸다!")
     check(clearedSaid && sv.raidLeft == 0 && sv.raidDealt.values.contains(40) && !ra.news.contains { if case .raidCleared = $0 { return true }; return false },
           "the clearing fight: its damage (up to what was left) and 보스를 쓰러뜨렸다! said at its end, not again at home", "\(says(ra)) \(sv.raidLeft)")
@@ -524,29 +529,57 @@ import AppKit
     func act(_ w: Walker) { w.news = []; w.screen = .home; w.cloud!.addSteps(1); w.cloud!.saveNow(); drain(w); drain(w) }
     func pump(_ ws: [Walker]) { for _ in 0..<4 { for w in ws { w.tick(Date()); drain(w) } } }
     let sv = FakeCloud()
-    let da = online({ var s = Walk(); s.companion = Mon(dex: 150, level: 70, female: false); return s }(), server: sv)
-    let db = online({ var s = Walk(); s.companion = Mon(dex: 10, level: 5, female: false); return s }(), server: sv)
+    let da = online({ var s = Walk(); s.companion = Mon(dex: 150, level: 70, female: false); s.caught = [Mon(dex: 149, level: 70, female: false), Mon(dex: 248, level: 70, female: false)]; return s }(), server: sv)
+    let db = online({ var s = Walk(); s.companion = Mon(dex: 10, level: 5, female: false); s.caught = [Mon(dex: 16, level: 5, female: false), Mon(dex: 19, level: 5, female: false)]; return s }(), server: sv)
     let aName = da.myName, bName = db.myName
     sv.befriend(aName, bName); act(db); da.cloud!.teamDue = true; drain(da); drain(da)
     let bi = da.teamRows(0).firstIndex { $0.card.name.lowercased() == bName.lowercased() } ?? 0
-    da.screen = .team(sel: bi, tab: 0, card: true); let card = da.paneContent(Date()).teamCard; da.pageTap(6032); drain(da)
+    // 3.8: no 대전 파티 yet → set it first (the 대전 menu: 정하기, three clicks, the button)
+    da.screen = .team(sel: bi, tab: 0, card: true); let card = da.paneContent(Date()).teamCard; da.pageTap(6032)
+    let noParty: Bool = { if case .say(["대전 파티를", "먼저 정해 주세요"], .squad(let q), _) = da.screen { return q.kind == .duelParty }; return false }()
+    da.screen = .menu(menuAt("대전")); let tile = da.paneContent(Date()).menu?.rows.first { $0.name == "대전" }; da.press(1); drain(da)
+    let hub0 = da.paneContent(Date()).duelHub
+    da.pageTap(6330); da.pageTap(8750); da.pageTap(8751); let two = da.paneContent(Date()).squad; da.pageTap(8752); let three = da.paneContent(Date()).squad
+    da.pageTap(8790); drain(da); let setSaid = says(da); da.press(1); let hub1 = da.paneContent(Date()).duelHub
+    check(card?.duel == "대전 신청" && noParty && tile?.note == "대전 파티를 정해 주세요" && hub0?.go == nil && hub0?.hint == "대전 파티를 먼저 정해 주세요" && hub0?.friends.map(\.name) == [bName]
+          && two?.go == nil && two?.strip.count == 6 && two?.order.prefix(3) == [1, 2, nil] && three?.go == "이 3마리로 정하기" && setSaid == ["대전 파티를", "정했다!"]
+          && da.state.duelParty?.count == 3 && served(da)?.duelParty == da.state.duelParty && hub1?.party.compactMap { $0?.dex } == [150, 149, 248] && hub1?.go == "랜덤 매칭",
+          "3.8: 대전 신청 with no 대전 파티 → set it first; the 대전 tile → its menu (friends walking now); 정하기: 3–6 clicked in order, the button keeps it (the server's too)",
+          "\(noParty) \(String(describing: tile)) \(String(describing: hub0)) \(String(describing: three?.go)) \(setSaid) \(String(describing: da.state.duelParty))")
+    db.screen = .squad(Squad(kind: .duelParty, picked: [], at: 0)); db.press(1); db.press(2); db.press(1); db.press(2); db.press(1)
+    let dbOnButton: Bool = { if case .squad(let q) = db.screen { return q.at == 3 && q.picked.count == 3 }; return false }()
+    db.press(1); drain(db); db.press(1)
+    // the challenge, 수락 → each picks 3 of the six in a minute (the other's six seen)
+    da.screen = .team(sel: bi, tab: 0, card: true); da.pageTap(6032); drain(da)
     let waiting: Bool = { if case .duel(.waitAccept(_, let to)) = da.screen { return to.lowercased() == bName.lowercased() }; return false }()
-    check(card?.duel == "대전 신청" && waiting && da.duelOn && sv.duels.count == 1 && da.paneContent(Date()).duel?.buttons == ["신청 취소"],
-          "대전 신청 (a friend walking now) → the server's invitation; this side waits (신청 취소)", "\(String(describing: card?.duel)) \(waiting)")
+    check(dbOnButton && db.state.duelParty?.count == 3 && waiting && da.duelOn && sv.duels.count == 1 && da.paneContent(Date()).duel?.buttons == ["신청 취소"],
+          "● alone sets it too (● picks, ▶ moves; the last one in: onto the button); 대전 신청 → the server's invitation; this side waits (신청 취소)", "\(dbOnButton) \(waiting)")
     act(db); let invited = says(db) == [josa(aName, "이", "가") + " 대전을 신청했다!"]; db.press(1)
     let page = db.paneContent(Date()).duel
     db.pageTap(6300); drain(db)
+    let bPick = db.paneContent(Date()).squad
+    let bPicking: Bool = { if case .squad(let q) = db.screen { return q.kind == .duelPick(id: sv.duels[0].id) }; return false }()
+    pump([da, db])
+    let aPicking: Bool = { if case .squad(let q) = da.screen { return q.kind == .duelPick(id: sv.duels[0].id) }; return false }()
+    check(invited && page?.buttons == ["수락", "거절"] && bPicking && aPicking && bPick?.theirs?.map(\.dex) == [150, 149, 248] && bPick?.cells.map(\.dex) == [10, 16, 19] && bPick?.strip.count == 3
+          && bPick?.note.hasSuffix("초 남음") == true && db.title().0 == "실시간 대전",
+          "the invitation → 수락 → both on the pick (my six, the other's six by species, a minute)", "\(invited) \(bPicking) \(aPicking) \(String(describing: bPick))")
+    da.pageTap(8752); da.pageTap(8750); da.pageTap(8751); da.pageTap(8790); drain(da)
+    let aSent = da.paneContent(Date()).squad
+    db.press(1); db.press(2); db.press(1); db.press(2); db.press(1); db.press(1); drain(db)
+    var guard1 = 0; while guard1 < 6, !{ if case .beats = db.screen { return true }; return false }() { guard1 += 1; pump([da, db]) }
     let opening: Bool = { if case .beats = db.screen { return true }; return false }()
     playOut(db); pump([da, db]); playOut(da)
-    let dbMenu: Bool = { if case .battle(let b, 0) = db.screen { return db.battleMenu(b) == ["공격", "기권"] && !db.duelWait }; return false }()
+    let aLead = da.fight?.mine.map(\.mon.dex)
+    let dbMenu: Bool = { if case .battle(let b, 0) = db.screen { return db.battleMenu(b) == ["공격", "교체", "기권"] && !db.duelWait }; return false }()
     let daMenu: Bool = { if case .battle = da.screen { return !da.duelWait }; return false }()
-    check(invited && page?.buttons == ["수락", "거절"] && opening && dbMenu && daMenu && da.title().0 == "실시간 대전",
-          "the invitation's news → its page (수락 · 거절); 수락: the opening plays on both sides, then each picks (공격 · 기권: no items, no running)", "\(invited) \(String(describing: page)) \(opening) \(dbMenu) \(daMenu) \(da.screen)")
+    check(aSent?.go == nil && aSent?.hint == "상대가 고르는 중…" && aSent?.strip.compactMap { $0?.dex } == [248, 150, 149] && opening && aLead == [248, 150, 149] && dbMenu && daMenu && da.title().0 == "실시간 대전",
+          "my three sent (in the order clicked) → the other's awaited; both in: the opening plays on both sides, then each picks", "\(String(describing: aSent)) \(opening) \(String(describing: aLead)) \(dbMenu) \(daMenu) \(da.screen)")
     da.press(1); da.press(1); drain(da)
     let daWaits = da.duelWait && da.sideModel(Date())?.message.hasPrefix("상대를 기다리는 중") == true
     db.press(1); db.press(1); drain(db); pump([da, db])
     var n = 0
-    while n < 30, da.duelOn || db.duelOn {                                                            // to the end: each picks when asked
+    while n < 40, da.duelOn || db.duelOn {                                                            // to the end: each picks when asked
         n += 1
         for w in [da, db] {
             switch w.screen {
@@ -562,6 +595,34 @@ import AppKit
     act(da); act(db)
     check(daWaits && won == ["이겼다!", "+3 BP"] && lost.first == josa(aName, "에게", "에게") + " 졌다..." && da.state.bp == 3 && da.state.duelWins == 1 && db.state.duelLosses == 1 && sv.duels.first?.state == "over",
           "a pick waits for the other's (상대를 기다리는 중); turn by turn to the end: 이겼다! +3 BP, the record on both sides", "\(daWaits) \(won) \(lost) \(String(describing: da.state.bp)) \(String(describing: sv.duels.first?.state))")
+    // 전적: asked with the menu, on its tab
+    da.screen = .menu(menuAt("대전")); da.press(1); pump([da]); da.pageTap(6321); pump([da])
+    let recs = da.paneContent(Date()).duelHub
+    check(recs?.tab == 1 && recs?.recs.first?.won == true && recs?.recs.first?.line == "vs " + bName && recs?.recs.first?.mine == [248, 150, 149] && recs?.recs.first?.theirs.count == 3 && da.cloud!.duelRecord?.wins == 1,
+          "전적: the last ones (won or lost, with whom, the three on each side)", "\(String(describing: recs))")
+    // 랜덤 매칭: alone it waits (그만두기); two meet → the pick; a minute unpicked → the first three; a minute alone → 상대를 찾지 못했다
+    da.screen = .duel(.hub(tab: 0, sel: 0)); da.pageTap(6331); drain(da)
+    let queued: Bool = { if case .duel(.queued) = da.screen { return true }; return false }()
+    let qPage = da.paneContent(Date()).duel; da.pageTap(6300); drain(da)
+    let quit = says(da) == ["랜덤 매칭을", "그만뒀다"] && !da.duelOn && sv.duels.last?.state == "cancelled"
+    da.screen = .duel(.hub(tab: 0, sel: 0)); da.press(1); drain(da)                                  // (● on 랜덤 매칭)
+    db.screen = .duel(.hub(tab: 0, sel: 0)); db.pageTap(6331); drain(db); pump([da, db])
+    let matched = { (w: Walker) -> Bool in if case .squad(let q) = w.screen, case .duelPick = q.kind { return true }; return false }
+    let bothPick = matched(da) && matched(db)
+    sv.now = Date() + 61; act(da); pump([da, db]); sv.now = nil
+    var g2 = 0; while g2 < 6, !{ if case .beats = da.screen { return true }; return false }() { g2 += 1; pump([da, db]) }
+    let firstThree = da.fight?.mine.map(\.mon.dex) == [150, 149, 248]
+    playOut(da); pump([da, db]); playOut(db); pump([da, db])
+    if case .battle(let f, _) = da.screen { da.screen = .battle(f, sel: da.battleMenu(f).firstIndex(of: "기권")!); da.press(1); da.press(2); da.press(1); drain(da) }   // 기권 (the turn waits for the other's pick)
+    if case .battle(let f, _) = db.screen, !db.duelWait { db.screen = .battle(f, sel: 0); db.press(1); if case .moves(let x, _) = db.screen { db.screen = .moves(x, sel: 0); db.press(1) }; drain(db) }
+    for _ in 0..<6 { pump([da, db]); for w in [da, db] { if case .beats = w.screen { playOut(w) } } }
+    da.screen = .home; db.screen = .home; act(da); act(db)
+    let quitOver = sv.duels.last?.state == "over" && sv.duels.last?.why == "forfeit"
+    da.screen = .duel(.hub(tab: 0, sel: 0)); da.pageTap(6331); drain(da); sv.now = Date() + 61; act(da); pump([da]); sv.now = nil
+    let unmatched = says(da) == ["상대를 찾지 못했다", "잠시 뒤에 다시 해 봐요"] && !da.duelOn
+    check(queued && qPage?.buttons == ["그만두기"] && quit && bothPick && firstThree && quitOver && unmatched,
+          "랜덤 매칭: alone it waits (그만두기); two meet → both on the pick; a minute unpicked → the first three; a minute alone → 상대를 찾지 못했다",
+          "\(queued) \(quit) \(bothPick) \(firstThree) \(quitOver) \(says(da)) \(sv.duels.map(\.state))")
     // declined; cancelled
     da.screen = .home; da.challenge(bName); drain(da); act(db); db.press(1); db.pageTap(6301); drain(db)
     let declined = says(db) == ["대전 신청을", "거절했다"]; pump([da, db])

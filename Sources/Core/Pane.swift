@@ -164,6 +164,24 @@ struct VisitsModel: Equatable {
     struct Row: Equatable { var dex: Int; var shiny: Bool; var line, sub: String; var button: String; var mine: Bool }
     var tabs: [String]; var tab: Int; var rows: [Row]; var note: String; var hint: String
 }
+/// 3.8 (14 §4–5): picking several in order — the strip (who goes, in order; a click drops one), a duel's other six (species only), ours
+/// (a page of 6 × 4, each picked one numbered), the button (nil: the hint; goSel: the cursor's on it).
+struct SquadModel: Equatable {
+    struct Slot: Equatable { var dex: Int; var shiny: Bool; var level: String }
+    static let perPage = 24
+    var title, note: String; var strip: [Slot?]; var theirs: [GridModel.Cell]?
+    var boxTitle: String; var cells: [GridModel.Cell]; var order: [Int?]; var sel: Int?; var first, count: Int
+    var empty: String; var go: String?; var goSel: Bool; var hint: String
+}
+/// 3.8's 대전 menu (14 §5): 대전 (the registered six, friends walking now to challenge, 랜덤 매칭) · 전적 (the last 20, a page at a time).
+struct DuelHubModel: Equatable {
+    struct Row: Equatable { var name, sub: String; var pill: String? }
+    struct Rec: Equatable { var won: Bool; var line, sub: String; var mine, theirs: [Int] }
+    static let perPage = 5
+    var tabs: [String]; var tab: Int; var note: String
+    var party: [SquadModel.Slot?]; var partyNote: String; var friends: [Row]; var recs: [Rec]; var first, count: Int
+    var sel: Int; var go: String?; var hint: String; var empty: String
+}
 /// 실시간 대전's invitation (12 §5): who, the rules in a line, the time left, its buttons (수락 · 거절, or 신청 취소).
 struct DuelModel: Equatable { var title, line, note: String; var buttons: [String]; var record: String }
 /// 레이드 (12 §4): this week's boss, the team's HP, my power (3 칸), a tab of rows (기여 순위: rank, name, damage and share; 최근 공격: the
@@ -187,6 +205,7 @@ struct PaneContent: Equatable {
     var raid: RaidModel? = nil
     var friendReqs: FriendReqModel? = nil, board: MarketBoardModel? = nil, post: MarketPostModel? = nil
     var duel: DuelModel? = nil, hold: HoldModel? = nil, visits: VisitsModel? = nil
+    var squad: SquadModel? = nil, duelHub: DuelHubModel? = nil
 }
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
@@ -194,7 +213,7 @@ extension PaneContent {
     static let home: CGFloat = 406                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size)
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
-            : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? (teamCard!.visit != nil || teamCard!.request != nil ? 454 : 420) : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 446 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470
+            : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? (teamCard!.visit != nil || teamCard!.request != nil ? 454 : 420) : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 446 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446
             : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 353 : status != nil ? PaneContent.home : Layout.idle
     }
 }

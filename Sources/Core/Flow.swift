@@ -178,8 +178,8 @@ extension Walker {
     func homeKey() -> Bool? {
         switch screen {
         case .home: true
-        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold, .visitPick: false
-        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold, .visitPick: false; default: nil }
+        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold, .visitPick, .squad: false
+        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold, .visitPick, .squad: false; default: nil }
         default: nil
         }
     }
@@ -203,7 +203,10 @@ extension Walker {
             case .raid: screen = .menu(menuAt("레이드"))
             case .market(let s): screen = marketBack(s)
             case .itemOn(let p): screen = .items(state.inventory.firstIndex(of: p.item) ?? 0)
-            case .duel: screen = .home                                                             // (the invitation stays open: its minute)
+            case .duel(.hub(1, _)): screen = .duel(.hub(tab: 0, sel: 0))
+            case .duel(.hub): screen = .menu(menuAt("대전"))
+            case .duel: screen = .home                                                             // (the invitation stays open: its minute; the queue too)
+            case .squad(let s): switch s.kind { case .duelParty: screen = .duel(.hub(tab: 0, sel: 0)); case .raid: screen = .raid(tab: 0); case .duelPick: screen = .home }   // (a duel's pick: its minute runs)
             case .hold(let r, _): screen = .box(r, act: nil, confirm: false, detail: true)
             case .visitPick(let p): screen = teamRows(0).firstIndex { trainerID($0.card.name)?.key == trainerID(p.item)?.key }.map { .team(sel: $0, tab: 0, card: true) } ?? .team(sel: 0, tab: 0, card: false)
             case .items: screen = .box(-1, act: nil, confirm: false)                                  // back to 포켓몬
@@ -337,6 +340,7 @@ extension Walker {
         case .duel(let s): duelPress(k, s, now)
         case .hold(let r, let s): holdPress(k, r, s, now)
         case .visitPick(let p): visitPickPress(k, p, now)
+        case .squad(let s): squadPress(k, s, now)
         case .say(_, let next, _): screen = next
         case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
             if k == 1 { if dexList(f).contains(n) { screen = .dex(n, filter: f, detail: !detail) } } else { gridStep(k == 0 ? -1 : 1, wrap: true) }
@@ -415,6 +419,7 @@ extension Walker {
         case "레이드":
             guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: .menu(i), since: now); return }
             c.raidDue = true; screen = .raid(tab: 0)
+        case "대전": openDuelHub(now)
         default: screen = .dex(state.companion.dex, filter: 0, detail: false)
         }
     }

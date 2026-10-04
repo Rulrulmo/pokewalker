@@ -48,7 +48,7 @@ import Foundation
     var chainNext: Int? = nil                                              // a chain holds (its length): its next bush is asked for once home's news are shown
     var trainRef = -1, itemFor: String? = nil
     var duel: DuelView? = nil, duelOn = false, duelSeen = 0, duelShown: Battle? = nil, duelWait = false   // 12 §5: the live battle's last view, polling, turns played, the battle shown, our pick in                              // 3.6: who 대단한 특훈 is on; an item whose target the fight's party screen asks for
-    var raidOn = false, raidThen: Screen? = nil                            // 12 (M3): a raid fight is on (its menu, lines, HUD); where a raid ball's show goes after
+    var raidOn = false, raidThen: Screen? = nil, raidPicked: [Int] = []   // 12 (M3): a raid fight is on (its menu, lines, HUD); where a raid ball's show goes after; 3.8: the last raid party (uids), offered first
 
     init(state: Walk) { self.state = state }
 
@@ -136,7 +136,7 @@ import Foundation
             }
             return true
         }
-        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn, .learn, .menu, .box, .trade, .team, .raid, .market, .itemOn, .duel, .hold, .visitPick: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, pick a bush too early, go on from 포켓몬 to a page and its 진화 / 함께, or pick and send a trade
+        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn, .learn, .menu, .box, .trade, .team, .raid, .market, .itemOn, .duel, .hold, .visitPick, .squad: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, pick a bush too early, go on from 포켓몬 to a page and its 진화 / 함께, or pick and send a trade
         guard let i = [Key.left: 0, .enter: 1, .right: 2, .back: 3, .menu: 4][k] else { return false }
         press(i); return true
     }
@@ -180,7 +180,10 @@ import Foundation
         case .course: return ("코스", "\(courses.indices.filter(state.unlocked).count) / \(courses.count) 열림")
         case .train: return ("대단한 특훈", "은색병뚜껑 ×\(state.count("은색병뚜껑"))")
         case .itemOn(let p): return ("도구", p.item)
+        case .duel(.hub(let t, _)): return ("대전", t == 0 ? "Lv.50 · 3마리씩 · 이기면 +3BP" : "최근 20판")
+        case .duel(.queued): return ("랜덤 매칭", duelLeft().map { "\($0)초 남음" } ?? "")
         case .duel: return ("실시간 대전", duelLeft().map { "\($0)초 남음" } ?? "")
+        case .squad(let s): switch s.kind { case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return ("레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")) }
         case .hold(let r, _): return ("지니게 하기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
         case .raid: return ("레이드", cloud?.raid.map { "다음 주 " + monNames[$0.next] } ?? "")

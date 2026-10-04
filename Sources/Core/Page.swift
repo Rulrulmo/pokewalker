@@ -83,7 +83,7 @@ extension Canvas {
         else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let l = p.relearn { drawRelearn(l) }
         else if let t = p.team { drawTeam(t) } else if let t = p.teamCard { drawTeamCard(t) }
         else if let t = p.trades { drawTrades(t) } else if let o = p.offer { drawOffer(o) } else if let k = p.pick { drawPick(k) }
-        else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let v = p.visits { drawVisits(v) } else if let r = p.raid { drawRaid(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
+        else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let v = p.visits { drawVisits(v) } else if let s = p.squad { drawSquad(s) } else if let h = p.duelHub { drawDuelHub(h) } else if let r = p.raid { drawRaid(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
         else if let s = p.status { drawStatus(s) }
     }
     let X0: CGFloat = 9, X1: CGFloat = 207                                                         // the content column (card points): the bezel's edges
@@ -838,6 +838,106 @@ extension Page {
         let rc = r(X0, 408, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.action == nil ? Ink.tile : Ink.red)
         c.say(m.action ?? "지닐 수 있는 도구가 없어요", rc.midX, rc.midY, font(11, .bold), m.action == nil ? Ink.sub : .white, 0.5); if m.action != nil { hits.append((rc, 5999)) }
     }
+    // MARK: 3.8's picks in order (14 §4–5): the strip (who goes, in order), a duel's other six, ours numbered, the button
+    /// One Pokémon in a slot or cell: its icon (snapped), ★ for 이로치.
+    func monIcon(_ dex: Int, shiny: Bool, _ cell: CGRect, side: CGFloat, lift: CGFloat = 0) {
+        let scale = c.scale, snap = { (v: CGFloat) in (v * scale).rounded() / scale }
+        c.image(iconImage(dex), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: 1)
+        if shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
+    }
+    /// A row of slots (3 or 6): each numbered, its Pokémon and level, or empty; a click on a filled one = code + i.
+    func slotStrip(_ slots: [SquadModel.Slot?], _ top: CGFloat, _ h: CGFloat, code: Int?) {
+        let n = CGFloat(max(1, slots.count)), gap: CGFloat = 4, sw = (X1 - X0 - gap * (n - 1)) / n
+        for (i, s) in slots.enumerated() {
+            let rc = r(X0 + CGFloat(i) * (sw + gap), top, sw, h)
+            c.fill(.rounded(rc, 9 * K), s == nil ? Ink.board : Ink.tile)
+            c.say("\(i + 1)", rc.minX + x(5), rc.minY + x(6.5), font(7.5, .bold), s == nil ? Ink.faint : Ink.red)
+            guard let s else { continue }
+            monIcon(s.dex, shiny: s.shiny, CGRect(x: rc.minX, y: rc.minY, width: rc.width, height: rc.height - x(8)), side: 28 * K)
+            c.say(s.level, rc.midX, rc.maxY - x(6), font(7, .semibold), Ink.sub, 0.5)
+            if let code { hits.append((rc, code + i)) }
+        }
+    }
+    func drawSquad(_ m: SquadModel) {
+        let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .semibold), m.theirs != nil ? Ink.red : Ink.sub, 1)
+        c.say(m.title, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)
+        slotStrip(m.strip, 216, 42, code: 8740)
+        var top: CGFloat = 268
+        if let t = m.theirs {                                                                       // a duel: the other's six (species only)
+            c.say("상대 대전 파티", x(X0 + 2), y(top), font(9, .semibold), Ink.sub)
+            let board = r(X0, top + 10, X1 - X0, 33); c.fill(.rounded(board, 11 * K), Ink.tint(Ink.red, 0.06))
+            for (k, e) in t.prefix(6).enumerated() { monIcon(e.dex, shiny: e.shiny, r(X0 + CGFloat(k) * 33, top + 10, 33, 33), side: 32 * K) }
+            top += 54
+        }
+        c.say(m.boxTitle, x(X0 + 2), y(top), font(9, .semibold), Ink.sub, maxW: x(X1 - X0 - 4))
+        let rows = m.theirs != nil ? 1 : SquadModel.perPage / 6, board = r(X0, top + 10, X1 - X0, CGFloat(rows) * 33)
+        c.fill(.rounded(board, 11 * K), Ink.board)
+        if m.cells.isEmpty { c.say(m.empty, board.midX, board.midY, font(10, .medium), Ink.sub, 0.5) }
+        for (k, e) in m.cells.enumerated() {
+            let cell = r(X0 + CGFloat(k % 6) * 33, top + 10 + CGFloat(k / 6) * 33, 33, 33)
+            if let o = m.order[safe: k] ?? nil {
+                let p = Path.rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K); c.fill(p, Ink.redTint); c.stroke(p, Ink.red, width: 1.5 * K)
+                let d = x(11), b = CGRect(x: cell.minX + x(2), y: cell.minY + x(2), width: d, height: d); c.fill(.oval(b), Ink.red); c.say("\(o)", b.midX, b.midY, font(7, .bold), .white, 0.5)
+            } else if k == m.sel { c.stroke(.rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K), Ink.faint, width: 1 * K) }
+            monIcon(e.dex, shiny: e.shiny, cell, side: 32 * K)
+            if k == m.sel, m.order[safe: k] ?? nil != nil { c.stroke(.rounded(cell.insetBy(dx: 0.5 * K, dy: 0.5 * K), 9 * K), Ink.ink, width: 1 * K) }
+            hits.append((cell, 8750 + k))
+        }
+        if m.theirs == nil {
+            let per = SquadModel.perPage, pages = max(1, (m.count + per - 1) / per)
+            pager("\(m.first / per + 1) / \(pages)", top + 10 + CGFloat(rows) * 33 + 4, prev: pages > 1, next: pages > 1, codes: (8780, 8781))
+        } else {
+            c.say(m.hint, x(Layout.w / 2), y(top + 10 + 33 + 16), font(9, .medium), Ink.faint, 0.5, maxW: x(X1 - X0 - 4))
+        }
+        let rc = r(X0, 440, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.go == nil ? Ink.tile : Ink.red)
+        if m.goSel { c.stroke(.rounded(rc.insetBy(dx: -1.5 * K, dy: -1.5 * K), 11 * K), m.go == nil ? Ink.faint : Ink.ink, width: 1.2 * K) }
+        c.say(m.go ?? (m.theirs == nil ? m.hint : "3마리를 골라 주세요"), rc.midX, rc.midY, font(m.go == nil && m.theirs == nil ? 9.5 : 11, .bold), m.go == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10))
+        if m.go != nil { hits.append((rc, 8790)) }
+    }
+    // MARK: 3.8's 대전 menu (14 §5): 대전 (the six, friends walking now, 랜덤 매칭) · 전적
+    func drawDuelHub(_ m: DuelHubModel) {
+        c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
+        tabs(m.tabs, m.tab, 214, code: 6320)
+        if m.tab == 1 {
+            if m.recs.isEmpty { c.say(m.empty, x(Layout.w / 2), y(320), font(10, .medium), Ink.sub, 0.5) }
+            for (i, row) in m.recs.enumerated() {
+                let rc = r(X0, 242 + CGFloat(i) * 33, X1 - X0, 30); tile(rc, 9, on: m.first + i == m.sel, row.won ? Ink.tint(Ink.green, 0.08) : nil)
+                let f = font(8.5, .bold), t = row.won ? "승" : "패", bw = x(18), b = CGRect(x: rc.minX + x(6), y: rc.midY - x(8), width: bw, height: x(16))
+                c.pill(b, row.won ? Ink.green : Ink.faint); c.say(t, b.midX, b.midY, f, .white, 0.5)
+                let icons = 16 * K, gap = x(15), right = rc.maxX - x(4)
+                for (k, d) in row.theirs.prefix(3).reversed().enumerated() { c.image(iconImage(d), CGRect(x: right - icons * CGFloat(k + 1), y: rc.midY - icons / 2, width: icons, height: icons), alpha: 1) }
+                let vsX = right - icons * 3 - gap / 2
+                c.say("vs", vsX, rc.midY, font(7.5, .bold), Ink.faint, 0.5)
+                for (k, d) in row.mine.prefix(3).reversed().enumerated() { c.image(iconImage(d), CGRect(x: vsX - gap / 2 - icons * CGFloat(k + 1), y: rc.midY - icons / 2, width: icons, height: icons), alpha: 1) }
+                let textR = vsX - gap / 2 - icons * 3 - x(4)
+                c.say(row.line, b.maxX + x(5), rc.midY - x(5.5), font(9.5, .bold), Ink.ink, maxW: textR - b.maxX - x(5))
+                c.say(row.sub, b.maxX + x(5), rc.midY + x(6), font(8, .medium), Ink.sub, maxW: textR - b.maxX - x(5))
+            }
+            let per = DuelHubModel.perPage, pages = max(1, (m.count + per - 1) / per)
+            if pages > 1 { pager("\(m.first / per + 1) / \(pages)", 410, prev: true, next: true, codes: (6350, 6351)) }
+            return
+        }
+        c.say(m.partyNote, x(X0 + 2), y(250), font(9, .semibold), Ink.sub)
+        let six = m.party.compactMap { $0 }.count
+        let pr = pillAt(six >= 3 ? "바꾸기" : "정하기", x(X1 - 2), y(250), m.sel == m.friends.count + 1 ? Ink.red : Ink.tint(Ink.red, 0.14), m.sel == m.friends.count + 1 ? .white : Ink.red)
+        hits.append((CGRect(x: pr - x(4), y: y(250) - x(10), width: x(X1 - 2) - pr + x(8), height: x(20)), 6330))
+        slotStrip(m.party, 258, 40, code: nil)
+        hits.append((r(X0, 258, X1 - X0, 40), 6330))
+        c.say("지금 걷는 친구", x(X0 + 2), y(312), font(9, .semibold), Ink.sub)
+        if m.friends.isEmpty { c.say(m.empty, x(Layout.w / 2), y(350), font(10, .medium), Ink.sub, 0.5) }
+        for (i, row) in m.friends.enumerated() {
+            let rc = r(X0, 320 + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: m.sel == i + 1)
+            c.miniBall(CGPoint(x: rc.minX + x(14), y: rc.midY), 5.5 * K)
+            var xr = rc.maxX - x(9)
+            if let p = row.pill { xr = pillAt(p, xr, rc.midY, Ink.red, .white) }
+            c.say(row.name, rc.minX + x(26), rc.midY - x(5.5), font(9.5, .bold), Ink.ink, maxW: xr - rc.minX - x(30))
+            c.say(row.sub, rc.minX + x(26), rc.midY + x(6), font(8, .medium), Ink.sub, maxW: xr - rc.minX - x(30))
+            hits.append((rc, 6340 + i))
+        }
+        let rc = r(X0, 408, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.go == nil ? Ink.tile : Ink.red)
+        if m.sel == 0, m.go != nil { c.stroke(.rounded(rc.insetBy(dx: -1.5 * K, dy: -1.5 * K), 11 * K), Ink.ink, width: 1.2 * K) }
+        c.say(m.go ?? m.hint, rc.midX, rc.midY, font(11, .bold), m.go == nil ? Ink.sub : .white, 0.5); if m.go != nil { hits.append((rc, 6331)) }
+    }
     // MARK: 실시간 대전's invitation (12 §5): who, the rules, the time left, my record, its buttons
     func drawDuel(_ m: DuelModel) {
         let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .semibold), Ink.red, 1)
@@ -864,7 +964,7 @@ extension Page {
         c.say("파워", pw.minX + x(9), pw.midY, font(9, .bold), Ink.sub)
         for k in 0..<3 {
             let seg = CGRect(x: pw.minX + x(34) + CGFloat(k) * x(19), y: pw.midY - x(4), width: x(16), height: x(8))
-            let f = CGFloat(min(1000, max(0, m.power - 1000 * k))) / 1000
+            let cost = Engine.raidPowerCost, f = CGFloat(min(cost, max(0, m.power - cost * k))) / CGFloat(cost)
             c.pill(seg, Ink.line); if f > 0 { c.pill(CGRect(x: seg.minX, y: seg.minY, width: max(x(8), seg.width * f), height: seg.height), f >= 1 ? Ink.red : Ink.tint(Ink.red, 0.45)) }
         }
         c.say(m.powerText, pw.maxX - x(9), pw.midY, font(8.5, .semibold), Ink.ink, 1, maxW: pw.width - x(100))

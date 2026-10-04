@@ -150,6 +150,7 @@ extension Walker {
         case .duel(let s): duelLCD(&fb, s, now)
         case .hold(let ref, let sel): holdLCD(&fb, ref, sel, now)
         case .visitPick(let p): visitPickLCD(&fb, p, now)
+        case .squad(let s): squadLCD(&fb, s, now)
         case .raid: raidLCD(&fb, now)
         case .market(let s): marketLCD(&fb, s, now)
         case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
@@ -305,7 +306,7 @@ extension Walker {
     /// A click on a page still up under its own message (산 뒤, 연승!, W가 부족하다 …): the message ends and the click counts.
     func throughSay() {
         guard case .say(_, let next, _) = screen else { return }
-        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade, .raid, .market, .team, .itemOn, .duel, .hold, .visitPick: screen = next; default: break }
+        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade, .raid, .market, .team, .itemOn, .duel, .hold, .visitPick, .squad: screen = next; default: break }
     }
     func gridTap(_ code: Int) {
         guard !frozen, waiting == nil else { return }
@@ -357,11 +358,12 @@ extension Walker {
         if case .duel(let s) = sc { return duelPane(s, now) }
         if case .hold(let ref, let sel) = sc { return holdPane(ref, sel) }
         if case .visitPick(let p) = sc { return visitPickPane(p, now) }
+        if case .squad(let s) = sc { return squadPane(s, now) }
         if case .menu(let i) = sc {
-            let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드"]   // offline: what needs the server, dimmed
+            let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드", "대전"]   // offline: what needs the server, dimmed
             let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
             let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "친구": friendRequestsIn > 0 ? "친구 신청 \(friendRequestsIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "친구 · 이번 주 순위", "교환": marketNote,
-                         "레이드": raidNote]
+                         "레이드": raidNote, "대전": duelNote]
             let dots: Set<String> = Set([marketDot ? "교환" : nil, friendRequestsIn > 0 ? "친구" : nil].compactMap { $0 })   // 3.8: something waits there
             return PaneContent(menu: MenuModel(rows: menuItems.map { off && needs.contains($0) ? .init(name: $0, note: "연결되면 할 수 있어요", off: true) : .init(name: $0, note: notes[$0] ?? "", dot: dots.contains($0)) }, sel: i))
         }
@@ -435,7 +437,8 @@ extension Walker {
         case (.team(_, 4, false), 6240): askFriend()
         case (.market, 8000...8199): marketTap(code, Date())
         case (.itemOn, 8300...8399): itemOnTap(code, Date())
-        case (.duel, 6300...6301): duelTap(code, Date())
+        case (.duel, 6300...6351): duelTap(code, Date())
+        case (.squad, 8740...8799): squadTap(code, Date())
         case (.hold, 5980...5999): holdTap(code, Date())
         case (.visitPick, 8500...8599): visitPickTap(code, Date())
         case (.team(let sel, let tab, true), 6032): if let c = teamRows(tab)[safe: sel]?.card, !isMe(c), Walker.walkingNow(c) { challenge(c.name) }   // 대전 신청
