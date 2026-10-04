@@ -201,7 +201,7 @@ private struct Desk {
     #expect(d.act(.battle(cmd: .ball)).cannot == "레이드 보스는\n볼로 잡을 수 없다")
     guard let end = d.fightOut(ball: false) else { Issue.record("no end"); return }
     #expect(end.end?.dealt != nil && d.p.raid == nil && d.p.battle == nil)
-    #expect((end.battle?.turnNo ?? 99) <= Engine.raidTurns)
+    #expect(Engine.raidTurns == 0 || (end.battle?.turnNo ?? 99) <= Engine.raidTurns)           // (3.8.3: no limit)
     d.p.raidBoss = RaidBoss(week: "2026-W40", boss: boss, left: 0)
     #expect(d.act(.raid()).cannot == "이번 주 보스는\n이미 쓰러졌어요")
 }
@@ -217,6 +217,8 @@ private struct Desk {
     #expect(d.act(.raid(party: [firstUID + 9])).cannot == "그 포켓몬은\n없어요" && d.w.raidPower == 25_000)    // nothing spent on a refusal
     let start = d.act(.raid(party: [firstUID + 2, firstUID + 1]))
     #expect(start.cannot == nil && start.battle?.mine.map(\.mon.dex) == [9, 6] && start.battle?.mine.first?.mon.level == 35 && d.p.party == [firstUID + 2, firstUID + 1])
+    let left = d.act(.battle(cmd: .run))                                                        // 후퇴 (3.8.3): always, at once
+    #expect(left.end?.result == "ran" && d.p.battle == nil && d.p.raid == nil)
 }
 
 @Test func engineOutcomeRoundTrip() throws {                                                       // every Outcome field set: the app's lossy decoder must read each one

@@ -6,7 +6,8 @@ enum Engine {
     static let radarFee = 10, radarWait = 1.5, radarSlack = 3.0          // the find shows after 1.5 s; a pick counts until 1.5 + window + 3 s (the network)
     static func radarWindow(_ chain: Int) -> Double { max(0.8, 2.0 - 0.25 * Double(chain)) }
     static let bpShells: [(name: String, bp: Int)] = [("배틀 골드", 40)]   // the device colours the BP 교환소 sells (Core's shells with a bp)
-    static let raidPowerCost = 10_000, raidTurns = 6, raidBars = 3      // 12 §4.2: a fight is 1칸 of power (3.8: 10,000 steps, was 1,000 — docs/plans/14 ⑧), 6 turns at most, 3 bars at most
+    static let raidPowerCost = 10_000, raidTurns = 0, raidBars = 3      // 12 §4.2: a fight is 1칸 of power (3.8: 10,000 steps, was 1,000 — docs/plans/14 ⑧), 3 bars at most;
+                                                                        // turns: 0 = no limit (3.8.3, the user: 6 was too short) — over when ours are all down, it's left, or 3 bars fall
     static let raidPowerMax = 3 * raidPowerCost                         // what the power bank holds (3칸)
 
     /// A new trainer's first save (the server makes it): the starter with its issued uid, today, the 1.x one-time jobs marked done.
@@ -205,7 +206,8 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .run:
             guard b.trainer == nil else { return "트레이너와의 승부에서\n도망칠 수 없다" }
             if b.locked { return locked }
-            beats = b.turn(.run, &r)
+            if p.raid != nil { beats = [.note(.me, text: "레이드에서 물러났다!"), .ran]; b.over = true }   // 후퇴: always (3.8.3: no turn limit to end it otherwise)
+            else { beats = b.turn(.run, &r) }
         case .forfeit:
             guard b.trainer != nil else { return "기권할 수 없어요" }
             let s = w.towerStreak ?? 0; w.towerEnd(); p.tower = false; p.battle = nil; p.party = nil
@@ -213,7 +215,7 @@ struct EngineRun<R: RandomNumberGenerator> {
             let h = p.held; p.held = 0; walkNow(h)                          // the fight's held steps
             return nil
         }
-        if p.raid != nil, !(beats.last?.ends ?? false), b.turnNo >= Engine.raidTurns {          // a raid fight's 6 turns are up
+        if p.raid != nil, Engine.raidTurns > 0, !(beats.last?.ends ?? false), b.turnNo >= Engine.raidTurns {   // a raid fight's turns are up (if there's a limit)
             beats += [.note(.it, text: josa(monNames[b.wild.dex], "의", "의") + " 기세에 밀려났다!"), .fled]; b.over = true
         }
         if let last = beats.last, last.ends { beats += ended(&b, last) }

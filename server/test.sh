@@ -190,7 +190,7 @@ if admin set "$ID3" '$.raidPower' 30000 >/dev/null; then
     CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/raid"); BODY=$(cat "$TMP/body")
     ok "/v2/raid: this week's boss, the testers' raid" is 200 '[.boss.level, (.week | endswith("-test")), .hpLeft == .hpTotal] | tostring' '[70,true,true]'
     SEQ3=$((SEQ3 + 1)); act3 $SEQ3 '{"raid":{}}'; ok "a raid fight (1칸 of power)" is 200 '[(.out.battle.theirs | length), .walk.raidPower] | tostring' '[3,20000]'
-    for _ in 1 2 3 4 5 6 7; do                                                      # running away: out by the 6th turn at the latest
+    for _ in 1 2 3 4 5 6 7; do                                                      # 후퇴: out at once (3.8.3: no turn limit; a raid's retreat always works)
         SEQ3=$((SEQ3 + 1)); act3 $SEQ3 '{"battle":{"cmd":{"run":{}}}}'
         [ "$(printf '%s' "$BODY" | jq -r '.out.end.result // empty')" ] && break
     done
