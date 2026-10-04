@@ -313,15 +313,16 @@ import AppKit
     }
     let sv = FakeCloud(); sv.raidOpen(1_000_000)
     func strong() -> Walk { var s = Walk(); s.companion = Mon(dex: 150, level: 100, female: false); s.caught = [Mon(dex: 149, level: 100, female: false), Mon(dex: 248, level: 100, female: false)]; return s }
-    let ra = online({ var s = strong(); s.raidPower = 2500; return s }(), server: sv)
-    let rb = online({ var s = strong(); s.raidPower = 1500; return s }(), server: sv)
-    let rc = online({ var s = Walk(); s.raidPower = 400; return s }(), server: sv)
+    let cost = Engine.raidPowerCost, per = "(\(cost.formatted())걸음마다 1칸)"                     // (3.8: 10,000 a 칸)
+    let ra = online({ var s = strong(); s.raidPower = 2 * cost + cost / 2; return s }(), server: sv)
+    let rb = online({ var s = strong(); s.raidPower = cost + cost / 2; return s }(), server: sv)
+    let rc = online({ var s = Walk(); s.raidPower = cost * 2 / 5; return s }(), server: sv)
     lobby(ra); let pane = ra.paneContent(Date()).raid
     let opened: Bool = { if case .raid(0) = ra.screen { return true }; return false }()
-    check(opened && pane?.boss == "루기아 Lv.70" && pane?.go == "도전 · 파워 1칸" && pane?.powerText == "다음 칸까지 500걸음" && pane?.hpText.hasPrefix("100% · 줄") == true && ra.raidNote == "파워 2칸 · 루기아",
+    check(opened && pane?.boss == "루기아 Lv.70" && pane?.go == "도전 · 파워 1칸" && pane?.powerText == "다음 칸까지 \((cost / 2).formatted())걸음" && pane?.hpText.hasPrefix("100% · 줄") == true && ra.raidNote == "파워 2칸 · 루기아",
           "레이드 (the menu's tile) → the lobby from the server: the boss, the team's HP, my power in 칸, 도전", "\(String(describing: pane))")
     lobby(rc); let weak = rc.paneContent(Date()).raid; rc.press(1)
-    check(weak?.go == nil && weak?.hint == "파워가 부족해요 (1,000걸음마다 1칸)" && says(rc) == ["파워가 부족하다", "(1,000걸음마다 1칸)"], "under 1칸 of power: no 도전, and ● says why", "\(String(describing: weak?.hint)) \(says(rc))")
+    check(weak?.go == nil && weak?.hint == "파워가 부족해요 " + per && says(rc) == ["파워가 부족하다", per], "under 1칸 of power: no 도전, and ● says why", "\(String(describing: weak?.hint)) \(says(rc))")
 
     // rb: who goes (3.8: the tower's three offered, one dropped), in, and 후퇴 at once (it still fought this week)
     lobby(rb); rb.pageTap(7010); let offered = rb.paneContent(Date()).squad; rb.pageTap(8742); let two = rb.paneContent(Date()).squad
@@ -333,7 +334,7 @@ import AppKit
     var menu: [String] = [], title = ("", "")
     while case .beats = rb.screen { playOut(rb) }
     if case .battle(let b, _) = rb.screen { menu = rb.battleMenu(b); title = rb.title() }
-    let hud = rb.raidOn && served(rb)?.raidPower == 500
+    let hud = rb.raidOn && served(rb)?.raidPower == cost / 2
     fightOut(rb, retreat: true)
     let retreated = says(rb).first == "0 데미지!"; let back: Bool = { if case .say(_, .raid(0), _) = rb.screen { return true }; return false }()
     check(menu == ["공격", "도구", "교체", "후퇴"] && title.0 == "레이드 배틀" && title.1.hasPrefix("남은 줄 3 / 3") && hud && retreated && back && !rb.raidOn && sv.raidFights.count == 1,

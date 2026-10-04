@@ -96,7 +96,7 @@ import AppKit
     take("mon_trade_evo", onix) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
     // 3.4 (12 M3): 레이드
     let rsrv = FakeCloud(); rsrv.raidOpen(4_200_000); rsrv.raidLeft = 2_730_000
-    let rme = online({ var s = base(); s.raidPower = 2340; s.caught = [Mon(dex: 149, level: 61, female: false), Mon(dex: 6, level: 55, female: false)]; return s }(), server: rsrv)
+    let rme = online({ var s = base(); s.raidPower = Engine.raidPowerCost * 234 / 100; s.caught = [Mon(dex: 149, level: 61, female: false), Mon(dex: 6, level: 55, female: false)]; return s }(), server: rsrv)
     for (k, m) in mates.prefix(7).enumerated() { rsrv.add(m.0, Walk()); rsrv.raidDealt[m.0.lowercased()] = [412_000, 388_000, 201_500, 150_000, 99_000, 61_000, 12_000][k]; rsrv.raidFights[m.0.lowercased()] = 9 - k }
     rsrv.raidDealt[rme.myName.lowercased()] = 46_500; rsrv.raidFights[rme.myName.lowercased()] = 3
     let ts = Int(Date().timeIntervalSince1970)
@@ -107,8 +107,8 @@ import AppKit
     take("menu_raid", rme) { v in v.screen = .menu(menuAt("레이드")) }
     take("raid_lobby", rme) { v in v.screen = .raid(tab: 0) }
     take("raid_recent", rme) { v in v.screen = .raid(tab: 1) }
-    take("raid_no_power", rme) { v in v.state.raidPower = 640; v.screen = .raid(tab: 0) }
-    take("raid_full_power", rme) { v in v.state.raidPower = 3000; v.screen = .raid(tab: 0) }
+    take("raid_no_power", rme) { v in v.state.raidPower = Engine.raidPowerCost * 64 / 100; v.screen = .raid(tab: 0) }
+    take("raid_full_power", rme) { v in v.state.raidPower = Engine.raidPowerMax; v.screen = .raid(tab: 0) }
     var rr = Seeded(s: 5); let rb = { () -> Battle in var b = Battle(wild: rsrv.raidBoss, party: [rme.state.companion] + rme.state.caught); b.theirs += [Fighter(rsrv.raidBoss), Fighter(rsrv.raidBoss)]; return b }()
     let rbeats = { () -> (Battle, [Beat]) in var b = rb; let bs = b.begin(weather: nil, &rr); return (b, bs) }()
     take("raid_appear", rme) { v in v.raidOn = true; v.screen = .beats(rbeats.0, rbeats.1, since: Date().addingTimeInterval(-1.2), from: rb) }
@@ -117,7 +117,7 @@ import AppKit
     take("raid_done", rme) { v in v.raidOn = false; v.screen = .say(["38,214 데미지! +1BP", "보스를 쓰러뜨렸다!", "볼을 던질 수 있다"], next: .raid(tab: 0), since: Date()) }
     take("raid_throw", rme) { v in v.raidOn = false; v.usedItem = "몬스터볼"; let b = Battle(wild: rsrv.raidBoss, companion: v.state.companion); v.raidThen = .home; v.screen = .beats(b, [.thrown(shakes: 2), .broke], since: Date().addingTimeInterval(-2.4), from: b) }
     rsrv.raidLeft = 0; rme.cloud!.raidDue = true; drain(rme); drain(rme)
-    take("raid_cleared", rme) { v in v.raidThen = nil; v.state.raidPower = 2340; v.screen = .raid(tab: 0) }
+    take("raid_cleared", rme) { v in v.raidThen = nil; v.state.raidPower = Engine.raidPowerCost * 234 / 100; v.screen = .raid(tab: 0) }
     take("menu_raid_cleared", rme) { v in v.screen = .menu(menuAt("레이드")) }
     rsrv.raidBalls[rme.myName.lowercased()] = 2; rme.cloud!.raidDue = true; drain(rme); drain(rme)
     take("raid_balls_left", rme) { v in v.screen = .raid(tab: 0) }

@@ -74,7 +74,7 @@ import Foundation
     tsrv.raidOpen(4_200_000); tsrv.raidLeft = 2_730_000                                            // 3.4: 레이드
     for (k, n) in ["민수", "지은", "도윤"].enumerated() { tsrv.raidDealt[n] = [412_000, 388_000, 201_500][k]; tsrv.raidFights[n] = 9 - k }
     tsrv.raidRecent = [RaidHit(name: "민수", dex: 6, dealt: 21_340, at: now - 120), RaidHit(name: "지은", dex: 282, dealt: 30_115, at: now - 4000)]
-    serve(tme) { w in w.raidPower = 2340 }
+    serve(tme) { w in w.raidPower = Engine.raidPowerCost * 234 / 100 }
     tme.cloud!.raidDue = true; drain(tme); drain(tme)
     take("raid_lobby", on: tme) { v in v.screen = .raid(tab: 0) }
     take("raid_battle", on: tme) { v in
