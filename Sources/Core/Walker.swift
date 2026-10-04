@@ -91,7 +91,7 @@ import Foundation
         case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
         case .traded(_, _, _, let since) where now.timeIntervalSince(since) > 6: screen = .home
-        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid, .itemOn: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
+        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid, .itemOn, .hold: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
         case .trade, .market: if now.timeIntervalSince(lastInput) > 60 { screen = .home }       // (a trade is weighed up: longer)
         default: break
         }
@@ -119,6 +119,7 @@ import Foundation
         if case .tower(_?) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -TowerModel.perPage, .pageDown: TowerModel.perPage][k] { towerStep(d); return true }   // the tower's picker: ↑ ↓ a row, page up / down a page
         switch screen { case .course, .train, .relearn: if let d = [Key.up: -1, .down: 1, .pageUp: -CourseModel.perPage, .pageDown: CourseModel.perPage][k] { listRow(d); return true }; default: break }   // the lists: the same
         if case .items = screen, let d = [Key.up: -1, .down: 1, .pageUp: -6, .pageDown: 6][k] { listRow(d); return true }   // 도구: six rows in view
+        if case .hold(let r, let s) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -6, .pageDown: 6][k] { let n = holdRows(r).count; if n > 0 { screen = .hold(ref: r, sel: max(0, min(n - 1, s + d))); lastInput = Date(); host?.redraw(.all) }; return true }
         if case .team(let s, let t, false) = screen {                                             // 팀: ↑ ↓ a row, page up / down a page, tab the next tab
             if let d = [Key.up: -1, .down: 1, .pageUp: -TeamModel.perPage, .pageDown: TeamModel.perPage][k] { teamStep(d, wrap: false); return true }
             if k == .tab { screen = .team(sel: 0, tab: (t + (shift ? 4 : 1)) % 5, card: false); _ = s; host?.redraw(.all); return true }
@@ -135,7 +136,7 @@ import Foundation
             }
             return true
         }
-        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn, .learn, .menu, .box, .trade, .team, .raid, .market, .itemOn, .duel: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, pick a bush too early, go on from 포켓몬 to a page and its 진화 / 함께, or pick and send a trade
+        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn, .learn, .menu, .box, .trade, .team, .raid, .market, .itemOn, .duel, .hold: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, pick a bush too early, go on from 포켓몬 to a page and its 진화 / 함께, or pick and send a trade
         guard let i = [Key.left: 0, .enter: 1, .right: 2, .back: 3, .menu: 4][k] else { return false }
         press(i); return true
     }
@@ -179,6 +180,7 @@ import Foundation
         case .train: return ("대단한 특훈", "은색병뚜껑 ×\(state.count("은색병뚜껑"))")
         case .itemOn(let p): return ("도구", p.item)
         case .duel: return ("실시간 대전", duelLeft().map { "\($0)초 남음" } ?? "")
+        case .hold(let r, _): return ("지니게 하기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
         case .raid: return ("레이드", cloud?.raid.map { "다음 주 " + monNames[$0.next] } ?? "")
         default: return (state.here.name, cloudNote ?? (gate.held ? "자동 입력 감지 · 걸음 멈춤" : when))                                                 // screens without a page of their own: the status sheet

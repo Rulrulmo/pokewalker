@@ -246,7 +246,7 @@ extension Walker {
     }
     /// The pick's button: an offer made (to the list, where it waits), or a 아무거나 one answered (asked first: there's no undo).
     func sendPick(_ p: TradePick, _ now: Date) {
-        guard let g = p.give else { return }
+        guard let g = p.give, holdsAlong(state.box.first { $0.uid == g }, p.offer == nil ? "신청하기" : "교환") else { return }
         if let id = p.offer { if let o = tradeOffer(id) { accept(o, give: g, back: .trade(.pick(p)), now) }; return }
         act(.tradeOffer(to: p.to, give: g, want: p.want), back: .trade(.pick(p)), now) { [weak self] _, now in
             self?.cloud?.tradesDue = true

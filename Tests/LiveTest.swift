@@ -467,3 +467,39 @@ import Foundation
     print(failed == 0 ? "PASS live duel" : "FAIL \(failed)")
     return failed == 0
 }
+
+/// `PokeWalker --live-hold <id> <pin>` (a dev build only): docs/plans/13 ⑤ against the real server with one zz ID the admin seeded (a box
+/// Pokémon; 구애머리띠 and 먹다남은음식 in the bag): the companion holds one from its page, another is swapped in, it's taken off; the bag's
+/// hold-only one goes onto the box one.
+@MainActor func liveHoldTest(_ id: String, _ pin: String) -> Bool {
+    var failed = 0
+    func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-livehold-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
+    let c = Cloud(link: HTTPLink(), dir: tmp); h.texts = [id]; h.pins = [pin, pin, pin]
+    w.startCloud(c, file: tmp.appendingPathComponent("state.json"), bak: tmp.appendingPathComponent("state.json.bak"))
+    @discardableResult func run(_ secs: Double, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end { w.tick(Date()); if done() { return true }; Thread.sleep(forTimeInterval: 0.1) }
+        return done()
+    }
+    func settle() { run(15) { w.waiting == nil && c.inFlight == nil && c.queued == nil && c.out == nil } }
+    func says() -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    check(run(40) { c.phase == .on && c.base != nil }, "live hold: \(id) logged in (\(h.asked))")
+    let seeded = w.state.count("구애머리띠") > 0 && w.state.count("먹다남은음식") > 0 && !w.state.box.isEmpty
+    check(seeded, "live hold: seeded — bag \(w.state.bag), box \(w.state.box.map(\.dex))")
+    guard seeded else { print("FAIL \(failed)"); return false }
+    w.screen = .box(-1, act: nil, confirm: false, detail: true); w.gridTap(4410)
+    w.screen = .hold(ref: -1, sel: w.holdRows(-1).firstIndex { $0.name == "구애머리띠" } ?? 0); w.press(1); settle()
+    let first = says(); check(w.state.companion.item == "구애머리띠" && w.state.count("구애머리띠") == 0, "live hold: 구애머리띠 on the companion — \(first)")
+    w.screen = .hold(ref: -1, sel: w.holdRows(-1).firstIndex { $0.name == "먹다남은음식" } ?? 0); w.press(1); settle()
+    check(w.state.companion.item == "먹다남은음식" && w.state.count("구애머리띠") == 1, "live hold: 먹다남은음식 swapped in (구애머리띠 back to the bag)")
+    w.screen = .hold(ref: -1, sel: 0); w.press(1); settle()
+    check(w.state.companion.item == nil && w.state.count("먹다남은음식") == 1, "live hold: 빼기 — \(says())")
+    w.screen = .items(w.state.inventory.firstIndex(of: "구애머리띠") ?? 0); w.press(1)
+    if case .itemOn(var p) = w.screen { p.at = w.itemRefs.firstIndex(of: 0) ?? 0; w.screen = .itemOn(p); w.press(1); w.press(1) }; settle()
+    check(w.state.box.first?.item == "구애머리띠", "live hold: the bag's hold-only one onto a box Pokémon — \(says())")
+    print(failed == 0 ? "PASS live hold" : "FAIL \(failed)")
+    return failed == 0
+}

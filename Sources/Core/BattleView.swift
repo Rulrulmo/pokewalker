@@ -48,7 +48,7 @@ extension Walker {
         var theirs = card(foe, out: true); theirs.types = foe.typeList; theirs.owned = (state.owned ?? []).contains(foe.mon.dex)
         return SideModel(foe: theirs, mine: card(mine, out: true), message: msg, mode: mode)
     }
-    func card(_ f: Fighter, out: Bool) -> SideModel.Card { .init(name: monNames[f.mon.dex], level: f.mon.level, hp: f.hp, max: f.maxHP, out: out, status: f.status?.badge) }
+    func card(_ f: Fighter, out: Bool) -> SideModel.Card { .init(name: monNames[f.mon.dex], level: f.mon.level, hp: f.hp, max: f.maxHP, out: out, status: f.status?.badge, item: f.item) }
     func sidePick(_ k: Int) {                                                                   // a click on the side panel = selecting that row, then ●
         guard !frozen, waiting == nil else { return }
         lastInput = Date()

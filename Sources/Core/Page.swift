@@ -83,7 +83,7 @@ extension Canvas {
         else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let l = p.relearn { drawRelearn(l) }
         else if let t = p.team { drawTeam(t) } else if let t = p.teamCard { drawTeamCard(t) }
         else if let t = p.trades { drawTrades(t) } else if let o = p.offer { drawOffer(o) } else if let k = p.pick { drawPick(k) }
-        else if let d = p.duel { drawDuel(d) } else if let r = p.raid { drawRaid(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
+        else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let r = p.raid { drawRaid(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
         else if let s = p.status { drawStatus(s) }
     }
     let X0: CGFloat = 9, X1: CGFloat = 207                                                         // the content column (card points): the bezel's edges
@@ -152,7 +152,9 @@ extension Canvas {
                 let ty = pitch > 22 ? 9.5 : 7.0                                                    // the text's line (higher in the tight rows, the bar under it)
                 let nx = c.say((p.out ? "▶ " : "") + p.name, rc.minX + x(9), rc.minY + x(ty), font(10, .bold), p.hp > 0 ? Ink.ink : Ink.faint)
                 let lx = rc.minX + x(9) + nx + x(4) + c.say("Lv\(p.level)", rc.minX + x(13) + nx, rc.minY + x(ty + 0.5), font(8, .semibold), Ink.sub)
-                if let st = p.status { let sw = width(st, font(7.5, .bold)) + x(8); c.pill(CGRect(x: lx + x(4), y: rc.minY + x(ty - 5), width: sw, height: x(11)), Ink.faint); c.say(st, lx + x(4) + sw / 2, rc.minY + x(ty + 0.5), font(7.5, .bold), .white, 0.5) }
+                var sx = lx + x(4)
+                if let st = p.status { let sw = width(st, font(7.5, .bold)) + x(8); c.pill(CGRect(x: sx, y: rc.minY + x(ty - 5), width: sw, height: x(11)), Ink.faint); c.say(st, sx + sw / 2, rc.minY + x(ty + 0.5), font(7.5, .bold), .white, 0.5); sx += sw + x(4) }
+                if let it = p.item { c.say(it, sx, rc.minY + x(ty + 0.5), font(7.5, .semibold), Ink.blue, maxW: x(70)) }   // 3.7: what it holds
                 c.say("\(p.hp)/\(p.max)", rc.maxX - x(9), rc.minY + x(ty), font(9, .semibold), Ink.ink, 1)
                 c.bar(rc.minX + x(9), rc.maxX - x(9), pitch > 22 ? rc.minY + x(19) : rc.maxY - x(3.5), f, Ink.hp(f), h: x(pitch > 22 ? 3 : 2.5))
                 hits.append((rc, i))
@@ -211,6 +213,7 @@ extension Canvas {
                 c.image(iconImage(e.dex, shadow: e.look == 1), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: walker?.drag?.from == 10000 + g.first + k ? 0.3 : 1)
             }
             if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
+            if e.held { pixelArt(gem, gemPal, CGPoint(x: cell.maxX - x(6), y: cell.maxY - x(6)), 1.4 * K) }   // 3.7: it holds an item
             if e.v3 {                                                                                   // 3V and up: the amber diamond, as on the LCD
                 let cx = cell.minX + x(6), cy = cell.maxY - x(6), rr = 2.4 * K
                 let d = Path.poly([CGPoint(x: cx, y: cy - rr), CGPoint(x: cx + rr, y: cy), CGPoint(x: cx, y: cy + rr), CGPoint(x: cx - rr, y: cy)])
@@ -268,8 +271,15 @@ extension Canvas {
     func drawMon(_ m: MonModel) {
         var yy = monBody(m, 198) + 4
         rule(y(yy - 2))                                                                            // 진화: how it evolves, a line a target
-        c.say("진화", x(X0 + 2), y(yy + 6), font(9, .medium), Ink.sub)
-        for (j, l) in m.evos.prefix(2).enumerated() { c.say(l, x(X0 + 34), y(yy + 6 + CGFloat(j) * 13), font(9, j == 0 ? .medium : .regular), l.hasPrefix("→") ? Ink.ink : Ink.sub, maxW: x(X1 - X0 - 36)) }
+        c.say("진화", x(X0 + 2), y(yy + 6), font(9, .medium), Ink.sub)                            // 3.7: 진화 on one line, 지닌 도구 under it
+        if let l = m.evos.first { c.say(l + (m.evos.count > 1 && m.evos[1].hasPrefix("→") ? " 외" : ""), x(X0 + 34), y(yy + 6), font(9, .medium), l.hasPrefix("→") ? Ink.ink : Ink.sub, maxW: x(X1 - X0 - 36)) }
+        let hr = r(X0, yy + 12, X1 - X0, 14); hits.append((hr, 4410))
+        c.say("도구", x(X0 + 2), y(yy + 19), font(9, .medium), Ink.sub)
+        if let h = m.held {
+            let w = c.say(h, x(X0 + 34), y(yy + 19), font(9, .bold), Ink.ink, maxW: x(90))
+            c.say(m.heldNote ?? "", x(X0 + 34) + w + x(5), y(yy + 19), font(8.5, .medium), Ink.sub, maxW: x(X1 - 4) - (x(X0 + 34) + w + x(5)) - x(28))
+        } else { c.say("없음", x(X0 + 34), y(yy + 19), font(9, .medium), Ink.faint) }
+        c.say(m.held == nil ? "지니게 하기" : "바꾸기", x(X1 - 2), y(yy + 19), font(8.5, .bold), Ink.red, 1)
         yy += 30
         let mrc = r(X0, yy - 2, X1 - X0, 29); c.fill(.rounded(mrc, 8 * K), Ink.tile); hits.append((mrc, 4409))   // its four moves, two a line; a click: 기술 바꾸기
         c.say("기술", x(X0 + 5), y(yy + 6), font(9, .medium), Ink.sub); c.say("바꾸기", x(X0 + 5), y(yy + 19), font(8.5, .bold), Ink.red)
@@ -337,8 +347,13 @@ extension Canvas {
 
     // MARK: 상점: rows, then how many
     func drawShop(_ s: ShopModel) {
-        if !s.tabs.isEmpty { tabs(s.tabs, s.tab, 198, code: 2900) }                                 // 3.6: kinds as tabs (2900 + t)
-        let top: CGFloat = s.tabs.isEmpty ? 196 : 224, rows = 6, rh: CGFloat = 27
+        let two = s.tabs.count > 6                                                                 // 3.6: kinds as tabs (2900 + t); 3.7's eight on two rows
+        if two {
+            let half = (s.tabs.count + 1) / 2
+            tabs(Array(s.tabs.prefix(half)), s.tab < half ? s.tab : -1, 198, code: 2900)
+            tabs(Array(s.tabs.dropFirst(half)), s.tab >= half ? s.tab - half : -1, 222, code: 2900 + half)
+        } else if !s.tabs.isEmpty { tabs(s.tabs, s.tab, 198, code: 2900) }
+        let top: CGFloat = s.tabs.isEmpty ? 196 : two ? 248 : 224, rows = 6, rh: CGFloat = 27
         let key = s.title + "|\(s.tab)"
         if key != shopTitle { shopTitle = key; shopTop = max(0, s.sel - 2) }             // a stable window: a click never scrolls the row under the pointer away
         if s.sel < shopTop { shopTop = s.sel } else if s.sel >= shopTop + rows { shopTop = s.sel - rows + 1 }
@@ -773,6 +788,24 @@ extension Page {
             c.fill(.rounded(rc, 10 * K), strong ? Ink.red : Ink.tile); c.say(t, rc.midX, rc.midY, font(11, .bold), strong ? .white : live ? Ink.ink : Ink.faint, 0.5, maxW: rc.width - x(10))
             if live { hits.append((rc, 8130 + i)) }
         }
+    }
+    // MARK: 지니게 하기 (3.7): who and what it holds now, the bag's holdable ones (빼기 first), the pick's line, the button
+    func drawHold(_ m: HoldModel) {
+        c.say(m.who, x(X0 + 2), y(206), font(12, .bold), Ink.ink)
+        c.say(m.now.map { "지금 " + $0 } ?? "지닌 도구 없음", x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
+        if m.rows.isEmpty { c.say("지닐 수 있는 도구가 없어요", x(Layout.w / 2), y(280), font(10, .medium), Ink.sub, 0.5); c.say("상점 · BP 교환소의 지닌 도구 탭에서 사요", x(Layout.w / 2), y(298), font(9, .medium), Ink.faint, 0.5) }
+        let top = max(0, min(m.sel - 2, m.rows.count - 6))
+        for (i, row) in m.rows.enumerated() where i >= top && i < top + 6 {
+            let rc = r(X0, 216 + CGFloat(i - top) * 29, X1 - X0, 26); tile(rc, 9, on: i == m.sel, row.take ? Ink.tint(Ink.blue, 0.08) : nil)
+            pixelArt(gem, gemPal, CGPoint(x: rc.minX + x(14), y: rc.midY), 2.5 * K)
+            let cw = row.take ? c.say("빼기", rc.maxX - x(9), rc.midY, font(9, .bold), Ink.blue, 1) : c.say("×\(row.count)", rc.maxX - x(9), rc.midY, font(10, .semibold), Ink.ink, 1)
+            c.say(row.name, rc.minX + x(28), rc.midY - x(5), font(10, .bold), Ink.ink, maxW: rc.width - x(40) - cw)
+            c.say(row.note, rc.minX + x(28), rc.midY + x(6.5), font(8, .medium), Ink.sub, maxW: rc.width - x(40) - cw)
+            hits.append((rc, 5980 + i - top))
+        }
+        c.say(m.hint, x(X0 + 2), y(398), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
+        let rc = r(X0, 408, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.action == nil ? Ink.tile : Ink.red)
+        c.say(m.action ?? "지닐 수 있는 도구가 없어요", rc.midX, rc.midY, font(11, .bold), m.action == nil ? Ink.sub : .white, 0.5); if m.action != nil { hits.append((rc, 5999)) }
     }
     // MARK: 실시간 대전's invitation (12 §5): who, the rules, the time left, my record, its buttons
     func drawDuel(_ m: DuelModel) {

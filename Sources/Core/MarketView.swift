@@ -255,7 +255,7 @@ extension Walker {
     }
     /// The pick's button: a post up (to 내 글), or an offer on one (to that post).
     func sendMarketPick(_ p: MarketPick, _ now: Date) {
-        guard let g = p.give else { return }
+        guard let g = p.give, holdsAlong(state.box.first { $0.uid == g }, p.listing == nil ? "올리기" : "제안하기") else { return }
         let back = Screen.market(.pick(p))
         if let id = p.listing {
             act(.marketBid(listing: id, give: g), back: back, now) { [weak self] _, now in
@@ -275,7 +275,8 @@ extension Walker {
         switch what {
         case "이 제안으로 교환":
             guard l.mine, let k = sel, let b = offers(on: l.id)[safe: k] else { return }
-            guard host?.confirm("교환할까요?", "내 " + monLine(l.mon) + " ↔ " + josa(b.from, "의", "의") + " " + monLine(b.mon) + "\n다른 제안은 모두 닫히고, 되돌릴 수 없어요.", ok: "교환") ?? true else { return }
+            let along = [l.mon.item.map { "내 " + monNames[l.mon.dex] + "의 " + $0 }, b.mon.item.map { josa(b.from, "의", "의") + " " + monNames[b.mon.dex] + "의 " + $0 }].compactMap { $0 }
+            guard host?.confirm("교환할까요?", "내 " + monLine(l.mon) + " ↔ " + josa(b.from, "의", "의") + " " + monLine(b.mon) + (along.isEmpty ? "" : "\n지닌 도구도 함께 가요: " + along.joined(separator: ", ")) + "\n다른 제안은 모두 닫히고, 되돌릴 수 없어요.", ok: "교환") ?? true else { return }
             act(.marketAccept(bid: b.id), back: back, now, lines: ["교환 중..."]) { [weak self] _, _ in self?.cloud?.marketDue = true; self?.dropBidNews(l.id); return .home }
         case "글 내리기":
             guard l.mine else { return }

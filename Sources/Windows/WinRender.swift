@@ -98,6 +98,10 @@ import Foundation
     take("duel_invite", on: tme) { v in v.duelOn = true; v.duel = DuelView(id: 1, state: "invited", opponent: "민수", challenger: false, deadline: now + 47); v.screen = .duel(.invite(id: 1, from: "민수")) }
     var wd = Battle(party: [Mon(dex: 25, level: 50, female: false)], trainer: "민수", foes: [Mon(dex: 448, level: 50, female: false)]); wd.pvp = true
     take("duel_waiting", on: tme) { v in v.duelOn = true; v.duelWait = true; v.duel = DuelView(id: 1, state: "active", opponent: "민수", challenger: true, battle: wd, turn: 1, deadline: now + 19); v.fight = wd; v.screen = .battle(wd, sel: 0) }
+    serve(tme) { w in w.companion.item = "생명의구슬"; w.bag = ["구애머리띠", "먹다남은음식", "오랭열매"] }   // 3.7: 지닌 도구
+    take("hold_pick", on: tme) { v in v.duelOn = false; v.duelWait = false; v.screen = .hold(ref: -1, sel: 1) }
+    take("mon_held", on: tme) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
+    take("shop_held", on: tme) { v in v.screen = .shop(bp: false, sel: v.shopRows(false, v.shopTabs(false).firstIndex(of: "지닌 도구") ?? 0).first ?? 0, qty: nil) }
     take("traded", on: tme) { v in v.duelOn = false; v.duelWait = false; v.screen = .traded(gave: v.state.box[2], got: tsrv.walk("민수")!.box[4], with: "민수", since: T - 5) }
     take("grid_drag") { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(T, force: true); v.drag = (10001, CGPoint(x: 150 * K, y: 30 * K)) }   // 3.1: one of the box carried onto the walker's row
     take("dex_grid") { v in v.screen = .dex(25, filter: 0, detail: false) }

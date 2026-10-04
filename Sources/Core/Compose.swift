@@ -148,6 +148,7 @@ extension Walker {
         case .trade(let s): tradeLCD(&fb, s, now)
         case .itemOn(let p): itemOnLCD(&fb, p, now)
         case .duel(let s): duelLCD(&fb, s, now)
+        case .hold(let ref, let sel): holdLCD(&fb, ref, sel, now)
         case .raid: raidLCD(&fb, now)
         case .market(let s): marketLCD(&fb, s, now)
         case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
@@ -188,7 +189,7 @@ extension Walker {
             guard let n = rows[safe: min(sel, rows.count - 1)] else { fb.text("없음", 0, 30, 2, center: true); break }
             fb.draw(gem, 4, 20, gemPal); fb.text(n, 12, 16)
             fb.text("×\(state.count(n))" + (state.items.contains(n) ? " · 워커 \(state.items.filter { $0 == n }.count)" : ""), 12, 28, 2, small: true)
-            fb.text(ItemKind.of(n).summary, 2, 40, 2, small: true)
+            fb.text(ItemKind.of(n).summary.replacingOccurrences(of: "지니게 하기: ", with: ""), 2, 40, 2, small: true)
             fb.text("\(min(sel, rows.count - 1) + 1)/\(rows.count)", 94, 52, 1, right: true, small: true)
         case .dex(let d, let f, _):
             let list = dexList(f), owned = (state.owned ?? []).contains(d)
@@ -291,9 +292,9 @@ extension Walker {
         case .box(let i, _, _, false):                                                              // 포켓몬: the companion and the walker's over the box
             let o = boxOrder, b = state.box, at = o.firstIndex(of: i), p = page(o.count, at ?? 0), party = [state.companion] + state.caught
             return GridModel(tabs: ["번호순", "레벨순", "V순", "최근"], tab: boxSort,
-                             cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3) },
+                             cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3, held: b[$0].item != nil) },
                              first: p.first, sel: at.map { $0 - p.first }, page: p.page, pages: p.pages, empty: "상자가 비어 있다", bob: bob,
-                             party: party.map { .init(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level) }, partySel: i < 0 ? -1 - i : nil, items: state.items.count + state.bag.count)
+                             party: party.map { .init(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil) }, partySel: i < 0 ? -1 - i : nil, items: state.items.count + state.bag.count)
         default: return nil
         }
     }
@@ -303,7 +304,7 @@ extension Walker {
     /// A click on a page still up under its own message (산 뒤, 연승!, W가 부족하다 …): the message ends and the click counts.
     func throughSay() {
         guard case .say(_, let next, _) = screen else { return }
-        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade, .raid, .market, .team, .itemOn, .duel: screen = next; default: break }
+        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade, .raid, .market, .team, .itemOn, .duel, .hold: screen = next; default: break }
     }
     func gridTap(_ code: Int) {
         guard !frozen, waiting == nil else { return }
@@ -331,6 +332,7 @@ extension Walker {
         case (.box(let i, _, _, true), 4402): screen = .box(i, act: nil, confirm: false, detail: true)
         case (.box(let i, _, true, true), 4403): screen = .box(i, act: 1, confirm: true, detail: true); press(1)
         case (.box(let i, _, _, true), 4409): screen = .relearn(ref: i, slot: 0, at: nil)                                          // 기술 바꾸기
+        case (.box(let i, _, _, true), 4410): screen = .hold(ref: i, sel: 0)                                                       // 3.7: 지니게 하기 · 빼기
         case (.box(let i, _, true, true), 4408) where state.box.indices.contains(i): askReleaseDupes(state.box[i].dex)            // 중복 n마리: asks (who stays) first
         case (_, 4200), (_, 4201): gridStep(code == 4200 ? -GridModel.perPage : GridModel.perPage, ends: true)
         default: return
@@ -352,6 +354,7 @@ extension Walker {
         if case .market(let s) = sc { return marketPane(s, now) }
         if case .itemOn(let p) = sc { return itemOnPane(p, now) }
         if case .duel(let s) = sc { return duelPane(s, now) }
+        if case .hold(let ref, let sel) = sc { return holdPane(ref, sel) }
         if case .menu(let i) = sc {
             let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드"]   // offline: what needs the server, dimmed
             let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
@@ -427,6 +430,7 @@ extension Walker {
         case (.market, 8000...8199): marketTap(code, Date())
         case (.itemOn, 8300...8399): itemOnTap(code, Date())
         case (.duel, 6300...6301): duelTap(code, Date())
+        case (.hold, 5980...5999): holdTap(code, Date())
         case (.team(let sel, let tab, true), 6032): if let c = teamRows(tab)[safe: sel]?.card, !isMe(c), Walker.walkingNow(c) { challenge(c.name) }   // 대전 신청
         case (.trade, 6000...6199): tradeTap(code, Date())
         case (.raid, 7000...7010): raidTap(code, Date())
@@ -480,6 +484,7 @@ extension Walker {
         else if mine.contains(where: { $0.way == .trade }) { p.evos.append("교환하면 받는 쪽에서 진화해요") }
         else if i != -1, mine.contains(where: { $0.way == .item }) { p.evos.append("도구 진화는 동료일 때 (함께 걷기 후)") }
         if i == -1, let e = companionEvolution() { p.evoAction = e.item! + " 쓰기 → " + monNames[e.to] }
+        p.held = m.item; p.heldNote = m.item.flatMap(Held.summary)
         return p
     }
     /// The ● menu on a Pokémon's page (the LCD's row; the pane's buttons are the same, less 닫기): what it can do from where it is.
@@ -502,6 +507,7 @@ extension Walker {
         if Walker.targeted(kind) {                                                                 // 3.6 (docs/plans/13): any of ours — who gets it is asked next
             let who = itemRefs.filter { itemNot(n, $0) == nil }.count
             if who == 0 { return (nil, itemNot(n, -1).map { "동료: " + $0 } ?? "쓸 수 있는 포켓몬이 없어요") }
+            if case .held = kind { return ("지니게 할 포켓몬 고르기", "") }                          // (its line is the summary already)
             if case .evolution = kind, let e = state.stoneEvolutions(Date()).first(where: { $0.item == n }) { return ("쓸 포켓몬 고르기", "동료는 \(monNames[e.to])(으)로 진화") }
             return ("쓸 포켓몬 고르기", "쓸 수 있는 포켓몬 \(who)마리")
         }
@@ -522,7 +528,7 @@ extension Walker {
             return gold ? ("\(monNames[c.dex]) 특훈 · 모두 31로", "지금 \(c.perfectIVs)V") : ("\(monNames[c.dex]) 특훈할 능력 고르기", "지금 \(c.perfectIVs)V")
         case .mint(let k): return (c.mint ?? c.nature ?? 0) == k ? (nil, "이미 그 성격 효과예요") : ("{동료}에게 쓰기".replacingOccurrences(of: "{동료}", with: monNames[c.dex]), "지금 " + natures[c.mint ?? c.nature ?? 0].name)   // (minimal: the per-Pokémon target is the Mac's, docs/plans/13)
         case .revive: return (nil, "배틀 중 기절한 포켓몬에게")
-        case .held: return (nil, "포켓몬에게 지니게 해요")                                          // (minimal: 지니게 하기 is the Mac's, docs/plans/13 ⑤)
+        case .held: return (nil, "포켓몬에게 지니게 해요")                                          // (held ones are targeted: the case above)
         case .heal, .battle: return (nil, "배틀에서 도구로")
         }
     }

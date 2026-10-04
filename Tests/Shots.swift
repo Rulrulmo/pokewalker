@@ -183,6 +183,22 @@ import AppKit
     take("duel_menu", tme) { v in v.duelOn = true; v.duelWait = false; v.duel = DuelView(id: 1, state: "active", opponent: "민수", challenger: true, battle: db36, turn: 1, need: "move", deadline: Int(Date().timeIntervalSince1970) + 24); v.fight = db36; v.screen = .battle(db36, sel: 0) }
     take("duel_waiting", tme) { v in v.duelOn = true; v.duelWait = true; v.duel = DuelView(id: 1, state: "active", opponent: "민수", challenger: true, battle: db36, turn: 1, need: nil, deadline: Int(Date().timeIntervalSince1970) + 19); v.fight = db36; v.screen = .battle(db36, sel: 0) }
     take("duel_won", tme) { v in v.duelOn = false; v.duelWait = false; v.screen = .say(["이겼다!", "+3 BP"], next: .home, since: Date()) }
+    // 3.7 (docs/plans/13 ⑤): 지닌 도구
+    let h37 = online({ var s = base(); s.watts = 9999; s.bp = 400; s.companion.item = "생명의구슬"; s.caught[0].item = "먹다남은음식"
+        var r = Seeded(s: 81); s.box = (0..<10).map { k in var m = Mon.wild([19, 133, 25, 1, 4, 7, 16, 41, 129, 92][k], level: 10 + 5 * k, &r); if k % 3 == 0 { m.item = "오랭열매" }; return m }
+        s.bag = ["구애머리띠", "구애스카프", "기합의띠", "자뭉열매", "오랭열매", "금속코트", "목탄"]; return s }())
+    take("mon_held", h37) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
+    take("mon_held_none", h37) { v in v.screen = .box(1, act: nil, confirm: false, detail: true) }
+    take("hold_pick", h37) { v in v.screen = .hold(ref: -1, sel: 2) }
+    take("hold_pick_none", h37) { v in v.screen = .hold(ref: 1, sel: 0) }
+    take("items_held_only", h37) { v in v.screen = .items(v.state.inventory.firstIndex(of: "구애머리띠") ?? 0) }
+    take("box_held_dots", h37) { v in v.screen = .box(-1, act: nil, confirm: false) }
+    take("shop_held_w", h37) { v in v.screen = .shop(bp: false, sel: v.shopRows(false, v.shopTabs(false).firstIndex(of: "지닌 도구") ?? 0).first ?? 0, qty: nil) }
+    take("shop_berries", h37) { v in v.screen = .shop(bp: false, sel: v.shopRows(false, v.shopTabs(false).firstIndex(of: "열매") ?? 0).first ?? 0, qty: nil) }
+    take("shop_held_bp", h37) { v in v.screen = .shop(bp: true, sel: v.shopRows(true, v.shopTabs(true).firstIndex(of: "지닌 도구") ?? 0).first ?? 0, qty: nil) }
+    var hb = Battle(wild: Mon(dex: 130, level: 30, female: false), party: [h37.state.companion] + h37.state.caught); hb.mine[0].item = "생명의구슬"
+    take("battle_held_hud", h37) { v in v.sideOn = true; v.fight = hb; v.screen = .battle(hb, sel: 0) }
+    take("battle_held_party", h37) { v in v.sideOn = true; v.fight = hb; v.screen = .party(hb, sel: 1) }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
     return n

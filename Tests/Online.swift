@@ -562,3 +562,42 @@ import AppKit
     check(declined && heard && cancelled, "거절: said there, heard here (its poll); 신청 취소", "\(says(db)) \(says(da))")
     return c
 }
+
+/// docs/plans/13 ⑤ (3.7): 지닌 도구 — from a Pokémon's page (지니게 하기, another one swapped in, 빼기), the bag's hold-only ones on a box one,
+/// the battle panel showing it, a trade's notice that it goes along, the shops' 지닌 도구 · 열매 tabs (two rows of tabs).
+@MainActor func holdChecks() -> [(Bool, String)] {
+    var c: [(Bool, String)] = []
+    func check(_ ok: Bool, _ name: String, _ why: @autoclosure () -> String = "") { c.append((ok, ok ? name : name + " — " + why())) }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    let h = TestHost()
+    let hw = online({ var s = Walk(); s.companion = Mon(dex: 25, level: 30, female: false); s.box = [Mon(dex: 19, level: 10, female: false)]
+                      s.bag = ["먹다남은음식", "구애머리띠", "오랭열매"]; return s }(), host: h)
+    hw.screen = .box(-1, act: nil, confirm: false, detail: true); let page0 = hw.paneContent(Date()).mon
+    hw.gridTap(4410); let rows = hw.paneContent(Date()).hold?.rows.map(\.name)
+    let leftovers = rows?.firstIndex(of: "먹다남은음식") ?? 0; hw.screen = .hold(ref: -1, sel: leftovers); hw.press(1); drain(hw)
+    let held = says(hw), page1: MonModel? = { hw.screen = .box(-1, act: nil, confirm: false, detail: true); return hw.paneContent(Date()).mon }()
+    check(page0?.held == nil && rows == ["구애머리띠", "먹다남은음식", "오랭열매"] && held == ["피카츄에게 먹다남은음식을", "지니게 했다!"] && hw.state.companion.item == "먹다남은음식"
+          && hw.state.count("먹다남은음식") == 0 && page1?.held == "먹다남은음식" && page1?.heldNote?.isEmpty == false,
+          "a Pokémon's page → 지니게 하기: the bag's holdable ones; held now (out of the bag), the page says so", "\(String(describing: rows)) \(held) \(String(describing: page1?.held))")
+    hw.gridTap(4410); let swapRows = hw.paneContent(Date()).hold?.rows
+    hw.screen = .hold(ref: -1, sel: swapRows?.firstIndex { $0.name == "구애머리띠" } ?? 0); hw.press(1); drain(hw)
+    let swapped = hw.state.companion.item == "구애머리띠" && hw.state.count("먹다남은음식") == 1 && swapRows?.first?.take == true
+    hw.screen = .hold(ref: -1, sel: 0); hw.press(1); drain(hw)
+    check(swapped && hw.state.companion.item == nil && hw.state.count("구애머리띠") == 1 && says(hw) == ["피카츄의 구애머리띠를", "뺐다"],
+          "another swapped in (the old one back to the bag); 빼기 first while it holds one", "\(swapped) \(says(hw))")
+    hw.screen = .items(hw.state.inventory.firstIndex(of: "먹다남은음식") ?? 0); let act = hw.paneContent(Date()).items?.action; hw.press(1)
+    if case .itemOn(var p) = hw.screen { p.at = hw.itemRefs.firstIndex(of: 0) ?? 0; hw.screen = .itemOn(p); hw.press(1); hw.press(1) }; drain(hw)
+    hw.screen = .box(-1, act: nil, confirm: false); let cell = hw.paneContent(Date()).grid?.cells.first
+    check(act == "지니게 할 포켓몬 고르기" && hw.state.box.first?.item == "먹다남은음식" && cell?.held == true, "the bag's hold-only one: who holds it (a box one); its cell marked", "\(String(describing: act)) \(String(describing: hw.state.box.first?.item))")
+    serve(hw) { $0.companion.item = "먹다남은음식" }
+    let b = Battle(wild: Mon(dex: 129, level: 3, female: false), companion: hw.state.companion); fightOn(hw, b)
+    check(hw.sideModel(Date())?.mine.item == "먹다남은음식", "the battle panel shows what ours holds", "\(String(describing: hw.sideModel(Date())?.mine.item))")
+    calm(hw); h.answer = false
+    hw.screen = .market(.pick(MarketPick(give: hw.state.box.first?.uid))); hw.pageTap(8190); drain(hw)
+    check(h.asked.last == "꼬렛은 먹다남은음식을 지니고 있어요" && !server(hw).0.listings.contains { $0.open }, "putting one up that holds an item asks first (it goes along); no: nothing put up", "\(h.asked.last ?? "-")")
+    let sw = online({ var s = Walk(); s.watts = 9999; return s }())
+    sw.screen = .shop(bp: false, sel: 0, qty: nil); let shop = sw.shopModel(), bpTabs: ShopModel? = { sw.screen = .shop(bp: true, sel: 0, qty: nil); return sw.shopModel() }()
+    check(shop?.tabs.contains("지닌 도구") == true && shop?.tabs.contains("열매") == true && (shop?.tabs.count ?? 0) > 6 && sw.paneContent(Date()).shop != nil && bpTabs?.tabs.contains("지닌 도구") == true,
+          "the shops: 지닌 도구 (and 열매) tabs, two rows of them", "\(String(describing: shop?.tabs)) \(String(describing: bpTabs?.tabs))")
+    return c
+}

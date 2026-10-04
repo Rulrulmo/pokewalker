@@ -25,7 +25,7 @@ extension Walker {
     /// The 상점's (bp false) or BP 교환소's rows (the BP device colours at the server's prices).
     func wares(_ bp: Bool) -> [Walk.Ware] { state.wares(bp: bp, shells: Engine.bpShells) }
     /// The shop's tabs that have something (docs/plans/13), the one a row is on, and a tab's rows (their places in wares).
-    func shopTabs(_ bp: Bool) -> [String] { let ws = wares(bp); return Walk.shopTabs(bp: bp).filter { t in t != "지닌 도구" && ws.contains { Walk.shopTab($0, bp: bp) == t } } }   // (지닌 도구: 3.7, with holding)
+    func shopTabs(_ bp: Bool) -> [String] { let ws = wares(bp); return Walk.shopTabs(bp: bp).filter { t in ws.contains { Walk.shopTab($0, bp: bp) == t } } }
     func shopTab(_ bp: Bool, _ sel: Int) -> Int { let ts = shopTabs(bp); return wares(bp)[safe: sel].flatMap { ts.firstIndex(of: Walk.shopTab($0, bp: bp)) } ?? 0 }
     func shopRows(_ bp: Bool, _ tab: Int) -> [Int] { let ws = wares(bp), t = shopTabs(bp)[safe: tab]; return ws.indices.filter { Walk.shopTab(ws[$0], bp: bp) == t } }
     /// A shell the 기기 menu offers: the dex reached, and a BP one bought.
@@ -114,6 +114,11 @@ extension Walker {
         state.inventory.compactMap { i in Walker.battleUse(i).flatMap { u in itemTargets(b, u).isEmpty ? nil : (i, u) } }
     }
     /// The companion's 진화의 돌, now: the server evolves it; home shows it. (A trade evolution happens at a real trade now: 12 §3.)
+    /// 3.7 (docs/plans/13 ⑤): a Pokémon that holds an item takes it along in a trade — said first, the player's yes.
+    func holdsAlong(_ m: Mon?, _ verb: String) -> Bool {
+        guard let m, let it = m.item else { return true }
+        return host?.confirm(josa(monNames[m.dex], "은", "는") + " " + josa(it, "을", "를") + " 지니고 있어요", "교환되면 " + josa(it, "도", "도") + " 함께 가요.", ok: verb) ?? true
+    }
     func evolveNow(_ e: Evo, back: Screen, _ now: Date = Date()) {
         act(.use(item: e.item ?? "", stat: nil), back: back, now) { _, _ in .home }
     }
@@ -173,8 +178,8 @@ extension Walker {
     func homeKey() -> Bool? {
         switch screen {
         case .home: true
-        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel: false
-        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel: false; default: nil }
+        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold: false
+        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold: false; default: nil }
         default: nil
         }
     }
@@ -199,6 +204,7 @@ extension Walker {
             case .market(let s): screen = marketBack(s)
             case .itemOn(let p): screen = .items(state.inventory.firstIndex(of: p.item) ?? 0)
             case .duel: screen = .home                                                             // (the invitation stays open: its minute)
+            case .hold(let r, _): screen = .box(r, act: nil, confirm: false, detail: true)
             case .items: screen = .box(-1, act: nil, confirm: false)                                  // back to 포켓몬
             case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : .menu(menuAt("포켓몬"))   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
             case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : .menu(menuAt("도감"))   // the entry page → the grid → the menu
@@ -327,6 +333,7 @@ extension Walker {
         case .market(let s): marketPress(k, s, now)
         case .itemOn(let p): itemOnPress(k, p, now)
         case .duel(let s): duelPress(k, s, now)
+        case .hold(let r, let s): holdPress(k, r, s, now)
         case .say(_, let next, _): screen = next
         case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
             if k == 1 { if dexList(f).contains(n) { screen = .dex(n, filter: f, detail: !detail) } } else { gridStep(k == 0 ? -1 : 1, wrap: true) }

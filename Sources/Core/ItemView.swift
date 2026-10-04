@@ -9,7 +9,7 @@ struct ItemOn: Equatable { var item: String; var pick: Int? = nil; var at = 0 }
 extension Walker {
     /// Items the 도구 page gives to one of ours (picked): the rest are used as they are (sold) or only in a fight.
     static func targeted(_ kind: ItemKind) -> Bool {
-        switch kind { case .candy, .vitamin, .evReset, .berry, .bottleCap, .evolution, .mint: true; default: false }
+        switch kind { case .candy, .vitamin, .evReset, .berry, .bottleCap, .evolution, .mint, .held: true; default: false }
     }
     /// Ours in the picker's order: the companion, the walker's, then the box as the 포켓몬 grid has it.
     var itemRefs: [Int] { [-1] + state.caught.indices.map { -2 - $0 } + boxOrder }
@@ -26,6 +26,7 @@ extension Walker {
         case .bottleCap: return m.level < Walk.hyperLevel ? "Lv.\(Walk.hyperLevel)부터" : m.effectiveIVs.allSatisfy { $0 >= 31 } ? "이미 모두 최고" : nil
         case .evolution: return state.stoneEvolutions(Date(), ref: ref).contains { $0.item == item } ? nil : "이 도구로 진화하지 않아요"
         case .mint(let k): return (m.mint ?? m.nature ?? 0) == k ? "이미 그 성격 효과" : nil
+        case .held: return m.item == item ? "이미 지니고 있어요" : nil
         default: return "여기서는 쓸 수 없어요"
         }
     }
@@ -41,7 +42,7 @@ extension Walker {
         let m = p.pick.flatMap { state.mon($0) }, why = p.pick.flatMap { itemNot(p.item, $0) }
         let mine = m.map { TradeSlot(label: p.pick == -1 ? "동료" : (p.pick ?? 0) < -1 ? "워커" : "상자", dex: $0.dex, level: $0.level, shiny: $0.shiny == true, name: monNames[$0.dex], v: $0.perfectIVs) }
             ?? TradeSlot(label: "받을 포켓몬", name: "골라 주세요")
-        let verb: String = { switch ItemKind.of(p.item) { case .candy, .vitamin, .evReset, .berry: "먹이기"; case .bottleCap(let g): g ? "특훈" : "특훈할 능력 고르기"; default: "쓰기" } }()
+        let verb: String = { switch ItemKind.of(p.item) { case .candy, .vitamin, .evReset, .berry: "먹이기"; case .bottleCap(let g): g ? "특훈" : "특훈할 능력 고르기"; case .held: "지니게 하기"; default: "쓰기" } }()
         let go = m != nil && why == nil ? josa(monNames[m!.dex], "에게", "에게") + " " + verb : nil
         return PaneContent(pick: TradePickModel(title: "누구에게 쓸까요?", note: "\(p.item) ×\(state.count(p.item))", mine: mine, theirs: TradeSlot(label: "쓸 도구", name: p.item),
                                                 side: 0, fixed: true, boxTitle: "동료 · 워커 · 상자 · \(refs.count.formatted())마리", cells: cells, sel: refs.isEmpty ? nil : at - first,
@@ -60,6 +61,7 @@ extension Walker {
             case .evReset: return "노력치 \((m.evs ?? []).reduce(0, +))"
             case .mint: return natures[m.mint ?? m.nature ?? 0].name
             case .bottleCap: return "\(m.perfectIVs)V"
+            case .held: return m.item ?? "지닌 도구 없음"
             default: return r == -1 ? "동료" : r < -1 ? "워커" : "상자"
             }
         }()
@@ -97,7 +99,55 @@ extension Walker {
         let back = Screen.items(state.inventory.firstIndex(of: p.item) ?? 0)
         if case .bottleCap(false) = ItemKind.of(p.item) { trainRef = r; screen = .train(state.mon(r)?.effectiveIVs.firstIndex { $0 < 31 } ?? 0); return }
         if case .bottleCap(true) = ItemKind.of(p.item) { trainRef = r; useCap(nil, back: back); return }
+        if case .held = ItemKind.of(p.item) { holdOn(r, p.item, back: .itemOn(p), then: { [weak self] in .items(self?.state.inventory.firstIndex(of: p.item) ?? 0) }, now); return }
         useItem(p.item, on: r, back: .itemOn(p), then: { [weak self] in .items(self?.state.inventory.firstIndex(of: p.item) ?? 0) }, now)
+    }
+
+    // MARK: 지니게 하기 (3.7, docs/plans/13 ⑤)
+    /// What the bag could give it to hold (one row a kind), 빼기 first while it holds one.
+    func holdRows(_ ref: Int) -> [HoldModel.Row] {
+        let now = state.mon(ref)?.item
+        let kinds = Array(Set(state.inventory.filter { Held.holdable($0) && $0 != now })).sorted()
+        return (now.map { [HoldModel.Row(name: $0, count: 0, note: "빼서 가방으로", take: true)] } ?? []) + kinds.map { .init(name: $0, count: state.count($0), note: Held.summary($0) ?? "", take: false) }
+    }
+    func holdPane(_ ref: Int, _ sel: Int) -> PaneContent {
+        guard let m = state.mon(ref) else { return PaneContent() }
+        let rows = holdRows(ref), s = min(sel, max(0, rows.count - 1)), r = rows[safe: s]
+        let action = r.map { $0.take ? $0.name + " 빼기" : ($0.name + " 지니게 하기") }
+        let hint = r.map { $0.take ? "빼면 가방으로 돌아가요" : m.item.map { "지금 지닌 " + $0 + "은(는) 가방으로" } ?? $0.note } ?? "지닐 수 있는 도구가 가방에 없어요"
+        return PaneContent(hold: HoldModel(who: monNames[m.dex] + " Lv.\(m.level)", now: m.item, rows: rows, sel: s, action: action, hint: hint))
+    }
+    func holdLCD(_ fb: inout FB, _ ref: Int, _ sel: Int, _ now: Date) {
+        guard let m = state.mon(ref) else { return }
+        fb.text("지니게 하기", 2, 0); fb.fill(0, 12, 96, 1, 2)
+        fb.mon(m, Int(now.timeIntervalSinceReferenceDate * 2) % 2, 0, 2, anim: animT("hold \(ref)", m.dex, now))
+        fb.text(m.item ?? "없음", 94, 15, m.item == nil ? 1 : 3, right: true, small: true)
+        if let r = holdRows(ref)[safe: min(sel, max(0, holdRows(ref).count - 1))] { fb.text(r.take ? "→ 빼기" : "→ " + r.name, 94, 52, 2, right: true, small: true) }
+    }
+    /// ◀ ▶ a row, ● holds it (or takes it off).
+    func holdPress(_ k: Int, _ ref: Int, _ sel: Int, _ now: Date) {
+        let rows = holdRows(ref), n = rows.count; guard n > 0 else { return }
+        if k != 1 { screen = .hold(ref: ref, sel: ((sel + (k == 0 ? -1 : 1)) % n + n) % n); return }
+        guard let r = rows[safe: min(sel, n - 1)] else { return }
+        holdOn(ref, r.take ? nil : r.name, back: .hold(ref: ref, sel: sel), then: { .box(ref, act: nil, confirm: false, detail: true) }, now)
+    }
+    func holdTap(_ code: Int, _ now: Date) {
+        guard case .hold(let ref, let sel) = screen else { return }
+        switch code {
+        case 5980..<5995: let rows = holdRows(ref), top = max(0, min(sel - 2, rows.count - 6)); screen = .hold(ref: ref, sel: min(rows.count - 1, top + code - 5980))
+        case 5999: holdPress(1, ref, sel, now)
+        default: return
+        }
+    }
+    /// The server's: item onto that one (what it held back to the bag), or nil = taken off.
+    func holdOn(_ ref: Int, _ item: String?, back: Screen, then: @escaping @MainActor () -> Screen, _ now: Date) {
+        guard let m = state.mon(ref), let u = m.uid else { return }
+        let name = monNames[m.dex], old = m.item
+        act(.mon(op: .hold(uid: u, item: item)), back: back, now) { _, now in
+            let lines = item.map { [josa(name, "에게", "에게") + " " + josa($0, "을", "를"), "지니게 했다!"] + (old.map { [$0 + "은(는) 가방으로"] } ?? []) }
+                ?? [josa(name, "의", "의") + " " + josa(old ?? "도구", "을", "를"), "뺐다"]
+            return .say(lines, next: then(), since: now)
+        }
     }
 
     // MARK: in a fight: an item on any of the party

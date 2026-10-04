@@ -4,7 +4,7 @@ import Foundation
 // MARK: - models
 /// The battle: names, HP, types for the LCD's HP boxes; the message and the choices for the page.
 struct SideModel: Equatable {
-    struct Card: Equatable { var name: String; var level, hp, max: Int; var out: Bool; var status: String? = nil; var types: [String] = []; var owned = false }   // types / owned: shown for theirs
+    struct Card: Equatable { var name: String; var level, hp, max: Int; var out: Bool; var status: String? = nil; var types: [String] = []; var owned = false; var item: String? = nil }   // types / owned: shown for theirs; item: what it holds now (3.7)
     struct MoveBtn: Equatable { var name, type: String; var power: Int; var effect: Double; var pp = 0, maxPP = 0; var status = false }
     enum Mode: Equatable { case none, menu([String], Int), moves([MoveBtn], Int), party([Card], Int), items([String], Int), ask(Bool) }   // ask: 아니오 / 예 (true = 예 highlighted)
     var foe: Card; var mine: Card; var message: String; var mode: Mode
@@ -35,7 +35,7 @@ struct DexModel: Equatable {
 /// The 도감 / 포켓몬 grid: tabs, a page of box icons (the pick bobbing), the pager; 포켓몬's has the companion and the walker's in a row above.
 struct GridModel: Equatable {
     static let perPage = 30, columns = 6                               // 6 x 5
-    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false; var level = 0 }   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box
+    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false; var level = 0; var held = false }   // held: it holds an item (3.7)   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box
     var tabs: [String]; var tab: Int
     var cells: [Cell]; var first: Int; var sel: Int?                   // this page's cells; first = cells[0]'s place in the whole list; sel = the pick's cell
     var page, pages: Int; var empty: String; var bob: Bool
@@ -52,6 +52,12 @@ struct MonModel: Equatable {
     var moves: [String] = []                                           // its four moves
     var evos: [String] = [], evoAction: String? = nil                  // how it evolves (a line a target); the companion's: what evolves it right now
     var sel: Int?                                                      // the LCD's pick (함께 / 놓아주기 / 닫기, or 아니오 / 예): what ● does is red
+    var held: String? = nil, heldNote: String? = nil                   // 3.7: its 지닌 도구 and what it does (the line under 진화; a click: 지니게 하기)
+}
+/// 지니게 하기 (docs/plans/13 ⑤): who, what it holds now, the bag's holdable items (빼기 first while it holds one), the pick's line, the button.
+struct HoldModel: Equatable {
+    struct Row: Equatable { var name: String; var count: Int; var note: String; var take: Bool }   // take: the 빼기 row
+    var who: String; var now: String?; var rows: [Row]; var sel: Int; var action: String?; var hint: String
 }
 /// 포켓몬 레이더: the four bushes as on the LCD, the one rustling marked.
 struct RadarModel: Equatable { var live: Int?; var cursor: Int; var chain: Int; var season = Season.summer }
@@ -172,15 +178,15 @@ struct PaneContent: Equatable {
     var trades: TradeListModel? = nil, offer: TradeOfferModel? = nil, pick: TradePickModel? = nil
     var raid: RaidModel? = nil
     var friendReqs: FriendReqModel? = nil, board: MarketBoardModel? = nil, post: MarketPostModel? = nil
-    var duel: DuelModel? = nil
+    var duel: DuelModel? = nil, hold: HoldModel? = nil
 }
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
     static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
     static let home: CGFloat = 406                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size)
     var height: CGFloat {
-        login != nil ? 330 : battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 434 : menu != nil ? PaneContent.home
-            : team != nil ? 446 : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? 446 : board != nil ? 446 : post != nil ? 482 : duel != nil ? 330
+        login != nil ? 330 : battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
+            : team != nil ? 446 : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? 446 : board != nil ? 446 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446
             : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 353 : status != nil ? PaneContent.home : Layout.idle
     }
 }

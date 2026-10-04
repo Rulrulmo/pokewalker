@@ -31,6 +31,10 @@ if let i = CommandLine.arguments.firstIndex(of: "--live-duel"), i + 3 < CommandL
     guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-duel: a build run from the repository only"); exit(2) }
     exit(liveDuelTest(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2], CommandLine.arguments[i + 3]) ? 0 : 1)
 }
+if let i = CommandLine.arguments.firstIndex(of: "--live-hold"), i + 2 < CommandLine.arguments.count {     // a dev build: 지닌 도구 with a seeded test ID (Tests/LiveTest.swift)
+    guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-hold: a build run from the repository only"); exit(2) }
+    exit(liveHoldTest(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2]) ? 0 : 1)
+}
 if let i = CommandLine.arguments.firstIndex(of: "--shots"), i + 1 < CommandLine.arguments.count {          // a dev build: screens to look at, as PNGs (Tests/Shots.swift)
     guard Store.devBuild(Bundle.main.bundleURL) else { print("--shots: a build run from the repository only"); exit(2) }
     print("\(shots(CommandLine.arguments[i + 1])) shots"); exit(0)
