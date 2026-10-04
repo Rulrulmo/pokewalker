@@ -254,7 +254,7 @@ extension SaveDB { func setPlay(_ key: String, _ p: Play) throws { try db.rows("
     }
     var lobby = try JSONDecoder().decode(RaidReply.self, from: await db.raidLobby(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(201)).body)
     #expect(raidRotation.contains(lobby.boss.dex) && lobby.boss.level == 70 && lobby.boss.perfectIVs >= 4)
-    #expect(lobby.hpTotal == lobby.barHP * raidBarsPerFighter * 2 && lobby.hpLeft == lobby.hpTotal)          // two walked lately: 28 bars
+    #expect(lobby.hpTotal == lobby.barHP * raidBarsPerFighter * 2 && lobby.hpLeft == lobby.hpTotal)          // two walked lately: 8 bars
     var seq = 2, t = 202.0
     var lastNews: [News] = []
     func fight(_ who: String, _ s: String, _ q: inout Int) async throws -> BattleEnd? {

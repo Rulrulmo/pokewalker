@@ -13,7 +13,7 @@ let raidSchema = """
       PRIMARY KEY (week, key));
     """
 let raidRotation = [249, 382, 383, 384, 483, 484, 487]                    // 루기아 가이오가 그란돈 레쿠쟈 디아루가 펄기아 기라티나 (ISO week % 7)
-let raidLevel = 70, raidBarsPerFighter = 14, raidCatchOdds = 0.30, raidApp = "3.4"
+let raidLevel = 70, raidBarsPerFighter = 4, raidCatchOdds = 0.30, raidApp = "3.4"         // 4 bars a fighter: the user, 10-04 (14 was too many; 14 §4)
 
 struct RaidRow { let week: String, dex: Int, boss: Mon, total: Int, bar: Int, cleared: Int? }
 
