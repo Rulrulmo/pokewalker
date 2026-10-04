@@ -60,7 +60,7 @@ extension Walker {
             let page = rows[min(first, rows.count)..<min(rows.count, first + per)].map { o -> TradeListModel.Row in
                 let mine = mineOffer(o)
                 return .init(mine: mine, line: mine ? monLine(o.mon) + " → " + o.to : josa(o.from, "의", "의") + " " + monLine(o.mon),
-                             sub: "↔ " + (o.want.map(monLine) ?? (mine ? "아무거나 (상대가 골라요)" : "아무거나 (내가 골라요)")) + " · " + tradeLeft(o, now), dex: o.mon.dex, shiny: o.mon.shiny == true)
+                             sub: "↔ " + (o.want.map(monLine) ?? (mine ? "아무거나" : "내가 골라요")) + " · " + tradeLeft(o, now), dex: o.mon.dex, shiny: o.mon.shiny == true)
             }
             let out = cloud?.trades?.outgoing.count ?? 0
             let note = cloud?.trades == nil ? (cloud?.online == false ? "연결되면 볼 수 있어요" : "불러오는 중…") : "받은 신청 \(tradesIn) · 보낸 신청 \(out)/5"
