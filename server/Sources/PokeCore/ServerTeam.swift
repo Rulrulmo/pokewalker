@@ -32,24 +32,26 @@ extension SaveDB {
         readGate(r.id, r.session) { key in
             let (week, days) = weekDays(now), today = Walk.key(now)
             let keys = [key] + (try friendKeys(key))
+            let everyone = viewAll.contains(key) ? try db.rows("SELECT key FROM trainers ORDER BY updated_at DESC").compactMap { $0.text("key") }.filter { isTestID($0) == isTestID(key) } : []
             var steps: [String: (today: Int, week: Int)] = [:]
             let inWeek = days.map { "'\($0)'" }.joined(separator: ",")
             for s in try db.rows("SELECT key, day, n FROM steps_day WHERE day IN (\(inWeek))") {
-                guard let k = s.text("key"), keys.contains(k), let n = s.int("n") else { continue }
+                guard let k = s.text("key"), keys.contains(k) || everyone.contains(k), let n = s.int("n") else { continue }
                 steps[k, default: (0, 0)].week += n
                 if s.text("day") == today { steps[k, default: (0, 0)].today += n }
             }
-            var cards: [TeamCard] = []
-            for k in keys {
+            func card(_ k: String) throws -> TeamCard? {
                 guard let row = try db.rows("SELECT t.name, t.updated_at, p.bank_at, t.walk FROM trainers t LEFT JOIN play p ON p.key = t.key WHERE t.key = :k",
-                                            ["k": .text(k)]).first, let w = row.text("walk").flatMap(decodeWalk) else { continue }
+                                            ["k": .text(k)]).first, let w = row.text("walk").flatMap(decodeWalk) else { return nil }
                 let last = max(Double(row.int("updated_at") ?? 0), row.real("bank_at") ?? 0), s = steps[k] ?? (0, 0)
-                cards.append(TeamCard(name: row.text("name") ?? k, walk: w, today: s.today, week: s.week, idle: max(0, Int(now.timeIntervalSince1970 - last))))
+                return TeamCard(name: row.text("name") ?? k, walk: w, today: s.today, week: s.week, idle: max(0, Int(now.timeIntervalSince1970 - last)))
             }
+            let cards = try keys.compactMap(card)
             let asks = try db.rows("SELECT t.name FROM friends f JOIN trainers t ON t.key = f.a WHERE f.b = :k AND f.state = 'pending' ORDER BY f.at", ["k": .text(key)]).compactMap { $0.text("name") }
             let sent = try db.rows("SELECT t.name FROM friends f JOIN trainers t ON t.key = f.b WHERE f.a = :k AND f.state = 'pending' ORDER BY f.at", ["k": .text(key)]).compactMap { $0.text("name") }
             let e = JSONEncoder(); e.outputFormatting = .sortedKeys
-            return try e.encode(TeamReply(week: week, cards: cards, requests: asks, sent: sent))
+            return try e.encode(TeamReply(week: week, cards: cards, requests: asks, sent: sent, visits: try visits(key),
+                                          all: everyone.isEmpty ? nil : try everyone.compactMap(card)))
         }
     }
     func friendKeys(_ key: String) throws -> [String] {

@@ -117,6 +117,7 @@ extension Walker {
         case .friendRequest, .friendAdded: friendNews(n, now)                                     // 친구 (12 §2.4): someone asked; it's mutual now (Core/TeamView.swift)
         case .marketBid(let id, let from, let m): marketNews(id, from, m, now)                    // the 게시판 (12 §3.3): an offer on my post (Core/MarketView.swift)
         case .duelInvite(let id, let from): duelInvited(id, from, now)                            // 실시간 대전 (12 §5): a friend asked (Core/DuelScreen.swift)
+        case .claimReady, .visitCame, .visitDone: break                                         // 3.8 (docs/plans/14): minimal — the red dot, 맡겨 키우기 are the Mac's
         }
     }
 

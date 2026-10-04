@@ -19,12 +19,16 @@ enum Act: Codable, Equatable {
     case greet(to: String)                                       // 인사 to a teammate (docs/plans/12 §2.3): the server delivers it, the save doesn't change
     case tradeOffer(to: String, give: Int, want: Int?)           // 교환 (12 §3): one of our box's for one of theirs (nil: what they choose)
     case tradeAccept(id: Int, give: Int?), tradeDecline(id: Int), tradeCancel(id: Int)
-    case raid, raidBall                                          // the co-op raid (12 §4): a fight with this week's boss (1칸 of power); a ball once the team beat it
+    case raid(party: [Int]? = nil), raidBall                     // the co-op raid (12 §4): a fight with this week's boss (1칸 of power; 3.8: the 1–3 picked, 14 §4); a ball once the team beat it
     case friendRequest(to: String), friendAccept(from: String), friendDecline(from: String), friendRemove(name: String)   // 친구 (12 §2.4, 3.5)
-    case marketList(give: Int, wish: [Int]), marketUnlist(id: Int)                         // 교환 게시판 (12 §3.3, 3.5): put one up (wished species shown), take it down
+    case marketList(give: Int, wish: [Int], note: String? = nil), marketUnlist(id: Int)    // 교환 게시판 (12 §3.3, 3.5): put one up (wished species shown; 3.8: a note), take it down
     case marketBid(listing: Int, give: Int), marketWithdraw(bid: Int), marketAccept(bid: Int)   // offer one of ours for it, take that back; the poster picks one
     case duelChallenge(to: String), duelAccept(id: Int), duelDecline(id: Int), duelCancel(id: Int)   // 실시간 대전 (12 §5, 3.6): a friend asked, yes / no, taken back
     case duelMove(id: Int, cmd: BattleCmd)                       // this turn's pick: fight(slot) · swap(to) · replace(to) · forfeit
+    case claim(id: Int)                                          // 3.8 (docs/plans/14 §2.2): a Pokémon waiting in the 받기 함, into the box
+    case visitSend(to: String, uid: Int), visitEnd(id: Int)      // 3.8 (14 §3): 맡겨 키우기 — send one to a friend walking now; end it early (either side)
+    case duelParty(uids: [Int])                                  // 3.8 (14 §5.1): the 대전 파티, 3–6 of ours
+    case duelQueue, duelQueueCancel, duelPick(id: Int, slots: [Int])   // 3.8 (14 §5.2–3): random matching; the 3 of my 6 for this duel (in order)
 }
 enum BattleCmd: Codable, Equatable { case fight(slot: Int), ball, item(name: String, on: Int? = nil), swap(to: Int), replace(to: Int), run, forfeit }   // item on: a party slot (nil = the one out; 3.6)
 /// Pokémon by uid (their places move): 함께 걷기, 상자로, 워커로, 놓아주기, 중복 놓아주기, 기술 바꾸기, the waiting move (nil = 배우지 않는다), 통신 진화.
@@ -49,6 +53,9 @@ enum News: Codable, Equatable {
     case friendRequest(from: String), friendAdded(name: String)                             // 친구 (12 §2.4; app 3.5 on): someone asked; it's mutual now
     case marketBid(listing: Int, from: String, mon: Mon)                                    // an offer on my 게시판 post (12 §3.3; app 3.5 on)
     case duelInvite(id: Int, from: String)                                                  // a friend wants a live battle (12 §5; app 3.6 on)
+    case claimReady(id: Int, kind: String)                                                  // 3.8 (14 §2.2): something in the 받기 함 (traded · returned · visit)
+    case visitCame(id: Int, owner: String, dex: Int, shiny: Bool)                           // 3.8 (14 §3): a friend's Pokémon to raise for 5 hours
+    case visitDone(owner: String, dex: Int, steps: Int, bp: Int)                            // 3.8: a guest went home; what it earned us
 }
 struct RadarShown: Codable, Equatable { var bush: Int, window: Double, chain: Int }
 /// result: caught · won · lost · fled (it got away) · ran (we did) · forfeit. chain: a wild fight's (0 = over); streak · bp: the tower's.

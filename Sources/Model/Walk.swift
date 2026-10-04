@@ -40,6 +40,7 @@ struct Walk: Codable, Equatable {
     var bought: [String]? = nil                                        // one-off BP buys (device colours)
     var raidPower: Int? = nil                                          // the co-op raid's power: steps banked, 3,000 at most (1,000 = 1칸: docs/plans/12 §4.2)
     var duelWins: Int? = nil, duelLosses: Int? = nil                   // 실시간 대전 (12 §5): the record
+    var duelParty: [Int]? = nil                                        // 3.8 (14 §5.1): the 대전 파티's uids, 3–6 (one let go or traded drops out)
 
     var here: Course { courses[course] }
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.
@@ -67,7 +68,7 @@ struct Walk: Codable, Equatable {
         rollover(now)
         guard n > 0 else { return false }
         today += n; total += n; courseSteps += n; remainder += n
-        raidPower = min(3000, (raidPower ?? 0) + n)
+        raidPower = min(Engine.raidPowerMax, (raidPower ?? 0) + n)
         let w = remainder / 20; remainder %= 20
         watts = min(9999, watts + w); earned += w
         egg?.left -= n

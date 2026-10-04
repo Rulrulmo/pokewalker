@@ -7,6 +7,7 @@ enum Engine {
     static func radarWindow(_ chain: Int) -> Double { max(0.8, 2.0 - 0.25 * Double(chain)) }
     static let bpShells: [(name: String, bp: Int)] = [("배틀 골드", 40)]   // the device colours the BP 교환소 sells (Core's shells with a bp)
     static let raidPowerCost = 1000, raidTurns = 6, raidBars = 3        // 12 §4.2: a fight is 1칸 of power, 6 turns at most, 3 of the boss's bars at most
+    static let raidPowerMax = 3 * raidPowerCost                         // what the power bank holds (3칸)
 
     /// A new trainer's first save (the server makes it): the starter with its issued uid, today, the 1.x one-time jobs marked done.
     static func fresh(now: Date, starter uid: Int) -> Walk {
@@ -81,8 +82,10 @@ struct EngineRun<R: RandomNumberGenerator> {
             w.setCourse(i, &r); return nil
         case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
              .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept,
-             .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove: return nil   // the server's: other trainers' saves, the inbox, the raid, friends, the board, live battles
-        case .raid: return raid()
+             .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove, .claim, .visitSend, .visitEnd, .duelQueue, .duelQueueCancel, .duelPick:
+            return nil                                                                              // the server's: other trainers' saves, the inbox, the raid, friends, the board, live battles
+        case .duelParty(let uids): return duelParty(uids)
+        case .raid(let party): return raid(party)
         }
     }
 
@@ -248,12 +251,16 @@ struct EngineRun<R: RandomNumberGenerator> {
         return []
     }
     /// 12 §4.2: this week's boss (the server's), 1칸 of power; our party (the tower's three) at its own levels, against 3 of its bars.
-    mutating func raid() -> String? {
+    mutating func raid(_ party: [Int]? = nil) -> String? {
         guard let rb = p.raidBoss else { return "이번 주 레이드가\n없어요" }
         guard rb.left > 0 else { return "이번 주 보스는\n이미 쓰러졌어요" }
-        guard (w.raidPower ?? 0) >= Engine.raidPowerCost else { return "파워가 부족하다\n(1,000걸음마다 1칸)" }
+        if let u = party {                                                                          // 3.8 (14 §4): the player's 1–3, else the tower's three
+            guard (1...3).contains(u.count), Set(u).count == u.count else { return "1~3마리를\n골라 주세요" }
+            guard u.allSatisfy({ w.ref(uid: $0) != nil }) else { return "그 포켓몬은\n없어요" }
+        }
+        guard (w.raidPower ?? 0) >= Engine.raidPowerCost else { return "파워가 부족하다\n(\(Engine.raidPowerCost.formatted())걸음마다 1칸)" }
         w.raidPower = (w.raidPower ?? 0) - Engine.raidPowerCost
-        let refs = w.party().map(\.ref)
+        let refs = party.map { $0.compactMap { w.ref(uid: $0) } } ?? w.party().map(\.ref)
         p.party = refs.map { w.id($0)! }                                                            // uids first: the fighters carry them, EXP goes back by them
         var b = Battle(wild: rb.boss, party: refs.compactMap { w.mon($0) }); b.seed = r.next()
         b.theirs += Array(repeating: Fighter(rb.boss), count: Engine.raidBars - 1)                  // a bar down: it stands up again
@@ -305,6 +312,13 @@ struct EngineRun<R: RandomNumberGenerator> {
         }
         growth()
         return nil
+    }
+    /// 14 §5.1: the 대전 파티 — 3 to 6 of ours, each once (who they are now: companion, walker or box).
+    mutating func duelParty(_ uids: [Int]) -> String? {
+        guard uids.count >= 3 else { return "3마리 이상\n골라 주세요" }
+        guard uids.count <= 6 else { return "6마리까지 고를 수 있어요" }
+        guard Set(uids).count == uids.count, uids.allSatisfy({ w.ref(uid: $0) != nil }) else { return "그 포켓몬은\n없어요" }
+        w.duelParty = uids; return nil
     }
     mutating func mon(_ op: MonOp) -> String? {
         switch op {
@@ -386,7 +400,8 @@ extension Act {
     var social: Bool {
         switch self {
         case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
-             .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept, .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove: true
+             .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept, .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove,
+             .claim, .visitSend, .visitEnd, .duelParty, .duelQueue, .duelQueueCancel, .duelPick: true
         default: false
         }
     }

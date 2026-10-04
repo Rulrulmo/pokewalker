@@ -89,7 +89,7 @@ extension Walker {
     }
     /// A fight with the week's boss: the server takes 1칸 and starts it; it plays on the battle screens (raidOn: its menu, lines, HUD).
     func raidFight(_ tab: Int, _ now: Date) {
-        act(.raid, back: .raid(tab: tab), now, lines: ["레이드", "보스에게 가는 중..."], quiet: true) { [weak self] o, now in
+        act(.raid(), back: .raid(tab: tab), now, lines: ["레이드", "보스에게 가는 중..."], quiet: true) { [weak self] o, now in
             guard let self, let f = o.battle else { return nil }
             raidOn = true; fight = f; freshFight()
             return (o.beats ?? []).isEmpty ? .battle(f, sel: 0) : .beats(f, o.beats!, since: now, from: f)

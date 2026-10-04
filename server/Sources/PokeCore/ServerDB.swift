@@ -102,6 +102,7 @@ actor SaveDB {
     let reject: Bool                                                       // CHECK_MODE=reject: an implausible save is refused (422), else only recorded
     let rejectTests: Bool                                                  // CHECK_REJECT_TESTS=1: refused for test IDs only (zz + 6 digits), to try reject live
     let minApp: String?                                                    // MIN_APP: apps older than this get 426 (3.0's release turns 2.x away: plan 11 §0)
+    let viewAll: Set<String>                                               // VIEW_ALL: the trainers (keys) whose 친구 screen has the 전체 tab (docs/plans/14 §4)
     /// The oldest app this trainer may use: the newest that saved here (no going back), or MIN_APP if that's newer.
     func needApp(_ t: Trainer) -> String? {
         guard let m = minApp else { return t.app }
@@ -112,15 +113,20 @@ actor SaveDB {
     func refuses(_ key: String) -> Bool { reject || (rejectTests && isTestID(key)) }
 
     /// create: only `pokeserver init` and the tests make the file; anything else on a missing file throws (a wrong DB_PATH must not start an empty server).
-    init(path: String, create: Bool = false, reject: Bool = false, rejectTests: Bool = false, minApp: String? = nil) throws {
+    init(path: String, create: Bool = false, reject: Bool = false, rejectTests: Bool = false, minApp: String? = nil, viewAll: [String] = []) throws {
         guard create || FileManager.default.fileExists(atPath: path) else { throw ServerError(description: "\(path): no database (pokeserver init makes it)") }
         let c = try SQLite(path: path, create: create)
         try c.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000; PRAGMA max_page_count = 2621440;")   // 4 KiB × 2621440 = 10 GiB
         if create || FileManager.default.fileExists(atPath: path) { try c.exec(schema); try c.exec(mintSchema); try c.exec(playSchema); try c.exec(teamSchema); try c.exec(tradeSchema); try c.exec(raidSchema); try c.exec(friendsSchema); try c.exec(marketSchema); try c.exec(duelSchema)
             for col in ["min_app TEXT", "walk INTEGER NOT NULL DEFAULT 0"] { try? c.exec("ALTER TABLE inbox ADD COLUMN \(col)") }   // M2's (already there: an error, ignored)
             try? c.exec("ALTER TABLE play ADD COLUMN sent_rev INTEGER")
+            try c.exec(claimSchema); try c.exec(visitSchema)                                               // 3.8 (docs/plans/14)
+            for col in ["note TEXT", "seen INTEGER NOT NULL DEFAULT 0"] { try? c.exec("ALTER TABLE listings ADD COLUMN \(col)") }
+            for col in ["party_a TEXT", "party_b TEXT", "pick_a TEXT", "pick_b TEXT"] { try? c.exec("ALTER TABLE duels ADD COLUMN \(col)") }
+            try? c.exec("ALTER TABLE trainers ADD COLUMN app_seen TEXT")
         }   // tables added since (flags) come in on any open: IF NOT EXISTS
         db = c; self.path = path; self.reject = reject; self.rejectTests = rejectTests; self.minApp = minApp
+        self.viewAll = Set(viewAll.compactMap { trainerID($0)?.key })
     }
 
     /// 판정 2–6, no database needed: the route runs it before awaiting the actor (a 2 MB decode doesn't hold the DB up).

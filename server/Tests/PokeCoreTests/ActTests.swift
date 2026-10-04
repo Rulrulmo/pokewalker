@@ -258,7 +258,7 @@ extension SaveDB { func setPlay(_ key: String, _ p: Play) throws { try db.rows("
     var seq = 2, t = 202.0
     var lastNews: [News] = []
     func fight(_ who: String, _ s: String, _ q: inout Int) async throws -> BattleEnd? {
-        var o = try await go(who, s, q, .raid, at: t); q += 1; t += 1
+        var o = try await go(who, s, q, .raid(), at: t); q += 1; t += 1
         while let bt = o.out.battle, o.out.end == nil, o.out.cannot == nil {
             let x = bt.mine[bt.me], slot = x.pp.indices.first { x.pp[$0] > 0 && moveTable[x.moves[$0]]?.isStatus == false } ?? 0   // (프레셔: 2 PP a move)
             o = try await go(who, s, q, .battle(cmd: bt.mustReplace ? .replace(to: bt.mine.indices.first { bt.mine[$0].alive && $0 != bt.me } ?? 0) : .fight(slot: slot)), at: t); q += 1; t += 1
@@ -328,7 +328,7 @@ extension SaveDB { func squeezeRaid(_ week: String, to total: Int) throws { try 
         try reply(await db.act(ActReq(id: who, session: s, seq: q, act: x, app: "3.5"), now: base.addingTimeInterval(t)))
     }
     func board(_ who: String, _ s: String, at t: Double = 100) async throws -> MarketReply {
-        try JSONDecoder().decode(MarketReply.self, from: await db.market(TeamReq(id: who, session: s), now: base.addingTimeInterval(t)).body)
+        try JSONDecoder().decode(MarketReply.self, from: await db.market(MarketReq(id: who, session: s), now: base.addingTimeInterval(t)).body)
     }
     #expect(try await go("앨리스", a, 2, .marketList(give: firstUID, wish: [25]), at: 70).out.cannot == "상자의 포켓몬만\n올릴 수 있어요")
     #expect(try await go("앨리스", a, 3, .marketList(give: 1_000_001, wish: [64, 133, 9999]), at: 71).out.cannot == nil)

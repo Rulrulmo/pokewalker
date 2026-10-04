@@ -830,7 +830,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             guard let f = trainerID(raw) else { return "친구가 아니에요" }
             if friendAsks[f.key]?.remove(key) != nil { return nil }                                       // my own request, taken back
             guard friends.remove(FakeCloud.pair(key, f.key)) != nil else { return "친구가 아니에요" }
-        case .marketList(let give, let wish):
+        case .marketList(let give, let wish, _):
             guard let r = w.ref(uid: give), r >= 0, let mon = w.mon(r) else { return "상자의 포켓몬만\n올릴 수 있어요" }
             guard !used(give) else { return "이미 올리거나\n제안한 포켓몬이에요" }
             guard listings.filter({ $0.open && $0.key == key }).count < 3 else { return "올린 글이\n너무 많아요 (3개)" }

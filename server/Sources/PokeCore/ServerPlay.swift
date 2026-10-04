@@ -32,13 +32,19 @@ func actName(_ a: Act) -> String {
     case .battle(let c): "battle \(c)"; case .buy(let bp, let i, let l, let s, let q): "buy \(i ?? l.map { "legend \($0)" } ?? s ?? "?") ×\(q)\(bp ? " (BP)" : "")"
     case .use(let i, _, let on): "use \(i)" + (on.map { " on \($0)" } ?? ""); case .sellAll: "sell all"; case .mon(let op): "mon \(op)"; case .course(let c): "course \(c)"; case .greet(let to): "greet \(to)"
     case .tradeOffer(let to, let g, let wnt): "trade offer → \(to) \(g)\(wnt.map { " for \($0)" } ?? "")"; case .tradeAccept(let i, let g): "trade accept #\(i)\(g.map { " with \($0)" } ?? "")"
-    case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"; case .raid: "raid"; case .raidBall: "raid ball"
+    case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"; case .raid(let p): "raid" + (p.map { " with \($0)" } ?? ""); case .raidBall: "raid ball"
     case .friendRequest(let to): "friend request → \(to)"; case .friendAccept(let f): "friend accept \(f)"; case .friendDecline(let f): "friend decline \(f)"
-    case .friendRemove(let n): "friend remove \(n)"; case .marketList(let g, let w): "market list \(g) wish \(w)"; case .marketUnlist(let i): "market unlist #\(i)"
+    case .friendRemove(let n): "friend remove \(n)"; case .marketList(let g, let w, _): "market list \(g) wish \(w)"; case .marketUnlist(let i): "market unlist #\(i)"
     case .marketBid(let l, let g): "market bid #\(l) with \(g)"; case .marketWithdraw(let b): "market withdraw bid #\(b)"; case .marketAccept(let b): "market accept bid #\(b)"
     case .duelChallenge(let to): "duel challenge → \(to)"; case .duelAccept(let i): "duel accept #\(i)"; case .duelDecline(let i): "duel decline #\(i)"
     case .duelCancel(let i): "duel cancel #\(i)"; case .duelMove(let i, let c): "duel #\(i) \(c)"
+    case .claim(let i): "claim #\(i)"; case .visitSend(let to, let u): "visit send \(u) → \(to)"; case .visitEnd(let i): "visit end #\(i)"
+    case .duelParty(let u): "duel party \(u)"; case .duelQueue: "duel queue"; case .duelQueueCancel: "duel queue cancel"; case .duelPick(let i, let sl): "duel #\(i) pick \(sl)"
     }
+}
+/// News kinds an app before 3.8 can't read are kept from it (the inbox's min_app does the same for teammates' mail).
+func appKnows(_ app: String?, _ n: News) -> Bool {
+    switch n { case .claimReady, .visitCame, .visitDone: knows(app, claimApp); default: true }
 }
 func savedText(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return String(decoding: (try? e.encode(w.shared)) ?? Data(), as: UTF8.self) }
 
@@ -104,17 +110,29 @@ extension SaveDB {
                         let was = w; var more: [News] = []
                         if let why = try marketAct(r.act, key: id.key, name: t.name, walk: &w, news: &more, now: unix) { out.cannot = why; w = was }
                         else { out.news += more; if w != was { out.changed = true } }
-                    case .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove:             // 12 §5: ServerDuel.swift
+                    case .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove, .duelQueue, .duelQueueCancel, .duelPick:   // 12 §5, 14 §5: ServerDuel.swift
                         let was = w
-                        if let why = try duelAct(r.act, key: id.key, name: t.name, walk: &w, out: &out, now: unix) { out.cannot = why; w = was } else if w != was { out.changed = true }
+                        if let why = try duelAct(r.act, key: id.key, name: t.name, app: r.app, walk: &w, out: &out, now: unix) { out.cannot = why; w = was } else if w != was { out.changed = true }
+                    case .claim(let cid):                                                               // 14 §2.2: ServerClaims.swift
+                        let was = w; var more: [News] = [], got: Mon? = nil
+                        if let why = try claim(cid, key: id.key, walk: &w, news: &more, got: &got, now: unix) { out.cannot = why; w = was }
+                        else { out.news += more; out.mon = got; out.changed = true }
+                    case .visitSend, .visitEnd:                                                         // 14 §3: ServerVisit.swift
+                        let was = w; var more: [News] = []
+                        if let why = try visitAct(r.act, key: id.key, name: t.name, walk: &w, news: &more, now: unix) { out.cannot = why; w = was }
+                        else { out.news += more; if w != was { out.changed = true } }
                     case .raidBall:                                                                     // 12 §4.3: ServerRaid.swift
                         let was = w
                         if let why = try raidBall(id.key, walk: &w, out: &out, now: now) { out.cannot = why; w = was } else if w != was { out.changed = true }
                     default: break
                     }
                 }
+                try visitTick(id.key, steps: taken, walk: &w, news: &out.news, now: unix)             // 14 §3: guests raised, visits over, a host's BP
+                if !knows(r.app, claimApp) { try claimAll(id.key, walk: &w, news: &out.news, now: unix) }   // 14 §8: before 3.8, the 받기 함 empties itself
                 let mail = try delivery(id.key, app: r.app, now: unix)                                 // what teammates sent (only what this app can read)
                 out.news += mail.news
+                out.news = out.news.filter { appKnows(r.app, $0) }
+                if let a = r.app { try db.rows("UPDATE trainers SET app_seen = :a WHERE key = :k AND (app_seen IS NULL OR app_seen != :a)", ["a": .text(a), "k": .text(id.key)]) }
                 for (m, kind) in ids.made { try record(id.key, m, kind: kind, state: kind == "radar" || kind == "legend" ? "pending" : "kept", now: unix) }
                 try settleLedger(id.key, w, row.play, now: unix)
 
@@ -181,7 +199,7 @@ extension SaveDB {
     func nextUID(_ key: String, _ w: Walk) throws -> Int { max(try nextUID(key), (w.lastUID ?? 0) + 1) }
     /// The ledger follows the save: a radar's find comes into it (kept) or goes with the radar (gone); a kept one no longer there was released.
     func settleLedger(_ key: String, _ w: Walk, _ p: Play, now: Int) throws {
-        let here = Set(SaveCheck.mons(w).compactMap(\.uid))
+        let here = Set(SaveCheck.mons(w).compactMap(\.uid)).union(try awayUIDs(key))           // (3.8: on the board, raised elsewhere, waiting to be claimed)
         let live = Set([p.radar?.mon.uid, p.battle?.trainer == nil ? p.battle?.wild.uid : nil].compactMap { $0 })
         for r in try db.rows("SELECT uid, state FROM mons WHERE key = :k AND state IN ('pending', 'kept')", ["k": .text(key)]) {
             guard let u = r.int("uid") else { continue }

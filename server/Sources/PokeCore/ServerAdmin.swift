@@ -168,7 +168,8 @@ extension SaveDB {
             try db.rows("UPDATE OR IGNORE legacy SET key = :nk WHERE key = :k", a)
             for t in ["pins", "flags", "mons", "chains", "grants", "steps_day", "actions", "raid_hits", "raid_catch"] { try db.rows("UPDATE \(t) SET key = :nk WHERE key = :k", a) }
             for t in ["trust", "pin_fails", "play"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }   // play: the session ends anyway
-            for (t, c) in [("inbox", "to_key"), ("inbox", "from_key"), ("trades", "to_key"), ("trades", "from_key"), ("friends", "a"), ("friends", "b"), ("listings", "key"), ("bids", "key"), ("duels", "a"), ("duels", "b")] {
+            for (t, c) in [("inbox", "to_key"), ("inbox", "from_key"), ("trades", "to_key"), ("trades", "from_key"), ("friends", "a"), ("friends", "b"), ("listings", "key"), ("bids", "key"), ("duels", "a"), ("duels", "b"),
+                           ("claims", "key"), ("visits", "owner"), ("visits", "host")] {
                 try db.rows("UPDATE \(t) SET \(c) = :nk WHERE \(c) = :k", a)
             }
             return "\(k) → \(n.key) (\(n.name)); its PC gets no_trainer on its next save and asks for an ID"
@@ -188,6 +189,12 @@ extension SaveDB {
             for t in ["history", "trainers", "pins", "trust", "pin_fails", "mons", "chains", "grants", "play", "steps_day", "actions", "raid_hits", "raid_catch"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
             for t in ["inbox", "trades"] { try db.rows("DELETE FROM \(t) WHERE to_key = :k OR from_key = :k", ["k": .text(k)]) }
             try db.rows("DELETE FROM friends WHERE a = :k OR b = :k", ["k": .text(k)])
+            for l in try listings("key = :k AND state = 'open'", ["k": .text(k)]) {                    // 3.8: others' Pokémon held by its posts or raised by it go home first
+                try closeListing(l, "cancelled", now: now); try declineBids(on: l, why: "상대가 떠났어요", now: now)
+            }
+            for v in try visitRows("host = :k AND state = 'on'", ["k": .text(k)]) { try endVisit(v, now: now) }
+            try db.rows("DELETE FROM visits WHERE owner = :k OR host = :k", ["k": .text(k)])
+            try db.rows("DELETE FROM claims WHERE key = :k", ["k": .text(k)])
             try db.rows("DELETE FROM bids WHERE key = :k OR listing IN (SELECT id FROM listings WHERE key = :k)", ["k": .text(k)])
             try db.rows("DELETE FROM listings WHERE key = :k", ["k": .text(k)])
             try db.rows("DELETE FROM duels WHERE a = :k OR b = :k", ["k": .text(k)])
@@ -295,7 +302,8 @@ public func run(_ arguments: [String]) async -> Int32 {
             guard let appKey = env["APP_KEY"], !appKey.isEmpty else { return fail("APP_KEY is empty (/etc/pokewalker/server.env)") }
             let port = env["PORT"].flatMap { Int($0) } ?? 8787
             let db = try SaveDB(path: path, reject: env["CHECK_MODE"] == "reject", rejectTests: env["CHECK_REJECT_TESTS"] == "1",
-                                minApp: env["MIN_APP"].flatMap { $0.isEmpty || versionParts($0) == nil ? nil : $0 })
+                                minApp: env["MIN_APP"].flatMap { $0.isEmpty || versionParts($0) == nil ? nil : $0 },
+                                viewAll: (env["VIEW_ALL"] ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
             let release = URL(fileURLWithPath: env["RELEASE_DIR"].flatMap { $0.isEmpty ? nil : $0 } ?? "/var/lib/pokewalker/release", isDirectory: true)
             let site = env["DOWNLOAD_PASSWORD"].flatMap { $0.isEmpty ? nil : DownloadSite(dir: release, password: $0) }
             try await serve(db: db, appKey: appKey, port: port, site: site, release: release)
