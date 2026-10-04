@@ -221,6 +221,8 @@ import AppKit
     let k = ta.myTradeBox.firstIndex { $0.dex == 93 } ?? 0; ta.pageTap(6150 + k); let ready = ta.paneContent(Date()).pick
     check(afterWant?.theirs.dex == 64 && afterWant?.side == 0 && afterWant?.go == nil && ready?.mine.dex == 93 && ready?.go == "교환 신청",
           "a click on theirs picks it (윤겔라) and turns to my box; a click on mine (고우스트): 교환 신청 lights up", "\(String(describing: afterWant)) \(String(describing: ready?.go))")
+    let actsHeld = sv.acts.count; _ = ta.key(.enter, held: true); _ = ta.key(.enter, held: true)
+    check(sv.acts.count == actsHeld && { if case .trade(.pick) = ta.screen { return true }; return false }(), "a held return on the pick sends nothing (only a fresh press does)")
     ta.pageTap(6190); drain(ta); drain(ta)
     check(says(ta) == [bName + "에게", "교환을 신청했다!"] && sv.offers.count == 1 && ta.cloud!.trades?.outgoing.count == 1 && ta.tradeRows.first.map(ta.mineOffer) == true,
           "교환 신청 → the server's offer; it's on my list (보냄)", "\(says(ta)) \(sv.offers.count)")

@@ -643,7 +643,8 @@ import AppKit                                                                   
     let old = try? JSONDecoder().decode(Mon.self, from: Data(#"{"dex":25,"level":5,"female":false}"#.utf8))
     check(old == Mon(dex: 25, level: 5, female: false) && old?.shiny == nil, "pre-shiny saves still decode")
     let td = textDots("포켓 레이더"); check(td.joined().contains(true) && td.count == 11, "Korean text renders to 11-row dots", td.map { String($0.map { $0 ? "#" : "." }) }.joined(separator: "\n"))
-    check(josa("피카츄", "을", "를") == "피카츄를" && josa("꼬렛", "을", "를") == "꼬렛을", "josa")
+    check(josa("피카츄", "을", "를") == "피카츄를" && josa("꼬렛", "을", "를") == "꼬렛을" && josa("zz100411", "이", "가") == "zz100411이" && josa("zz100412", "과", "와") == "zz100412와"
+          && josa("zz7", "으로", "로") == "zz7로" && josa("zz3", "으로", "로") == "zz3으로" && josa("minsu", "이", "가") == "minsu가", "josa (a trailing digit as read: 일 · 이 …)")
 
     // 9 UI flows: the walker, driven through press() / touch() / tick()
     func on(_ v: Walker, _ p: (Screen) -> Bool) -> Bool { p(v.screen) }

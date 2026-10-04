@@ -7,8 +7,10 @@ extension DateFormatter {
 
 /// 을/를, 이/가, 은/는 by the last syllable's final consonant.
 func josa(_ w: String, _ with: String, _ without: String) -> String {
-    guard let u = w.unicodeScalars.last?.value, (0xAC00...0xD7A3).contains(u) else { return w + without }
-    let jong = (u - 0xAC00) % 28
+    guard let u = w.unicodeScalars.last?.value else { return w + without }
+    let digit: [UInt32: UInt32] = [0x30: 21, 0x31: 8, 0x33: 16, 0x36: 1, 0x37: 8, 0x38: 8]          // a trailing digit as read: 영 일 삼 육 칠 팔 end in a consonant (ID zz100411 → 일)
+    guard (0xAC00...0xD7A3).contains(u) || (0x30...0x39).contains(u) else { return w + without }
+    let jong = (0x30...0x39).contains(u) ? digit[u] ?? 0 : (u - 0xAC00) % 28
     return w + (jong != 0 && !(with == "으로" && jong == 8) ? with : without)                    // ㄹ takes 로, not 으로
 }
 
