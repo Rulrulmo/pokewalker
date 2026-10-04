@@ -35,6 +35,10 @@ if let i = CommandLine.arguments.firstIndex(of: "--live-hold"), i + 2 < CommandL
     guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-hold: a build run from the repository only"); exit(2) }
     exit(liveHoldTest(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2]) ? 0 : 1)
 }
+if let i = CommandLine.arguments.firstIndex(of: "--live-v38"), i + 3 < CommandLine.arguments.count {      // a dev build: 3.8's 받기 · 맡겨 키우기 · 대전 menu with two seeded test IDs (Tests/LiveTest.swift)
+    guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-v38: a build run from the repository only"); exit(2) }
+    exit(liveV38Test(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2], CommandLine.arguments[i + 3]) ? 0 : 1)
+}
 if let i = CommandLine.arguments.firstIndex(of: "--shots"), i + 1 < CommandLine.arguments.count {          // a dev build: screens to look at, as PNGs (Tests/Shots.swift)
     guard Store.devBuild(Bundle.main.bundleURL) else { print("--shots: a build run from the repository only"); exit(2) }
     print("\(shots(CommandLine.arguments[i + 1])) shots"); exit(0)
@@ -42,8 +46,24 @@ if let i = CommandLine.arguments.firstIndex(of: "--shots"), i + 1 < CommandLine.
 if let i = CommandLine.arguments.firstIndex(of: "--stage-update"), i + 1 < CommandLine.arguments.count {   // a local build's zip, to try the install (Core/Update.swift)
     exit(Update.stageLocal(URL(fileURLWithPath: CommandLine.arguments[i + 1])) ? 0 : 1)
 }
+/// One walker per save (3.8): another one on the same data folder already running (a copy elsewhere, `open -n`) comes forward and this one goes —
+/// two would count the same keys twice on one seat. The repository's build (its own folder, PokeWalker Dev) runs beside the installed one.
+func dataFolder(_ app: URL?) -> String? { app.map { Bundle(url: $0)?.object(forInfoDictionaryKey: "PWDataFolder") as? String ?? (Store.devBuild($0) ? "PokeWalker Dev" : "PokeWalker") } }
+let showAgain = Notification.Name("dev.khmin.pokewalker.show." + Store.folder)
+func runningTwin() -> NSRunningApplication? {
+    NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "dev.khmin.pokewalker")
+        .first { $0.processIdentifier != getpid() && !$0.isTerminated && dataFolder($0.bundleURL) == Store.folder }
+}
+if CommandLine.arguments.contains("--twin-check") {                                            // a dev build: who'd be the twin (nothing launched, nothing sent)
+    for a in NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "") { print("pid \(a.processIdentifier) · \(dataFolder(a.bundleURL) ?? "-")\(a.processIdentifier == getpid() ? " (this one)" : "")") }
+    print("this one: \(Store.folder) · twin: \(runningTwin().map { "pid \($0.processIdentifier)" } ?? "none")"); exit(0)
+}
 if let bad = CommandLine.arguments.dropFirst().first(where: { $0.hasPrefix("--") }) {          // an option this build doesn't know (a test's, run on an older build): never the app instead
     print("PokeWalker: unknown option \(bad)"); exit(2)
+}
+if let twin = runningTwin() {                                                                  // (an update's relaunch: its helper waits for the old one to exit first)
+    DistributedNotificationCenter.default().postNotificationName(showAgain, object: nil, userInfo: nil, deliverImmediately: true)
+    twin.activate(options: []); exit(0)
 }
 let launch = Update.atLaunch()                                                                 // a downloaded update goes in first: the helper starts it once this exits
 if launch == .installing { exit(0) }
@@ -62,6 +82,9 @@ walker.updater = Updater.app(persist: walker.persist)
 }
 let appDelegate = AppDelegate()
 app.delegate = appDelegate
+DistributedNotificationCenter.default().addObserver(forName: showAgain, object: nil, queue: .main) { _ in   // a second launch: this one comes forward
+    DispatchQueue.main.async { if view.window?.isVisible != true { view.toggleShown(nil) }; NSApp.activate(ignoringOtherApps: true) }
+}
 let notifyDelegate = NotifyDelegate()
 UNUserNotificationCenter.current().delegate = notifyDelegate
 UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { @Sendable ok, _ in   // called off the main thread

@@ -633,6 +633,53 @@ import AppKit
     return c
 }
 
+/// docs/plans/14 §3 (3.8): 맡겨 키우기 — sent from a friend's card (one of the box's), out of the box; the host hears it and walks with it
+/// (home's stickers), its steps raise it; 돌려보내기 early → the host's BP (a 2,000 steps), the owner's 받기 함 (the EXP when taken). 전체 (VIEW_ALL).
+@MainActor func visitChecks() -> [(Bool, String)] {
+    var c: [(Bool, String)] = []
+    func check(_ ok: Bool, _ name: String, _ why: @autoclosure () -> String = "") { c.append((ok, ok ? name : name + " — " + why())) }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func act(_ w: Walker, _ n: Int = 1) { w.news = []; w.screen = .home; w.cloud!.addSteps(n); w.cloud!.saveNow(); drain(w); drain(w) }
+    func team(_ w: Walker) { w.cloud!.teamDue = true; w.cloud!.tick(Date()); drain(w); drain(w) }
+    let sv = FakeCloud()
+    let va = online({ var s = Walk(); s.companion = Mon(dex: 25, level: 20, female: false); s.box = [Mon(dex: 133, level: 10, female: false)]; return s }(), server: sv)
+    let vb = online({ var s = Walk(); s.companion = Mon(dex: 1, level: 20, female: false); return s }(), server: sv)
+    let other = online(Walk(), server: sv)
+    let aName = va.myName, bName = vb.myName
+    sv.befriend(aName, bName); act(vb); team(va)
+    let bi = va.teamRows(0).firstIndex { $0.card.name.lowercased() == bName.lowercased() } ?? 0
+    va.screen = .team(sel: bi, tab: 0, card: true); let card = va.paneContent(Date()).teamCard; va.pageTap(6034)
+    let pick = va.paneContent(Date()).pick
+    va.press(1); va.press(1); drain(va); let sent = says(va); va.press(1); team(va)
+    va.screen = .team(sel: 0, tab: 5, card: false); let mine = va.paneContent(Date()).visits
+    check(card?.visit == "맡기기" && pick?.title == josa(bName, "에게", "에게") + " 맡기기" && pick?.count == 1 && sent == [bName + "에게 이브이를", "맡겼다!", "5시간 뒤 받기로 돌아와요"]
+          && !va.state.box.contains { $0.dex == 133 } && mine?.rows.first?.button == "데려오기" && mine?.rows.first?.mine == true && va.teamTabLabels[5] == "맡기기 1",
+          "a friend walking now: 맡기기 → pick one (the walker's · box's) → it goes (out of my box); my 맡기기 tab has it (데려오기)",
+          "\(String(describing: card?.visit)) \(String(describing: pick?.title)) \(sent) \(String(describing: mine))")
+    act(vb); let came = says(vb); vb.press(1); team(vb)
+    vb.screen = .team(sel: 0, tab: 5, card: false); let guestRow = vb.paneContent(Date()).visits?.rows.first
+    act(vb, 4500); team(vb); let raised = vb.guests.first?.steps ?? 0
+    check(came == [josa(aName, "의", "의") + " 이브이를", "맡았다!", "5시간 같이 걸어요"] && guestRow?.button == "돌려보내기" && vb.guests.count == 1 && raised >= 4500,
+          "the host hears it (맡았다!) and walks with it: its steps go to it", "\(came) \(String(describing: guestRow)) \(raised)")
+    let bp0 = vb.state.bp ?? 0
+    vb.screen = .team(sel: 0, tab: 5, card: false); vb.pageTap(6400); drain(vb); let back = says(vb); vb.press(1); vb.screen = .home; vb.tick(Date()); let again = says(vb)
+    check(back == [josa(aName, "의", "의") + " 이브이를", "돌려보냈다", "+2BP"] && again.isEmpty && (vb.state.bp ?? 0) == bp0 + 2,
+          "돌려보내기 (early): settled with the steps so far — the host's +2BP (a 2,000 steps)", "\(back) \(again) \(String(describing: vb.state.bp))")
+    act(va); va.cloud!.marketDue = true; drain(va); drain(va)
+    let k = va.claims.first, dot = va.marketDot
+    va.screen = .market(.board(tab: 3, sel: 0)); let row = va.paneContent(Date()).board?.rows.first; va.pageTap(8010); drain(va)
+    let home = va.state.box.first { $0.dex == 133 }; team(va)
+    check(k?.kind == "visit" && dot && row?.pill == "받기" && (home?.level ?? 0) > 10 && va.visits?.away == nil,
+          "home through the owner's 받기 함 (the red dot): taken, it has the EXP of the steps raised", "\(String(describing: k)) \(dot) \(String(describing: row)) \(String(describing: home?.level))")
+    // 전체 (VIEW_ALL): every trainer — only for its accounts
+    sv.viewAll.insert(aName.lowercased()); team(va); team(vb)
+    let labels = va.teamTabLabels, all = va.teamRows(6).map { $0.card.name.lowercased() }
+    va.screen = .team(sel: all.firstIndex(of: other.myName.lowercased()) ?? 0, tab: 6, card: true); let stranger = va.paneContent(Date()).teamCard
+    check(labels.last == "전체" && va.teamTabCount == 7 && vb.teamTabCount == 6 && all.contains(other.myName.lowercased()) && stranger?.duel == nil && stranger?.request == "친구 신청",
+          "전체 (VIEW_ALL's): every trainer, a tab of its own only there; a stranger's card: 친구 신청, no 대전", "\(labels) \(all) \(String(describing: stranger))")
+    return c
+}
+
 /// docs/plans/13 ⑤ (3.7): 지닌 도구 — from a Pokémon's page (지니게 하기, another one swapped in, 빼기), the bag's hold-only ones on a box one,
 /// the battle panel showing it, a trade's notice that it goes along, the shops' 지닌 도구 · 열매 tabs (two rows of tabs).
 @MainActor func holdChecks() -> [(Bool, String)] {

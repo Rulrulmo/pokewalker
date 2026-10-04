@@ -32,7 +32,7 @@ extension Walker {
         guard let v = all[safe: min(sel, max(0, all.count - 1))] else { fb.text("맡긴 포켓몬이 없다", 0, 30, 2, center: true); return }
         fb.mon(v.mon, Int(now.timeIntervalSinceReferenceDate * 2) % 2, 0, 2, anim: animT("visit \(v.id)", v.mon.dex, now))
         fb.text(trainerID(v.owner)?.key == trainerID(myName)?.key ? "→ " + v.host : v.owner, 94, 15, 3, right: true, small: true)
-        fb.text("\(v.steps)걸음", 94, 26, 2, right: true, small: true)
+        fb.text("\(v.steps.formatted())걸음", 94, 26, 2, right: true, small: true)
     }
     /// 데려오기 (mine) · 돌려보내기 (theirs): settled with the steps so far.
     func visitEnd(_ row: Int, _ now: Date) {
@@ -41,8 +41,12 @@ extension Walker {
         let mine = trainerID(v.owner)?.key == trainerID(myName)?.key
         let back = Screen.team(sel: row, tab: 5, card: false)
         act(.visitEnd(id: v.id), back: back, now) { [weak self] _, now in
-            self?.cloud?.teamDue = true; self?.cloud?.marketDue = true
-            return .say(mine ? [josa(monNames[v.mon.dex], "을", "를") + " 데려왔다", "교환 → 받기에서 받아요"] : [josa(v.owner, "의", "의") + " " + josa(monNames[v.mon.dex], "을", "를"), "돌려보냈다"], next: back, since: now)
+            guard let self else { return nil }
+            cloud?.teamDue = true; cloud?.marketDue = true
+            if mine { return .say([josa(monNames[v.mon.dex], "을", "를") + " 데려왔다", "교환 → 받기에서 받아요"], next: back, since: now) }
+            var bp = 0                                                                              // (its visitDone: said here, not again at home)
+            news.removeAll { if case .visitDone(_, let d, _, let b) = $0, d == v.mon.dex { bp = b; return true }; return false }
+            return .say([josa(v.owner, "의", "의") + " " + josa(monNames[v.mon.dex], "을", "를"), "돌려보냈다"] + (bp > 0 ? ["+\(bp)BP"] : []), next: back, since: now)
         }
     }
 
@@ -100,8 +104,8 @@ extension Walker {
     }
 
     // MARK: home: the guests walk along; the news
-    /// Where the guests' stickers sit (half-dots), right to left along the page's top.
-    static let guestAt = [(x: 150, y: 2), (x: 122, y: 4), (x: 94, y: 2)]
+    /// Where the guests' stickers sit (half-dots): the drop-by's corner first, then along the bottom between the walker's and the companion.
+    static let guestAt = [(x: 150, y: 2), (x: 44, y: 86), (x: 84, y: 87)]
     func drawGuests(_ fb: inout FB, _ now: Date, night: Bool, tone: String) {
         let t = now.timeIntervalSinceReferenceDate
         for (k, g) in guests.prefix(3).enumerated() {

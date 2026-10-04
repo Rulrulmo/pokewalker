@@ -592,6 +592,10 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if w != preDuel { o.changed = true }                                                               // a duel over: this side's BP and record
         if o.cannot == nil, let why = social(q.act, id.key, r.name, &w, &o.news) { o.cannot = why } else if o.cannot == nil { switch q.act { case .marketAccept, .marketList, .marketBid, .marketUnlist, .marketWithdraw, .claim: o.changed = true; default: break } }
         if o.cannot == nil, let why = trade(q.act, id.key, r.name, &w, &o.news) { o.cannot = why } else if case .tradeAccept = q.act, o.cannot == nil { o.changed = true }
+        let preVisit = w
+        if o.cannot == nil, let why = visitAct(q.act, id.key, r.name, &w, &o.news) { o.cannot = why }
+        visitTick(id.key, steps: o.cannot == nil ? taken : 0, &w, &o.news)
+        if w != preVisit { o.changed = true }
         if let a = q.app, verCmp(a, "3.2").map({ $0 >= 0 }) == true, let mail = inbox.removeValue(forKey: id.key) { o.news += mail }   // (3.2 on: hello)
         if let a = q.app, verCmp(a, "3.3").map({ $0 >= 0 }) == true, let m = mail.removeValue(forKey: id.key) { o.news += m }        // (3.3 on: 교환's)
         let carried = stale.remove(id.key) != nil                                                          // another's trade changed this save: the reply carries it
@@ -611,7 +615,11 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             return TeamCard(name: row.name, walk: w, today: w.today, week: w.today, idle: lastAct[k].map { Int(at.timeIntervalSince($0)) } ?? 999_999)
         }
         let asked = (friendAsks[id.key] ?? []).sorted().compactMap { rows[$0]?.name }, sent = friendAsks.filter { $0.value.contains(id.key) }.keys.sorted().compactMap { rows[$0]?.name }
-        return (200, (try? JSONEncoder().encode(TeamReply(week: "2026-W40", cards: cards, requests: asked, sent: sent))) ?? Data())
+        let all = viewAll.contains(id.key) ? rows.keys.sorted().compactMap { k -> TeamCard? in
+            guard let row = rows[k], let w = row.walk.flatMap(Cloud.walk) else { return nil }
+            return TeamCard(name: row.name, walk: w, today: w.today, week: w.today, idle: lastAct[k].map { Int(at.timeIntervalSince($0)) } ?? 999_999)
+        } : nil
+        return (200, (try? JSONEncoder().encode(TeamReply(week: "2026-W40", cards: cards, requests: asked, sent: sent, visits: visitsOf(id.key), all: all))) ?? Data())
     }
     /// 12 §3: 교환's acts on the acting trainer's save (w; its news), the other's save here (rev + 1, its next reply brings it). A reason = cannot.
     func trade(_ a: Act, _ key: String, _ name: String, _ w: inout Walk, _ news: inout [News]) -> String? {
@@ -862,6 +870,50 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             x.done(200, (try? JSONEncoder().encode(DuelReply(duel: duelView(i, x.key, since: x.since)))) ?? Data())
         }
     }
+    // 3.8 (14 §3): 맡겨 키우기 — one away per owner, three guests per host; the host's steps raise it; home through the 받기 함
+    struct FakeVisit { var id: Int; var owner, ownerName, host, hostName: String; var mon: Mon; var steps = 0; var on = true; var ends: Int; var bp = 0; var paid = false }
+    var visitList: [FakeVisit] = [], nextVisit = 1, visitSteps: [Int: Int] = [:], viewAll: Set<String> = []
+    func visitAct(_ a: Act, _ key: String, _ name: String, _ w: inout Walk, _ news: inout [News]) -> String? {
+        switch a {
+        case .visitSend(let raw, let uid):
+            guard let to = trainerID(raw), to.key != key, let host = rows[to.key], host.walk != nil else { return "보낼 수 없는\n트레이너예요" }
+            guard isFriend(key, to.key) else { return "친구에게만\n보낼 수 있어요" }
+            guard let seen = lastAct[to.key], (now ?? Date()).timeIntervalSince(seen) < 60 else { return "지금 걷고 있는 친구에게만\n보낼 수 있어요" }
+            guard !visitList.contains(where: { $0.on && $0.owner == key }) else { return "이미 놀러 간\n포켓몬이 있어요" }
+            guard let ref = w.ref(uid: uid) else { return "그 포켓몬은\n없어요" }
+            guard ref != -1 else { return "동료는 보낼 수 없어요" }
+            guard visitList.filter({ $0.on && $0.host == to.key }).count < 3 else { return josa(host.name, "은", "는") + " 이미\n3마리를 맡고 있어요" }
+            guard let m = w.mon(ref) else { return "그 포켓몬은\n없어요" }
+            if ref <= -2 { w.caught.remove(at: -2 - ref) } else { w.box.remove(at: ref) }
+            w.duelParty = w.duelParty?.filter { $0 != uid }
+            visitList.append(FakeVisit(id: nextVisit, owner: key, ownerName: name, host: to.key, hostName: host.name, mon: m, ends: clockNow + 5 * 3600)); nextVisit += 1
+            mail[to.key, default: []].append(.visitCame(id: nextVisit - 1, owner: name, dex: m.dex, shiny: m.shiny == true))
+        case .visitEnd(let id):
+            guard let i = visitList.firstIndex(where: { $0.id == id && $0.on }), visitList[i].owner == key || visitList[i].host == key else { return "그 포켓몬은 이제\n여기 없어요" }
+            endVisit(i); payVisits(key, &w, &news)
+        default: break
+        }
+        return nil
+    }
+    func endVisit(_ i: Int) {
+        visitList[i].on = false; visitList[i].bp = min(5, visitList[i].steps / 2000)
+        giveClaim(visitList[i].owner, "visit", from: visitList[i].hostName, visitList[i].mon); visitSteps[nextClaim - 1] = visitList[i].steps
+    }
+    func visitTick(_ key: String, steps: Int, _ w: inout Walk, _ news: inout [News]) {
+        for i in visitList.indices where visitList[i].on && visitList[i].host == key && visitList[i].ends >= clockNow { visitList[i].steps += steps }
+        for i in visitList.indices where visitList[i].on && (visitList[i].host == key || visitList[i].owner == key) && visitList[i].ends < clockNow { endVisit(i) }
+        payVisits(key, &w, &news)
+    }
+    func payVisits(_ key: String, _ w: inout Walk, _ news: inout [News]) {
+        for i in visitList.indices where !visitList[i].on && !visitList[i].paid && visitList[i].host == key {
+            let v = visitList[i]; if v.bp > 0 { w.bp = (w.bp ?? 0) + v.bp }
+            news.append(.visitDone(owner: v.ownerName, dex: v.mon.dex, steps: v.steps, bp: v.bp)); visitList[i].paid = true
+        }
+    }
+    func visitsOf(_ key: String) -> Visits {
+        func view(_ v: FakeVisit) -> Visit { Visit(id: v.id, owner: v.ownerName, host: v.hostName, mon: v.mon, steps: v.steps, ends: v.ends) }
+        return Visits(away: visitList.last { $0.on && $0.owner == key }.map(view), guests: visitList.filter { $0.on && $0.host == key }.map(view))
+    }
     // 12 §2.4 (3.5): 친구 — pairs, requests (to → from)
     var friends: Set<String> = [], friendAsks: [String: Set<String>] = [:]
     static func pair(_ a: String, _ b: String) -> String { a < b ? a + "|" + b : b + "|" + a }
@@ -941,7 +993,11 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             mail[bid.key, default: []].append(.traded(id: post.l.id, with: name, gave: bid.b.mon, got: post.l.mon))
         case .claim(let id):
             guard let i = claimBox[key]?.firstIndex(where: { $0.id == id }), let k = claimBox[key]?.remove(at: i) else { return "이미 받았어요" }
-            var m = k.mon; m.uid = nextUID; nextUID += 1; if k.kind == "traded" { m.ot = m.ot ?? k.from }; _ = w.keep(m)
+            var m = k.mon; let from = m.level
+            if k.kind == "traded" { m.uid = nextUID; nextUID += 1; m.ot = m.ot ?? k.from }                 // (its own, back: the same uid)
+            if k.kind == "visit", let s = visitSteps.removeValue(forKey: k.id), s > 0 { _ = m.gainBattleExp(s) }
+            _ = w.keep(m)
+            if m.level > from, let ref = w.ref(uid: m.uid!) { w.queueMoves(ref, from: from); news.append(.level(uid: m.uid!, level: m.level)) }
             if k.kind == "traded", let e = Walk.tradeEvolution(of: m, giverBag: m.item.map { [$0] } ?? []), let ref = w.ref(uid: m.uid!) {
                 w.evolve(Evo(from: e.from, to: e.to, way: e.way, level: e.level, item: nil, female: e.female, time: e.time, place: e.place, party: e.party), ref: ref, shed: false)
                 news.append(.evolve(uid: m.uid!, from: e.from, to: e.to, shed: nil))

@@ -891,7 +891,7 @@ extension Page {
         }
         let rc = r(X0, 440, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.go == nil ? Ink.tile : Ink.red)
         if m.goSel { c.stroke(.rounded(rc.insetBy(dx: -1.5 * K, dy: -1.5 * K), 11 * K), m.go == nil ? Ink.faint : Ink.ink, width: 1.2 * K) }
-        c.say(m.go ?? (m.theirs == nil ? m.hint : "3마리를 골라 주세요"), rc.midX, rc.midY, font(m.go == nil && m.theirs == nil ? 9.5 : 11, .bold), m.go == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10))
+        c.say(m.go ?? (m.off.isEmpty ? m.hint : m.off), rc.midX, rc.midY, font(m.go == nil && m.off.isEmpty ? 9.5 : 11, .bold), m.go == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10))
         if m.go != nil { hits.append((rc, 8790)) }
     }
     // MARK: 3.8's 대전 menu (14 §5): 대전 (the six, friends walking now, 랜덤 매칭) · 전적

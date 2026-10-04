@@ -55,6 +55,7 @@ extension Walker {
             m.boxTitle = "내 대전 파티 · 나갈 3마리를 순서대로"
             m.hint = sent ? (p?.theyPicked == true ? "곧 시작해요…" : "상대가 고르는 중…") : "시간이 지나면 앞의 3마리가 나가요"
             if !sent, picked.count == 3 { m.go = "이 3마리로 대전" }
+            m.off = sent ? "골랐어요 · 상대를 기다리는 중" : "3마리를 골라 주세요"
         }
         return PaneContent(squad: m)
     }

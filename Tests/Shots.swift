@@ -199,6 +199,51 @@ import AppKit
     var hb = Battle(wild: Mon(dex: 130, level: 30, female: false), party: [h37.state.companion] + h37.state.caught); hb.mine[0].item = "생명의구슬"
     take("battle_held_hud", h37) { v in v.sideOn = true; v.fight = hb; v.screen = .battle(hb, sel: 0) }
     take("battle_held_party", h37) { v in v.sideOn = true; v.fight = hb; v.screen = .party(hb, sel: 1) }
+    // 3.8 (docs/plans/14): 받기 · a post's 한마디 · the 교환 tile's dot, 맡겨 키우기, the 대전 menu, picks in order, 12 tiles
+    fsrv.listings[0].l.note = "이브이랑 바꿔요!"; fsrv.listings[2].l.note = "레벨 높은 걸로 부탁해요"
+    var r38 = Seeded(s: 91)
+    fsrv.claimBox[meK] = [Claim(id: 1, kind: "traded", from: "민수", mon: Mon.wild(94, level: 31, &r38), at: tsF - 400),
+                          Claim(id: 2, kind: "returned", from: "서연", mon: fme.state.box[9], at: tsF - 4000), Claim(id: 3, kind: "visit", from: "현우", mon: Mon.wild(4, level: 22, &r38), at: tsF - 90_000)]
+    fme.cloud!.marketDue = true; drain(fme); drain(fme)
+    take("market_claims", fme) { v in v.screen = .market(.board(tab: 3, sel: 0)) }
+    take("market_claim_lcd", fme) { v in v.screen = .market(.board(tab: 3, sel: 1)) }
+    take("menu_market_dot", fme) { v in v.screen = .menu(menuAt("교환")) }
+    take("market_post_note", fme) { v in v.screen = .market(.post(id: 1, sel: nil)) }
+    take("market_post_mine_note", fme) { v in v.screen = .market(.post(id: 3, sel: nil)) }
+    let ends = tsF + 3 * 3600 + 1200
+    fsrv.visitList = [FakeCloud.FakeVisit(id: 1, owner: meK, ownerName: fme.myName, host: "민수", hostName: "민수", mon: fme.state.box[11], steps: 3120, ends: ends),
+                      FakeCloud.FakeVisit(id: 2, owner: "지은", ownerName: "지은", host: meK, hostName: fme.myName, mon: Mon.wild(282, level: 34, shiny: true, &r38), steps: 4380, ends: ends + 3000),
+                      FakeCloud.FakeVisit(id: 3, owner: "현우", ownerName: "현우", host: meK, hostName: fme.myName, mon: Mon.wild(149, level: 55, &r38), steps: 870, ends: ends - 9000)]
+    fme.cloud!.teamDue = true; drain(fme); drain(fme)
+    take("friends_visits", fme) { v in v.screen = .team(sel: 0, tab: 5, card: false) }
+    take("visit_pick", fme) { v in v.screen = .visitPick(ItemOn(item: "민수", pick: v.visitRefs[safe: 2], at: 2)) }
+    take("home_guests", fme) { v in v.screen = .home }
+    take("friends_card_visit", fme) { v in let i = v.teamRows(0).firstIndex { !v.isMe($0.card) && Walker.walkingNow($0.card) } ?? 0; v.screen = .team(sel: i, tab: 0, card: true) }
+    take("menu_twelve", fme) { v in v.screen = .menu(menuAt("대전")) }
+    take("duel_hub_noparty", fme) { v in v.screen = .duel(.hub(tab: 0, sel: 0)) }
+    let uids = fme.state.box.compactMap(\.uid)
+    fme.state.duelParty = [fme.state.companion.uid].compactMap { $0 } + Array(uids.prefix(4))
+    take("duel_hub", fme) { v in v.screen = .duel(.hub(tab: 0, sel: 0)) }
+    take("duel_hub_friend", fme) { v in v.screen = .duel(.hub(tab: 0, sel: 1)) }
+    fme.cloud!.duelRecord = DuelRecords(wins: 3, losses: 2, recent: [
+        DuelRecord(id: 5, opponent: "민수", won: true, why: "faint", at: tsF - 600, mine: [25, 133, 6], theirs: [94, 65, 68]),
+        DuelRecord(id: 4, opponent: "지은", won: false, why: "forfeit", at: tsF - 7200, mine: [25, 19, 41], theirs: [282, 448, 445]),
+        DuelRecord(id: 3, opponent: "트레이너긴이름", won: true, why: "timeout", at: tsF - 90_000, mine: [133, 6, 4], theirs: [149, 130, 6]),
+        DuelRecord(id: 2, opponent: "도윤", won: true, why: "faint", at: tsF - 200_000, mine: [25, 133, 6], theirs: [1, 4, 7]),
+        DuelRecord(id: 1, opponent: "서연", won: false, why: "faint", at: tsF - 300_000, mine: [25, 133, 6], theirs: [65, 94, 248]),
+        DuelRecord(id: 0, opponent: "현우", won: true, why: "faint", at: tsF - 400_000, mine: [25, 133, 6], theirs: [149, 130, 6])])
+    take("duel_records", fme) { v in v.screen = .duel(.hub(tab: 1, sel: 0)) }
+    take("duel_queued", fme) { v in v.duelOn = true; v.duel = DuelView(id: 9, state: "queued", opponent: "", challenger: true, deadline: tsF + 41); v.screen = .duel(.queued) }
+    take("squad_party", fme) { v in v.duelOn = false; v.screen = .squad(Squad(kind: .duelParty, picked: Array(v.state.duelParty!.prefix(4)), at: 6)) }
+    take("squad_party_full", fme) { v in v.screen = .squad(Squad(kind: .duelParty, picked: [v.state.companion.uid!] + Array(uids.prefix(5)), at: v.squadKeys(Squad(kind: .duelParty, picked: [], at: 0)).count)) }
+    take("squad_raid", fme) { v in v.screen = .squad(Squad(kind: .raid, picked: [uids[3], uids[0]], at: 3)) }
+    let six = Array(fme.state.box.prefix(6)).map { m -> Mon in var m = m; m.level = 50; return m }
+    let theirs = [DuelMon(dex: 94, female: false, shiny: false), DuelMon(dex: 448, female: true, shiny: false), DuelMon(dex: 130, female: false, shiny: true),
+                  DuelMon(dex: 65, female: false, shiny: false), DuelMon(dex: 6, female: false, shiny: false), DuelMon(dex: 149, female: false, shiny: false)]
+    take("squad_pick", fme) { v in v.duelOn = true; v.duel = DuelView(id: 9, state: "picking", opponent: "민수", challenger: false, deadline: tsF + 38, parties: DuelParties(mine: six, theirs: theirs, picked: nil, theyPicked: true))
+        v.screen = .squad(Squad(kind: .duelPick(id: 9), picked: [4, 1], at: 2)) }
+    take("squad_pick_sent", fme) { v in v.duelOn = true; v.duel = DuelView(id: 9, state: "picking", opponent: "민수", challenger: false, deadline: tsF + 21, parties: DuelParties(mine: six, theirs: theirs, picked: [4, 1, 0], theyPicked: false))
+        v.screen = .squad(Squad(kind: .duelPick(id: 9), picked: [4, 1, 0], at: 6)) }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
     return n

@@ -102,6 +102,29 @@ import Foundation
     take("hold_pick", on: tme) { v in v.duelOn = false; v.duelWait = false; v.screen = .hold(ref: -1, sel: 1) }
     take("mon_held", on: tme) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
     take("shop_held", on: tme) { v in v.screen = .shop(bp: false, sel: v.shopRows(false, v.shopTabs(false).firstIndex(of: "지닌 도구") ?? 0).first ?? 0, qty: nil) }
+    tsrv.listings[0].l.note = "이브이랑 바꿔요!"; var r38 = Seeded(s: 91)                               // 3.8 (docs/plans/14): 받기, 한마디, 맡겨 키우기, the 대전 menu, picks
+    tsrv.claimBox[me] = [Claim(id: 1, kind: "traded", from: "민수", mon: Mon.wild(94, level: 31, &r38), at: now - 400), Claim(id: 2, kind: "visit", from: "지은", mon: Mon.wild(4, level: 22, &r38), at: now - 9000)]
+    tsrv.visitList = [FakeCloud.FakeVisit(id: 1, owner: me, ownerName: tme.myName, host: "민수", hostName: "민수", mon: tme.state.box[5], steps: 3120, ends: now + 12_000),
+                      FakeCloud.FakeVisit(id: 2, owner: "지은", ownerName: "지은", host: me, hostName: tme.myName, mon: Mon.wild(282, level: 34, shiny: true, &r38), steps: 4380, ends: now + 15_000)]
+    tme.cloud!.teamDue = true; tme.cloud!.marketDue = true; drain(tme); drain(tme)
+    take("menu_12", on: tme) { v in v.duelOn = false; v.duelWait = false; v.screen = .menu(menuAt("대전")) }
+    take("market_claims", on: tme) { v in v.screen = .market(.board(tab: 3, sel: 0)) }
+    take("market_post_note", on: tme) { v in v.screen = .market(.post(id: 7, sel: nil)) }
+    take("friends_visits", on: tme) { v in v.screen = .team(sel: 0, tab: 5, card: false) }
+    take("home_guests", on: tme) { v in v.screen = .home }
+    take("visit_pick", on: tme) { v in v.screen = .visitPick(ItemOn(item: "민수", pick: v.visitRefs[safe: 2], at: 2)) }
+    let wu = tme.state.box.compactMap(\.uid); tme.state.duelParty = Array(wu.prefix(5))
+    tme.cloud!.duelRecord = DuelRecords(wins: 2, losses: 1, recent: [DuelRecord(id: 3, opponent: "민수", won: true, why: "faint", at: now - 600, mine: [25, 133, 6], theirs: [94, 65, 68]),
+        DuelRecord(id: 2, opponent: "지은", won: false, why: "forfeit", at: now - 7200, mine: [19, 41, 133], theirs: [282, 448, 445]), DuelRecord(id: 1, opponent: "도윤", won: true, why: "timeout", at: now - 90_000, mine: [4, 1, 95], theirs: [1, 4, 7])])
+    take("duel_hub", on: tme) { v in v.screen = .duel(.hub(tab: 0, sel: 0)) }
+    take("duel_records", on: tme) { v in v.screen = .duel(.hub(tab: 1, sel: 0)) }
+    take("duel_queued", on: tme) { v in v.duelOn = true; v.duel = DuelView(id: 9, state: "queued", opponent: "", challenger: true, deadline: now + 41); v.screen = .duel(.queued) }
+    take("squad_party", on: tme) { v in v.duelOn = false; v.screen = .squad(Squad(kind: .duelParty, picked: Array(wu.prefix(4)), at: 6)) }
+    take("squad_raid", on: tme) { v in v.screen = .squad(Squad(kind: .raid, picked: [wu[3], wu[0]], at: 3)) }
+    let six38 = Array(tme.state.box.prefix(6)).map { m -> Mon in var m = m; m.level = 50; return m }
+    let theirs38 = [94, 448, 130, 65, 6, 149].map { DuelMon(dex: $0, female: false, shiny: $0 == 130) }
+    take("squad_pick", on: tme) { v in v.duelOn = true; v.duel = DuelView(id: 9, state: "picking", opponent: "민수", challenger: false, deadline: now + 38, parties: DuelParties(mine: six38, theirs: theirs38, picked: nil, theyPicked: true))
+        v.screen = .squad(Squad(kind: .duelPick(id: 9), picked: [4, 1], at: 2)) }
     take("traded", on: tme) { v in v.duelOn = false; v.duelWait = false; v.screen = .traded(gave: v.state.box[2], got: tsrv.walk("민수")!.box[4], with: "민수", since: T - 5) }
     take("grid_drag") { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(T, force: true); v.drag = (10001, CGPoint(x: 150 * K, y: 30 * K)) }   // 3.1: one of the box carried onto the walker's row
     take("dex_grid") { v in v.screen = .dex(25, filter: 0, detail: false) }

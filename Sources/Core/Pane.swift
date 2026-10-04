@@ -172,6 +172,7 @@ struct SquadModel: Equatable {
     var title, note: String; var strip: [Slot?]; var theirs: [GridModel.Cell]?
     var boxTitle: String; var cells: [GridModel.Cell]; var order: [Int?]; var sel: Int?; var first, count: Int
     var empty: String; var go: String?; var goSel: Bool; var hint: String
+    var off = ""                                                       // the button's words when there's nothing to press (none: the hint)
 }
 /// 3.8's 대전 menu (14 §5): 대전 (the registered six, friends walking now to challenge, 랜덤 매칭) · 전적 (the last 20, a page at a time).
 struct DuelHubModel: Equatable {

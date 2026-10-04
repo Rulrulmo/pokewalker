@@ -190,7 +190,7 @@ extension Walker {
         let six = duelSix
         if let f = six.first { fb.mon(f, half, 0, 2, anim: animT("hub", f.dex, now)) } else { fb.mon(state.companion, half, 0, 2, anim: animT("hub", state.companion.dex, now)) }
         let friends = duelFriends.prefix(3).map(\.name), stop = min(sel, duelHubStops - 1)
-        let label = stop == 0 ? "랜덤 매칭" : stop <= friends.count ? friends[stop - 1] + "에게" : stop == friends.count + 1 ? "대전 파티" : "전적 보기"
+        let label = stop == 0 ? (six.count >= 3 ? "랜덤 매칭" : "파티 정하기") : stop <= friends.count ? friends[stop - 1] + "에게" : stop == friends.count + 1 ? "대전 파티" : "전적 보기"
         fb.text(six.count >= 3 ? "파티 \(six.count)마리" : "파티 없음", 94, 15, 2, right: true, small: true)
         if stop >= 1, stop <= friends.count { fb.text("대전 신청", 94, 37, 2, right: true, small: true) }
         fb.text("● " + label, 94, 52, 3, right: true, small: true)

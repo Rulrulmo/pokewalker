@@ -170,6 +170,7 @@ import Foundation
         case .team(_, let t, let card): return ("친구", card ? "" : t == 0 ? "지금 걷는 중이 위" : t == 4 ? "친구 신청" : t == 5 ? "맡겨 키우기 · 5시간" : t == 6 ? "모든 트레이너" : "이번 주 순위 · \(Walker.teamTabs[t])")
         case .visitPick: return ("맡겨 키우기", "5시간 · 키운 걸음만큼 경험치")
         case .trade(.list): return ("교환", "받은 신청")
+        case .market(.board(3, _)): return ("교환 게시판", "받기 함")
         case .market(.board): return ("교환 게시판", "모두의 글 · 3일 동안")
         case .market(.post(let id, _)): return ("교환 게시판", listing(id).map { $0.mine ? "내 글 · 제안 \($0.bids)개" : "제안은 하나만" } ?? "")
         case .market(.pick(let p)): return ("교환 게시판", p.listing == nil ? "원하는 종은 3개까지" : "내 상자에서 골라 주세요")
@@ -180,7 +181,7 @@ import Foundation
         case .course: return ("코스", "\(courses.indices.filter(state.unlocked).count) / \(courses.count) 열림")
         case .train: return ("대단한 특훈", "은색병뚜껑 ×\(state.count("은색병뚜껑"))")
         case .itemOn(let p): return ("도구", p.item)
-        case .duel(.hub(let t, _)): return ("대전", t == 0 ? "Lv.50 · 3마리씩 · 이기면 +3BP" : "최근 20판")
+        case .duel(.hub(let t, _)): return ("대전", t == 0 ? "Lv.50 · 3마리씩" : "최근 20판")
         case .duel(.queued): return ("랜덤 매칭", duelLeft().map { "\($0)초 남음" } ?? "")
         case .duel: return ("실시간 대전", duelLeft().map { "\($0)초 남음" } ?? "")
         case .squad(let s): switch s.kind { case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return ("레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")) }

@@ -220,14 +220,14 @@ import Foundation
     _ = next(wb, cb) { if case .say(_, .trade(.offer), _) = wb.screen { return true }; return false }
     if case .say(_, .trade(.offer(let id2, _)), _) = wb.screen { wb.screen = .trade(.offer(id: id2, act: nil)); wb.pageTap(6131); run(15) { wb.waiting == nil && idle(cb) } }
     let declined = says(wb).last == "거절했다"
-    let heard = next(wa, ca) { says(wa).last == "상대가 거절했어요" }
-    check(declined && heard, "live 거절 (a 아무거나 one): said at B; A's next act hears 상대가 거절했어요")
+    let heard = next(wa, ca) { ca.trades?.outgoing.isEmpty == true && idle(ca) } && says(wa).isEmpty
+    check(declined && heard, "live 거절 (a 아무거나 one): said at B; A's next act brings it quietly (3.8: off its list, no screen)")
     wa.act(.tradeOffer(to: b, give: rattata, want: nil), back: .home); run(15) { wa.waiting == nil && idle(ca) }
     ca.tradesDue = true; run(10) { ca.trades?.outgoing.count == 1 && idle(ca) }
     wa.screen = .trade(.list(0)); wa.pageTap(6110 + max(0, wa.tradeRows.firstIndex { wa.mineOffer($0) } ?? 0)); wa.pageTap(6132); run(15) { wa.waiting == nil && idle(ca) }
     let took = says(wa) == ["교환 신청을", "거뒀다"]
-    let told = next(wb, cb) { says(wb).last == "상대가 거뒀어요" || { if case .say(_, .trade(.offer), _) = wb.screen { return false }; return false }() }
-    check(took && told, "live 거두기: said at A; B's next act hears 상대가 거뒀어요 (\(says(wb)))")
+    let told = next(wb, cb) { cb.trades?.incoming.isEmpty == true && idle(cb) } && says(wb).isEmpty
+    check(took && told, "live 거두기: said at A; B's next act brings it quietly (\(says(wb)))")
     print(failed == 0 ? "PASS live trade" : "FAIL \(failed)")
     return failed == 0
 }
@@ -278,15 +278,32 @@ import Foundation
     guard seeded else { print("FAIL \(failed)"); return false }
 
     let bPower = wb.raidPower
-    wb.pageTap(7010); run(15) { wb.waiting == nil && idle(cb) }
+    wb.pageTap(7010); let offered = wb.paneContent(Date()).squad                                   // 3.8: who goes — the last pick or the tower's three; one kept
+    while case .squad(let q) = wb.screen, q.picked.count > 1 { wb.pageTap(8740 + q.picked.count - 1) }
+    let lead = { if case .squad(let q) = wb.screen { return q.picked.first.flatMap { wb.state.ref(uid: $0) }.flatMap { wb.state.mon($0)?.dex } }; return nil }()
+    wb.pageTap(8790); run(15) { wb.waiting == nil && idle(cb) }
+    let alone = (wb.fight?.mine.count ?? 0) == 1 && wb.fight?.mine.first?.mon.dex == lead
     let menu: [String] = { if case .battle(let bt, _) = wb.screen { return wb.battleMenu(bt) }; if case .beats(let bt, _, _, _) = wb.screen { return wb.battleMenu(bt) }; return [] }()
     play(wb, cb, retreat: true)
-    check(menu == ["공격", "도구", "교체", "후퇴"] && says(wb).first == "0 데미지!" && wb.raidPower == bPower - 1000, "live raid fight: in for 1칸 (\(bPower) → \(wb.raidPower)), 후퇴 at once — \(menu) \(says(wb))")
-    run(15) { cb.raid?.mine.fights == 1 }
-    check(cb.raid?.mine.fights == 1, "live: B's lobby counts the fight (\(cb.raid?.mine.fights ?? -1))")
+    check((offered?.strip.compactMap { $0 }.count ?? 0) >= 1 && alone, "live raid party (3.8): offered \(offered?.strip.compactMap { $0?.dex } ?? []), one kept → it fights alone (\(wb.fight?.mine.map(\.mon.dex) ?? []))")
+    check(menu == ["공격", "도구", "후퇴"] && says(wb).first == "0 데미지!" && wb.raidPower == bPower - Engine.raidPowerCost, "live raid fight: in for 1칸 (\(bPower) → \(wb.raidPower)), alone (no 교체), 후퇴 at once — \(menu) \(says(wb))")
+    run(15) { (cb.raid?.mine.fights ?? 0) >= 1 }
+    check((cb.raid?.mine.fights ?? 0) >= 1, "live: B's lobby counts the fight (\(cb.raid?.mine.fights ?? -1))")
 
-    wa.screen = .raid(tab: 0); wa.pageTap(7010); run(15) { wa.waiting == nil && idle(ca) }; play(wa, ca)
-    let cleared = says(wa).contains("보스를 쓰러뜨렸다!")
+    var cleared = false, tries = 0, sent: [Int] = []
+    while !cleared, tries < 3, wa.raidCells > 0, (ca.raid?.hpLeft ?? 0) > 0 {                       // A's three strongest (picked), until it's down
+        tries += 1
+        wa.screen = .raid(tab: 0); wa.pageTap(7010)
+        if case .squad(var q) = wa.screen {
+            let best = wa.squadKeys(q).sorted { (wa.squadMon(q, $0)?.level ?? 0) > (wa.squadMon(q, $1)?.level ?? 0) }
+            q.picked = Array(best.prefix(3)); wa.screen = .squad(q); sent = q.picked.compactMap { wa.squadMon(q, $0)?.dex }
+        }
+        wa.pageTap(8790); run(15) { wa.waiting == nil && idle(ca) }; play(wa, ca)
+        cleared = says(wa).contains("보스를 쓰러뜨렸다!")
+        print("     fight \(tries): \(String(describing: wa.screen).prefix(160)) — news \(wa.news.count)")
+        if !cleared { wa.screen = .raid(tab: 0); ca.raidDue = true; run(15) { !ca.raidDue && idle(ca) }; print("     HP \(ca.raid?.hpLeft ?? -1) · A \(wa.raidPower)") }
+    }
+    print("     (A sent \(sent.map { monNames[$0] }), \(tries) fight(s))")
     check(cleared, "live: A's fight clears it — \(says(wa))")
     wb.screen = .home; cb.addSteps(2); cb.saveNow(); run(25) { says(wb).first?.hasPrefix("팀이") == true }
     check(says(wb).first?.hasPrefix("팀이") == true, "live raidCleared: B's next act brings it — \(says(wb))")
@@ -501,5 +518,160 @@ import Foundation
     if case .itemOn(var p) = w.screen { p.at = w.itemRefs.firstIndex(of: 0) ?? 0; w.screen = .itemOn(p); w.press(1); w.press(1) }; settle()
     check(w.state.box.first?.item == "구애머리띠", "live hold: the bag's hold-only one onto a box Pokémon — \(says())")
     print(failed == 0 ? "PASS live hold" : "FAIL \(failed)")
+    return failed == 0
+}
+
+/// `PokeWalker --live-v38 <idA> <idB> <pin>` (a dev build only): docs/plans/14 (3.8) against the real server with two zz IDs the admin seeded
+/// (A's box: 고우스트 · 꼬렛 · 이브이 · 잉어킹; B's: 윤겔라 · 롱스톤 · 잉어킹; not friends): friends; A posts 고우스트 with a 한마디 wishing 윤겔라, B
+/// offers 윤겔라 (out of its box), A's offer comes quietly (the 교환 tile's red dot), A opens the post (seen) and picks it, B takes its 받기; A sends
+/// 이브이 to B for 맡겨 키우기, B walks with it, sends it back (its BP), A takes it home (the EXP); both set a 대전 파티, a friend match (3 picked of
+/// each six, A gives up), the random queue (the same), the 전적.
+@MainActor func liveV38Test(_ a: String, _ b: String, _ pin: String) -> Bool {
+    var failed = 0
+    func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-livev38-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    func walker(_ id: String) -> (Walker, Cloud, TestHost) {                                        // (the host comes back: the walker holds it weakly)
+        let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
+        let c = Cloud(link: HTTPLink(), dir: tmp.appendingPathComponent(id, isDirectory: true))
+        h.texts = [id]; h.pins = [pin, pin, pin]
+        w.startCloud(c, file: tmp.appendingPathComponent(id + ".json"), bak: tmp.appendingPathComponent(id + ".bak"))
+        return (w, c, h)
+    }
+    let (wa, ca, ha) = walker(a), (wb, cb, hb) = walker(b)
+    @discardableResult func run(_ secs: Double, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end { wa.tick(Date()); wb.tick(Date()); if done() { return true }; Thread.sleep(forTimeInterval: 0.1) }
+        return done()
+    }
+    func idle(_ c: Cloud) -> Bool { c.inFlight == nil && c.queued == nil && c.out == nil }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func settle(_ w: Walker, _ c: Cloud) { run(15) { w.waiting == nil && idle(c) } }
+    func next(_ w: Walker, _ c: Cloud, until: () -> Bool) -> Bool { w.news = []; w.screen = .home; c.addSteps(2); c.saveNow(); return run(25, until: until) }
+    func lists(_ w: Walker, _ c: Cloud) { c.teamDue = true; c.marketDue = true; run(15) { !c.teamDue && !c.marketDue && idle(c) }; run(2) { false } }
+    func box(_ w: Walker) -> String { w.state.box.map { monNames[$0.dex] }.joined(separator: " ") }
+    check(run(40) { ca.phase == .on && cb.phase == .on && ca.base != nil && cb.base != nil }, "live 3.8: \(a) and \(b) logged in (\(ha.asked), \(hb.asked))")
+    let seeded = wa.state.box.count >= 3 && wb.state.box.count >= 2                             // (first run: as seeded; a rerun takes what's there)
+    check(seeded, "live 3.8: seeded — A \(box(wa)), B \(box(wb))")
+    guard seeded else { print("FAIL \(failed)"); return false }
+
+    // friends (a rerun: already)
+    lists(wa, ca)
+    if !wa.isFriend(b) {
+        wa.screen = .home; wa.act(.friendRequest(to: b), back: .home); settle(wa, ca)
+        _ = next(wb, cb) { says(wb).first?.hasSuffix("친구 신청을 했다!") == true }
+        wb.screen = .home; wb.act(.friendAccept(from: a), back: .home); settle(wb, cb)
+    }
+    lists(wa, ca); lists(wb, cb)
+    check(wa.isFriend(b) && wb.isFriend(a), "live: friends (\(wa.teamRows(0).count), \(wb.teamRows(0).count))")
+
+    // ① the 게시판: a 한마디, an offer held out of the box, the red dot, seen on opening, accepted → B's 받기
+    wa.screen = .menu(menuAt("교환")); wa.press(1); settle(wa, ca); lists(wa, ca); wa.pageTap(8030)
+    let ghost = wa.myTradeBox.first { $0.dex == 93 } ?? wa.myTradeBox.first { $0.dex != 133 }!, kadabra = wb.myTradeBox.first { $0.dex == 64 } ?? wb.myTradeBox[0]
+    let note = monNames[kadabra.dex] + " 구해요!"
+    ha.texts = [note]
+    if case .market(.pick(var p)) = wa.screen { p.give = ghost.uid; p.wish = [kadabra.dex]; wa.screen = .market(.pick(p)); wa.pageTap(8190); settle(wa, ca) }
+    let posted = says(wa); lists(wa, ca); let post = wa.myPosts.first
+    check(posted == ["게시판에", "글을 올렸다!"] && post?.note == note && !wa.state.box.contains { $0.uid == ghost.uid },
+          "live marketList (3.8): \(monNames[ghost.dex]) up with its 한마디 (\(post?.note ?? "-")), out of A's box — \(posted) A \(box(wa))")
+    lists(wb, cb); let seen = wb.market?.listings.first { $0.id == post?.id }
+    if let id = seen?.id { wb.screen = .market(.post(id: id, sel: nil)); wb.pageTap(8130) }
+    if case .market(.pick(var p)) = wb.screen { p.give = kadabra.uid; wb.screen = .market(.pick(p)); wb.pageTap(8190); settle(wb, cb) }
+    check(seen?.note == note && says(wb).first == "교환을 제안했다!" && !wb.state.box.contains { $0.uid == kadabra.uid },
+          "live marketBid: B sees the note, offers \(monNames[kadabra.dex]) (out of B's box) — \(says(wb)) B \(box(wb))")
+    _ = next(wa, ca) { idle(ca) }; run(3) { false }; let quiet = says(wa).isEmpty
+    lists(wa, ca)
+    let dot = wa.marketDot && (wa.market?.unseen ?? 0) >= 1
+    if let id = post?.id { wa.openPost(id); run(10) { (ca.market?.unseen ?? 1) == 0 && idle(ca) } }
+    check(quiet && dot && (ca.market?.unseen ?? -1) == 0, "live: the offer comes quietly — the 교환 tile's red dot (unseen \(wa.market?.unseen ?? -1)); opening the post marks it seen")
+    if let id = post?.id { wa.screen = .market(.post(id: id, sel: 0)); wa.pageTap(8130); run(20) { wa.waiting == nil && idle(ca) && { if case .traded = wa.screen { return true }; return false }() } }
+    let show: Bool = { if case .traded(let g, let got, _, _) = wa.screen { return g.dex == ghost.dex && got.dex == kadabra.dex }; return false }()
+    run(10) { if case .evolve = wa.screen { return true }; return false }
+    check(show && wa.state.box.contains { $0.ot.map { trainerID($0)?.key == trainerID(b)?.key } == true }, "live marketAccept: A's show; \(monNames[kadabra.dex]) comes to A (A \(box(wa)))")
+    _ = next(wb, cb) { cb.marketDue || !wb.claims.isEmpty }; lists(wb, cb)
+    let ki = wb.claims.firstIndex { $0.kind == "traded" && $0.mon.dex == ghost.dex } ?? 0, k = wb.claims[safe: ki]
+    wb.screen = .market(.board(tab: 3, sel: ki)); wb.pageTap(8010 + ki); settle(wb, cb); let took = says(wb); run(10) { if case .evolve = wb.screen { return true }; return false }
+    check(k?.kind == "traded" && took.first == josa(monNames[ghost.dex], "을", "를") + " 받았다!" && wb.state.box.contains { $0.ot.map { trainerID($0)?.key == trainerID(a)?.key } == true },
+          "live 받기: B's 받기 함 has \(monNames[ghost.dex]) (traded); a click takes it — \(took) (B \(box(wb)))")
+
+    // ② 맡겨 키우기: A sends 이브이 to B (walking now), B raises it, sends it back (BP), A takes it home (EXP)
+    _ = next(wb, cb) { idle(cb) }; lists(wa, ca)
+    let bi = wa.teamRows(0).firstIndex { !wa.isMe($0.card) } ?? 0
+    wa.screen = .team(sel: bi, tab: 0, card: true); let card = wa.paneContent(Date()).teamCard; wa.pageTap(6034)
+    let eevee = wa.state.box.first { $0.dex == 133 } ?? wa.state.box.first { $0.ot == nil } ?? wa.state.box[0], lv0 = eevee.level
+    if case .visitPick(var p) = wa.screen, let at = wa.visitRefs.firstIndex(where: { wa.state.mon($0)?.uid == eevee.uid }) { p.at = at; wa.screen = .visitPick(p); wa.press(1); wa.press(1); settle(wa, ca) }
+    let sentSaid = says(wa)
+    check(card?.visit == "맡기기" && sentSaid.dropFirst().first == "맡겼다!" && !wa.state.box.contains { $0.uid == eevee.uid }, "live visitSend: \(monNames[eevee.dex]) to B — \(sentSaid)")
+    let came = next(wb, cb) { says(wb).dropFirst().first == "맡았다!" }
+    lists(wb, cb)
+    check(came && wb.guests.count == 1 && wb.guests.first?.mon.uid == eevee.uid, "live visitCame: B hears it; its 맡기기 tab has the guest")
+    let walkEnd = Date().addingTimeInterval(150)                                                    // (the server takes at most 15 steps a second)
+    while Date() < walkEnd, (wb.guests.first?.steps ?? 0) < 2000 { wb.screen = .home; cb.addSteps(240); cb.saveNow(); run(15) { false }; cb.teamDue = true; run(5) { !cb.teamDue && idle(cb) } }
+    let raised = wb.guests.first?.steps ?? 0, bp0 = wb.state.bp ?? 0
+    wb.screen = .team(sel: 0, tab: 5, card: false); wb.pageTap(6400); settle(wb, cb); let back = says(wb)
+    check(raised >= 2000 && back.dropFirst().first == "돌려보냈다" && (wb.state.bp ?? 0) == bp0 + raised / 2000, "live visitEnd: \(raised) steps raised; 돌려보내기 → B's BP \(bp0) → \(wb.state.bp ?? 0) — \(back)")
+    _ = next(wa, ca) { !wa.claims.isEmpty || ca.marketDue }; lists(wa, ca)
+    let vk = wa.claims.first { $0.kind == "visit" }
+    wa.screen = .market(.board(tab: 3, sel: wa.claims.firstIndex { $0.kind == "visit" } ?? 0)); wa.pageTap(8010 + (wa.claims.firstIndex { $0.kind == "visit" } ?? 0)); settle(wa, ca)
+    run(10) { false }
+    let home = wa.state.box.first { $0.uid == eevee.uid }
+    check(vk?.mon.uid == eevee.uid && (home?.level ?? 0) > lv0, "live: A's 받기 (visit) → \(monNames[eevee.dex]) home, Lv.\(lv0) → Lv.\(home?.level ?? 0)")
+
+    // ③ the 대전 menu: parties, a friend match (pick 3), the queue, the 전적
+    for (w, c) in [(wa, ca), (wb, cb)] {
+        w.screen = .menu(menuAt("대전")); w.press(1); settle(w, c); w.pageTap(6330)
+        if case .squad(var q) = w.screen { q.picked = []; w.screen = .squad(q) }                   // (a rerun: picked afresh)
+        for k in 0..<3 { w.pageTap(8750 + k) }
+        w.pageTap(8790); settle(w, c)
+    }
+    check((wa.state.duelParty?.count ?? 0) >= 3 && (wb.state.duelParty?.count ?? 0) >= 3, "live duelParty: both set (A \(wa.state.duelParty ?? []), B \(wb.state.duelParty ?? []))")
+    func pickThree(_ w: Walker, _ c: Cloud) { if case .squad(let q) = w.screen, case .duelPick = q.kind { for k in [2, 0, 1] { w.pageTap(8750 + k) }; w.pageTap(8790); settle(w, c) } }
+    func isPick(_ w: Walker) -> Bool { if case .squad(let q) = w.screen, case .duelPick = q.kind { return true }; return false }
+    /// Both sides to the end: A gives up at its first menu, B attacks.
+    func fightOut() -> (String, String) {
+        let end = Date().addingTimeInterval(180)
+        while Date() < end, wa.duelOn || wb.duelOn {
+            run(0.3) { false }
+            for (w, c) in [(wa, ca), (wb, cb)] where w.waiting == nil && idle(c) {
+                switch w.screen {
+                case .beats(_, let bs, let since, _) where Date().timeIntervalSince(since) * w.battleSpeed > bs.map(\.length).reduce(0, +): w.tick(Date())
+                case .battle(let bt, _) where !w.duelWait:
+                    if w === wa { w.screen = .battle(bt, sel: w.battleMenu(bt).firstIndex(of: "기권") ?? 0); w.press(1); w.press(2); w.press(1) }
+                    else { w.screen = .battle(bt, sel: 0); w.press(1); if case .moves(let x, _) = w.screen { w.screen = .moves(x, sel: x.mine[x.me].pp.firstIndex { $0 > 0 } ?? 0); w.press(1) } }
+                case .party(let bt, _): w.screen = .party(bt, sel: bt.mine.indices.first { bt.mine[$0].alive && $0 != bt.me } ?? 0); w.press(1)
+                default: break
+                }
+            }
+        }
+        return (says(wa).joined(separator: " "), says(wb).joined(separator: " "))
+    }
+    _ = next(wb, cb) { idle(cb) }; lists(wa, ca)
+    wa.screen = .duel(.hub(tab: 0, sel: 0)); let hub = wa.paneContent(Date()).duelHub; wa.pageTap(6340); settle(wa, ca)
+    let out: Bool = { if case .duel(.waitAccept) = wa.screen { return true }; return false }()
+    check(hub?.friends.first?.name.lowercased() == b.lowercased() && out, "live duelChallenge (3.8): from the 대전 menu's friend row — \(wa.screen)")
+    _ = next(wb, cb) { says(wb).first?.hasSuffix("대전을 신청했다!") == true }
+    wb.press(1); wb.pageTap(6300); settle(wb, cb)
+    run(30) { isPick(wa) && isPick(wb) }
+    let theirSix = wb.paneContent(Date()).squad?.theirs?.count ?? 0
+    check(isPick(wa) && isPick(wb) && theirSix >= 3, "live duelAccept → picking on both sides (the other's \(theirSix) by species, \(wb.duelLeft() ?? -1) s)")
+    pickThree(wa, ca); let waitingPick = wa.paneContent(Date()).squad?.hint; pickThree(wb, cb)
+    let started = run(30) { if case .beats = wa.screen { return true }; if case .battle = wa.screen { return true }; return false }
+    let order = wa.fight?.mine.map(\.mon.dex) ?? [], six = wa.state.duelParty?.compactMap { wa.state.ref(uid: $0).flatMap { wa.state.mon($0)?.dex } } ?? []
+    check(started && order.count == 3 && order == [six[safe: 2], six[safe: 0], six[safe: 1]].compactMap { $0 }, "live duelPick: A's three in its order (\(order.map { monNames[$0] })), waited (\(waitingPick ?? "-")), the fight on")
+    let (ra, rb) = fightOut()
+    check(!wa.duelOn && !wb.duelOn && rb.hasPrefix("이겼다!") && ra.contains("졌다"), "live: A gave up — A \(ra) · B \(rb)")
+    wa.screen = .duel(.hub(tab: 0, sel: 0)); wa.pageTap(6331); settle(wa, ca)
+    let queued: Bool = { if case .duel(.queued) = wa.screen { return true }; return isPick(wa) }()
+    wb.screen = .duel(.hub(tab: 0, sel: 0)); wb.pageTap(6331); settle(wb, cb)
+    run(30) { isPick(wa) && isPick(wb) }
+    check(queued && isPick(wa) && isPick(wb), "live duelQueue: A waits; B joins → both on the pick")
+    pickThree(wa, ca); pickThree(wb, cb)
+    run(30) { if case .beats = wa.screen { return true }; if case .battle = wa.screen { return true }; return false }
+    let (qa, qb) = fightOut()
+    check(qb.hasPrefix("이겼다!"), "live: the queue's duel to its end — A \(qa) · B \(qb)")
+    wa.screen = .menu(menuAt("대전")); wa.press(1); run(15) { ca.duelRecord != nil && idle(ca) }; wa.pageTap(6321)
+    let recs = wa.paneContent(Date()).duelHub?.recs ?? []
+    check(recs.count >= 2 && recs.prefix(2).allSatisfy { !$0.won && $0.line.lowercased() == "vs " + b.lowercased() && $0.mine.count == 3 }, "live 전적: \(recs.prefix(2).map { "\($0.won ? "승" : "패") \($0.line) \($0.sub)" })")
+    print(failed == 0 ? "PASS live 3.8" : "FAIL \(failed)")
     return failed == 0
 }
