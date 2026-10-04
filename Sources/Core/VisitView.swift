@@ -106,17 +106,20 @@ extension Walker {
     // MARK: home: the guests walk along; the news
     /// Where the guests' stickers sit (half-dots): the drop-by's corner first, then along the bottom between the walker's and the companion.
     static let guestAt = [(x: 150, y: 2), (x: 44, y: 86), (x: 84, y: 87)]
+    /// The spots the guests take now: the corner is a 인사 visitor's while one is up.
+    var guestSpots: [(x: Int, y: Int)] { visitor.map { $0.until > Date() } == true ? Array(Walker.guestAt.dropFirst()) : Walker.guestAt }
     func drawGuests(_ fb: inout FB, _ now: Date, night: Bool, tone: String) {
-        let t = now.timeIntervalSinceReferenceDate
-        for (k, g) in guests.prefix(3).enumerated() {
-            let at = Walker.guestAt[k], hop = Int(t * 2 + Double(k)) % 4 == 0 ? 2 : 0
+        let t = now.timeIntervalSinceReferenceDate, spots = guestSpots
+        for (k, g) in guests.prefix(spots.count).enumerated() {
+            let at = spots[k], hop = Int(t * 2 + Double(k)) % 4 == 0 ? 2 : 0
             fb.stuck("nb|visit|\(g.mon.dex)|" + tone, at.x, at.y - hop) { lcdReady(sticker(iconPic(g.mon.dex), night: night)) }
         }
     }
     /// A tap on a guest: 인사 to its owner.
     func guestTouched(_ x: Int, _ y: Int) -> Bool {
-        for (k, g) in guests.prefix(3).enumerated() {
-            let at = Walker.guestAt[k]
+        let spots = guestSpots
+        for (k, g) in guests.prefix(spots.count).enumerated() {
+            let at = spots[k]
             if (at.x / 2..<at.x / 2 + 20).contains(x), (at.y / 2..<at.y / 2 + 20).contains(y) { if !visitorGreeted(g.owner) { greet(g.owner, back: screen) }; return true }
         }
         return false

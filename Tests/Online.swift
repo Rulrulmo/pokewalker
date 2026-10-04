@@ -7,6 +7,8 @@ import AppKit
 
 @MainActor var onlineCount = 0
 /// A walker logged into a fake server whose trainer has this save (each Pokémon given a uid, as the server does). host: a TestHost by default.
+/// 3.8.1's picker (page one): a first click looks at a cell (the card above), a click on the one looked at picks or drops it.
+@MainActor func pickAt(_ w: Walker, _ k: Int) { if case .squad(let q) = w.screen, q.at != k { w.pageTap(8750 + k) }; w.pageTap(8750 + k) }
 @MainActor func online(_ s: Walk, server: FakeCloud = FakeCloud(), host: TestHost? = TestHost(), rng: UInt64? = nil) -> Walker {
     onlineCount += 1
     let key = String(format: "zz9%05d", onlineCount), dir = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-online-\(ProcessInfo.processInfo.processIdentifier)-\(onlineCount)", isDirectory: true)
@@ -180,9 +182,10 @@ import AppKit
     ta.screen = .home; _ = ta.cloud!.act(.greet(to: bName)); drain(ta)
     check(helloSays && helloVisitor && tsv.acts.last == .greet(to: bName), "인사: the other side's next act brings hello — its line, the sender's companion on home with ♥", "\(says(tb)) \(String(describing: tb.visitor))")
     tb.cloud!.addSteps(1); tb.cloud!.saveNow(); drain(tb); ta.cloud!.teamDue = true; drain(ta)       // (tb walking again)
-    ta.visitor = nil; ta.screen = .home; ta.state.total = 1_000; ta.nextVisit = 1; ta.tick(Date())
-    let visiting = ta.visitor.map { !$0.hello && $0.name.lowercased() == bName.lowercased() && $0.dex == 6 } == true && says(ta).last == "놀러 왔다!"
-    check(visiting && ta.nextVisit >= ta.state.total + 300, "놀러 오는 동료: every 300–600 steps on home, one walking now drops by (its trainer's companion), said on the LCD", "\(String(describing: ta.visitor)) \(says(ta))")
+    ta.visitor = nil; ta.screen = .home
+    for k in 0..<6 { ta.state.total += 700; ta.tick(Date() + Double(k)) }
+    check(ta.visitor == nil && says(ta).isEmpty && ta.cloud!.team?.cards.contains { Walker.walkingNow($0) && !ta.isMe($0) } == true,
+          "3.8.1: no random drop-by (a friend walking now, thousands of steps on home) — 인사's visitor only", "\(String(describing: ta.visitor)) \(says(ta))")
 
     // home's news: an egg found, its hatch, a new season
     let nv = online(Walk())
@@ -540,8 +543,12 @@ import AppKit
     let noParty: Bool = { if case .say(["대전 파티를", "먼저 정해 주세요"], .squad(let q), _) = da.screen { return q.kind == .duelParty }; return false }()
     da.screen = .menu(menuAt("대전")); let tile = da.paneContent(Date()).menu?.rows.first { $0.name == "대전" }; da.press(1); drain(da)
     let hub0 = da.paneContent(Date()).duelHub
-    da.pageTap(6330); da.pageTap(8750); da.pageTap(8751); let two = da.paneContent(Date()).squad; da.pageTap(8752); let three = da.paneContent(Date()).squad
+    da.pageTap(6330); let look0 = da.paneContent(Date()).squad?.detail; da.pageTap(8751); let looked = da.paneContent(Date()).squad
+    pickAt(da, 0); pickAt(da, 1); let two = da.paneContent(Date()).squad; pickAt(da, 2); let three = da.paneContent(Date()).squad
     da.pageTap(8790); drain(da); let setSaid = says(da); da.press(1); let hub1 = da.paneContent(Date()).duelHub
+    check(look0?.title == "뮤츠 Lv.70 → 50" && look0?.ivs.count == 6 && look0?.evs == [0, 0, 0, 0, 0, 0] && look0?.moves.isEmpty == false && look0?.item == "도구 없음" && looked?.order.allSatisfy { $0 == nil } == true
+          && looked?.detail?.dex == 149 && looked?.sel == 1,
+          "3.8.1: the picker's card — the one looked at (name, Lv → 50, nature · ability · item, IVs, EVs, moves); a first click only looks", "\(String(describing: look0)) \(String(describing: looked?.detail))")
     check(card?.duel == "대전 신청" && noParty && tile?.note == "대전 파티를 정해 주세요" && hub0?.go == nil && hub0?.hint == "대전 파티를 먼저 정해 주세요" && hub0?.friends.map(\.name) == [bName]
           && two?.go == nil && two?.strip.count == 6 && two?.order.prefix(3) == [1, 2, nil] && three?.go == "이 3마리로 정하기" && setSaid == ["대전 파티를", "정했다!"]
           && da.state.duelParty?.count == 3 && served(da)?.duelParty == da.state.duelParty && hub1?.party.compactMap { $0?.dex } == [150, 149, 248] && hub1?.go == "랜덤 매칭",
@@ -565,7 +572,7 @@ import AppKit
     check(invited && page?.buttons == ["수락", "거절"] && bPicking && aPicking && bPick?.theirs?.map(\.dex) == [150, 149, 248] && bPick?.cells.map(\.dex) == [10, 16, 19] && bPick?.strip.count == 3
           && bPick?.note.hasSuffix("초 남음") == true && db.title().0 == "실시간 대전",
           "the invitation → 수락 → both on the pick (my six, the other's six by species, a minute)", "\(invited) \(bPicking) \(aPicking) \(String(describing: bPick))")
-    da.pageTap(8752); da.pageTap(8750); da.pageTap(8751); da.pageTap(8790); drain(da)
+    pickAt(da, 2); pickAt(da, 0); pickAt(da, 1); da.pageTap(8790); drain(da)
     let aSent = da.paneContent(Date()).squad
     db.press(1); db.press(2); db.press(1); db.press(2); db.press(1); db.press(1); drain(db)
     var guard1 = 0; while guard1 < 6, !{ if case .beats = db.screen { return true }; return false }() { guard1 += 1; pump([da, db]) }

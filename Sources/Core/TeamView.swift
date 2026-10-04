@@ -165,17 +165,9 @@ extension Walker {
 
     // MARK: home: a teammate's companion drops by
     /// Home, now and then (every 300–600 steps): one of those walking now drops by as a sticker for a while; a tap on it = 인사.
+    /// A 인사's visitor goes after its time. (3.8.1: no random drop-bys — 맡겨 키우기's guests walk along instead, 14 §3, §9.)
     func visitTick(_ now: Date) {
         if let v = visitor, now >= v.until { visitor = nil; host?.redraw(.lcd) }
-        if !guests.isEmpty, visitor?.hello != true { return }                                       // 3.8: guests walk along (14 §3): no drop-bys meanwhile
-        guard case .home = screen, waiting == nil, news.isEmpty, let c = cloud, c.online, let team = c.team else { return }
-        if nextVisit == 0 { nextVisit = state.total + Int.random(in: 300...600, using: &rng); return }
-        guard state.total >= nextVisit, visitor == nil else { return }
-        let here = team.cards.filter { Walker.walkingNow($0) && !isMe($0) }
-        guard let pick = here.randomElement(using: &rng) else { nextVisit = state.total + 150; return }   // nobody walking: look again a little later
-        nextVisit = state.total + Int.random(in: 300...600, using: &rng)
-        visitor = Visitor(name: pick.name, dex: pick.companion.dex, shiny: pick.companion.shiny == true, until: now.addingTimeInterval(90), hello: false)
-        screen = .say([josa(pick.name, "의", "의") + " " + josa(monNames[pick.companion.dex], "이", "가"), "놀러 왔다!"], next: .home, since: now)
     }
     /// Where the visitor's sticker sits (half-dots, top-left), over the page's top-right corner.
     static let visitorAt = (x: 150, y: 2)

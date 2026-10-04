@@ -621,11 +621,11 @@ import Foundation
     for (w, c) in [(wa, ca), (wb, cb)] {
         w.screen = .menu(menuAt("대전")); w.press(1); settle(w, c); w.pageTap(6330)
         if case .squad(var q) = w.screen { q.picked = []; w.screen = .squad(q) }                   // (a rerun: picked afresh)
-        for k in 0..<3 { w.pageTap(8750 + k) }
+        for k in 0..<3 { pickAt(w, k) }
         w.pageTap(8790); settle(w, c)
     }
     check((wa.state.duelParty?.count ?? 0) >= 3 && (wb.state.duelParty?.count ?? 0) >= 3, "live duelParty: both set (A \(wa.state.duelParty ?? []), B \(wb.state.duelParty ?? []))")
-    func pickThree(_ w: Walker, _ c: Cloud) { if case .squad(let q) = w.screen, case .duelPick = q.kind { for k in [2, 0, 1] { w.pageTap(8750 + k) }; w.pageTap(8790); settle(w, c) } }
+    func pickThree(_ w: Walker, _ c: Cloud) { if case .squad(let q) = w.screen, case .duelPick = q.kind { for k in [2, 0, 1] { pickAt(w, k) }; w.pageTap(8790); settle(w, c) } }
     func isPick(_ w: Walker) -> Bool { if case .squad(let q) = w.screen, case .duelPick = q.kind { return true }; return false }
     /// Both sides to the end: A gives up at its first menu, B attacks.
     func fightOut() -> (String, String) {

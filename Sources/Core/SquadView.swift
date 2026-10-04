@@ -57,7 +57,19 @@ extension Walker {
             if !sent, picked.count == 3 { m.go = "이 3마리로 대전" }
             m.off = sent ? "골랐어요 · 상대를 기다리는 중" : "3마리를 골라 주세요"
         }
+        let focus = s.at < n ? keys[s.at] : picked.last
+        m.detail = focus.flatMap { squadMon(s, $0) }.map { squadDetail($0, fifty: fifty) }
         return PaneContent(squad: m)
+    }
+    /// 3.8.1 (14 §9): what to pick by — nature (its mint) · ability · held item, IVs (특훈's → 31), EVs, moves; a duel's at Lv.50.
+    func squadDetail(_ m: Mon, fifty: Bool) -> SquadModel.Detail {
+        let iv0 = m.ivs ?? Array(repeating: 15, count: 6), ev = m.evs ?? Array(repeating: 0, count: 6)
+        let iv = iv0.indices.map { m.hyper?.contains($0) == true ? 31 : iv0[$0] }
+        let lv = fifty && m.level != Walk.towerLevel ? "Lv.\(m.level) → \(Walk.towerLevel)" : "Lv.\(m.level)"
+        let nature = m.natureName + (m.mint.map { $0 != (m.nature ?? 0) ? "(민트: " + natures[$0].name + ")" : "" } ?? "")
+        return .init(dex: m.dex, shiny: m.shiny == true, title: (m.shiny == true ? "★" : "") + monNames[m.dex] + " " + lv,
+                     sub: nature + " · " + m.abilityName, item: m.item ?? "도구 없음", moves: m.moves.compactMap { moveTable[$0]?.name }.joined(separator: " · "),
+                     ivs: iv, evs: ev, best: iv.map { $0 == 31 }, v: m.perfectIVs)
     }
     func squadLCD(_ fb: inout FB, _ s: Squad, _ now: Date) {
         let keys = squadKeys(s), picked = squadOf(s), half = Int(now.timeIntervalSinceReferenceDate * 2) % 2
@@ -100,10 +112,11 @@ extension Walker {
         let keys = squadKeys(s), n = keys.count, per = SquadModel.perPage
         switch code {
         case 8740..<8746: if squadSent(s) == nil, s.picked.indices.contains(code - 8740) { s.picked.remove(at: code - 8740) }; screen = .squad(s)
-        case 8750..<8774:
+        case 8750..<8768:                                                                          // a first click looks (the card above), a click on it picks or drops it
             let at = min(s.at, max(0, n - 1)) / per * per + code - 8750
             guard let key = keys[safe: at] else { return }
-            s.at = at; squadToggle(&s, key, n); screen = .squad(s)
+            if s.at == at { squadToggle(&s, key, n) } else { s.at = at }
+            screen = .squad(s)
         case 8780...8781:
             let pages = max(1, (n + per - 1) / per)
             s.at = min(max(0, n - 1), ((min(s.at, max(0, n - 1)) / per + (code == 8780 ? pages - 1 : 1)) % pages) * per); screen = .squad(s)

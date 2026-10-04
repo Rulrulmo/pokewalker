@@ -168,11 +168,13 @@ struct VisitsModel: Equatable {
 /// (a page of 6 × 4, each picked one numbered), the button (nil: the hint; goSel: the cursor's on it).
 struct SquadModel: Equatable {
     struct Slot: Equatable { var dex: Int; var shiny: Bool; var level: String }
-    static let perPage = 24
+    struct Detail: Equatable { var dex: Int; var shiny: Bool; var title, sub, item, moves: String; var ivs, evs: [Int]; var best: [Bool]; var v: Int }   // 3.8.1: the one under the cursor (best: a 31, 특훈's too)
+    static let perPage = 18                                                                        // 6 × 3 (3.8.1: the detail card above)
     var title, note: String; var strip: [Slot?]; var theirs: [GridModel.Cell]?
     var boxTitle: String; var cells: [GridModel.Cell]; var order: [Int?]; var sel: Int?; var first, count: Int
     var empty: String; var go: String?; var goSel: Bool; var hint: String
     var off = ""                                                       // the button's words when there's nothing to press (none: the hint)
+    var detail: Detail? = nil
 }
 /// 3.8's 대전 menu (14 §5): 대전 (the registered six, friends walking now to challenge, 랜덤 매칭) · 전적 (the last 20, a page at a time).
 struct DuelHubModel: Equatable {

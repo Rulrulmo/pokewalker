@@ -43,7 +43,7 @@ import Foundation
     var waiting: Waiting? = nil
     var news: [News] = []                                                  // the server's, shown at home one at a time (settle)
     var fight: Battle? = nil, fightEnd: BattleEnd? = nil                   // the fight as the server last sent it; its end, once its beats have played
-    var visitor: Visitor? = nil, nextVisit = 0, greeted: [String: Date] = [:]   // 12 (M1): a teammate's companion on home; the steps it next comes at; 인사 sent (by key)
+    var visitor: Visitor? = nil, greeted: [String: Date] = [:]          // 12 (M1): a friend's companion on home (come with a 인사); 인사 sent (by key)
     var drag: (from: Int, at: CGPoint)? = nil                              // 포켓몬's grid: a Pokémon dragged (the page's code it began on, the pointer in page points)
     var chainNext: Int? = nil                                              // a chain holds (its length): its next bush is asked for once home's news are shown
     var trainRef = -1, itemFor: String? = nil
