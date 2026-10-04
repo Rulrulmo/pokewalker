@@ -504,6 +504,11 @@ import AppKit                                                                   
     if case .learn(4) = lv.screen, lvSaid.first == "레벨 업!" { lv.press(2); lv.press(1); drain(lv); check(lv.state.companion.known?[0] == next.1 && lv.state.companion.moves.count == 4 && served(lv)?.companion.known?[0] == next.1, "forget move 1 for the new one (the cursor starts on 배우지 않는다)") } else { check(false, "4 moves known: the level-up, then the forget-one screen, on 배우지 않는다", "\(lvSaid) \(lv.screen)") }
     let before4 = lv.state.companion.known, lvUID = lv.state.companion.uid!; serve(lv) { $0.learning = [lvUID, 85] }; lv.screen = .learn(sel: 4); lv.press(1); drain(lv)
     check(lv.state.companion.known == before4 && (lv.state.learning ?? []).isEmpty, "배우지 않는다 keeps the four")
+    serve(lv) { $0.learning = [lvUID, 85] }; lv.screen = .learn(sel: 4); lv.pageTap(5302); drain(lv)
+    let lvLook: Bool = { if case .learn(2) = lv.screen { return true }; return false }() && lv.state.companion.known == before4 && lv.paneContent(Date()).learn?.known[2].text?.isEmpty == false
+    lv.pageTap(5302); drain(lv)
+    check(lvLook && lv.state.companion.known?[2] == 85 && (lv.state.learning ?? []).isEmpty, "3.8.3: a first click on a move shows what it does (nothing forgotten); a click on it forgets it for the new one",
+          "\(lvLook) \(String(describing: lv.state.companion.known))")
     var lfRun = EngineRun(w: { var s = lw; s.companion.known = [84, 45]; return s }(), p: Play(), r: Seeded(s: 12), now: Date(), ids: Issued(next: 1_000_001)); lfRun.learnQueue(); lfRun.finish()
     check(lfRun.w.companion.known == [84, 45, next.1] && lfRun.out.news.contains(.learn(uid: lw.companion.uid!, move: next.1, learned: true)), "a free slot: learned straight away (news: learned)")
     lv.screen = .home; lv.news = [.learn(uid: lvUID, move: next.1, learned: true)]; lv.tick(Date())
@@ -515,7 +520,7 @@ import AppKit                                                                   
     var rlw = Walk(); rlw.companion = Mon(dex: 25, level: 50, female: false); rlw.companion.known = [84, 45, 39, 86]
     let rl = online(rlw); let passed = rlw.companion.relearnable.first { !rlw.companion.moves.contains($0) }!
     func rls(_ r: Int, _ s: Int, _ a: Int?) -> Bool { var sc = rl.screen; if case .say(_, let n, _) = sc { sc = n }; if case .relearn(r, s, a) = sc { return true }; return false }
-    rl.screen = .box(-1, act: nil, confirm: false, detail: true); rl.gridTap(4409); rl.pageTap(5501)
+    rl.screen = .box(-1, act: nil, confirm: false, detail: true); rl.gridTap(4409); rl.pageTap(5501); rl.pageTap(5501)   // (3.8.3: the slot shown, then opened)
     let rlOpened = rls(-1, 1, 45); _ = rl.compose(Date()); rl.screen = .relearn(ref: -1, slot: 1, at: passed); _ = rl.compose(Date()); rl.press(1); drain(rl)
     check(rlOpened && rl.state.companion.moves == [84, passed, 39, 86] && rls(-1, 1, nil) && rlw.companion.relearnable.allSatisfy { rlw.companion.learnLevel($0).map { $0 <= 50 } ?? true },
           "기술 바꾸기: a move it passed on (배우지 않는다) goes in the slot picked", "\(rl.state.companion.moves)")
@@ -526,6 +531,12 @@ import AppKit                                                                   
     check(rlWrapped && rl.state.companion.moves == [84, fill!] && rl.paneContent(Date()).relearn?.slots.count == 2, "… a free slot: the slots go round it, and a move fills it", "\(rl.state.companion.moves)")
     rl.screen = .relearn(ref: -1, slot: 1, at: 84); rl.press(3); let up1 = rls(-1, 1, nil); rl.press(3)
     check(up1 && { if case .box(-1, nil, false, true) = rl.screen { return true }; return false }() && rl.homeKey() == false, "… ↩: the moves → the slots → its page")
+    serve(rl) { $0.companion.known = [84, 45] }; rl.screen = .relearn(ref: -1, slot: 0, at: nil); rl.pageTap(5501); let rlLook = rls(-1, 1, nil); rl.pageTap(5501)
+    let cands = rl.state.companion.relearnable, other = cands.first { ![84, 45].contains($0) }!, page = (cands.firstIndex(of: other) ?? 0) / RelearnModel.perPage
+    let firstShown: Int? = { if case .relearn(-1, 1, let at?) = rl.screen { return at }; return nil }()
+    rl.screen = .relearn(ref: -1, slot: 1, at: cands[page * RelearnModel.perPage]); let row = (cands.firstIndex(of: other) ?? 0) % RelearnModel.perPage
+    rl.pageTap(5530 + row); let rlLook2 = rls(-1, 1, other) && rl.state.companion.moves == [84, 45]; rl.pageTap(5530 + row); drain(rl)
+    check(rlLook && firstShown != nil && rlLook2 && rl.state.companion.moves == [84, other], "3.8.3: 기술 바꾸기 by two clicks — a slot shown, then opened; a move shown, then put in", "\(rl.state.companion.moves)")
     rl.screen = .relearn(ref: -1, slot: 0, at: rl.state.companion.relearnable[0]); rl.listRow(1000); rl.pageTap(5541)
     let rlPk = rl.paneContent(Date()).relearn?.pick; check(rlPk?.sel == 0 && rlPk?.first == 0 && rlPk?.rows.count == 5 && rlPk?.count == rl.state.companion.relearnable.count, "… the wheel stops at the end, ▶ goes round to the first page", "\(String(describing: rlPk))")
     bw.box.removeAll(); check(bw.nextToLearn() == nil && bw.learning == [], "released: its queued moves are dropped")
@@ -940,26 +951,25 @@ import AppKit                                                                   
     let tp = online({ var s = Walk(); s.companion = Mon(dex: 25, level: 10, female: false); s.caught = [Mon(dex: 16, level: 20, female: false)]
         s.box = [Mon(dex: 1, level: 30, female: false), Mon(dex: 4, level: 5, female: false), Mon(dex: 7, level: 15, female: false)]; return s }())
     func tdex() -> [Int] { tp.state.party().map(\.mon.dex) }
-    func tpick() -> TowerModel.Pick? { tp.paneContent(Date()).tower?.pick }
-    tp.screen = .tower(pick: nil); let twRec = tdex(), twRecCustom = tp.paneContent(Date()).tower?.custom; tp.pageTap(5412); let twPk = tpick()
-    check(twRec == [25, 1, 16] && twRecCustom == false && twPk?.slot == 2 && twPk?.count == 5 && twPk?.rows.map(\.name) == [1, 16, 7, 25, 4].map { monNames[$0] } && twPk?.rows.map(\.slot) == [1, 2, nil, 0, nil] && twPk?.sel == 1,
-          "배틀 타워: the recommended party (the companion, then the strongest two); a party row opens everyone by level, on its own one, the party's marked")
-    tp.pageTap(5432); drain(tp); let twPlaced = tdex(), twCustom = tp.paneContent(Date()).tower?.custom == true && tpick() == nil
-    tp.pageTap(5410); tp.press(2); tp.press(1); drain(tp); let twByKeys = tdex()
-    tp.pageTap(5411); tp.pageTap(5432); drain(tp); let twSwapped = tdex()
-    check(twPlaced == [25, 1, 7] && twCustom && twByKeys == [4, 1, 7] && twSwapped == [4, 7, 1], "… a click on one puts it in the slot (추천으로 shows); ◀ ▶ ● do the same; picking one of the party swaps the two")
+    func tsq() -> SquadModel? { tp.paneContent(Date()).squad }
+    tp.screen = .tower(pick: nil); let twRec = tdex(), twRecCustom = tp.paneContent(Date()).tower?.custom; tp.pageTap(5412); let twPk = tsq()
+    check(twRec == [25, 1, 16] && twRecCustom == false && twPk?.title == "배틀 타워 파티" && twPk?.strip.compactMap { $0?.dex } == [25, 1, 16] && twPk?.strip.compactMap { $0?.level } == ["Lv.50", "Lv.50", "Lv.50"]
+          && twPk?.cells.map(\.dex) == [1, 4, 7, 16, 25] && twPk?.order == [2, nil, nil, 3, 1] && twPk?.tabs?.first == "번호순" && twPk?.go == "이 3마리로 정하기",
+          "배틀 타워 (3.8.3): the recommended party (the companion, then the strongest two); a party row opens the picker as the 포켓몬 menu's — the three on top, everyone sorted, the party numbered",
+          "\(String(describing: twPk?.cells.map(\.dex))) \(String(describing: twPk?.order))")
+    tp.pageTap(8740); tp.pageTap(8740); tp.pageTap(8740); let twEmpty = tsq()?.go == nil
+    pickAt(tp, 1); pickAt(tp, 0); pickAt(tp, 2); tp.pageTap(8790); drain(tp); drain(tp)
+    let twPlaced = tdex(), twCustom = tp.paneContent(Date()).tower?.custom == true && { if case .tower(nil) = tp.screen { return true }; return false }()
+    tp.pageTap(5410); tp.press(1); tp.press(2); tp.press(2); tp.press(2); tp.press(1); let twFull: Bool = { if case .squad(let q) = tp.screen { return q.at == 5 }; return false }()
+    _ = tp.key(.enter, held: true); let twHeld: Bool = { if case .squad = tp.screen { return true }; return false }()
+    tp.press(1); drain(tp); drain(tp); let twByKeys = tdex()
+    check(twEmpty && twPlaced == [4, 1, 7] && twCustom && twFull && twHeld && twByKeys == [4, 7, 16],
+          "… dropped from the top row, picked in order (a first click looks, a second picks) → the button sets the three, slot by slot (추천으로 shows); ● picks and drops at the cursor, the last one in: onto the button; a held ● doesn't send",
+          "\(twPlaced) \(twByKeys) \(twFull) \(twHeld)")
     let twSaved = (try? JSONDecoder().decode(Walk.self, from: JSONEncoder().encode(tp.state)))?.party().map(\.mon.dex)
-    serve(tp) { $0.box.remove(at: 0) }; let twGone = tdex()
+    serve(tp) { $0.box.remove(at: 1) }; let twGone = tdex()
     tp.pageTap(5420); drain(tp); let twBack = tdex(), twPlain = tp.state.towerPick == nil && tp.paneContent(Date()).tower?.custom == false
-    check(twSaved == [4, 7, 1] && twGone == [4, 7, 25] && twBack == [25, 16, 7] && twPlain, "… kept in the save, by who they are (one let go: the rest stay, topped up as recommended); 추천으로 goes back", "\(String(describing: twSaved)) \(twGone) \(twBack)")
-    serve(tp) { $0.box += (10...14).map { Mon(dex: $0, level: 3, female: false) } }; tp.pageTap(5410); let twP1 = tpick(); tp.pageTap(5441); let twP2 = tpick(); _ = tp.key(.up); let twP3 = tpick()
-    tp.pageTap(5440); let twWrapped = tpick(); tp.press(3); let twLobbyAgain = tpick() == nil && tp.paneContent(Date()).tower != nil; tp.press(3)
-    check(twP1?.count == 9 && twP1?.rows.count == 5 && twP2?.first == 5 && twP2?.sel == 5 && twP2?.rows.count == 4 && twP3?.sel == 4 && twP3?.first == 0 && twWrapped?.first == 5 && twLobbyAgain
-          && tp.paneContent(Date()).tower == nil && tp.state.party().map(\.mon.dex) == [25, 16, 7], "… five a page (▶ ◀ pages round, ↑ ↓ rows); ↩ leaves the picker, then the lobby")
-    serve(tp) { $0.watts = 500 }; tp.screen = .tower(pick: nil); tp.pageTap(5411); _ = tp.key(.down); serve(tp) { $0.companion.level = 18 }; let twMoved = tpick()
-    _ = tp.key(.enter, held: true); let twHeld = tpick() != nil; tp.press(1); drain(tp); let twAfter = tdex(); _ = tp.key(.enter, held: true); drain(tp)
-    check(twMoved?.sel == 2 && twMoved?.rows[safe: 2]?.name == monNames[7] && twHeld && twAfter == [25, 7, 16] && tp.state.watts == 500 && tp.paneContent(Date()).tower != nil && tpick() == nil,
-          "… the cursor stays on its Pokémon when a level-up reorders the list; a held ● neither picks again nor pays into a fight", "\(String(describing: twMoved)) \(twAfter)")
+    check(twSaved == [4, 7, 16] && twGone == [7, 16, 25] && twBack == [25, 1, 16] && twPlain, "… kept in the save, by who they are (one let go: the rest stay, topped up as recommended); 추천으로 goes back", "\(String(describing: twSaved)) \(twGone) \(twBack)")
     // 1.3: the walker's team, the stickers, 코스, 배틀 속도, 특훈, 중복 놓아주기
     let nwSave: Walk = { var s = Walk(); s.watts = 500; s.earned = 100_000; s.caught = [Mon(dex: 16, level: 12, female: false)]; s.box = [Mon(dex: 19, level: 8, female: false)]; return s }()
     let nf = online(nwSave, rng: 41); nf.screen = .menu(menuAt("포켓 레이더")); nf.press(1); drain(nf)

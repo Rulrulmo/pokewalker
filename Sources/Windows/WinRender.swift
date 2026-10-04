@@ -119,6 +119,7 @@ import Foundation
     take("duel_records", on: tme) { v in v.screen = .duel(.hub(tab: 1, sel: 0)) }
     take("duel_queued", on: tme) { v in v.duelOn = true; v.duel = DuelView(id: 9, state: "queued", opponent: "", challenger: true, deadline: now + 41); v.screen = .duel(.queued) }
     take("squad_party", on: tme) { v in v.duelOn = false; v.screen = .squad(Squad(kind: .duelParty, picked: Array(wu.prefix(4)), at: 6)) }
+    take("squad_tower", on: tme) { v in v.screen = .squad(Squad(kind: .tower, picked: v.state.party().compactMap { $0.mon.uid }, at: 4)) }
     take("squad_raid", on: tme) { v in v.screen = .squad(Squad(kind: .raid, picked: [wu[3], wu[0]], at: 3)) }
     let six38 = Array(tme.state.box.prefix(6)).map { m -> Mon in var m = m; m.level = 50; return m }
     let theirs38 = [94, 448, 130, 65, 6, 149].map { DuelMon(dex: $0, female: false, shiny: $0 == 130) }

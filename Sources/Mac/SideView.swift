@@ -41,7 +41,7 @@ final class SideView: NSView {
     }
     override func scrollWheel(with e: NSEvent) {                                                 // the shop list: a row per notch (or 6 pt of trackpad); a grid: a page (24 pt)
         let grid = content.grid != nil
-        guard content.shop != nil || content.tower?.pick != nil || content.course != nil || content.train != nil || content.relearn != nil || content.items != nil || grid else { return super.scrollWheel(with: e) }
+        guard content.shop != nil || content.course != nil || content.train != nil || content.relearn != nil || content.items != nil || grid else { return super.scrollWheel(with: e) }
         let notch: CGFloat = grid ? 24 : 6
         func step(_ d: Int) { if grid { walker?.gridStep(d * GridModel.perPage) } else { walker?.listRow(d) } }   // rows only, never the amount
         if !e.hasPreciseScrollingDeltas { if e.scrollingDeltaY != 0 { step(e.scrollingDeltaY > 0 ? -1 : 1) }; return }

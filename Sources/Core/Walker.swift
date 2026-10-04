@@ -115,7 +115,6 @@ import Foundation
             if let first = shopRows(bp, t).first { screen = .shop(bp: bp, sel: first, qty: nil); lastInput = Date(); host?.redraw(.all) }
             return true
         }
-        if case .tower(_?) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -TowerModel.perPage, .pageDown: TowerModel.perPage][k] { towerStep(d); return true }   // the tower's picker: ↑ ↓ a row, page up / down a page
         switch screen { case .course, .train, .relearn: if let d = [Key.up: -1, .down: 1, .pageUp: -CourseModel.perPage, .pageDown: CourseModel.perPage][k] { listRow(d); return true }; default: break }   // the lists: the same
         if case .items = screen, let d = [Key.up: -1, .down: 1, .pageUp: -6, .pageDown: 6][k] { listRow(d); return true }   // 도구: six rows in view
         if case .hold(let r, let s) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -6, .pageDown: 6][k] { let n = holdRows(r).count; if n > 0 { screen = .hold(ref: r, sel: max(0, min(n - 1, s + d))); lastInput = Date(); host?.redraw(.all) }; return true }
@@ -183,7 +182,7 @@ import Foundation
         case .duel(.hub(let t, _)): return ("대전", t == 0 ? "Lv.50 · 3마리씩" : "최근 20판")
         case .duel(.queued): return ("랜덤 매칭", duelLeft().map { "\($0)초 남음" } ?? "")
         case .duel: return ("실시간 대전", duelLeft().map { "\($0)초 남음" } ?? "")
-        case .squad(let s): switch s.kind { case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return ("레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")) }
+        case .squad(let s): switch s.kind { case .tower: return ("배틀 타워", "파티 고르기 · Lv.50"); case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return ("레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")) }
         case .hold(let r, _): return ("지니게 하기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
         case .raid: return ("레이드", cloud?.raid.map { "다음 주 " + monNames[$0.next] } ?? "")

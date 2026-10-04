@@ -1,23 +1,42 @@
 import Foundation
-// docs/plans/14 §4–5 (3.8): several of ours, in order — the 대전 파티 (3 to 6, from the companion, the walker and the box), a raid fight's party
-// (1 to 3, as they are), a live battle's three of my six (the other's six shown by species). A click (or ●) picks or drops one; the strip on top
-// is the order they go in; the button (or ● past the last one) sends it.
+// docs/plans/14 §4–5 (3.8), §10 (3.8.3): several of ours, in order — the tower's three, the 대전 파티 (3 to 6), a raid fight's party (1 to 3,
+// as they are), a live battle's three of my six (the other's six shown by species). As the 포켓몬 menu picks the walker: the row on top is the
+// order they go in (a click drops one), the grid under it everyone in the menu's sort (번호순 · 레벨순 · V순 · 최근); a first click looks (the LCD
+// shows it), a click on it picks or drops it; the button (or ● past the last one) sends it.
 
-enum SquadFor: Equatable { case duelParty, raid, duelPick(id: Int) }
+enum SquadFor: Equatable { case tower, duelParty, raid, duelPick(id: Int) }
 /// picked: uids (a duel's pick: slots of my six), in order; at: the cursor (= the count: on the button).
 struct Squad: Equatable { var kind: SquadFor; var picked: [Int]; var at: Int }
 
 extension Walker {
-    /// What can be picked: ours by uid (the companion, the walker, the box as 포켓몬 shows it), or a duel's six by slot.
+    static let squadSorts = ["번호순", "레벨순", "V순", "최근"]                                   // the 포켓몬 menu's (boxSort, shared)
+    /// Ours in the 포켓몬 menu's order (refs): 최근 = the companion and the walker's, then the box newest first; else all by the sort's key.
+    var squadOrder: [Int] {
+        let refs = [-1] + state.caught.indices.map { -2 - $0 } + boxOrder
+        guard boxSort != 3 else { return refs }
+        let k = refs.map { r -> (Int, Int, Int, Int) in
+            let m = state.mon(r)!
+            switch boxSort { case 1: return (-m.level, -m.points, m.dex, 0); case 2: return (-m.perfectIVs, -m.level, -m.points, m.dex); default: return (m.dex, -m.level, -m.points, 0) }
+        }
+        return refs.indices.sorted { k[$0] != k[$1] ? k[$0] < k[$1] : $0 < $1 }.map { refs[$0] }
+    }
+    /// What can be picked: ours by uid, or a duel's six by slot.
     func squadKeys(_ s: Squad) -> [Int] {
         if case .duelPick = s.kind { return Array((duel?.parties?.mine ?? []).indices) }
-        return ([-1] + state.caught.indices.map { -2 - $0 } + boxOrder).compactMap { state.mon($0)?.uid }
+        return squadOrder.compactMap { state.mon($0)?.uid }
     }
     func squadMon(_ s: Squad, _ key: Int) -> Mon? {
         if case .duelPick = s.kind { return duel?.parties?.mine[safe: key] }
         return state.ref(uid: key).flatMap { state.mon($0) }
     }
-    func squadRange(_ k: SquadFor) -> ClosedRange<Int> { switch k { case .duelParty: 3...6; case .raid: 1...3; case .duelPick: 3...3 } }
+    func squadRange(_ k: SquadFor) -> ClosedRange<Int> {
+        switch k {
+        case .tower: let t = min(3, 1 + state.caught.count + state.box.count); return t...t        // (all there are, under three)
+        case .duelParty: return 3...6
+        case .raid: return 1...3
+        case .duelPick: return 3...3
+        }
+    }
     /// A duel's three already sent (the server's): nothing more to change.
     func squadSent(_ s: Squad) -> [Int]? { if case .duelPick = s.kind { return duel?.parties?.picked }; return nil }
     func squadOf(_ s: Squad) -> [Int] { squadSent(s) ?? s.picked }
@@ -38,10 +57,13 @@ extension Walker {
         let page = Array(keys[min(first, n)..<min(n, first + per)])
         let cells = page.compactMap { squadMon(s, $0) }.map { GridModel.Cell(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil) }
         let strip = (0..<range.upperBound).map { i in picked[safe: i].flatMap { squadMon(s, $0) }.map { SquadModel.Slot(dex: $0.dex, shiny: $0.shiny == true, level: "Lv.\(fifty ? Walk.towerLevel : $0.level)") } }
-        var m = SquadModel(title: "", note: "\(picked.count)/\(range.upperBound)", strip: strip, theirs: nil, boxTitle: "동료 · 워커 · 상자 · \(n.formatted())마리", cells: cells,
+        var m = SquadModel(title: "", note: "\(picked.count)/\(range.upperBound)", strip: strip, theirs: nil, tabs: Walker.squadSorts, tab: boxSort, boxTitle: "", cells: cells,
                            order: page.map { k in picked.firstIndex(of: k).map { $0 + 1 } }, sel: s.at < n && s.at >= first ? s.at - first : nil, first: first, count: n,
                            empty: "포켓몬이 없어요", go: nil, goSel: s.at >= n, hint: "")
         switch s.kind {
+        case .tower:
+            m.title = "배틀 타워 파티"; m.hint = "\(range.upperBound)마리를 순서대로 골라 주세요 · 모두 Lv.50"
+            if range.contains(picked.count) { m.go = "이 \(picked.count)마리로 정하기" }
         case .duelParty:
             m.title = "대전 파티"; m.hint = "3~6마리를 순서대로 골라 주세요 · 대전은 모두 Lv.50"
             if range.contains(picked.count) { m.go = "이 \(picked.count)마리로 정하기" }
@@ -50,30 +72,18 @@ extension Walker {
             if range.contains(picked.count) { m.go = "이 \(picked.count)마리로 도전" }
         case .duelPick:
             let p = duel?.parties
-            m.title = "vs " + (duel?.opponent ?? ""); m.note = duelLeft(now).map { "\($0)초 남음" } ?? ""
+            m.title = "vs " + (duel?.opponent ?? ""); m.note = duelLeft(now).map { "\($0)초 남음" } ?? ""; m.tabs = nil
             m.theirs = (p?.theirs ?? []).map { GridModel.Cell(dex: $0.dex, look: 2, shiny: $0.shiny, v3: false, level: Walk.towerLevel, held: false) }
             m.boxTitle = "내 대전 파티 · 나갈 3마리를 순서대로"
             m.hint = sent ? (p?.theyPicked == true ? "곧 시작해요…" : "상대가 고르는 중…") : "시간이 지나면 앞의 3마리가 나가요"
             if !sent, picked.count == 3 { m.go = "이 3마리로 대전" }
             m.off = sent ? "골랐어요 · 상대를 기다리는 중" : "3마리를 골라 주세요"
         }
-        let focus = s.at < n ? keys[s.at] : picked.last
-        m.detail = focus.flatMap { squadMon(s, $0) }.map { squadDetail($0, fifty: fifty) }
         return PaneContent(squad: m)
-    }
-    /// 3.8.1 (14 §9): what to pick by — nature (its mint) · ability · held item, IVs (특훈's → 31), EVs, moves; a duel's at Lv.50.
-    func squadDetail(_ m: Mon, fifty: Bool) -> SquadModel.Detail {
-        let iv0 = m.ivs ?? Array(repeating: 15, count: 6), ev = m.evs ?? Array(repeating: 0, count: 6)
-        let iv = iv0.indices.map { m.hyper?.contains($0) == true ? 31 : iv0[$0] }
-        let lv = fifty && m.level != Walk.towerLevel ? "Lv.\(m.level) → \(Walk.towerLevel)" : "Lv.\(m.level)"
-        let nature = m.natureName + (m.mint.map { $0 != (m.nature ?? 0) ? "(민트: " + natures[$0].name + ")" : "" } ?? "")
-        return .init(dex: m.dex, shiny: m.shiny == true, title: (m.shiny == true ? "★" : "") + monNames[m.dex] + " " + lv,
-                     sub: nature + " · " + m.abilityName, item: m.item ?? "도구 없음", moves: m.moves.compactMap { moveTable[$0]?.name }.joined(separator: " · "),
-                     ivs: iv, evs: ev, best: iv.map { $0 == 31 }, v: m.perfectIVs)
     }
     func squadLCD(_ fb: inout FB, _ s: Squad, _ now: Date) {
         let keys = squadKeys(s), picked = squadOf(s), half = Int(now.timeIntervalSinceReferenceDate * 2) % 2
-        let title: String = { switch s.kind { case .duelParty: "대전 파티"; case .raid: "레이드 출전"; case .duelPick: "3마리 고르기" } }()
+        let title: String = { switch s.kind { case .tower: "타워 파티"; case .duelParty: "대전 파티"; case .raid: "레이드 출전"; case .duelPick: "3마리 고르기" } }()
         guard s.at < keys.count, let m = squadMon(s, keys[s.at]) else {                          // on the button: the first picked, the count, the button
             fb.text(title, 2, 0); fb.fill(0, 12, 96, 1, 2)
             if let f = picked.first.flatMap({ squadMon(s, $0) }) { fb.mon(f, half, 0, 2, anim: animT("squad", f.dex, now)) }
@@ -112,7 +122,8 @@ extension Walker {
         let keys = squadKeys(s), n = keys.count, per = SquadModel.perPage
         switch code {
         case 8740..<8746: if squadSent(s) == nil, s.picked.indices.contains(code - 8740) { s.picked.remove(at: code - 8740) }; screen = .squad(s)
-        case 8750..<8768:                                                                          // a first click looks (the card above), a click on it picks or drops it
+        case 8700..<8704: guard squadSent(s) == nil else { return }; boxSort = code - 8700; s.at = 0; screen = .squad(s)   // the 포켓몬 menu's sort (its own too)
+        case 8750..<8774:                                                                          // a first click looks (the LCD shows it), a click on it picks or drops it
             let at = min(s.at, max(0, n - 1)) / per * per + code - 8750
             guard let key = keys[safe: at] else { return }
             if s.at == at { squadToggle(&s, key, n) } else { s.at = at }
@@ -128,10 +139,11 @@ extension Walker {
     func squadGo(_ s: Squad, _ now: Date) {
         guard squadSent(s) == nil else { return }
         guard squadRange(s.kind).contains(s.picked.count) else {
-            let l: [String] = { switch s.kind { case .duelParty: ["3~6마리를", "골라 주세요"]; case .raid: ["1~3마리를", "골라 주세요"]; case .duelPick: ["3마리를", "골라 주세요"] } }()
+            let l: [String] = { switch s.kind { case .tower: ["\(squadRange(.tower).upperBound)마리를", "골라 주세요"]; case .duelParty: ["3~6마리를", "골라 주세요"]; case .raid: ["1~3마리를", "골라 주세요"]; case .duelPick: ["3마리를", "골라 주세요"] } }()
             screen = .say(l, next: .squad(s), since: now); return
         }
         switch s.kind {
+        case .tower: towerCommit(s.picked, 0, back: .squad(s), now)
         case .duelParty:
             act(.duelParty(uids: s.picked), back: .squad(s), now) { _, now in .say(["대전 파티를", "정했다!"], next: .duel(.hub(tab: 0, sel: 0)), since: now) }
         case .raid:
@@ -150,6 +162,13 @@ extension Walker {
     func raidPick(_ now: Date) {
         let last = raidLast
         screen = .squad(Squad(kind: .raid, picked: last, at: squadKeys(Squad(kind: .raid, picked: [], at: 0)).count))
+    }
+    /// 배틀 타워's party (a click on the lobby's rows): the three now, then each slot set in turn (towerPick: one already in swaps places).
+    func towerPartyPick() { screen = .squad(Squad(kind: .tower, picked: state.party().compactMap { $0.mon.uid }, at: 0)) }
+    func towerCommit(_ uids: [Int], _ k: Int, back: Screen, _ now: Date) {
+        guard k < uids.count else { screen = .tower(pick: nil); return }
+        if state.party()[safe: k]?.mon.uid == uids[k] { towerCommit(uids, k + 1, back: back, now); return }   // (already there)
+        act(.towerPick(slot: k, uid: uids[k]), back: back, now) { [weak self] _, now in self?.towerCommit(uids, k + 1, back: back, now); return nil }
     }
     /// 대전 파티 (from the 대전 menu): the registered ones first.
     func duelPartyPick() {

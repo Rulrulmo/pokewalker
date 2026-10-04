@@ -78,13 +78,7 @@ struct RelearnModel: Equatable {
 /// 배틀 타워's lobby: the run, the party, the button.
 struct TowerModel: Equatable {
     struct Member: Equatable { var dex: Int; var name: String; var level: Int; var shiny = false }
-    /// Picking who goes in party slot `slot`: count candidates, `rows` the page in view from `first` (slot = where that one is in the party now).
-    struct Pick: Equatable {
-        struct Row: Equatable { var name: String; var level: Int; var slot: Int?; var shiny = false }
-        var slot, sel, count, first: Int; var rows: [Row]
-    }
-    static let perPage = 5
-    var run: Bool; var streak, best, bp, fee: Int; var party: [Member]; var custom = false; var pick: Pick? = nil   // custom = the player's party, not the recommended one
+    var run: Bool; var streak, best, bp, fee: Int; var party: [Member]; var custom = false   // custom = the player's party, not the recommended one (3.8.3: picked on the 포켓몬 menu's grid)
 }
 /// 코스: every course, a page of five (the pick's picture is on the LCD). note = what opens a locked one; go = the button (nil: locked, or walking it now).
 struct CourseModel: Equatable {
@@ -168,13 +162,12 @@ struct VisitsModel: Equatable {
 /// (a page of 6 × 4, each picked one numbered), the button (nil: the hint; goSel: the cursor's on it).
 struct SquadModel: Equatable {
     struct Slot: Equatable { var dex: Int; var shiny: Bool; var level: String }
-    struct Detail: Equatable { var dex: Int; var shiny: Bool; var title, sub, item, moves: String; var ivs, evs: [Int]; var best: [Bool]; var v: Int }   // 3.8.1: the one under the cursor (best: a 31, 특훈's too)
-    static let perPage = 18                                                                        // 6 × 3 (3.8.1: the detail card above)
+    static let perPage = 24                                                                        // 6 × 4, as the 포켓몬 menu's cells (3.8.3)
     var title, note: String; var strip: [Slot?]; var theirs: [GridModel.Cell]?
+    var tabs: [String]?; var tab: Int                                                              // the 포켓몬 menu's sort (none: a duel's six)
     var boxTitle: String; var cells: [GridModel.Cell]; var order: [Int?]; var sel: Int?; var first, count: Int
     var empty: String; var go: String?; var goSel: Bool; var hint: String
     var off = ""                                                       // the button's words when there's nothing to press (none: the hint)
-    var detail: Detail? = nil
 }
 /// 3.8's 대전 menu (14 §5): 대전 (the registered six, friends walking now to challenge, 랜덤 매칭) · 전적 (the last 20, a page at a time).
 struct DuelHubModel: Equatable {

@@ -233,6 +233,7 @@ import AppKit
     take("duel_queued", fme) { v in v.duelOn = true; v.duel = DuelView(id: 9, state: "queued", opponent: "", challenger: true, deadline: tsF + 41); v.screen = .duel(.queued) }
     take("squad_party", fme) { v in v.duelOn = false; v.screen = .squad(Squad(kind: .duelParty, picked: Array(v.state.duelParty!.prefix(4)), at: 6)) }
     take("squad_party_full", fme) { v in v.screen = .squad(Squad(kind: .duelParty, picked: [v.state.companion.uid!] + Array(uids.prefix(5)), at: v.squadKeys(Squad(kind: .duelParty, picked: [], at: 0)).count)) }
+    take("squad_tower", fme) { v in v.duelOn = false; v.screen = .squad(Squad(kind: .tower, picked: v.state.party().compactMap { $0.mon.uid }, at: 4)) }
     take("squad_raid", fme) { v in v.screen = .squad(Squad(kind: .raid, picked: [uids[3], uids[0]], at: 3)) }
     let six = Array(fme.state.box.prefix(6)).map { m -> Mon in var m = m; m.level = 50; return m }
     let theirs = [DuelMon(dex: 94, female: false, shiny: false), DuelMon(dex: 448, female: true, shiny: false), DuelMon(dex: 130, female: false, shiny: true),

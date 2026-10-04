@@ -62,7 +62,6 @@ extension Walker {
     /// The scroll wheel / trackpad on a list: a row up or down — the shop's (leaving how-many: the amount only changes on purpose) or the tower's picker.
     func listRow(_ d: Int) {
         guard !frozen, waiting == nil else { return }
-        if case .tower(_?) = screen { towerStep(d); return }
         if case .course(let i) = screen { lastInput = Date(); host?.redraw(.all); screen = .course(max(0, min(courses.count - 1, i + d))); return }
         if case .items(let s) = screen { lastInput = Date(); host?.redraw(.all); screen = .items(max(0, min(state.inventory.count - 1, s + d))); return }   // 도구: a row (the wheel, ↑ ↓)
         if case .train(let k) = screen { lastInput = Date(); host?.redraw(.all); screen = .train(max(0, min(5, k + d))); return }
@@ -76,13 +75,6 @@ extension Walker {
         switch screen { case .shop(let b, let s, _), .shopConfirm(let b, let s, _): bp = b; sel = s; default: return }
         lastInput = Date(); host?.redraw(.all)
         screen = .shop(bp: bp, sel: max(0, min(wares(bp).count - 1, sel + d)), qty: nil)
-    }
-    /// The tower's picker: d rows on (↑ ↓, page up / down, the wheel), stopping at the ends.
-    func towerStep(_ d: Int) {
-        guard case .tower(let p?) = screen else { return }
-        lastInput = Date(); host?.redraw(.all)
-        let all = state.towerCandidates, sel = all.firstIndex(of: p.at) ?? 0
-        screen = .tower(pick: (p.slot, all[max(0, min(all.count - 1, sel + d))]))
     }
     /// A click on the shop panel: 2100 + k = row k (and how-many, if it can be bought), 2000-2004 = −10 −1 +1 +10 max, 2005 = buy, 2006 / 2007 = 예 / 아니오,
     /// 2900 + t = tab t (3.6).
@@ -206,7 +198,7 @@ extension Walker {
             case .duel(.hub(1, _)): screen = .duel(.hub(tab: 0, sel: 0))
             case .duel(.hub): screen = .menu(menuAt("대전"))
             case .duel: screen = .home                                                             // (the invitation stays open: its minute; the queue too)
-            case .squad(let s): switch s.kind { case .duelParty: screen = .duel(.hub(tab: 0, sel: 0)); case .raid: screen = .raid(tab: 0); case .duelPick: screen = .home }   // (a duel's pick: its minute runs)
+            case .squad(let s): switch s.kind { case .tower: screen = .tower(pick: nil); case .duelParty: screen = .duel(.hub(tab: 0, sel: 0)); case .raid: screen = .raid(tab: 0); case .duelPick: screen = .home }   // (a duel's pick: its minute runs)
             case .hold(let r, _): screen = .box(r, act: nil, confirm: false, detail: true)
             case .visitPick(let p): screen = teamRows(0).firstIndex { trainerID($0.card.name)?.key == trainerID(p.item)?.key }.map { .team(sel: $0, tab: 0, card: true) } ?? .team(sel: 0, tab: 0, card: false)
             case .items: screen = .box(-1, act: nil, confirm: false)                                  // back to 포켓몬
@@ -319,10 +311,6 @@ extension Walker {
             if k == 1 { goCourse(i) } else { screen = .course((i + (k == 0 ? courses.count - 1 : 1)) % courses.count) }
         case .train(let st):                                                                      // ◀ ▶ a stat (round), ● trains it
             if k == 1 { useCap(st, back: .train(st)) } else { screen = .train((st + (k == 0 ? 5 : 1)) % 6) }
-        case .tower(let p?):                                                                      // the picker: ◀ ▶ a row (round), ● puts it in the slot
-            let all = state.towerCandidates, sel = all.firstIndex(of: p.at) ?? 0
-            if k == 1, let u = state.id(all[sel]) { act(.towerPick(slot: p.slot, uid: u), back: .tower(pick: nil), now) { _, _ in .tower(pick: nil) } }
-            else if k != 1 { screen = .tower(pick: (p.slot, all[(sel + (k == 0 ? all.count - 1 : 1)) % all.count])) }
         case .tower:
             guard k == 1 else { return }
             towerNext(now)

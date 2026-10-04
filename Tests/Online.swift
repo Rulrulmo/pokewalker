@@ -540,12 +540,12 @@ import AppKit
     let noParty: Bool = { if case .say(["대전 파티를", "먼저 정해 주세요"], .squad(let q), _) = da.screen { return q.kind == .duelParty }; return false }()
     da.screen = .menu(menuAt("대전")); let tile = da.paneContent(Date()).menu?.rows.first { $0.name == "대전" }; da.press(1); drain(da)
     let hub0 = da.paneContent(Date()).duelHub
-    da.pageTap(6330); let look0 = da.paneContent(Date()).squad?.detail; da.pageTap(8751); let looked = da.paneContent(Date()).squad
+    da.pageTap(6330); let sorts = da.paneContent(Date()).squad; da.pageTap(8701); let byLevel = da.paneContent(Date()).squad?.tab; da.pageTap(8703)   // (최근: the companion, the walker's, the box)
+    let recent = da.paneContent(Date()).squad?.cells.map(\.dex); da.pageTap(8751); let looked = da.paneContent(Date()).squad
     pickAt(da, 0); pickAt(da, 1); let two = da.paneContent(Date()).squad; pickAt(da, 2); let three = da.paneContent(Date()).squad
     da.pageTap(8790); drain(da); let setSaid = says(da); da.press(1); let hub1 = da.paneContent(Date()).duelHub
-    check(look0?.title == "뮤츠 Lv.70 → 50" && look0?.ivs.count == 6 && look0?.evs == [0, 0, 0, 0, 0, 0] && look0?.moves.isEmpty == false && look0?.item == "도구 없음" && looked?.order.allSatisfy { $0 == nil } == true
-          && looked?.detail?.dex == 149 && looked?.sel == 1,
-          "3.8.1: the picker's card — the one looked at (name, Lv → 50, nature · ability · item, IVs, EVs, moves); a first click only looks", "\(String(describing: look0)) \(String(describing: looked?.detail))")
+    check(sorts?.tabs == ["번호순", "레벨순", "V순", "최근"] && sorts?.cells.map(\.dex) == [149, 150, 248] && byLevel == 1 && recent == [150, 149, 248] && looked?.order.allSatisfy { $0 == nil } == true && looked?.sel == 1,
+          "3.8.3: the picker as the 포켓몬 menu's — its sorts (번호순 first: everyone, the companion and the walker's too); a first click only looks", "\(String(describing: sorts?.cells.map(\.dex))) \(String(describing: recent))")
     check(card?.duel == "대전 신청" && noParty && tile?.note == "대전 파티를 정해 주세요" && hub0?.go == nil && hub0?.hint == "대전 파티를 먼저 정해 주세요" && hub0?.friends.map(\.name) == [bName]
           && two?.go == nil && two?.strip.count == 6 && two?.order.prefix(3) == [1, 2, nil] && three?.go == "이 3마리로 정하기" && setSaid == ["대전 파티를", "정했다!"]
           && da.state.duelParty?.count == 3 && served(da)?.duelParty == da.state.duelParty && hub1?.party.compactMap { $0?.dex } == [150, 149, 248] && hub1?.go == "랜덤 매칭",

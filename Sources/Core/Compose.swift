@@ -402,21 +402,18 @@ extension Walker {
             return PaneContent(train: TrainModel(who: monNames[c.dex] + " Lv.\(c.level)", caps: caps, rows: (0..<6).map { .init(name: names[$0], iv: raw[$0], hyper: (c.hyper ?? []).contains($0)) },
                                                  sel: k, go: go, note: note, v: c.perfectIVs))
         case .tower(let p):
-            let party = state.party(), per = TowerModel.perPage
-            let pick = p.map { p -> TowerModel.Pick in
-                let all = state.towerCandidates, sel = all.firstIndex(of: p.at) ?? 0, first = sel / per * per
-                return .init(slot: p.slot, sel: sel, count: all.count, first: first, rows: all[first..<min(all.count, first + per)].map { r in
-                    let m = state.mon(r)!; return .init(name: monNames[m.dex], level: m.level, slot: party.firstIndex { $0.ref == r }, shiny: m.shiny == true) })
-            }
+            _ = p
+            let party = state.party()
             return PaneContent(tower: TowerModel(run: towerRun, streak: state.towerStreak ?? 0, best: state.towerBest ?? 0, bp: state.bp ?? 0, fee: Walk.towerFee,
-                                                 party: party.map { .init(dex: $0.mon.dex, name: monNames[$0.mon.dex], level: $0.mon.level, shiny: $0.mon.shiny == true) }, custom: state.towerPick != nil, pick: pick))
+                                                 party: party.map { .init(dex: $0.mon.dex, name: monNames[$0.mon.dex], level: $0.mon.level, shiny: $0.mon.shiny == true) }, custom: state.towerPick != nil))
         default: break
         }
         return statusOpen ? PaneContent(status: statusModel()) : PaneContent()
     }
-    /// A click on a walker page that isn't a grid: 5000 + k a radar bush, 5200 + p a card page, 5300 + k a move to forget (4 = don't),
-    /// 5400 / 5401 the tower's 도전 / 나가기, 5410 + i its party row i (who goes there instead), 5420 추천으로, then its picker: 5430 + k a row of the page,
-    /// 5440 / 5441 the page before / after (round); 기술 바꾸기: 5500 + k a slot, then 5530 + k a move of the page, 5540 / 5541 its pages. One click does it, as ● would.
+    /// A click on a walker page that isn't a grid: 5000 + k a radar bush, 5200 + p a card page, 5300 + k a move to forget (4 = don't; 3.8.3: the
+    /// moves' rows here and 기술 바꾸기's take two clicks — the first shows what it does, a click on the shown one does it),
+    /// 5400 / 5401 the tower's 도전 / 나가기, 5410 + i its party row (3.8.3: the party's picker, Core/SquadView.swift), 5420 추천으로;
+    /// 기술 바꾸기: 5500 + k a slot, then 5530 + k a move of the page, 5540 / 5541 its pages.
     func pageTap(_ code: Int) {
         if code == 5950 { press(1); return }                                                     // the server's lock: its button (ID 입력 / 여기서 계속), as ●
         guard !frozen, waiting == nil else { return }
@@ -438,7 +435,7 @@ extension Walker {
         case (.market, 8000...8199): marketTap(code, Date())
         case (.itemOn, 8300...8399): itemOnTap(code, Date())
         case (.duel, 6300...6351): duelTap(code, Date())
-        case (.squad, 8740...8799): squadTap(code, Date())
+        case (.squad, 8700...8799): squadTap(code, Date())
         case (.hold, 5980...5999): holdTap(code, Date())
         case (.visitPick, 8500...8599): visitPickTap(code, Date())
         case (.team(let sel, let tab, true), 6032): if let c = teamRows(tab)[safe: sel]?.card, !isMe(c), Walker.walkingNow(c) { challenge(c.name) }   // 대전 신청
@@ -451,7 +448,7 @@ extension Walker {
         case (.team(let sel, let tab, _), 6020), (.team(let sel, let tab, _), 6021):             // ◀ ▶ a page, round
             let per = TeamModel.perPage, n = teamRows(tab).count, pages = max(1, (n + per - 1) / per)
             screen = .team(sel: min(n - 1, ((sel / per + (code == 6020 ? pages - 1 : 1)) % pages) * per), tab: tab, card: false)
-        case (.learn, 5300...5304): screen = .learn(sel: code - 5300); press(1)
+        case (.learn(let sel), 5300...5304): if sel == code - 5300 { press(1) } else { screen = .learn(sel: code - 5300) }   // 3.8.3: a first click shows what it does, a click on it decides
         case (.items, 5600..<5700): screen = .items(code - 5600)
         case (.items, 5700): press(1)
         case (.items, 5711): sellAll(back: .items(0))                                                // 팔 수 있는 것 전부 팔기
@@ -465,18 +462,14 @@ extension Walker {
         case (.tower(nil), 5400): press(1)
         case (.tower(nil), 5401): press(3)
         case (.tower(nil), 5410...5412):
-            if let r = state.party()[safe: code - 5410]?.ref { screen = .tower(pick: (code - 5410, r)) }
+            towerPartyPick()                                                                         // 3.8.3: the picker as the 포켓몬 menu's (Core/SquadView.swift)
         case (.tower(nil), 5420): act(.towerReset, back: .tower(pick: nil)) { _, _ in .tower(pick: nil) }   // 추천으로
-        case (.tower(let p?), 5430..<5445):                                                     // a row of the page in view, or its ◀ ▶ (round)
-            let per = TowerModel.perPage, all = state.towerCandidates, page = (all.firstIndex(of: p.at) ?? 0) / per, pages = (all.count + per - 1) / per
-            if code >= 5440 { screen = .tower(pick: (p.slot, all[min(all.count - 1, (page + (code == 5440 ? pages - 1 : 1)) % pages * per)])) }
-            else if let r = all[safe: page * per + code - 5430] { screen = .tower(pick: (p.slot, r)); press(1) }
-        case (.relearn(let r, _, nil), 5500...5503): screen = .relearn(ref: r, slot: code - 5500, at: nil); press(1)   // a slot: what goes there
+        case (.relearn(let r, let s, nil), 5500...5503): if s == code - 5500 { press(1) } else { screen = .relearn(ref: r, slot: code - 5500, at: nil) }   // a slot: its move shown, then what goes there
         case (.relearn(let r, let s, let at?), 5530..<5545):                                    // a move of the page in view (into the slot), or its ◀ ▶ (round)
             guard let all = state.mon(r)?.relearnable else { return }
             let per = RelearnModel.perPage, page = (all.firstIndex(of: at) ?? 0) / per, pages = (all.count + per - 1) / per
             if code >= 5540 { screen = .relearn(ref: r, slot: s, at: all[min(all.count - 1, (page + (code == 5540 ? pages - 1 : 1)) % pages * per)]) }
-            else if let id = all[safe: page * per + code - 5530] { screen = .relearn(ref: r, slot: s, at: id); press(1) }
+            else if let id = all[safe: page * per + code - 5530] { if id == at { press(1) } else { screen = .relearn(ref: r, slot: s, at: id) } }   // shown, then put in
         default: return
         }
     }
