@@ -626,11 +626,10 @@ extension Page {
         }
         var yy: CGFloat = 272
         for l in m.lines { c.say(l.key, x(X0 + 2), y(yy), font(9, .medium), Ink.sub); c.say(l.value, x(X0 + 48), y(yy), font(10, .semibold), Ink.ink, maxW: x(X1 - X0 - 50)); yy += 17 }
-        guard let g = m.greet else { return }
-        var buttons: [(String, Int, Color, Color, Bool)] = [(g == "인사하기 ♥" ? "인사 ♥" : "인사했어요", 6030, g == "인사하기 ♥" ? Ink.red : Ink.tile, g == "인사하기 ♥" ? .white : Ink.sub, g == "인사하기 ♥")]
-        if let d = m.duel { let on = d == "대전 신청"; buttons.append((on ? d : "대전 (걷는 중일 때)", 6032, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 3.6: a live battle
+        var buttons: [(String, Int, Color, Color, Bool)] = []                                       // (3.8.1: no 인사)
+        if let d = m.duel { let on = d == "대전 신청"; buttons.append((on ? d : "걸을 때 대전", 6032, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 3.6: a live battle
+        if let v = m.visit { let on = v == "맡기기"; buttons.append((on ? v : v == "맡긴 포켓몬이 있어요" ? "이미 맡겼어요" : "걸을 때 맡기기", 6034, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 3.8: 맡겨 키우기
         if m.remove { buttons.append(("친구 끊기", 6031, Ink.tile, Ink.sub, true)) }
-        if let v = m.visit { let on = v == "맡기기"; buttons.insert((v, 6034, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on), at: min(2, buttons.count)) }   // 3.8: 맡겨 키우기
         if let q = m.request { let on = q == "친구 신청"; buttons = [(q, 6033, on ? Ink.red : Ink.tile, on ? .white : Ink.sub, on)] }   // the 전체 tab: someone not a friend
         let perRow = buttons.count > 3 ? 2 : buttons.count, rowsN = (buttons.count + perRow - 1) / max(1, perRow)
         let n = CGFloat(perRow), bw = (X1 - X0 - 5 * (n - 1)) / n

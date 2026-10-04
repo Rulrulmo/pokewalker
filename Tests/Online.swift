@@ -173,19 +173,18 @@ import AppKit
           "팀: the menu's tile lists everyone (walking now first); a rank tab: the top 10 and me", "\(tRows.map(\.card.name)) \(ranks.count)")
     let bi = tRows.firstIndex { $0.card.name.lowercased() == bName.lowercased() } ?? 0
     ta.screen = .team(sel: bi, tab: 0, card: false); ta.pageTap(6010 + bi % TeamModel.perPage); let cardUp: Bool = { if case .team(bi, 0, true) = ta.screen { return true }; return false }()
-    ta.pageTap(6030); drain(ta)
-    let greetSaid = says(ta) == [josa(bName, "에게", "에게"), "인사했다! ♥"], tActs0 = tsv.acts.count
-    ta.screen = .team(sel: bi, tab: 0, card: true); let after = ta.paneContent(Date()).teamCard?.greet; ta.pageTap(6030); drain(ta)
-    check(cardUp && greetSaid && after == "인사했어요 ♥" && tsv.acts.count == tActs0, "팀: a click on the pick opens its card; 인사하기 → the server's greet, once (the button says so after)", "\(cardUp) \(greetSaid) \(String(describing: after))")
-    tb.screen = .home; tb.cloud!.addSteps(1); tb.cloud!.saveNow(); drain(tb)
-    let helloSays = says(tb) == [josa(aName, "이", "가") + " 인사했다! ♥"], helloVisitor = tb.visitor.map { $0.hello && $0.dex == 25 && $0.name.lowercased() == aName.lowercased() } == true
-    ta.screen = .home; _ = ta.cloud!.act(.greet(to: bName)); drain(ta)
-    check(helloSays && helloVisitor && tsv.acts.last == .greet(to: bName), "인사: the other side's next act brings hello — its line, the sender's companion on home with ♥", "\(says(tb)) \(String(describing: tb.visitor))")
+    let tActs0 = tsv.acts.count; ta.pageTap(6030); ta.press(1); drain(ta)
+    let stays: Bool = { if case .team(bi, 0, true) = ta.screen { return true }; return false }()
+    check(cardUp && stays && tsv.acts.count == tActs0 && says(ta).isEmpty, "팀: a click on the pick opens its card; 3.8.1: no 인사 there (its old click, ●: nothing sent)", "\(cardUp) \(ta.screen)")
+    ta.screen = .home; _ = ta.cloud!.act(.greet(to: bName)); drain(ta)                               // (an older app's 인사 still goes)
+    tb.screen = .home; tb.cloud!.addSteps(1); tb.cloud!.saveNow(); drain(tb); tb.tick(Date())
+    let unshown: Bool = { if case .home = tb.screen { return true }; return false }()
+    check(unshown && tsv.acts.contains(.greet(to: bName)) && tb.news.isEmpty, "3.8.1: an older app's 인사 (hello) comes and goes unshown — no line, no sticker, no banner", "\(tb.screen)")
     tb.cloud!.addSteps(1); tb.cloud!.saveNow(); drain(tb); ta.cloud!.teamDue = true; drain(ta)       // (tb walking again)
-    ta.visitor = nil; ta.screen = .home
+    ta.screen = .home
     for k in 0..<6 { ta.state.total += 700; ta.tick(Date() + Double(k)) }
-    check(ta.visitor == nil && says(ta).isEmpty && ta.cloud!.team?.cards.contains { Walker.walkingNow($0) && !ta.isMe($0) } == true,
-          "3.8.1: no random drop-by (a friend walking now, thousands of steps on home) — 인사's visitor only", "\(String(describing: ta.visitor)) \(says(ta))")
+    check(says(ta).isEmpty && ta.cloud!.team?.cards.contains { Walker.walkingNow($0) && !ta.isMe($0) } == true,
+          "3.8.1: no random drop-by (a friend walking now, thousands of steps on home)", "\(says(ta))")
 
     // home's news: an egg found, its hatch, a new season
     let nv = online(Walk())
@@ -402,8 +401,6 @@ import AppKit
     act(fa); let added = says(fa) == [josa(bName, "과", "와") + " 친구가 되었다!"]; list(fa); list(fb)
     check(added && fa.teamRows(0).count == 2 && fb.teamRows(0).count == 2 && fa.paneContent(Date()).menu == nil,
           "friendAdded on the asker's next act; each now lists the other", "\(says(fa)) \(fa.teamRows(0).count)")
-    fa.screen = .home; fa.act(.greet(to: cName), back: .home); drain(fa)
-    check(says(fa) == ["친구에게만", "인사할 수 있어요"], "인사 goes to friends only (the server's)", "\(says(fa))")
     ha.texts = [cName]; fa.screen = .team(sel: 0, tab: 4, card: false); fa.askFriend(); drain(fa); list(fa)
     let mine = fa.friendReqRows.first { $0.mine }; fa.screen = .team(sel: 0, tab: 4, card: false); fa.pageTap(6200); drain(fa); list(fa)
     check(mine?.name == cName && says(fa) == [cName + "에게 보낸", "신청을 거뒀다"] && fa.friendReqRows.isEmpty, "a request of mine taken back (거두기)", "\(says(fa)) \(fa.friendReqRows)")

@@ -451,7 +451,6 @@ extension Walker {
         case (.team(let sel, let tab, _), 6020), (.team(let sel, let tab, _), 6021):             // ◀ ▶ a page, round
             let per = TeamModel.perPage, n = teamRows(tab).count, pages = max(1, (n + per - 1) / per)
             screen = .team(sel: min(n - 1, ((sel / per + (code == 6020 ? pages - 1 : 1)) % pages) * per), tab: tab, card: false)
-        case (.team(let sel, let tab, true), 6030): if let c = teamRows(tab)[safe: sel]?.card { greet(c.name, back: .team(sel: sel, tab: tab, card: true)) }
         case (.learn, 5300...5304): screen = .learn(sel: code - 5300); press(1)
         case (.items, 5600..<5700): screen = .items(code - 5600)
         case (.items, 5700): press(1)

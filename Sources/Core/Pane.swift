@@ -110,12 +110,12 @@ struct TeamModel: Equatable {
     var tabs: [String]; var tab: Int; var rows: [Row]; var sel, first, count: Int; var note: String; var week: String
     var hint: String? = nil                                            // under the rows (no friends yet: how to add one)
 }
-/// A teammate's card: the walker's three, a few lines, and 인사하기 (nil: it's us).
+/// A friend's card: the walker's three, a few lines, its buttons (대전 · 맡기기 · 친구 끊기; 친구 신청 on someone else's; none on mine).
 struct TeamCardModel: Equatable {
     struct Mini: Equatable { var dex, level: Int; var shiny: Bool }
     struct Line: Equatable { var key, value: String }
-    var name: String; var me, walking: Bool; var when: String; var walker: [Mini]; var lines: [Line]; var greet: String?
-    var remove = false                                                 // 친구 끊기 beside 인사하기 (a friend's card)
+    var name: String; var me, walking: Bool; var when: String; var walker: [Mini]; var lines: [Line]
+    var remove = false                                                 // 친구 끊기 (a friend's card)
     var duel: String? = nil                                            // 3.6: 대전 신청 (a friend walking now), or why not; nil: none (my own card)
     var visit: String? = nil                                           // 3.8: 맡기기 (a friend walking now, none of mine away), or why not
     var request: String? = nil                                         // 3.8's 전체 tab: 친구 신청 on someone not a friend (or that it's been sent)
@@ -216,7 +216,7 @@ extension PaneContent {
     static let home: CGFloat = 406                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size)
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
-            : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? (teamCard!.visit != nil || teamCard!.request != nil ? 454 : 420) : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 446 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446
+            : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 446 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446
             : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 353 : status != nil ? PaneContent.home : Layout.idle
     }
 }

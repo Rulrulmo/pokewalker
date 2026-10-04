@@ -104,23 +104,29 @@ extension Walker {
     }
 
     // MARK: home: the guests walk along; the news
-    /// Where the guests' stickers sit (half-dots): the drop-by's corner first, then along the bottom between the walker's and the companion.
-    static let guestAt = [(x: 150, y: 2), (x: 44, y: 86), (x: 84, y: 87)]
-    /// The spots the guests take now: the corner is a 인사 visitor's while one is up.
-    var guestSpots: [(x: Int, y: Int)] { visitor.map { $0.until > Date() } == true ? Array(Walker.guestAt.dropFirst()) : Walker.guestAt }
+    /// Where the guests' stickers sit (half-dots): the top-right corner first, then along the bottom between the walker's and the companion.
+    /// 3.8.1 (the user): above the companion — a row along the top right (beside the calendar), a second over its head when it's short enough;
+    /// then the bottom row's free places after the walker's catches and the egg. More than there's room for: the last place takes turns.
+    func guestPlaces(_ now: Date) -> [(Visit, x: Int, y: Int)] {
+        let g = Array(guests.prefix(3)), n = min(3, state.caught.count) + (state.egg == nil ? 0 : 1)
+        var spots = [(x: 158, y: 1), (x: 126, y: 5)]
+        if 33 + spriteTop(state.companion.dex) >= 58 { spots.append((x: 142, y: 33)) }               // (its head below the first row: a little over the ears is fine)
+        spots += (min(4, n)..<4).map { j in (x: 4 + 30 * j, y: 90 - 3 * (j % 2)) }
+        guard g.count > spots.count else { return zip(g, spots).map { ($0, $1.x, $1.y) } }
+        let last = spots.count - 1, rest = Array(g[last...]), turn = rest[Int(now.timeIntervalSinceReferenceDate / 6) % rest.count]
+        return zip(g.prefix(last), spots).map { ($0, $1.x, $1.y) } + [(turn, spots[last].x, spots[last].y)]
+    }
     func drawGuests(_ fb: inout FB, _ now: Date, night: Bool, tone: String) {
-        let t = now.timeIntervalSinceReferenceDate, spots = guestSpots
-        for (k, g) in guests.prefix(spots.count).enumerated() {
-            let at = spots[k], hop = Int(t * 2 + Double(k)) % 4 == 0 ? 2 : 0
-            fb.stuck("nb|visit|\(g.mon.dex)|" + tone, at.x, at.y - hop) { lcdReady(sticker(iconPic(g.mon.dex), night: night)) }
+        let t = now.timeIntervalSinceReferenceDate
+        for (k, p) in guestPlaces(now).enumerated() {
+            let hop = Int(t * 2 + Double(k)) % 4 == 0 ? 2 : 0
+            fb.stuck("nb|visit|\(p.0.mon.dex)|" + tone, p.x, p.y - hop) { lcdReady(sticker(iconPic(p.0.mon.dex), night: night)) }
         }
     }
-    /// A tap on a guest: 인사 to its owner.
+    /// A tap on a guest: the 맡기기 tab (3.8.1: no 인사).
     func guestTouched(_ x: Int, _ y: Int) -> Bool {
-        let spots = guestSpots
-        for (k, g) in guests.prefix(spots.count).enumerated() {
-            let at = spots[k]
-            if (at.x / 2..<at.x / 2 + 20).contains(x), (at.y / 2..<at.y / 2 + 20).contains(y) { if !visitorGreeted(g.owner) { greet(g.owner, back: screen) }; return true }
+        for p in guestPlaces(Date()) where (p.x / 2..<p.x / 2 + 17).contains(x) && (p.y / 2..<p.y / 2 + 17).contains(y) {
+            cloud?.teamDue = true; screen = .team(sel: 0, tab: 5, card: false); return true
         }
         return false
     }

@@ -117,7 +117,7 @@ import Foundation
 }
 
 /// `PokeWalker --live-team <idA> <idB> <pin>` (a dev build only): docs/plans/12's M1 against the real server with two new zz test IDs — each
-/// sees the other on the team (test IDs see test IDs), A's 인사 reaches B as hello on B's next act, a second one within the hour is refused.
+/// sees the other on the team (test IDs see test IDs). (3.8.1: no 인사.)
 @MainActor func liveTeamTest(_ a: String, _ b: String, _ pin: String) -> Bool {
     var failed = 0
     func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
@@ -144,14 +144,6 @@ import Foundation
     check(seesB && seesA && ca.team?.week.isEmpty == false, "live team: each sees the other (\(ca.team?.cards.count ?? 0) on A's list, week \(ca.team?.week ?? "-"))")
     let bCard = ca.team?.cards.first { $0.name.lowercased() == b.lowercased() }
     check(bCard.map { Walker.walkingNow($0) && $0.companion.uid == 1_000_000 } == true, "live team: B walking now (idle \(bCard?.idle ?? -1) s), its starter as its companion")
-    wa.screen = .home; wa.greet(b, back: .home); run(15) { wa.waiting == nil && idle(ca) }
-    let said = { if case .say(let l, _, _) = wa.screen { return l.last == "인사했다! ♥" }; return false }()
-    check(said, "live 인사: A → B, the server took it")
-    wa.greeted = [:]; wa.greet(b, back: .home); run(15) { wa.waiting == nil && idle(ca) }
-    let refused = { if case .say(let l, _, _) = wa.screen { return l.joined().contains("조금 뒤에") }; return false }()
-    check(refused, "live 인사: again within the hour → 조금 뒤에 다시 인사할 수 있어요 (the server's limit)")
-    wb.screen = .home; cb.addSteps(2); cb.saveNow(); run(20) { wb.visitor != nil }
-    check(wb.visitor.map { $0.hello && $0.name.lowercased() == a.lowercased() && $0.dex == 25 } == true, "live hello: B's next act brings A's 인사 — A's 피카츄 on B's home with ♥")
     print(failed == 0 ? "PASS live team" : "FAIL \(failed)")
     return failed == 0
 }
@@ -329,7 +321,7 @@ import Foundation
 
 /// `PokeWalker --live-social <idA> <idB> <pin>` (a dev build only): docs/plans/12 §2.4 and §3.3 against the real server, through the walker's own
 /// pages. Two zz IDs the admin seeded (A's box: 고우스트 and 꼬렛, 윤겔라 seen; B's: 윤겔라 and 잉어킹). A asks B by ID, B accepts on its 신청 tab,
-/// each lists the other, A greets B; A puts 고우스트 up wishing for 윤겔라, B offers 윤겔라 from the post's page, A picks it (both evolve by trade
+/// each lists the other; A puts 고우스트 up wishing for 윤겔라, B offers 윤겔라 from the post's page, A picks it (both evolve by trade
 /// at their new trainers); B puts 잉어킹 up, A offers 꼬렛 and takes it back, B hears it and takes its post down; A unfriends B.
 @MainActor func liveSocialTest(_ a: String, _ b: String, _ pin: String) -> Bool {
     var failed = 0
@@ -371,8 +363,6 @@ import Foundation
     let added = next(wa, ca) { says(wa).first == josa(b, "과", "와") + " 친구가 되었다!" }
     lists(wa, ca); lists(wb, cb)
     check(added && wa.teamRows(0).count == 2 && wb.teamRows(0).count == 2, "live friendAdded: A hears it; each lists the other (\(wa.teamRows(0).count), \(wb.teamRows(0).count))")
-    wa.screen = .home; wa.greet(b, back: .home); settle(wa, ca)
-    check(says(wa).last == "인사했다! ♥", "live 인사 to a friend — \(says(wa))")
 
     // the 게시판: A puts 고우스트 up wishing for 윤겔라; B offers 윤겔라; A picks it
     wa.screen = .menu(menuAt("교환")); wa.press(1); settle(wa, ca); lists(wa, ca); wa.pageTap(8030)

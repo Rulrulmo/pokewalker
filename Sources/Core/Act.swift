@@ -108,10 +108,7 @@ extension Walker {
             rewarded = count
             if let g = got.first { screen = .say(["도감 \(count)종 달성!", g + " 해금"] + got.dropFirst().prefix(1), next: .home, since: now); notify("unlock", "도감 \(count)종 달성!", got.joined(separator: " · ") + " 해금") }
         case .chain(_, let bonus, let reward): chainNote = "+\(bonus)W" + (reward.map { " · " + $0 } ?? "")   // under "연쇄 n!" on the next bush
-        case .hello(let from, let dex, let shiny):                                               // a teammate's 인사 (12 §2.3): its companion drops by, ♥
-            visitor = Visitor(name: from, dex: dex, shiny: shiny, until: now.addingTimeInterval(90), hello: true)
-            screen = .say([josa(from, "이", "가") + " 인사했다! ♥"], next: .home, since: now)
-            notify("pet", josa(from, "이", "가") + " 인사했어요 ♥", josa(monNames[dex], "과", "와") + " 함께 · 눌러서 답인사")
+        case .hello: break                                                                          // 3.8.1 (14 §9): 인사 is gone — an older app's still comes, unshown
         case .tradeOffer: tradeNews(n, now)                                                         // a 1:1 offer (from a 3.3–3.4 app: Core/TradeView.swift)
         case .traded(let id, _, _, _), .tradeClosed(let id, _, _): cloud?.forgetOffer(id); cloud?.tradesDue = true; cloud?.marketDue = true   // 3.8 (14 ①): quiet — the 교환 tile's red dot
         case .raidCleared(let dex): raidNews(dex, now)                                            // the co-op raid (12 §4.3): the team beat the boss (Core/RaidView.swift)

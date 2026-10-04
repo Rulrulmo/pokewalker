@@ -41,7 +41,6 @@ extension Walker {
         } else { fb.stuck("nb|me|\(me.dex)|s|\(night)", fx - 42, fy - 82 - bob) { sticker(spritePic(me.dex), night: night, rimOnly: true) } }
         fb.sprite(me, fx / 2 - 16, fy / 2 - 32, bob: bob, anim: a)
         if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { fb.pic("nb|bubble|\(e.kind)", fx - 18, max(10, fy - 84 + spriteTop(me.dex))) { bubblePic(e.kind) } }   // by its head
-        drawVisitor(&fb, now, night: night, tone: tone)                                          // a teammate's companion dropped by (Core/Team.swift)
         drawGuests(&fb, now, night: night, tone: tone)                                           // 3.8: the ones I'm raising walk along (Core/VisitView.swift)
     }
 }

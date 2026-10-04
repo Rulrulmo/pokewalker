@@ -332,7 +332,7 @@ extension Walker {
             if t == 4, !card { if let r = friendReqRows[safe: s], !r.mine { friendReq(r, accept: true, now) } else if friendReqRows.isEmpty { askFriend(now) }; return }   // 신청: ● accepts (none: ID로 신청)
             if t == 5, !card { visitEnd(s, now); return }                                            // 맡기기: ● ends the pick's (데려오기 / 돌려보내기)
             guard let c = teamRows(t)[safe: s]?.card else { return }
-            if !card { screen = .team(sel: s, tab: t, card: true) } else if !isMe(c), !visitorGreeted(c.name) { greet(c.name, back: screen) }
+            if !card { screen = .team(sel: s, tab: t, card: true) }                                 // (3.8.1: no 인사 — the card's buttons are clicks)
         case .trade(let s): tradePress(k, s, now)
         case .raid(let t): raidPress(k, t, now)
         case .market(let s): marketPress(k, s, now)
@@ -429,7 +429,7 @@ extension Walker {
     func touch(_ x: Int, _ y: Int) -> Bool {
         if frozen || waiting != nil { return true }
         if case .say = screen { press(1); return true }
-        if case .home = screen, visitorTouched(x, y) || guestTouched(x, y) { return true }       // a friend's companion dropped by, or one I'm raising: 인사
+        if case .home = screen, guestTouched(x, y) { return true }                               // one I'm raising: the 맡기기 tab
         guard let k = stickerAt(x, y) else { return false }                                        // the LCD is to look at, but for the walker's stickers on home:
         lastInput = Date()
         if let u = state.id(-2 - k) { pairWith(u, back: screen, Date(), quietly: true) }          // a tap = walk with that one

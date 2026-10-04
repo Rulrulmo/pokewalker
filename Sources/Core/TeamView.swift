@@ -55,7 +55,7 @@ extension Walker {
             ]
             let friend = isFriend(c.name) && !isMe(c), asked = (cloud?.team?.sent ?? []).contains { trainerID($0)?.key == trainerID(c.name)?.key }
             return PaneContent(teamCard: TeamCardModel(name: c.name, me: isMe(c), walking: Walker.walkingNow(c) && !isMe(c), when: isMe(c) ? "" : ago(c.idle), walker: c.walker.prefix(3).map(mini), lines: lines,
-                                                       greet: friend ? (visitorGreeted(c.name) ? "인사했어요 ♥" : "인사하기 ♥") : nil, remove: friend,
+                                                       remove: friend,
                                                        duel: friend ? (Walker.walkingNow(c) ? "대전 신청" : "걷는 중일 때 대전") : nil,
                                                        visit: friend ? (visits?.away != nil ? "맡긴 포켓몬이 있어요" : Walker.walkingNow(c) ? "맡기기" : "걷는 중일 때 맡기기") : nil,
                                                        request: !friend && !isMe(c) ? (asked ? "신청했어요" : "친구 신청") : nil))
@@ -153,38 +153,4 @@ extension Walker {
         default: break
         }
     }
-    /// 인사 to a teammate (12 §2.3): the server delivers it; once an hour each.
-    func greet(_ name: String, back: Screen, _ now: Date = Date()) {
-        guard trainerID(name)?.key != trainerID(myName)?.key, !visitorGreeted(name) else { return }   // not ourselves; once an hour each (the server's rule too)
-        act(.greet(to: name), back: back, now) { [weak self] _, now in
-            self?.greeted[trainerID(name)?.key ?? name] = now
-            return .say([josa(name, "에게", "에게"), "인사했다! ♥"], next: back, since: now)
-        }
-    }
-    func visitorGreeted(_ name: String) -> Bool { greeted[trainerID(name)?.key ?? name].map { Date().timeIntervalSince($0) < 3600 } ?? false }
-
-    // MARK: home: a teammate's companion drops by
-    /// Home, now and then (every 300–600 steps): one of those walking now drops by as a sticker for a while; a tap on it = 인사.
-    /// A 인사's visitor goes after its time. (3.8.1: no random drop-bys — 맡겨 키우기's guests walk along instead, 14 §3, §9.)
-    func visitTick(_ now: Date) {
-        if let v = visitor, now >= v.until { visitor = nil; host?.redraw(.lcd) }
-    }
-    /// Where the visitor's sticker sits (half-dots, top-left), over the page's top-right corner.
-    static let visitorAt = (x: 150, y: 2)
-    /// The visitor's sticker on home (and its ♥ once greeted or come with a 인사).
-    func drawVisitor(_ fb: inout FB, _ now: Date, night: Bool, tone: String) {
-        guard let v = visitor, now < v.until else { return }
-        let t = now.timeIntervalSinceReferenceDate, hop = Int(t * 2) % 4 == 0 ? 2 : 0
-        fb.stuck("nb|visit|\(v.dex)|" + tone, Walker.visitorAt.x, Walker.visitorAt.y - hop) { lcdReady(sticker(iconPic(v.dex), night: night)) }
-        if v.hello || visitorGreeted(v.name), Int(t * 3) % 3 != 0 { fb.pic("nb|bubble|1", Walker.visitorAt.x + 30, Walker.visitorAt.y + 6) { bubblePic(1) } }   // ♥
-    }
-    /// A tap on the visitor (LCD dots): 인사 to its trainer.
-    func visitorTouched(_ x: Int, _ y: Int) -> Bool {
-        guard let v = visitor, Date() < v.until else { return false }
-        guard (Walker.visitorAt.x / 2..<Walker.visitorAt.x / 2 + 20).contains(x), (Walker.visitorAt.y / 2..<Walker.visitorAt.y / 2 + 20).contains(y) else { return false }
-        if !visitorGreeted(v.name) { greet(v.name, back: screen) }
-        return true
-    }
 }
-/// A teammate's companion on home for a while: dropped by (hello false) or with a 인사 (true).
-struct Visitor: Equatable { var name: String; var dex: Int; var shiny: Bool; var until: Date; var hello: Bool }

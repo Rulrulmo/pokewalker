@@ -61,7 +61,6 @@ import Foundation
     take("team_list", on: tme) { v in v.screen = .team(sel: 0, tab: 0, card: false) }
     take("team_ranks", on: tme) { v in v.screen = .team(sel: 0, tab: 1, card: false) }
     take("team_card", on: tme) { v in v.screen = .team(sel: 1, tab: 0, card: true) }
-    take("home_visitor") { v in v.visitor = Visitor(name: "민수", dex: 6, shiny: false, until: T.addingTimeInterval(60), hello: true) }
     serve(tme) { w in var tr = Seeded(s: 21); w.box = (0..<30).map { k in Mon.wild([19, 41, 133, 147, 4, 1, 95, 129, 16, 25][k % 10], level: 5 + k, &tr) } }   // 3.3: 교환
     if var m = tsrv.walk("민수") { var tr = Seeded(s: 22); m.box = (0..<12).map { k in var x = Mon.wild([94, 6, 149, 130, 65, 68][k % 6], level: 20 + k, &tr); x.uid = 500 + k; return x }; tsrv.set("민수", m) }
     let me = tme.myName.lowercased(), now = Int(T.timeIntervalSince1970)
