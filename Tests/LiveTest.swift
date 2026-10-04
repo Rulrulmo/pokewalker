@@ -115,3 +115,42 @@ import Foundation
     print(failed == 0 ? "PASS live" : "FAIL \(failed)")
     return failed == 0
 }
+
+/// `PokeWalker --live-team <idA> <idB> <pin>` (a dev build only): docs/plans/12's M1 against the real server with two new zz test IDs — each
+/// sees the other on the team (test IDs see test IDs), A's 인사 reaches B as hello on B's next act, a second one within the hour is refused.
+@MainActor func liveTeamTest(_ a: String, _ b: String, _ pin: String) -> Bool {
+    var failed = 0
+    func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-liveteam-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    func walker(_ id: String) -> (Walker, Cloud, TestHost) {
+        let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
+        let c = Cloud(link: HTTPLink(), dir: tmp.appendingPathComponent(id, isDirectory: true))
+        w.startCloud(c, file: tmp.appendingPathComponent(id + ".json"), bak: tmp.appendingPathComponent(id + ".bak")); h.texts = [id]; h.pins = [pin, pin, pin]
+        return (w, c, h)
+    }
+    let (wa, ca, ha) = walker(a), (wb, cb, hb) = walker(b)
+    @discardableResult func run(_ secs: Double, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end { wa.tick(Date()); wb.tick(Date()); if done() { return true }; Thread.sleep(forTimeInterval: 0.1) }
+        return done()
+    }
+    func idle(_ c: Cloud) -> Bool { c.inFlight == nil && c.queued == nil && c.out == nil }
+    check(run(40) { ca.phase == .on && cb.phase == .on && ca.base != nil && cb.base != nil }, "live team: \(a) and \(b) made, each with the server's save (\(ca.phase), \(cb.phase); asked \(ha.asked.suffix(2)), \(hb.asked.suffix(2)))")
+    run(11) { false }                                                                            // the server reuses a team list for 10 s
+    ca.teamDue = true; cb.teamDue = true; run(20) { idle(ca) && idle(cb) && ca.team != nil && cb.team != nil && !ca.teamDue && !cb.teamDue }
+    let seesB = ca.team?.cards.contains { $0.name.lowercased() == b.lowercased() } == true, seesA = cb.team?.cards.contains { $0.name.lowercased() == a.lowercased() } == true
+    check(seesB && seesA && ca.team?.week.isEmpty == false, "live team: each sees the other (\(ca.team?.cards.count ?? 0) on A's list, week \(ca.team?.week ?? "-"))")
+    let bCard = ca.team?.cards.first { $0.name.lowercased() == b.lowercased() }
+    check(bCard.map { Walker.walkingNow($0) && $0.companion.uid == 1_000_000 } == true, "live team: B walking now (idle \(bCard?.idle ?? -1) s), its starter as its companion")
+    wa.screen = .home; wa.greet(b, back: .home); run(15) { wa.waiting == nil && idle(ca) }
+    let said = { if case .say(let l, _, _) = wa.screen { return l.last == "인사했다! ♥" }; return false }()
+    check(said, "live 인사: A → B, the server took it")
+    wa.greeted = [:]; wa.greet(b, back: .home); run(15) { wa.waiting == nil && idle(ca) }
+    let refused = { if case .say(let l, _, _) = wa.screen { return l.joined().contains("조금 뒤에") }; return false }()
+    check(refused, "live 인사: again within the hour → 조금 뒤에 다시 인사할 수 있어요 (the server's limit)")
+    wb.screen = .home; cb.addSteps(2); cb.saveNow(); run(20) { wb.visitor != nil }
+    check(wb.visitor.map { $0.hello && $0.name.lowercased() == a.lowercased() && $0.dex == 25 } == true, "live hello: B's next act brings A's 인사 — A's 피카츄 on B's home with ♥")
+    print(failed == 0 ? "PASS live team" : "FAIL \(failed)")
+    return failed == 0
+}
