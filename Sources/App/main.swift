@@ -19,12 +19,19 @@ if let i = CommandLine.arguments.firstIndex(of: "--live-trade"), i + 3 < Command
     guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-trade: a build run from the repository only"); exit(2) }
     exit(liveTradeTest(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2], CommandLine.arguments[i + 3]) ? 0 : 1)
 }
+if let i = CommandLine.arguments.firstIndex(of: "--live-raid"), i + 3 < CommandLine.arguments.count {     // a dev build: M3 (레이드) with two seeded test IDs (Tests/LiveTest.swift)
+    guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-raid: a build run from the repository only"); exit(2) }
+    exit(liveRaidTest(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2], CommandLine.arguments[i + 3]) ? 0 : 1)
+}
 if let i = CommandLine.arguments.firstIndex(of: "--shots"), i + 1 < CommandLine.arguments.count {          // a dev build: screens to look at, as PNGs (Tests/Shots.swift)
     guard Store.devBuild(Bundle.main.bundleURL) else { print("--shots: a build run from the repository only"); exit(2) }
     print("\(shots(CommandLine.arguments[i + 1])) shots"); exit(0)
 }
 if let i = CommandLine.arguments.firstIndex(of: "--stage-update"), i + 1 < CommandLine.arguments.count {   // a local build's zip, to try the install (Core/Update.swift)
     exit(Update.stageLocal(URL(fileURLWithPath: CommandLine.arguments[i + 1])) ? 0 : 1)
+}
+if let bad = CommandLine.arguments.dropFirst().first(where: { $0.hasPrefix("--") }) {          // an option this build doesn't know (a test's, run on an older build): never the app instead
+    print("PokeWalker: unknown option \(bad)"); exit(2)
 }
 let launch = Update.atLaunch()                                                                 // a downloaded update goes in first: the helper starts it once this exits
 if launch == .installing { exit(0) }

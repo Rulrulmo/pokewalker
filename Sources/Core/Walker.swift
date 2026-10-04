@@ -46,6 +46,7 @@ import Foundation
     var visitor: Visitor? = nil, nextVisit = 0, greeted: [String: Date] = [:]   // 12 (M1): a teammate's companion on home; the steps it next comes at; 인사 sent (by key)
     var drag: (from: Int, at: CGPoint)? = nil                              // 포켓몬's grid: a Pokémon dragged (the page's code it began on, the pointer in page points)
     var chainNext: Int? = nil                                              // a chain holds (its length): its next bush is asked for once home's news are shown
+    var raidOn = false, raidThen: Screen? = nil                            // 12 (M3): a raid fight is on (its menu, lines, HUD); where a raid ball's show goes after
 
     init(state: Walk) { self.state = state }
 
@@ -88,7 +89,7 @@ import Foundation
         case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
         case .traded(_, _, _, let since) where now.timeIntervalSince(since) > 6: screen = .home
-        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
+        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
         case .trade: if now.timeIntervalSince(lastInput) > 60 { screen = .home }                // (a trade is weighed up: longer)
         default: break
         }
@@ -115,7 +116,8 @@ import Foundation
             if let d = [Key.up: -1, .down: 1, .pageUp: -TeamModel.perPage, .pageDown: TeamModel.perPage][k] { teamStep(d, wrap: false); return true }
             if k == .tab { let n = (t + (shift ? 4 : 1)) % 5; screen = n == 4 ? .trade(.list(0)) : .team(sel: 0, tab: n, card: false); _ = s; host?.redraw(.all); return true }
         }
-        if case .trade = screen, tradeKey(k, shift: shift) { return true }                       // 교환: its lists' rows and pages, tab (the other box; 팀's tabs)
+        if case .trade = screen, tradeKey(k, shift: shift) { return true }
+        if case .raid(let t) = screen, k == .tab { screen = .raid(tab: 1 - t); host?.redraw(.all); return true }   // 레이드: its two tabs                       // 교환: its lists' rows and pages, tab (the other box; 팀's tabs)
         switch screen { case .dex(_, _, false), .box(_, .none, _, false): if let d = [Key.up: -6, .down: 6, .pageUp: -30, .pageDown: 30][k] { gridStep(d, ends: abs(d) == 30); return true }; default: break }   // the grids: ↑ ↓ a row, page up / down a page
         if k == .tab {
             switch screen {
@@ -125,7 +127,7 @@ import Foundation
             }
             return true
         }
-        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn, .learn, .menu, .box, .trade, .team: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, pick a bush too early, go on from 포켓몬 to a page and its 진화 / 함께, or pick and send a trade
+        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn, .learn, .menu, .box, .trade, .team, .raid: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, pick a bush too early, go on from 포켓몬 to a page and its 진화 / 함께, or pick and send a trade
         guard let i = [Key.left: 0, .enter: 1, .right: 2, .back: 3, .menu: 4][k] else { return false }
         press(i); return true
     }
@@ -140,6 +142,8 @@ import Foundation
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }
         let fight: Battle? = switch sc { case .battle(let b, _), .moves(let b, _), .party(let b, _), .bagBattle(let b, _), .forfeit(let b, _), .beats(let b, _, _, _): b; default: nil }
         if let b = fight {
+            if raidThen != nil { return ("레이드", "볼 던지기") }                                       // a raid ball's throw on the battle stage
+            if raidOn { return ("레이드 배틀", "남은 줄 \(b.theirs.filter(\.alive).count) / \(b.theirs.count) · \(min(b.turnNo + 1, Engine.raidTurns))/\(Engine.raidTurns)턴") }
             guard let tr = b.trainer else { return ("야생 배틀", state.here.name) }
             let left = { (fs: [Fighter]) in fs.filter(\.alive).count }
             return (tr, "배틀 타워 · 남은 \(left(b.theirs)) : \(left(b.mine))")
@@ -162,6 +166,7 @@ import Foundation
         case .course: return ("코스", "\(courses.indices.filter(state.unlocked).count) / \(courses.count) 열림")
         case .train: return ("대단한 특훈", "은색병뚜껑 ×\(state.count("은색병뚜껑"))")
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
+        case .raid: return ("레이드", cloud?.raid.map { "다음 주 " + monNames[$0.next] } ?? "")
         default: return (state.here.name, cloudNote ?? (gate.held ? "자동 입력 감지 · 걸음 멈춤" : when))                                                 // screens without a page of their own: the status sheet
         }
     }

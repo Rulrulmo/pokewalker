@@ -231,3 +231,81 @@ import Foundation
     print(failed == 0 ? "PASS live trade" : "FAIL \(failed)")
     return failed == 0
 }
+
+/// `PokeWalker --live-raid <idA> <idB> <pin>` (a dev build only): docs/plans/12's M3 against the real server (test IDs: the test raid). Two zz
+/// IDs the server's admin seeded with power (3칸) and a strong party, the test raid's HP set low: B goes in and 후퇴s at once (it fought); A's
+/// fight clears it (said at its end); B's next act brings raidCleared; A throws until it's caught or out of balls (the first with the reward).
+@MainActor func liveRaidTest(_ a: String, _ b: String, _ pin: String) -> Bool {
+    var failed = 0
+    func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-liveraid-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    func walker(_ id: String) -> (Walker, Cloud, TestHost) {                                        // (the host comes back: the walker holds it weakly)
+        let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
+        let c = Cloud(link: HTTPLink(), dir: tmp.appendingPathComponent(id, isDirectory: true))
+        h.texts = [id]; h.pins = [pin, pin, pin]
+        w.startCloud(c, file: tmp.appendingPathComponent(id + ".json"), bak: tmp.appendingPathComponent(id + ".bak"))
+        return (w, c, h)
+    }
+    let (wa, ca, ha) = walker(a), (wb, cb, hb) = walker(b)
+    @discardableResult func run(_ secs: Double, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end { wa.tick(Date()); wb.tick(Date()); if done() { return true }; Thread.sleep(forTimeInterval: 0.1) }
+        return done()
+    }
+    func idle(_ c: Cloud) -> Bool { c.inFlight == nil && c.queued == nil && c.out == nil }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    /// A fight (or a throw) played out in real time: beats wait out their length; 공격 with a move that has PP (or 후퇴); a message goes on.
+    func play(_ w: Walker, _ c: Cloud, retreat: Bool = false, secs: Double = 120) {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end {
+            run(0.3) { false }
+            guard w.waiting == nil, idle(c) else { continue }
+            switch w.screen {
+            case .beats: continue
+            case .battle(let bt, _): w.screen = .battle(bt, sel: retreat ? w.battleMenu(bt).count - 1 : 0); w.press(1)
+            case .moves(let bt, _): w.screen = .moves(bt, sel: bt.mine[bt.me].pp.firstIndex { $0 > 0 } ?? 0); w.press(1)
+            case .party(let bt, _): w.screen = .party(bt, sel: bt.mine.indices.first { bt.mine[$0].alive } ?? 0); w.press(1)
+            case .learn: w.screen = .learn(sel: 4); w.press(1)
+            default: return
+            }
+        }
+    }
+    check(run(40) { ca.phase == .on && cb.phase == .on && ca.base != nil && cb.base != nil }, "live raid: \(a) and \(b) logged in (\(ca.phase), \(cb.phase); asked \(ha.asked), \(hb.asked))")
+    for (w, c) in [(wa, ca), (wb, cb)] { w.screen = .menu(menuAt("레이드")); w.press(1); run(15) { c.raid != nil && idle(c) } }
+    let seeded = wa.raidCells >= 1 && wb.raidCells >= 1 && (ca.raid?.hpLeft ?? 0) > 0
+    check(seeded, "live /v2/raid: the test raid (\(ca.raid?.week ?? "-"), \(ca.raid.map { monNames[$0.boss.dex] } ?? "-") \(ca.raid?.hpLeft ?? -1)/\(ca.raid?.hpTotal ?? -1)); power A \(wa.raidPower), B \(wb.raidPower)")
+    guard seeded else { print("FAIL \(failed)"); return false }
+
+    let bPower = wb.raidPower
+    wb.pageTap(7010); run(15) { wb.waiting == nil && idle(cb) }
+    let menu: [String] = { if case .battle(let bt, _) = wb.screen { return wb.battleMenu(bt) }; if case .beats(let bt, _, _, _) = wb.screen { return wb.battleMenu(bt) }; return [] }()
+    play(wb, cb, retreat: true)
+    check(menu == ["공격", "도구", "교체", "후퇴"] && says(wb).first == "0 데미지!" && wb.raidPower == bPower - 1000, "live raid fight: in for 1칸 (\(bPower) → \(wb.raidPower)), 후퇴 at once — \(menu) \(says(wb))")
+    run(15) { cb.raid?.mine.fights == 1 }
+    check(cb.raid?.mine.fights == 1, "live: B's lobby counts the fight (\(cb.raid?.mine.fights ?? -1))")
+
+    wa.screen = .raid(tab: 0); wa.pageTap(7010); run(15) { wa.waiting == nil && idle(ca) }; play(wa, ca)
+    let cleared = says(wa).contains("보스를 쓰러뜨렸다!")
+    check(cleared, "live: A's fight clears it — \(says(wa))")
+    wb.screen = .home; cb.addSteps(2); cb.saveNow(); run(25) { says(wb).first?.hasPrefix("팀이") == true }
+    check(says(wb).first?.hasPrefix("팀이") == true, "live raidCleared: B's next act brings it — \(says(wb))")
+
+    wa.screen = .raid(tab: 0); ca.raidDue = true; run(15) { ca.raid?.hpLeft == 0 && idle(ca) }
+    let bp0 = wa.state.bp ?? 0
+    var tossed = 0, caught = false, rewarded = false
+    while tossed < 6, !caught {
+        guard let r = ca.raid, r.mine.canCatch, (r.mine.balls ?? 1) > 0 else { break }
+        wa.screen = .raid(tab: 0); wa.pageTap(7010); run(15) { wa.waiting == nil && idle(ca) }
+        guard case .beats = wa.screen else { break }
+        tossed += 1; run(8) { if case .beats = wa.screen { return false }; return true }
+        caught = says(wa).first?.hasSuffix("잡았다!") == true
+        if tossed == 1 { wa.press(1); rewarded = says(wa).first == "클리어 보상!" }
+        ca.raidDue = true; run(15) { idle(ca) && ca.raidDue == false }
+    }
+    check(tossed > 0 && rewarded && (wa.state.bp ?? 0) >= bp0 + 25, "live raidBall: \(tossed) throw(s), the first with the reward (BP \(bp0) → \(wa.state.bp ?? 0)); \(caught ? "caught (\(wa.state.box.last.map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "-"))" : "not caught")")
+    let lobby = wa.paneContent(Date()).raid
+    check(lobby?.go == nil && (lobby?.hint == josa(monNames[ca.raid?.boss.dex ?? 0], "을", "를") + " 잡았어요!" || lobby?.hint == "볼을 모두 던졌어요"), "live: the lobby after — \(lobby?.hint ?? "-")")
+    print(failed == 0 ? "PASS live raid" : "FAIL \(failed)")
+    return failed == 0
+}

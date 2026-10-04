@@ -43,7 +43,7 @@ extension Walker {
         if let b = o.battle, o.end == nil, !inBattle { fight = b; freshFight(); screen = (o.beats ?? []).isEmpty ? .battle(b, sel: 0) : .beats(b, o.beats!, since: now, from: b) }
     }
     /// What was going on stops here (a lock, another trainer): the server ends it with the session.
-    func dropPlay() { waiting = nil; fight = nil; fightEnd = nil; chainNext = nil; growthThen = nil; towerRun = false }
+    func dropPlay() { waiting = nil; fight = nil; fightEnd = nil; chainNext = nil; growthThen = nil; towerRun = false; raidOn = false; raidThen = nil }
 
     // MARK: home: the server's news, one at a time
     /// Home: the news in order (a level, an evolution, a move, a find …); once none is left, where a fight was going on to: the chain's next
@@ -100,9 +100,7 @@ extension Walker {
             screen = .say([josa(from, "이", "가") + " 인사했다! ♥"], next: .home, since: now)
             notify("pet", josa(from, "이", "가") + " 인사했어요 ♥", josa(monNames[dex], "과", "와") + " 함께 · 눌러서 답인사")
         case .tradeOffer, .traded, .tradeClosed: tradeNews(n, now)                                   // 교환 (12 §3): an offer come, one gone through or closed (Core/TradeView.swift)
-        case .raidCleared(let dex):                                                               // the co-op raid (12 §4.3; minimal: the raid UI is the Mac's)
-            screen = .say(["팀이 " + josa(monNames[dex], "을", "를"), "쓰러뜨렸다! 잡을 기회"], next: .home, since: now)
-            notify("unlock", "팀이 " + josa(monNames[dex], "을", "를") + " 쓰러뜨렸어요", "레이드에서 볼을 던질 수 있어요")
+        case .raidCleared(let dex): raidNews(dex, now)                                            // the co-op raid (12 §4.3): the team beat the boss (Core/RaidView.swift)
         }
     }
 
@@ -148,6 +146,7 @@ extension Walker {
     }
     /// The beats are over: the fight goes on (its menu, or who comes in next), or it ended (the server's end).
     func beatsDone(_ b: Battle, _ last: Beat, _ now: Date) -> Screen {
+        if let s = raidThrown(now) { return s }                                                    // a raid ball's throw (no fight behind it)
         if last.ends || fightEnd != nil { return endOfFight(b, now) }
         return b.mustReplace ? .party(b, sel: b.mine.indices.first { b.mine[$0].alive } ?? 0) : .battle(b, sel: 0)
     }
@@ -157,6 +156,7 @@ extension Walker {
     func endOfFight(_ b: Battle, _ now: Date) -> Screen {
         let e = fightEnd; fightEnd = nil; fight = nil
         guard let e else { return .home }
+        if raidOn { return raidEnded(e, now) }                                                     // 12 §4: its damage, then the lobby
         if b.trainer != nil {
             if e.result == "won" {
                 if !news.isEmpty { growthThen = .tower(pick: nil) }

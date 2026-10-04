@@ -48,7 +48,7 @@ final class CloudInbox: @unchecked Sendable {
     /// The PIN the server wants (docs/plans/10 §3): this trainer's (wrong: the last one wasn't), a new one (a 2.0 ID has none yet), or none for a while (too many wrong).
     enum PinAsk: Equatable { case enter(wrong: Bool), set, locked(until: Date) }
     /// A request out, kept to read its reply by: an act carries its seq.
-    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, legacy, setPin, act(Int), team, trades, box(String) }
+    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, legacy, setPin, act(Int), team, trades, box(String), raid }
     /// This PC's, in cloud.json next to the save: the ID as typed, the server's session, a random id made once, whether the 1.x save went up, the
     /// server's trust token for this PC (the PIN goes in once a PC: 10 §3), and steps walked here that haven't gone up yet (a quit while offline).
     struct Seat: Codable, Equatable { var trainerID: String? = nil, session: String? = nil, device: String? = nil, legacyUploaded: Bool? = nil, trust: String? = nil, steps: Int? = nil }
@@ -82,6 +82,8 @@ final class CloudInbox: @unchecked Sendable {
     private(set) var trades: TradesReply? = nil, box: BoxReply? = nil
     var tradesDue = false, tradesNews = false                              // asked for (the 교환 tab, a trade's act or news); a new list came
     private(set) var boxDue: String? = nil, boxGone: String? = nil          // whose box to fetch; one the server doesn't have (gone, or not on 3.0)
+    // 12 (M3): the week's raid as the server last told it (a read)
+    private(set) var raid: RaidReply? = nil; var raidDue = false
     // a tower run through a new session (docs/plans/12's note): the login says whether one goes on; nil = a server that doesn't keep them
     private(set) var keepsRuns = false; var towerCarried: Bool? = nil
     var deviceName: String { String(appDeviceName.prefix(64)) }
@@ -160,9 +162,10 @@ final class CloudInbox: @unchecked Sendable {
         if let a = queued { queued = nil; sendAct(a, now); return }
         if legacy != nil, seat.legacyUploaded != true { send(.legacy); return }
         if unsent > 0 || base == nil, now >= stepsAt { sendAct(.steps, now); return }           // (no save yet: a new trainer's comes with its first act)
-        if base != nil, teamDue || teamAt.map({ now.timeIntervalSince($0) > Cloud.teamEvery }) ?? true { teamDue = false; teamAt = teamAt ?? now; tradesDue = true; send(.team); return }   // (every 3 minutes: who's walking now; the offers after it)
+        if base != nil, teamDue || teamAt.map({ now.timeIntervalSince($0) > Cloud.teamEvery }) ?? true { teamDue = false; teamAt = teamAt ?? now; tradesDue = true; raidDue = true; send(.team); return }   // (every 3 minutes: who's walking now; the offers after it)
         if base != nil, tradesDue { tradesDue = false; send(.trades); return }
-        if base != nil, let b = boxDue { boxDue = nil; send(.box(b)) }
+        if base != nil, let b = boxDue { boxDue = nil; send(.box(b)); return }
+        if base != nil, raidDue { raidDue = false; send(.raid) }
     }
     /// Quitting: the steps go up (after the act out), waiting at most `timeout`. The reply comes on URLSession's queue, so the main thread can wait.
     func flush(timeout: TimeInterval = 2) {
@@ -203,6 +206,7 @@ final class CloudInbox: @unchecked Sendable {
         case .setPin: post(a, "v1/pin", json(["id": id, "session": seat.session ?? "", "pin": pendingPIN ?? ""]))
         case .legacy: post(a, "v1/legacy", json(["id": id, "device": device, "walk": legacy ?? ""]))
         case .team: post(a, "v2/team", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
+        case .raid: post(a, "v2/raid", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .trades: post(a, "v2/trades", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .box(let of): post(a, "v2/box", (try? JSONEncoder().encode(BoxReq(id: id, session: seat.session ?? "", of: of))) ?? Data())
         case .act: break
@@ -243,9 +247,10 @@ final class CloudInbox: @unchecked Sendable {
                 if let r = try? JSONDecoder().decode(TradesReply.self, from: body) { trades = r; tradesNews = true }
             case (.box(let of), 200):
                 if let r = try? JSONDecoder().decode(BoxReply.self, from: body) { box = r; tradesNews = true } else { boxGone = of }
+            case (.raid, 200): if let r = try? JSONDecoder().decode(RaidReply.self, from: body) { raid = r; tradesNews = true }
             case (.box(let of), 404): boxGone = of; tradesNews = true                              // theirs isn't there (ours being gone: the next act says so)
-            case (.team, 409), (.trades, 409), (.box, 409): if j["reason"] as? String == "replaced" { drop(); phase = .replaced }
-            case (.team, 403), (.trades, 403), (.box, 403): if j["error"] as? String == "pin_needed" { phase = .pin(.set) }
+            case (.team, 409), (.trades, 409), (.box, 409), (.raid, 409): if j["reason"] as? String == "replaced" { drop(); phase = .replaced }
+            case (.team, 403), (.trades, 403), (.box, 403), (.raid, 403): if j["error"] as? String == "pin_needed" { phase = .pin(.set) }
             case (_, 426): phase = .oldApp; NSLog("pokewalker: cloud: the server wants app %@ (this is %@)", j["need"] as? String ?? "?", appVersion)
             case (.login(_, let resume), 200): loggedIn(j, resume: resume, now)
             case (.create, 200) where j["session"] is String:
@@ -270,7 +275,7 @@ final class CloudInbox: @unchecked Sendable {
                 switch a {
                 case .login, .create: asking = a
                 case .legacy: legacy = nil
-                case .team, .trades, .box: break                                                    // (again in 3 minutes; a box when asked again)
+                case .team, .trades, .box, .raid: break                                             // (again in 3 minutes; a box when asked again)
                 case .act: if let o = out { answers.append((o.act, nil)) }; out = nil; sending = 0   // not one the server will take: dropped
                 case .setPin: pendingPIN = nil; phase = .pin(.set)
                 }
@@ -301,7 +306,7 @@ final class CloudInbox: @unchecked Sendable {
         case .login(_, true): phase = .replaced                                               // 여기서 계속 again, once it's back
         case .login where seat.session != nil && base != nil: phase = .on; asking = a          // played here before: steps pile up, acts wait for the server
         case .login, .create: asking = a
-        case .legacy, .team, .trades, .box: break
+        case .legacy, .team, .trades, .box, .raid: break
         case .setPin: phase = .pin(.set)                                                        // the button again, once it's back
         case .act: if let o = out { answers.append((o.act, nil)) }; if let q = queued { answers.append((q, nil)); queued = nil }
         }
@@ -329,9 +334,10 @@ final class CloudInbox: @unchecked Sendable {
 extension Walker {
     /// Launch with the cloud on (main.swift, WinApp.swift): on the server's first launch here a 1.x save goes aside (Store.movePreServer, 08 §5) to go up
     /// once as 옛 기록, and the walker starts empty (this PC's counter kept) until the login brings the trainer's; then the login. Off: nothing, 1.x as ever.
-    func startCloud(_ c: Cloud?, file: URL = Store.file, bak: URL = Store.bak) {
+    func startCloud(_ c: Cloud?, file f: URL? = nil, bak b: URL? = nil) {
         guard let c else { return }
         cloud = c
+        let file = f ?? (persist ? Store.file : c.dir.appendingPathComponent("state.json")), bak = b ?? (persist ? Store.bak : c.dir.appendingPathComponent("state.json.bak"))   // a test's walker: never the app's folder
         if c.firstRun, Store.movePreServer(file: file, bak: bak) {
             var w = Walk(); w.audited = 2; w.ballsRefunded = true                                   // nothing for 1.7's check or 1.10's refund to do
             (w.counter, w.boot, w.syncedAt, w.counterKind) = (state.counter, state.boot, state.syncedAt, state.counterKind)
@@ -504,6 +510,11 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     var down = false, html: Int? = nil, lose = false, hold = false, old: String? = nil, pins = false
     var rng = Seeded(s: 77), nextUID = 1_000_001, now: Date? = nil, stepCap: Int? = nil       // stepCap: the steps allowance (the real one fills at 15 a second)
     var lastAct: [String: Date] = [:], inbox: [String: [News]] = [:], greeted: [String: Date] = [:]   // 12 §2 (M1): each trainer's last act, its undelivered 인사, a pair's last one
+    // 12 §4 (M3): this week's raid — the boss, the team's HP (total 0: none set up yet), each fighter's damage and fights, the last hits,
+    // balls left, who caught it, who had the clear reward; odds = the next throws' results (empty: 30 % on the server's dice)
+    var raidBoss = Mon(dex: 249, level: 70, female: false), raidTotal = 0, raidLeft = 0, raidDealt: [String: Int] = [:], raidFights: [String: Int] = [:]
+    var raidRecent: [RaidHit] = [], raidBalls: [String: Int] = [:], raidCaught: Set<String> = [], raidRewarded: Set<String> = [], raidOdds: [Bool] = []
+    func raidOpen(_ total: Int) { raidTotal = total; raidLeft = total; raidDealt = [:]; raidFights = [:]; raidRecent = []; raidBalls = [:]; raidCaught = []; raidRewarded = [] }
     var offers: [(o: TradeOffer, from: String, to: String)] = [], nextOffer = 1, mail: [String: [News]] = [:], stale: Set<String> = []   // 12 §3 (M2): offers (keys), 3.3's news, saves another's trade changed
     func release() { let h = held; held = []; h.forEach { $0() } }
     static func text(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return (try? e.encode(w)).flatMap { String(data: $0, encoding: .utf8) } ?? "" }
@@ -517,7 +528,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if down { done(0, Data()); return }
         if let h = html { done(h, Data("<html><body>Bad gateway</body></html>".utf8)); return }          // Cloudflare's own: the server never saw it
         var (s, d): (Int, Data)
-        if path == "v2/act" { (s, d) = act(json) } else if path == "v2/team" { (s, d) = team(json) } else if path == "v2/trades" { (s, d) = trades(json) } else if path == "v2/box" { (s, d) = box(json) }
+        if path == "v2/act" { (s, d) = act(json) } else if path == "v2/team" { (s, d) = team(json) } else if path == "v2/trades" { (s, d) = trades(json) } else if path == "v2/box" { (s, d) = box(json) } else if path == "v2/raid" { (s, d) = raidLobby(json) }
         else { let (st, body) = answer(path, (try? JSONSerialization.jsonObject(with: json)) as? [String: Any] ?? [:]); (s, d) = (st, (try? JSONSerialization.data(withJSONObject: body)) ?? Data()) }
         if lose { lose = false; s = 0; d = Data() }
         let st = s, dd = d
@@ -537,6 +548,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         var w = r.walk.flatMap(Cloud.walk) ?? Engine.fresh(now: now ?? Date(), starter: 1_000_000)
         var ids = Issued(next: max(nextUID, (w.lastUID ?? 0) + 1))
         let taken = min(q.steps ?? 0, stepCap ?? .max)
+        if case .raid = q.act, raidTotal > 0 { r.play.raidBoss = RaidBoss(week: "2026-W40", boss: raidBoss, left: raidLeft) }   // (the server's, before a raid act)
         var o = Engine.apply(q.act, steps: taken, walk: &w, play: &r.play, rng: &rng, now: now ?? Date(), ids: &ids)
         nextUID = ids.next; acts.append(q.act); steps.append(q.steps ?? 0); clock += 1; lastAct[id.key] = now ?? Date()
         if case .greet(let to) = q.act, o.cannot == nil {                                                  // 12 §2.3: into their inbox, once an hour a pair
@@ -546,6 +558,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
                 else { greeted[pair] = now ?? Date(); inbox[t.key, default: []].append(.hello(from: r.name, dex: w.companion.dex, shiny: w.companion.shiny == true)) }
             } else { o = .no("인사할 수 없는\n트레이너예요") }
         }
+        raided(q.act, id.key, r.name, &w, &o)
         if o.cannot == nil, let why = trade(q.act, id.key, r.name, &w, &o.news) { o.cannot = why } else if case .tradeAccept = q.act, o.cannot == nil { o.changed = true }
         if let a = q.app, verCmp(a, "3.2").map({ $0 >= 0 }) == true, let mail = inbox.removeValue(forKey: id.key) { o.news += mail }   // (3.2 on: hello)
         if let a = q.app, verCmp(a, "3.3").map({ $0 >= 0 }) == true, let m = mail.removeValue(forKey: id.key) { o.news += m }        // (3.3 on: 교환's)
@@ -613,6 +626,41 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         default: break
         }
         return nil
+    }
+    /// 12 §4: a raid fight's end counted (its damage up to what's left; the team's clear told to every fighter — this one in its reply) and a ball.
+    func raided(_ a: Act, _ key: String, _ name: String, _ w: inout Walk, _ o: inout Outcome) {
+        if let d0 = o.end?.dealt, raidTotal > 0 {
+            let d = min(d0, raidLeft); o.end?.dealt = d
+            raidLeft -= d; raidDealt[key, default: 0] += d; raidFights[key, default: 0] += 1
+            raidRecent.insert(RaidHit(name: name, dex: w.party().first?.mon.dex ?? w.companion.dex, dealt: d, at: Int((now ?? Date()).timeIntervalSince1970)), at: 0); raidRecent = Array(raidRecent.prefix(10))
+            if raidLeft == 0, d > 0 { for f in raidDealt.keys { if f == key { o.news.append(.raidCleared(dex: raidBoss.dex)) } else { mail[f, default: []].append(.raidCleared(dex: raidBoss.dex)) } } }
+        }
+        guard case .raidBall = a, o.cannot == nil else { return }
+        guard raidTotal > 0, raidLeft == 0 else { o.cannot = "아직 보스가\n쓰러지지 않았어요"; return }
+        guard let mine = raidDealt[key] else { o.cannot = "이번 주에 싸워야\n잡을 수 있어요"; return }
+        guard !raidCaught.contains(key) else { o.cannot = "이미 잡았어요"; return }
+        let top = raidDealt.values.max() ?? 0, fair = Double(mine) * Double(max(1, raidDealt.count)) >= Double(raidTotal)
+        let left = raidBalls[key] ?? (3 + (fair ? 1 : 0) + (mine == top ? 1 : 0))
+        guard left > 0 else { o.cannot = "볼이 남아 있지\n않아요"; return }
+        let reward = !raidRewarded.contains(key)
+        if reward { raidRewarded.insert(key); w.bp = (w.bp ?? 0) + 25; for _ in 0..<5 { _ = w.keep("이상한사탕") }; _ = w.keep("은색병뚜껑") }
+        let caught = raidOdds.isEmpty ? Double(rng.next() % 100) < 30 : raidOdds.removeFirst()
+        var mon: Mon? = nil
+        if caught { var m = Mon.wild(raidBoss.dex, level: 70, &rng); m.uid = nextUID; nextUID += 1; _ = w.keep(m); raidCaught.insert(key); mon = m }
+        raidBalls[key] = left - 1
+        o.raidThrow = RaidThrow(caught: caught, shakes: caught ? 3 : Int(rng.next() % 3), balls: left - 1, mon: mon, reward: reward); o.changed = true
+    }
+    /// POST /v2/raid: the week's boss, the team's HP, who dealt what, the last hits, mine.
+    func raidLobby(_ d: Data) -> (Int, Data) {
+        guard let q = try? JSONDecoder().decode(TeamReq.self, from: d), let id = trainerID(q.id), let r = rows[id.key] else { return err(404, ["error": "no_trainer"]) }
+        guard q.session == r.session else { return err(409, ["error": "conflict", "reason": "replaced"]) }
+        if raidTotal == 0 { raidOpen(1_000_000) }
+        let k = id.key, mine = raidDealt[k], caught = raidCaught.contains(k)
+        let reply = RaidReply(week: "2026-W40", boss: raidBoss, next: 382, hpTotal: raidTotal, hpLeft: raidLeft, barHP: Fighter(raidBoss).maxHP,
+                              ends: Int((now ?? Date()).timeIntervalSince1970) + 3 * 86400 + 5 * 3600,
+                              fighters: raidDealt.map { RaidFighter(name: rows[$0.key]?.name ?? $0.key, dealt: $0.value) }.sorted { $0.dealt != $1.dealt ? $0.dealt > $1.dealt : $0.name < $1.name },
+                              recent: raidRecent, mine: RaidMine(dealt: mine ?? 0, fights: raidFights[k] ?? 0, balls: raidBalls[k], caught: caught, canCatch: raidLeft == 0 && mine != nil && !caught))
+        return (200, (try? JSONEncoder().encode(reply)) ?? Data())
     }
     /// POST /v2/trades: the trainer's open offers, to it and its own.
     func trades(_ d: Data) -> (Int, Data) {
@@ -718,7 +766,8 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     var t = ticks(aw, Date(), 3)
     c.append((noID && ah.boxes.count == 2 && ah.asked == ["새 트레이너"] && ac.phase == .on && aw.state.companion.uid == 1_000_000 && Array(srv.paths.prefix(3)) == ["v1/login", "v1/create", "v2/act"]
               && srv.acts.first == .steps && ac.seat.trust != nil && srv.rows["zz000001"]?.walk != nil,
-              "3.0 cloud: no ID → the box (one letter isn't one) → 새 트레이너 → its PIN → made; the first act brings the server's save: the starter, uid 1,000,000"))
+              "3.0 cloud: no ID → the box (one letter isn't one) → 새 트레이너 → its PIN → made; the first act brings the server's save: the starter, uid 1,000,000"
+))
     for _ in 0..<8 { ah.keys += 4; t = ticks(aw, t, 0.5) }
     let shown = aw.state.total, held = ac.ahead
     t = ticks(aw, t + 16, 1)
@@ -743,7 +792,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     vs.down = true; v.cloud!.addSteps(30); v.cloud!.saveNow(); v.tick(Date()); v.tick(Date())
     v.screen = .menu(menuAt("포켓 레이더")); let tiles = v.paneContent(Date()).menu?.rows ?? []; v.press(1)
     let refused = says(v) == Walker.offlineLines && v.waiting == nil, row = v.cloudMenuTitle
-    let dimmed = tiles.filter(\.off).map(\.name) == ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "팀"] && tiles.first { $0.off }?.note == "연결되면 할 수 있어요"
+    let dimmed = tiles.filter(\.off).map(\.name) == ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "팀", "레이드"] && tiles.first { $0.off }?.note == "연결되면 할 수 있어요"
     vs.down = false; v.tick(Date() + 121); drain(v)
     chk(refused && dimmed && row.hasSuffix("연결 안 됨 · 올릴 걸음 30") && served(v)?.total == 37 && v.cloud!.ahead == 0,
               "3.0 offline: what needs the server dimmed on the menu (연결되면 할 수 있어요), and says so at once; steps pile up (the right-click: 연결 안 됨 · 올릴 걸음 n); back, they go up", row)

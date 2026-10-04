@@ -61,7 +61,7 @@ extension Walker {
         }
         press(1)
     }
-    func battleMenu(_ b: Battle) -> [String] { b.trainer == nil ? ["공격", "볼", "도구"] + (b.mine.count > 1 ? ["교체"] : []) + ["도망"] : ["공격", "도구", "교체", "기권"] }   // wild: 교체 once the walker has someone
+    func battleMenu(_ b: Battle) -> [String] { raidOn ? ["공격", "도구"] + (b.mine.count > 1 ? ["교체"] : []) + ["후퇴"] : b.trainer == nil ? ["공격", "볼", "도구"] + (b.mine.count > 1 ? ["교체"] : []) + ["도망"] : ["공격", "도구", "교체", "기권"] }   // wild: 교체 once the walker has someone
     /// Menu labels' x ranges (drawn and tapped from the same layout).
     func menuRanges(_ labels: [String]) -> [Range<Int>] {
         var x = 1, out: [Range<Int>] = []
@@ -150,17 +150,23 @@ extension Walker {
         if owned { fb.draw(caughtMark, textWidth(ft, small: true) + 3, 2, ballPal) }                 // caught before: the HGSS ball mark
         let hp = beat == nil ? b : beatState(now).map { drained($0.hp, $0.names, $0.beat, $0.u) } ?? b   // the bars drain (MoveFX.swift)
         hpBar(&fb, 1, 9, 36, hp.theirs[b.it].hp, b.theirs[b.it].maxHP)
-        if b.trainer != nil { for (k, x) in b.theirs.enumerated() { fb.draw(gem, 39 + 4 * k, 9, x.alive ? ballPal : [ballPal[3], ballPal[3], ballPal[3], ballPal[3]]) } }
+        if b.trainer != nil || raidOn { for (k, x) in b.theirs.enumerated() { fb.draw(gem, 39 + 4 * k, 9, x.alive ? ballPal : [ballPal[3], ballPal[3], ballPal[3], ballPal[3]]) } }
         fb.text(mt, 95, 0, 3, right: true, small: true)
         hpBar(&fb, 59, 9, 36, hp.mine[b.me].hp, b.mine[b.me].maxHP)
         fb.fill(0, 50, 96, 1, 2)
     }
+    /// A beat's line; a raid's boss isn't 야생 (the engine's own lines name it so).
     func message(_ beat: Beat, _ u: Double, _ b: Battle) -> String {
+        let m = beatLine(beat, u, b)
+        return raidOn ? m.replacingOccurrences(of: "야생 ", with: "") : m
+    }
+    func beatLine(_ beat: Beat, _ u: Double, _ b: Battle) -> String {
         let it = monNames[b.theirs[b.it].mon.dex]
         switch beat {
         case .appear:
             if b.wild.shiny == true && u < 0.9 { return "✦ 반짝! ✦" }
-            return legendDex.contains(b.wild.dex) ? "전설의 " + it + " 등장!" : "야생 " + josa(it, "이", "가") + " 나타났다!"
+            return raidOn ? "레이드 보스 " + it + " 등장!" : legendDex.contains(b.wild.dex) ? "전설의 " + it + " 등장!" : "야생 " + josa(it, "이", "가") + " 나타났다!"
+        case .sendOut(.it, _) where b.trainer == nil: return josa(it, "이", "가") + " 다시 일어섰다!"   // a raid: its next bar
         case .sendOut(.it, let i):
             let t = b.trainer ?? "상대"                                                                // the intro's challenge, then who it sends
             return isIntro(beat, b) && u < 1.7 ? josa(t, "이", "가") + " 승부를 걸어왔다!" : josa(t, "은", "는") + " " + josa(monNames[b.theirs[i].mon.dex], "을", "를") + " 내보냈다!"
@@ -179,9 +185,9 @@ extension Walker {
         case .broke: return "앗! 나와버렸다!"
         case .caught: return "딸깍! " + josa(it, "을", "를") + " 잡았다!"
         case .gained(let e, let l, _, let k): let who = monNames[b.mine[k].mon.dex]; return l.map { who + " Lv.\($0)!" } ?? josa(who, "은", "는") + " 경험치 \(e) 획득"
-        case .fled: return josa(b.nm(.it), "은", "는") + " 도망쳤다..."
-        case .ran: return "무사히 도망쳤다!"
-        case .won: return b.trainer.map { josa($0, "과", "와") + "의 승부에서 이겼다!" } ?? "승리!"
+        case .fled: return raidOn ? "레이드가 끝났다" : josa(b.nm(.it), "은", "는") + " 도망쳤다..."
+        case .ran: return raidOn ? "후퇴했다!" : "무사히 도망쳤다!"
+        case .won: return raidOn ? "보스의 줄을 모두 깼다!" : b.trainer.map { josa($0, "과", "와") + "의 승부에서 이겼다!" } ?? "승리!"
         case .lost: return "눈앞이 캄캄해졌다..."
         }
     }

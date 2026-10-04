@@ -2,7 +2,7 @@ import Foundation
 // Which screen the LCD is on.
 
 // MARK: - screens
-let menuItems = ["포켓 레이더", "코스", "트레이너 카드", "포켓몬", "도감", "상점", "BP 교환소", "배틀 타워", "팀"]
+let menuItems = ["포켓 레이더", "코스", "트레이너 카드", "포켓몬", "도감", "상점", "BP 교환소", "배틀 타워", "팀", "레이드"]
 /// A tile's place on the menu, by its name (the code never counts tiles).
 func menuAt(_ name: String) -> Int { menuItems.firstIndex(of: name)! }
 indirect enum Screen {
@@ -11,6 +11,7 @@ indirect enum Screen {
     case team(sel: Int, tab: Int, card: Bool)                          // 12 (M1): the team's list on a tab (팀 · 걸음 · 도감 · 타워), or the picked one's card
     case trade(TradeStep)                                              // 12 (M2): 교환 — the open offers (팀's 교환 tab), one in full, making or answering one
     case traded(gave: Mon, got: Mon, with: String, since: Date)        // a trade gone through (already in the save): this is the show
+    case raid(tab: Int)                                                // 12 (M3): the co-op raid's lobby — the boss, the team's HP, power, 기여 순위 / 최근 공격 (tab)
     case radar(bush: Int, cursor: Int, since: Date, chain: Int)        // "!" shows on `bush` from 1.5 s after `since`, for `radarWindow(chain)`
     case battle(Battle, sel: Int)                                      // sel = the menu row (공격 / 볼 / 도구 / 도망, or 공격 / 도구 / 교체 / 기권)
     case moves(Battle, sel: Int)                                       // picking one of the 4 moves

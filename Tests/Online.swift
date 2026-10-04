@@ -288,3 +288,79 @@ import AppKit
     check(held && !re2.towerRun && sv.rows[ak]?.play.tower == false, "… a fight on still holds it; a new session mid-fight ends the run", "\(held) \(re2.towerRun)")
     return c
 }
+
+/// 12 §4 (M3): the co-op raid on one fake server — the menu's tile and the lobby (/v2/raid), a fight on the battle screens (후퇴, no ball,
+/// the boss's bars on the HUD), its damage said; the clearing hit (its reply says so), the other fighter's raidCleared, the balls (the first
+/// with the week's reward), and what's refused.
+@MainActor func raidChecks() -> [(Bool, String)] {
+    var c: [(Bool, String)] = []
+    func check(_ ok: Bool, _ name: String, _ why: @autoclosure () -> String = "") { c.append((ok, ok ? name : name + " — " + why())) }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func lobby(_ w: Walker) { w.screen = .menu(menuAt("레이드")); w.press(1); drain(w); drain(w) }
+    /// The fight played to its end: 공격 with the first move each turn (후퇴 if asked), the beats run out.
+    func fightOut(_ w: Walker, retreat: Bool = false) {
+        var n = 0
+        while n < 60, w.inBattle || { if case .beats = w.screen { return true }; return false }() {
+            n += 1
+            switch w.screen {
+            case .beats: playOut(w)
+            case .battle(let b, _): w.screen = .battle(b, sel: retreat ? w.battleMenu(b).count - 1 : 0); w.press(1); drain(w)
+            case .moves(let b, _): w.screen = .moves(b, sel: b.mine[b.me].pp.firstIndex { $0 > 0 } ?? 0); w.press(1); drain(w)   // (루기아's 프레셔: 2 PP a use)
+            case .party(let b, _): w.screen = .party(b, sel: b.mine.indices.first { b.mine[$0].alive } ?? 0); w.press(1); drain(w)
+            case .say: w.press(1)
+            default: n = 60
+            }
+        }
+    }
+    let sv = FakeCloud(); sv.raidOpen(1_000_000)
+    func strong() -> Walk { var s = Walk(); s.companion = Mon(dex: 150, level: 100, female: false); s.caught = [Mon(dex: 149, level: 100, female: false), Mon(dex: 248, level: 100, female: false)]; return s }
+    let ra = online({ var s = strong(); s.raidPower = 2500; return s }(), server: sv)
+    let rb = online({ var s = strong(); s.raidPower = 1500; return s }(), server: sv)
+    let rc = online({ var s = Walk(); s.raidPower = 400; return s }(), server: sv)
+    lobby(ra); let pane = ra.paneContent(Date()).raid
+    let opened: Bool = { if case .raid(0) = ra.screen { return true }; return false }()
+    check(opened && pane?.boss == "루기아 Lv.70" && pane?.go == "도전 · 파워 1칸" && pane?.powerText == "다음 칸까지 500걸음" && pane?.hpText.hasPrefix("100% · 줄") == true && ra.raidNote == "파워 2칸 · 루기아",
+          "레이드 (the menu's tile) → the lobby from the server: the boss, the team's HP, my power in 칸, 도전", "\(String(describing: pane))")
+    lobby(rc); let weak = rc.paneContent(Date()).raid; rc.press(1)
+    check(weak?.go == nil && weak?.hint == "파워가 부족해요 (1,000걸음마다 1칸)" && says(rc) == ["파워가 부족하다", "(1,000걸음마다 1칸)"], "under 1칸 of power: no 도전, and ● says why", "\(String(describing: weak?.hint)) \(says(rc))")
+
+    // rb: in, and 후퇴 at once (it still fought this week)
+    lobby(rb); rb.pageTap(7010); drain(rb)
+    var menu: [String] = [], title = ("", "")
+    while case .beats = rb.screen { playOut(rb) }
+    if case .battle(let b, _) = rb.screen { menu = rb.battleMenu(b); title = rb.title() }
+    let hud = rb.raidOn && served(rb)?.raidPower == 500
+    fightOut(rb, retreat: true)
+    let retreated = says(rb).first == "0 데미지!"; let back: Bool = { if case .say(_, .raid(0), _) = rb.screen { return true }; return false }()
+    check(menu == ["공격", "도구", "교체", "후퇴"] && title.0 == "레이드 배틀" && title.1.hasPrefix("남은 줄 3 / 3") && hud && retreated && back && !rb.raidOn && sv.raidFights.count == 1,
+          "도전 → the raid on the battle screens (1칸 spent; 공격 · 도구 · 교체 · 후퇴, no ball; 레이드 배틀 · 남은 줄); 후퇴 → 0 데미지, back to the lobby", "\(menu) \(title) \(hud) \(says(rb))")
+
+    // ra: the hit that clears it (its own reply says so)
+    sv.raidLeft = 40
+    ra.screen = .raid(tab: 0); ra.pageTap(7010); drain(ra); fightOut(ra)
+    let clearedSaid = says(ra) == ["40 데미지!" + (ra.state.bp ?? 0 > 0 ? " +\(ra.state.bp ?? 0)BP" : ""), "보스를 쓰러뜨렸다!", "볼을 던질 수 있다"] || (says(ra).first?.hasPrefix("40 데미지!") == true && says(ra).dropFirst().first == "보스를 쓰러뜨렸다!")
+    check(clearedSaid && sv.raidLeft == 0 && sv.raidDealt.values.contains(40) && !ra.news.contains { if case .raidCleared = $0 { return true }; return false },
+          "the clearing fight: its damage (up to what was left) and 보스를 쓰러뜨렸다! said at its end, not again at home", "\(says(ra)) \(sv.raidLeft)")
+    rb.screen = .home; rb.cloud!.addSteps(1); rb.cloud!.saveNow(); drain(rb)
+    let toLobby: Bool = { if case .say(_, .raid(0), _) = rb.screen { return true }; return false }()
+    check(says(rb) == ["팀이 루기아를", "쓰러뜨렸다!", "볼을 던질 수 있다"] && toLobby, "the other fighter's next act brings raidCleared: said, then the lobby", "\(says(rb))")
+
+    // the balls: the first misses (with the week's reward), the next catches it
+    lobby(ra); let ballGo = ra.paneContent(Date()).raid?.go; let bp0 = ra.state.bp ?? 0, candy0 = ra.state.count("이상한사탕")
+    sv.raidOdds = [false, true]; ra.pageTap(7010); drain(ra)
+    let thrown: Bool = { if case .beats(_, let bs, _, _) = ra.screen { return bs.last == .broke }; return false }()
+    playOut(ra); let missed = says(ra); ra.press(1); let reward = says(ra)
+    check(ballGo == "볼 던지기" && thrown && missed.first == "놓쳤다..." && reward.first == "클리어 보상!" && (ra.state.bp ?? 0) == bp0 + 25 && ra.state.count("이상한사탕") == candy0 + 5 && ra.state.count("은색병뚜껑") == 1,
+          "볼 던지기: the throw on the battle stage; missed — then the week's reward (25BP · 이상한사탕 ×5 · 은색병뚜껑)", "\(String(describing: ballGo)) \(thrown) \(missed) \(reward)")
+    lobby(ra); let left = ra.paneContent(Date()).raid?.go; ra.pageTap(7010); drain(ra); playOut(ra)
+    let caught = says(ra) == ["루기아를 잡았다!", "상자로 보냈다"] && ra.state.box.contains { $0.dex == 249 && $0.level == 70 }
+    lobby(ra); let done = ra.paneContent(Date()).raid
+    check(left?.hasPrefix("볼 던지기 · 남은") == true && caught && done?.go == nil && done?.hint == "루기아를 잡았어요!" && ra.raidNote == "이번 주 보스 쓰러뜨림",
+          "the next ball catches it (into the box); then the lobby says so and offers nothing", "\(String(describing: left)) \(says(ra)) \(String(describing: done?.hint))")
+    lobby(rc); let notFought = rc.paneContent(Date()).raid?.hint; rc.press(3)
+    let menuBack: Bool = { if case .menu(let i) = rc.screen { return i == menuAt("레이드") }; return false }()
+    check(notFought == "이번 주에 싸워야 잡을 수 있어요" && menuBack, "one who didn't fight this week can't throw; ↩ → the menu", "\(String(describing: notFought))")
+    ra.screen = .raid(tab: 1); let recent = ra.paneContent(Date()).raid?.rows ?? []
+    check(recent.count == 2 && recent.first?.value.hasPrefix("40 ·") == true && recent.allSatisfy { $0.dex != nil }, "최근 공격: the last fights (their lead, damage, when)", "\(recent)")
+    return c
+}

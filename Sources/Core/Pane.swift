@@ -127,6 +127,15 @@ struct TradePickModel: Equatable {
     var boxTitle: String; var cells: [GridModel.Cell]; var sel, picked: Int?; var first, count: Int; var empty: String
     var any: Bool?; var go: String?; var hint: String; var bob: Bool
 }
+/// 레이드 (12 §4): this week's boss, the team's HP, my power (3 칸), a tab of rows (기여 순위: rank, name, damage and share; 최근 공격: the
+/// fight's lead, name, damage, when), the button (도전 / 볼 던지기; nil: not now — hint says why).
+struct RaidModel: Equatable {
+    struct Row: Equatable { var rank: Int?; var dex: Int?; var name, value: String; var me: Bool }
+    var boss: String; var left: String; var hp: CGFloat; var hpText: String; var cleared: Bool
+    var power: Int; var powerText: String
+    var tabs: [String]; var tab: Int; var rows: [Row]; var empty: String
+    var go: String?; var hint: String
+}
 /// The save server holding the game: what's up, a line or two, and the one button (ID 입력 / 여기서 계속; nil = none).
 struct LoginModel: Equatable { var title: String; var lines: [String]; var button: String? }
 /// Whatever the pane shows; all nil = no page (the card's idle height).
@@ -136,13 +145,14 @@ struct PaneContent: Equatable {
     var radar: RadarModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var items: ItemsModel?; var course: CourseModel?; var train: TrainModel?; var relearn: RelearnModel?
     var team: TeamModel? = nil, teamCard: TeamCardModel? = nil
     var trades: TradeListModel? = nil, offer: TradeOfferModel? = nil, pick: TradePickModel? = nil
+    var raid: RaidModel? = nil
 }
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
     static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 406 : menu != nil ? 354
-            : team != nil ? 446 : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480
+            : team != nil ? 446 : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464
             : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 353 : status != nil ? 354 : Layout.idle
     }
 }

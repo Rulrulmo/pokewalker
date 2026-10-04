@@ -143,6 +143,7 @@ extension Walker {
             fb.text(towerRun ? "● 다음 상대  ↩ 나가기" : "● 도전 \(Walk.towerFee)W", 0, 53, 3, center: true, small: true)
         case .team(let sel, let tab, _): teamLCD(&fb, sel, tab, now)
         case .trade(let s): tradeLCD(&fb, s, now)
+        case .raid: raidLCD(&fb, now)
         case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
         case .card(let p):
             header(p == 0 ? cardTitle : ["트레이너 카드", "최근 7일", "알"][p])
@@ -296,7 +297,7 @@ extension Walker {
     /// A click on a page still up under its own message (산 뒤, 연승!, W가 부족하다 …): the message ends and the click counts.
     func throughSay() {
         guard case .say(_, let next, _) = screen else { return }
-        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade: screen = next; default: break }
+        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade, .raid: screen = next; default: break }
     }
     func gridTap(_ code: Int) {
         guard !frozen, waiting == nil else { return }
@@ -341,10 +342,12 @@ extension Walker {
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }                       // a menu page's message (W가 부족하다 …): the list stays
         if case .team(let sel, let tab, let card) = sc { return teamPane(sel, tab, card) }
         if case .trade(let s) = sc { return tradePane(s, now) }
+        if case .raid(let tab) = sc { return raidPane(tab, now) }
         if case .menu(let i) = sc {
-            let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "팀"]   // offline: what needs the server, dimmed
+            let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "팀", "레이드"]   // offline: what needs the server, dimmed
             let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
-            let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "팀": tradesIn > 0 ? "교환 신청 \(tradesIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "팀원 · 이번 주 순위 · 교환"]
+            let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "팀": tradesIn > 0 ? "교환 신청 \(tradesIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "팀원 · 이번 주 순위 · 교환",
+                         "레이드": raidNote]
             return PaneContent(menu: MenuModel(rows: menuItems.map { off && needs.contains($0) ? .init(name: $0, note: "연결되면 할 수 있어요", off: true) : .init(name: $0, note: notes[$0] ?? "") }, sel: i))
         }
         switch sc {                                                                               // the rest of the walker's pages: what you press is here, the LCD shows it
@@ -408,6 +411,7 @@ extension Walker {
         case (.team, 6004): cloud?.tradesDue = true; screen = .trade(.list(0))                    // 교환: the open offers (Core/TradeView.swift)
         case (.team(let sel, let tab, true), 6031): if let c = teamRows(tab)[safe: sel]?.card { startTrade(c.name) }
         case (.trade, 6000...6199): tradeTap(code, Date())
+        case (.raid, 7000...7010): raidTap(code, Date())
         case (.team(let sel, let tab, _), 6010...6015):                                          // a row: the first click picks it, a click on the pick opens its card
             let at = sel / TeamModel.perPage * TeamModel.perPage + code - 6010
             guard at < teamRows(tab).count else { return }

@@ -1132,7 +1132,7 @@ import AppKit                                                                   
     #else
     let frameTimer = { (_: Walker) -> [(Bool, String)] in [] }                                    // P3: Windows' SetTimer shell
     #endif
-    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks(timer: frameTimer) + notebookChecks() + stepGateChecks() + signChecks() + ed25519Checks() + cloudChecks() + actChecks() + tradeChecks() + updateFixtureChecks() + updateChecks() { check(ok, name) }   // the drawing files' own checks
+    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks(timer: frameTimer) + notebookChecks() + stepGateChecks() + signChecks() + ed25519Checks() + cloudChecks() + actChecks() + tradeChecks() + raidChecks() + updateFixtureChecks() + updateChecks() { check(ok, name) }   // the drawing files' own checks
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0
 }

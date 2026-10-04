@@ -71,6 +71,16 @@ import Foundation
     take("trade_list", on: tme) { v in v.screen = .trade(.list(0)) }
     take("trade_offer", on: tme) { v in v.screen = .trade(.offer(id: 1, act: nil)) }
     take("trade_pick", on: tme) { v in v.screen = .trade(.pick(TradePick(to: "민수", give: v.myTradeBox[4].uid, want: 502, side: 0, at: 4))) }
+    tsrv.raidOpen(4_200_000); tsrv.raidLeft = 2_730_000                                            // 3.4: 레이드
+    for (k, n) in ["민수", "지은", "도윤"].enumerated() { tsrv.raidDealt[n] = [412_000, 388_000, 201_500][k]; tsrv.raidFights[n] = 9 - k }
+    tsrv.raidRecent = [RaidHit(name: "민수", dex: 6, dealt: 21_340, at: now - 120), RaidHit(name: "지은", dex: 282, dealt: 30_115, at: now - 4000)]
+    serve(tme) { w in w.raidPower = 2340 }
+    tme.cloud!.raidDue = true; drain(tme); drain(tme)
+    take("raid_lobby", on: tme) { v in v.screen = .raid(tab: 0) }
+    take("raid_battle", on: tme) { v in
+        v.raidOn = true; var b = Battle(wild: tsrv.raidBoss, party: v.state.party().map(\.mon)); b.theirs += [Fighter(tsrv.raidBoss), Fighter(tsrv.raidBoss)]
+        b.theirs[0].hp = 0; b.it = 1; v.fight = b; v.screen = .battle(b, sel: 0)
+    }
     take("traded", on: tme) { v in v.screen = .traded(gave: v.state.box[2], got: tsrv.walk("민수")!.box[4], with: "민수", since: T - 5) }
     take("grid_drag") { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(T, force: true); v.drag = (10001, CGPoint(x: 150 * K, y: 30 * K)) }   // 3.1: one of the box carried onto the walker's row
     take("dex_grid") { v in v.screen = .dex(25, filter: 0, detail: false) }

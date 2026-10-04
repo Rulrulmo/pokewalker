@@ -94,6 +94,35 @@ import AppKit
     take("trade_pick_mine_empty", fresh) { v in v.screen = .trade(.pick(TradePick(to: "민수", side: 0))) }
     let onix = online({ var s = base(); s.companion = Mon(dex: 95, level: 30, female: false); s.bag = ["금속코트"]; return s }())
     take("mon_trade_evo", onix) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
+    // 3.4 (12 M3): 레이드
+    let rsrv = FakeCloud(); rsrv.raidOpen(4_200_000); rsrv.raidLeft = 2_730_000
+    let rme = online({ var s = base(); s.raidPower = 2340; s.caught = [Mon(dex: 149, level: 61, female: false), Mon(dex: 6, level: 55, female: false)]; return s }(), server: rsrv)
+    for (k, m) in mates.prefix(7).enumerated() { rsrv.add(m.0, Walk()); rsrv.raidDealt[m.0.lowercased()] = [412_000, 388_000, 201_500, 150_000, 99_000, 61_000, 12_000][k]; rsrv.raidFights[m.0.lowercased()] = 9 - k }
+    rsrv.raidDealt[rme.myName.lowercased()] = 46_500; rsrv.raidFights[rme.myName.lowercased()] = 3
+    let ts = Int(Date().timeIntervalSince1970)
+    rsrv.raidRecent = [RaidHit(name: "민수", dex: 6, dealt: 21_340, at: ts - 120), RaidHit(name: rme.myName, dex: 25, dealt: 18_002, at: ts - 900), RaidHit(name: "지은", dex: 282, dealt: 30_115, at: ts - 4000),
+                       RaidHit(name: "트레이너긴이름", dex: 4, dealt: 2_100, at: ts - 9000), RaidHit(name: "도윤", dex: 448, dealt: 25_000, at: ts - 20000), RaidHit(name: "서연", dex: 133, dealt: 9_990, at: ts - 30000)]
+    take("raid_loading", rme) { v in v.screen = .raid(tab: 0) }
+    rme.cloud!.raidDue = true; drain(rme); drain(rme)
+    take("menu_raid", rme) { v in v.screen = .menu(menuAt("레이드")) }
+    take("raid_lobby", rme) { v in v.screen = .raid(tab: 0) }
+    take("raid_recent", rme) { v in v.screen = .raid(tab: 1) }
+    take("raid_no_power", rme) { v in v.state.raidPower = 640; v.screen = .raid(tab: 0) }
+    take("raid_full_power", rme) { v in v.state.raidPower = 3000; v.screen = .raid(tab: 0) }
+    var rr = Seeded(s: 5); let rb = { () -> Battle in var b = Battle(wild: rsrv.raidBoss, party: [rme.state.companion] + rme.state.caught); b.theirs += [Fighter(rsrv.raidBoss), Fighter(rsrv.raidBoss)]; return b }()
+    let rbeats = { () -> (Battle, [Beat]) in var b = rb; let bs = b.begin(weather: nil, &rr); return (b, bs) }()
+    take("raid_appear", rme) { v in v.raidOn = true; v.screen = .beats(rbeats.0, rbeats.1, since: Date().addingTimeInterval(-1.2), from: rb) }
+    take("raid_menu", rme) { v in v.raidOn = true; var b = rbeats.0; b.theirs[0].hp = 0; b.it = 1; b.theirs[1].hp = b.theirs[1].maxHP / 3; v.fight = b; v.screen = .battle(b, sel: 3) }
+    take("raid_standup", rme) { v in v.raidOn = true; var b = rbeats.0; b.theirs[0].hp = 0; v.screen = .beats(b, [.sendOut(.it, 1)], since: Date().addingTimeInterval(-0.8), from: b) }
+    take("raid_done", rme) { v in v.raidOn = false; v.screen = .say(["38,214 데미지! +1BP", "보스를 쓰러뜨렸다!", "볼을 던질 수 있다"], next: .raid(tab: 0), since: Date()) }
+    take("raid_throw", rme) { v in v.raidOn = false; v.usedItem = "몬스터볼"; let b = Battle(wild: rsrv.raidBoss, companion: v.state.companion); v.raidThen = .home; v.screen = .beats(b, [.thrown(shakes: 2), .broke], since: Date().addingTimeInterval(-2.4), from: b) }
+    rsrv.raidLeft = 0; rme.cloud!.raidDue = true; drain(rme); drain(rme)
+    take("raid_cleared", rme) { v in v.raidThen = nil; v.state.raidPower = 2340; v.screen = .raid(tab: 0) }
+    take("menu_raid_cleared", rme) { v in v.screen = .menu(menuAt("레이드")) }
+    rsrv.raidBalls[rme.myName.lowercased()] = 2; rme.cloud!.raidDue = true; drain(rme); drain(rme)
+    take("raid_balls_left", rme) { v in v.screen = .raid(tab: 0) }
+    rsrv.raidCaught.insert(rme.myName.lowercased()); rme.cloud!.raidDue = true; drain(rme); drain(rme)
+    take("raid_caught", rme) { v in v.screen = .raid(tab: 0) }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
     return n

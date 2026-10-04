@@ -169,8 +169,8 @@ extension Walker {
     func homeKey() -> Bool? {
         switch screen {
         case .home: true
-        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade: false
-        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade: false; default: nil }
+        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid: false
+        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid: false; default: nil }
         default: nil
         }
     }
@@ -191,6 +191,7 @@ extension Walker {
             case .card: screen = .menu(menuAt("트레이너 카드"))
             case .team(let s, let t, let card): screen = card ? .team(sel: s, tab: t, card: false) : .menu(menuAt("팀"))   // the card → the list → the menu
             case .trade(let s): screen = tradeBack(s)
+            case .raid: screen = .menu(menuAt("레이드"))
             case .items: screen = .box(-1, act: nil, confirm: false)                                  // back to 포켓몬
             case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : .menu(menuAt("포켓몬"))   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
             case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : .menu(menuAt("도감"))   // the entry page → the grid → the menu
@@ -204,7 +205,7 @@ extension Walker {
             case .moves(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "공격") ?? 0)   // back to where it came from
             case .party(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "교체") ?? 0)
             case .bagBattle(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "도구") ?? 0)
-            case .battle(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: b.trainer == nil ? "도망" : "기권") ?? 0)   // onto 도망 / 기권; ● decides (도망 by the Gen IV odds)
+            case .battle(let b, _): screen = .battle(b, sel: battleMenu(b).count - 1)                // onto 도망 / 기권 / 후퇴 (the last); ● decides (도망 by the Gen IV odds)
             case .forfeit(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "기권") ?? 0)
             }
             return
@@ -303,6 +304,7 @@ extension Walker {
             guard let c = teamRows(t)[safe: s]?.card else { return }
             if !card { screen = .team(sel: s, tab: t, card: true) } else if !isMe(c), !visitorGreeted(c.name) { greet(c.name, back: screen) }
         case .trade(let s): tradePress(k, s, now)
+        case .raid(let t): raidPress(k, t, now)
         case .say(_, let next, _): screen = next
         case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
             if k == 1 { if dexList(f).contains(n) { screen = .dex(n, filter: f, detail: !detail) } } else { gridStep(k == 0 ? -1 : 1, wrap: true) }
@@ -377,6 +379,9 @@ extension Walker {
         case "팀":
             guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: .menu(i), since: now); return }
             c.wantTeam(now); screen = .team(sel: 0, tab: 0, card: false)
+        case "레이드":
+            guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: .menu(i), since: now); return }
+            c.raidDue = true; screen = .raid(tab: 0)
         default: screen = .dex(state.companion.dex, filter: 0, detail: false)
         }
     }
