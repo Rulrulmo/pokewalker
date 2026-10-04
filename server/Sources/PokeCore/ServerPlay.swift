@@ -80,7 +80,11 @@ extension SaveDB {
                 var out = Engine.apply(r.act, steps: taken, walk: &w, play: &row.play, rng: &g, now: now, ids: &ids)
                 row.play.raidBoss = nil
                 if let week = fightWeek, let dealt = out.end?.dealt {                                   // a raid fight ended: its damage to the team's boss
-                    out.end?.dealt = try raidHit(week, key: id.key, name: t.name, lead: out.battle?.mine.first?.mon.dex ?? w.companion.dex, dealt: dealt, now: unix)
+                    let counted = try raidHit(week, key: id.key, name: t.name, lead: out.battle?.mine.first?.mon.dex ?? w.companion.dex, dealt: dealt, now: unix)
+                    let bar = max(1, try db.rows("SELECT bar_hp FROM raids WHERE week = :w", ["w": .text(week)]).first?.int("bar_hp") ?? 1)
+                    let earned = (counted + bar - 1) / bar, paid = out.end?.bp ?? 0                     // BP for the bars the counted damage covers (the last, partial one too)
+                    if paid > earned { w.bp = max(0, (w.bp ?? 0) - (paid - earned)); out.end?.bp = earned }
+                    out.end?.dealt = counted
                 }
                 if out.cannot == nil {
                     switch r.act {

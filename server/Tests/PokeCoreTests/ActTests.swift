@@ -268,7 +268,7 @@ extension SaveDB { func setPlay(_ key: String, _ p: Play) throws { try db.rows("
 
     try await db.squeezeRaid(lobby.week, to: lobby.hpTotal - lobby.hpLeft + 1)                          // 1 HP left: the next fight beats it
     let last = try #require(try await fight("앨리스", a, &seq))
-    #expect(last.dealt == 1)
+    #expect(last.dealt == 1 && (last.bp ?? 0) <= 1)                                                  // BP only for what counted: 1 HP = at most the one bar it finished
     #expect(lastNews.contains(.raidCleared(dex: lobby.boss.dex)))                                     // in the very reply that beat it
     var thrown = 0, caught = false
     while !caught {
