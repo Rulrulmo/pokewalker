@@ -104,37 +104,42 @@ private func act(_ db: SaveDB, _ id: String, _ s: String, _ seq: Int, _ a: Act, 
     let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브")
     _ = await act(db, "앨리스", a, 1, .steps, steps: 300, at: 60)
     _ = await act(db, "보브", b, 1, .steps, steps: 100, at: 60)
-    var r = await db.team(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(70))
+    var r = await db.team(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(65))
+    #expect(try JSONDecoder().decode(TeamReply.self, from: r.body).cards.map(\.name) == ["앨리스"])          // 3.5: me and my friends only
+    _ = await db.act(ActReq(id: "보브", session: b, seq: 2, act: .friendRequest(to: "앨리스"), app: "3.5"), now: base.addingTimeInterval(66))
+    r = await db.team(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(67))
+    #expect(try JSONDecoder().decode(TeamReply.self, from: r.body).requests == ["보브"])
+    r = await db.act(ActReq(id: "앨리스", session: a, seq: 2, act: .friendAccept(from: "보브"), app: "3.5"), now: base.addingTimeInterval(68))
+    #expect((try reply(r)).out.news.contains(.friendRequest(from: "보브")))                              // the request's news came with it
+    r = await db.team(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(70))
     #expect(r.status == 200)
     let team = try JSONDecoder().decode(TeamReply.self, from: r.body)
-    #expect(team.week.contains("-W") && team.cards.map(\.name).sorted() == ["보브", "앨리스"])
+    #expect(team.week.contains("-W") && team.cards.map(\.name) == ["앨리스", "보브"] && team.requests == [])
     let alice = try #require(team.cards.first { $0.name == "앨리스" })
-    #expect(alice.today == 300 && alice.week == 300 && alice.total == 300 && alice.companion.dex == 25 && alice.idle == 10)
+    #expect(alice.today == 300 && alice.week == 300 && alice.total == 300 && alice.companion.dex == 25 && alice.idle == 2)
     r = await db.team(TeamReq(id: "앨리스", session: "not-it"), now: base.addingTimeInterval(71))
     #expect(r.status == 409)
-    let z = try await newTrainer(db, "zz123456")                                                     // a test ID: only test IDs see it
+    let z = try await newTrainer(db, "zz123456")                                                     // not a friend: not seen, not greeted
     _ = await act(db, "zz123456", z, 1, .steps, steps: 10, at: 60)
-    r = await db.team(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(72))
-    #expect(try JSONDecoder().decode(TeamReply.self, from: r.body).cards.count == 2)
-    r = await db.team(TeamReq(id: "zz123456", session: z), now: base.addingTimeInterval(72))
-    #expect(try JSONDecoder().decode(TeamReply.self, from: r.body).cards.count == 3)
+    r = await act(db, "zz123456", z, 2, .greet(to: "앨리스"), at: 72)
+    #expect((try reply(r)).out.cannot == "친구에게만\n인사할 수 있어요")
 
-    r = await act(db, "앨리스", a, 2, .greet(to: "보브"), at: 80)
+    r = await act(db, "앨리스", a, 3, .greet(to: "보브"), at: 80)
     #expect((try reply(r)).out.cannot == nil)
-    r = await act(db, "앨리스", a, 3, .greet(to: "보브"), at: 90)
+    r = await act(db, "앨리스", a, 4, .greet(to: "보브"), at: 90)
     #expect((try reply(r)).out.cannot == "조금 뒤에 다시\n인사할 수 있어요")                          // once an hour
-    r = await act(db, "앨리스", a, 4, .greet(to: "앨리스"), at: 91)
+    r = await act(db, "앨리스", a, 5, .greet(to: "앨리스"), at: 91)
     #expect((try reply(r)).out.cannot == "인사할 수 없는\n트레이너예요")
-    r = await act(db, "앨리스", a, 5, .greet(to: "없는사람"), at: 92)
+    r = await act(db, "앨리스", a, 6, .greet(to: "없는사람"), at: 92)
     #expect((try reply(r)).out.cannot == "인사할 수 없는\n트레이너예요")
 
-    r = await db.act(ActReq(id: "보브", session: b, seq: 2, act: .steps, app: "3.1.1"), now: base.addingTimeInterval(100))
+    r = await db.act(ActReq(id: "보브", session: b, seq: 3, act: .steps, app: "3.1.1"), now: base.addingTimeInterval(100))
     #expect((try reply(r)).out.news.isEmpty)                                                          // 3.1.1 can't read it: kept
-    r = await db.act(ActReq(id: "보브", session: b, seq: 3, act: .steps, app: "3.2"), now: base.addingTimeInterval(101))
+    r = await db.act(ActReq(id: "보브", session: b, seq: 4, act: .steps, app: "3.2"), now: base.addingTimeInterval(101))
     #expect((try reply(r)).out.news == [.hello(from: "앨리스", dex: 25, shiny: false)])
-    r = await db.act(ActReq(id: "보브", session: b, seq: 4, act: .steps, app: "3.2"), now: base.addingTimeInterval(102))
+    r = await db.act(ActReq(id: "보브", session: b, seq: 5, act: .steps, app: "3.2"), now: base.addingTimeInterval(102))
     #expect((try reply(r)).out.news.isEmpty)                                                          // once
-    r = await act(db, "앨리스", a, 6, .greet(to: "보브"), at: 80 + 3600)
+    r = await act(db, "앨리스", a, 7, .greet(to: "보브"), at: 80 + 3600)
     #expect((try reply(r)).out.cannot == nil)                                                         // an hour on: again
 }
 
@@ -286,3 +291,76 @@ extension SaveDB { func setPlay(_ key: String, _ p: Play) throws { try db.rows("
     #expect(zl.week == lobby.week + "-test" && zl.hpLeft == zl.hpTotal)
 }
 extension SaveDB { func squeezeRaid(_ week: String, to total: Int) throws { try db.rows("UPDATE raids SET hp_total = :t WHERE week = :w", ["t": .int(total), "w": .text(week)]) } }
+
+@Test func friendsBothWays() async throws {                                                         // docs/plans/12 §2.4
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브"), c = try await newTrainer(db, "캐럴")
+    for (who, s) in [("앨리스", a), ("보브", b), ("캐럴", c)] { _ = await act(db, who, s, 1, .steps, steps: 10, at: 60) }
+    func go(_ who: String, _ s: String, _ q: Int, _ x: Act, at t: Double) async throws -> ActReply {
+        try reply(await db.act(ActReq(id: who, session: s, seq: q, act: x, app: "3.5"), now: base.addingTimeInterval(t)))
+    }
+    func names(_ who: String, _ s: String) async throws -> [String] { try JSONDecoder().decode(TeamReply.self, from: await db.team(TeamReq(id: who, session: s), now: base).body).cards.map(\.name) }
+    #expect(try await go("앨리스", a, 2, .friendRequest(to: "앨리스"), at: 70).out.cannot == "친구를 맺을 수 없는\n트레이너예요")
+    #expect(try await go("앨리스", a, 3, .friendRequest(to: "보브"), at: 71).out.cannot == nil)
+    #expect(try await go("앨리스", a, 4, .friendRequest(to: "보브"), at: 72).out.cannot == "이미 신청했어요")
+    #expect(try await go("보브", b, 2, .friendRequest(to: "앨리스"), at: 73).out.cannot == nil)            // both asked: friends at once
+    #expect(try await go("앨리스", a, 5, .steps, at: 74).out.news == [.friendAdded(name: "보브")])
+    let (na, nb) = (try await names("앨리스", a), try await names("보브", b))
+    #expect(na == ["앨리스", "보브"] && nb == ["보브", "앨리스"])
+    #expect(try await go("캐럴", c, 2, .friendRequest(to: "앨리스"), at: 75).out.cannot == nil)
+    #expect(try await go("앨리스", a, 6, .friendDecline(from: "캐럴"), at: 76).out.cannot == nil)
+    #expect(try await go("앨리스", a, 7, .friendAccept(from: "캐럴"), at: 77).out.cannot == "그 신청은 이제\n없어요")
+    #expect(try await names("앨리스", a) == ["앨리스", "보브"])
+    #expect(try await go("보브", b, 3, .friendRemove(name: "앨리스"), at: 78).out.cannot == nil)
+    #expect(try await names("앨리스", a) == ["앨리스"])
+    #expect(try await go("보브", b, 4, .friendRemove(name: "앨리스"), at: 79).out.cannot == "친구가 아니에요")
+}
+
+@Test func tradeBoard() async throws {                                                              // docs/plans/12 §3.3
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브"), c = try await newTrainer(db, "캐럴")
+    for (who, s) in [("앨리스", a), ("보브", b), ("캐럴", c)] { _ = await act(db, who, s, 1, .steps, steps: 10, at: 60) }
+    func mon(_ dex: Int, _ uid: Int) -> Mon { var m = Mon(dex: dex, level: 30, female: false); m.uid = uid; return m }
+    try await setWalk(db, "앨리스") { $0.box = [mon(25, 1_000_001), mon(16, 1_000_002)]; $0.lastUID = 1_000_002 }
+    try await setWalk(db, "보브") { $0.box = [mon(64, 1_000_001)]; $0.lastUID = 1_000_001 }
+    try await setWalk(db, "캐럴") { $0.box = [mon(133, 1_000_001)]; $0.lastUID = 1_000_001 }
+    func go(_ who: String, _ s: String, _ q: Int, _ x: Act, at t: Double) async throws -> ActReply {
+        try reply(await db.act(ActReq(id: who, session: s, seq: q, act: x, app: "3.5"), now: base.addingTimeInterval(t)))
+    }
+    func board(_ who: String, _ s: String, at t: Double = 100) async throws -> MarketReply {
+        try JSONDecoder().decode(MarketReply.self, from: await db.market(TeamReq(id: who, session: s), now: base.addingTimeInterval(t)).body)
+    }
+    #expect(try await go("앨리스", a, 2, .marketList(give: firstUID, wish: [25]), at: 70).out.cannot == "상자의 포켓몬만\n올릴 수 있어요")
+    #expect(try await go("앨리스", a, 3, .marketList(give: 1_000_001, wish: [64, 133, 9999]), at: 71).out.cannot == nil)
+    let post = try #require(try await board("보브", b).listings.first)
+    #expect(post.from == "앨리스" && post.mon.dex == 25 && post.wish == [64, 133] && !post.mine && post.bids == 0)
+    #expect(try await go("앨리스", a, 4, .marketBid(listing: post.id, give: 1_000_002), at: 72).out.cannot == "내 글에는\n제안할 수 없어요")
+    #expect(try await go("보브", b, 2, .marketBid(listing: post.id, give: 1_000_001), at: 73).out.cannot == nil)    // 윤겔라
+    #expect(try await go("보브", b, 3, .marketBid(listing: post.id, give: 1_000_001), at: 74).out.cannot == "이미 올리거나\n제안한 포켓몬이에요")
+    #expect(try await go("캐럴", c, 2, .marketBid(listing: post.id, give: 1_000_001), at: 75).out.cannot == nil)    // 이브이
+    let mine = try await board("앨리스", a)
+    #expect(mine.listings.first?.mine == true && mine.listings.first?.bids == 2 && mine.offers.map(\.from) == ["보브", "캐럴"])
+    let news = try await go("앨리스", a, 5, .steps, at: 76).out.news
+    #expect(news.count == 2 && news.allSatisfy { if case .marketBid(post.id, _, _) = $0 { return true }; return false })
+
+    let pick = try #require(mine.offers.first { $0.from == "보브" })                                 // 윤겔라 is picked: 후딘 by trade at 앨리스's
+    let done = try await go("앨리스", a, 6, .marketAccept(bid: pick.id), at: 77)
+    guard case .traded(post.id, "보브", let gave, let got)? = done.out.news.first else { Issue.record("\(done.out.news)"); return }
+    #expect(gave.dex == 25 && got.dex == 65 && got.ot == "보브" && done.walk?.box.map(\.dex) == [16, 65])
+    let bob = try await go("보브", b, 4, .steps, at: 78)
+    #expect(bob.walk?.box.map(\.dex) == [25] && bob.out.news.contains { if case .traded(post.id, "앨리스", _, _) = $0 { return true }; return false })
+    let carol = try await go("캐럴", c, 3, .steps, at: 79)
+    #expect(carol.out.news == [.tradeClosed(id: post.id, with: "앨리스", why: "다른 제안이 선택됐어요")] && carol.walk?.box.map(\.dex) == nil)
+    let cb = try await board("캐럴", c)
+    #expect(cb.listings.isEmpty && cb.myBids.isEmpty)
+
+    // taken down; out of time
+    #expect(try await go("캐럴", c, 4, .marketList(give: 1_000_001, wish: []), at: 80).out.cannot == nil)
+    let p2 = try #require(try await board("앨리스", a).listings.first).id
+    #expect(try await go("앨리스", a, 7, .marketBid(listing: p2, give: 1_000_002), at: 81).out.cannot == nil)
+    #expect(try await go("캐럴", c, 5, .marketUnlist(id: p2), at: 82).out.cannot == nil)
+    #expect(try await go("앨리스", a, 8, .steps, at: 83).out.news.contains(.tradeClosed(id: p2, with: "캐럴", why: "상대가 글을 내렸어요")))
+    #expect(try await go("캐럴", c, 6, .marketList(give: 1_000_001, wish: []), at: 84).out.cannot == nil)
+    #expect(try await board("앨리스", a, at: 84 + 3 * 86_400 + 1).listings.isEmpty)
+    #expect(try await go("캐럴", c, 7, .steps, at: 84 + 3 * 86_400 + 2).out.news.contains { if case .tradeClosed(_, _, "시간이 지났어요") = $0 { return true }; return false })
+}

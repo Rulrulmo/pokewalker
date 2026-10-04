@@ -107,7 +107,7 @@ extension SaveDB {
         }
     }
     /// One Pokémon into its new trainer's box: a new uid in that ledger (kind trade), its 어버이, a trade evolution (the item from the giver's bag).
-    private func receive(_ m0: Mon, giver: inout Walk, giverName: String, into w: inout Walk, key: String, now: Int) throws -> (Mon, [News]) {
+    func receive(_ m0: Mon, giver: inout Walk, giverName: String, into w: inout Walk, key: String, now: Int) throws -> (Mon, [News]) {
         var m = m0
         m.uid = try nextUID(key, w); m.ot = m.ot ?? giverName
         try record(key, m, kind: "trade", now: now)

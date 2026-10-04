@@ -54,8 +54,10 @@ struct EngineRun<R: RandomNumberGenerator> {
     /// The act itself; a reason when it can't be done.
     mutating func act1(_ act: Act) -> String? {
         if p.battle != nil { switch act { case .battle, .steps: break; default: return "배틀 중이에요" } }
-        switch act { case .steps, .radar, .radarPick, .mon(.learn), .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall: break; default: p.chain = nil }   // a held chain lets only these through (the team's acts don't touch play)
-        if p.radar != nil { switch act { case .steps, .radarPick, .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall: break; default: p.radar = nil; p.chain = nil } }   // the radar shown: anything else gives it up
+        let keepsChain: Bool = { switch act { case .steps, .radar, .radarPick, .mon(.learn): true; default: act.social } }()
+        let keepsRadar: Bool = { switch act { case .steps, .radarPick: true; default: act.social } }()
+        if !keepsChain { p.chain = nil }                                  // a held chain lets only these through (the server's acts with others don't touch play)
+        if p.radar != nil, !keepsRadar { p.radar = nil; p.chain = nil }   // the radar shown: anything else gives it up
         switch act {
         case .steps: return nil
         case .radar: return radar()
@@ -77,7 +79,8 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .course(let i):
             guard courses.indices.contains(i), w.unlocked(i), i != w.course else { return "갈 수 없는 코스예요" }
             w.setCourse(i, &r); return nil
-        case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall: return nil   // the server's: another trainer's save, the inbox, the team's raid
+        case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
+             .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept: return nil   // the server's: other trainers' saves, the inbox, the raid, friends, the board
         case .raid: return raid()
         }
     }
@@ -371,5 +374,16 @@ extension Walk {
     /// What a Pokémon traded becomes at its new trainer (12 §3.2): its species' trade evolution, if it needs no item or the giver's bag has it.
     static func tradeEvolution(of m: Mon, giverBag: [String]) -> Evo? {
         evolutions.first { $0.from == m.dex && $0.way == .trade && ($0.item.map { giverBag.contains($0) } ?? true) }
+    }
+}
+
+extension Act {
+    /// The server's own acts with other trainers (friends, 인사, trades, the board, the raid's ball): they leave play alone (a chain holds, a radar stays).
+    var social: Bool {
+        switch self {
+        case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
+             .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept: true
+        default: false
+        }
     }
 }

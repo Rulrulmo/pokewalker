@@ -102,7 +102,6 @@ actor SaveDB {
     let reject: Bool                                                       // CHECK_MODE=reject: an implausible save is refused (422), else only recorded
     let rejectTests: Bool                                                  // CHECK_REJECT_TESTS=1: refused for test IDs only (zz + 6 digits), to try reject live
     let minApp: String?                                                    // MIN_APP: apps older than this get 426 (3.0's release turns 2.x away: plan 11 §0)
-    var teamCache: [Bool: (at: Double, body: Data)] = [:]                 // /v2/team's last answer, for players / for test IDs (ServerTeam.swift: 10 s)
     /// The oldest app this trainer may use: the newest that saved here (no going back), or MIN_APP if that's newer.
     func needApp(_ t: Trainer) -> String? {
         guard let m = minApp else { return t.app }
@@ -117,7 +116,7 @@ actor SaveDB {
         guard create || FileManager.default.fileExists(atPath: path) else { throw ServerError(description: "\(path): no database (pokeserver init makes it)") }
         let c = try SQLite(path: path, create: create)
         try c.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000; PRAGMA max_page_count = 2621440;")   // 4 KiB × 2621440 = 10 GiB
-        if create || FileManager.default.fileExists(atPath: path) { try c.exec(schema); try c.exec(mintSchema); try c.exec(playSchema); try c.exec(teamSchema); try c.exec(tradeSchema); try c.exec(raidSchema)
+        if create || FileManager.default.fileExists(atPath: path) { try c.exec(schema); try c.exec(mintSchema); try c.exec(playSchema); try c.exec(teamSchema); try c.exec(tradeSchema); try c.exec(raidSchema); try c.exec(friendsSchema); try c.exec(marketSchema)
             for col in ["min_app TEXT", "walk INTEGER NOT NULL DEFAULT 0"] { try? c.exec("ALTER TABLE inbox ADD COLUMN \(col)") }   // M2's (already there: an error, ignored)
             try? c.exec("ALTER TABLE play ADD COLUMN sent_rev INTEGER")
         }   // tables added since (flags) come in on any open: IF NOT EXISTS

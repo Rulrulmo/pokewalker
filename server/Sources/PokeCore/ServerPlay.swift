@@ -33,6 +33,9 @@ func actName(_ a: Act) -> String {
     case .use(let i, _): "use \(i)"; case .sellAll: "sell all"; case .mon(let op): "mon \(op)"; case .course(let c): "course \(c)"; case .greet(let to): "greet \(to)"
     case .tradeOffer(let to, let g, let wnt): "trade offer → \(to) \(g)\(wnt.map { " for \($0)" } ?? "")"; case .tradeAccept(let i, let g): "trade accept #\(i)\(g.map { " with \($0)" } ?? "")"
     case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"; case .raid: "raid"; case .raidBall: "raid ball"
+    case .friendRequest(let to): "friend request → \(to)"; case .friendAccept(let f): "friend accept \(f)"; case .friendDecline(let f): "friend decline \(f)"
+    case .friendRemove(let n): "friend remove \(n)"; case .marketList(let g, let w): "market list \(g) wish \(w)"; case .marketUnlist(let i): "market unlist #\(i)"
+    case .marketBid(let l, let g): "market bid #\(l) with \(g)"; case .marketWithdraw(let b): "market withdraw bid #\(b)"; case .marketAccept(let b): "market accept bid #\(b)"
     }
 }
 func savedText(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return String(decoding: (try? e.encode(w.shared)) ?? Data(), as: UTF8.self) }
@@ -92,6 +95,12 @@ extension SaveDB {
                     case .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel:                     // 12 §3: ServerTrade.swift (two saves at once)
                         let was = w; var more: [News] = []
                         if let why = try tradeAct(r.act, key: id.key, name: t.name, walk: &w, news: &more, now: unix) { out.cannot = why; w = was }
+                        else { out.news += more; if w != was { out.changed = true } }
+                    case .friendRequest, .friendAccept, .friendDecline, .friendRemove:                 // 12 §2.4: ServerTeam.swift
+                        out.cannot = try friendAct(r.act, key: id.key, name: t.name, now: unix)
+                    case .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept:       // 12 §3.3: ServerMarket.swift (two saves at once)
+                        let was = w; var more: [News] = []
+                        if let why = try marketAct(r.act, key: id.key, name: t.name, walk: &w, news: &more, now: unix) { out.cannot = why; w = was }
                         else { out.news += more; if w != was { out.changed = true } }
                     case .raidBall:                                                                     // 12 §4.3: ServerRaid.swift
                         let was = w

@@ -9,6 +9,11 @@ let teamSchema = """
     CREATE INDEX IF NOT EXISTS inbox_to ON inbox (to_key, delivered, at);
     """
 let greetEvery = 3600, inboxKept = 86400                                   // one 인사 per pair an hour; undelivered ones go stale after a day
+let friendsSchema = """
+    CREATE TABLE IF NOT EXISTS friends (a TEXT NOT NULL, b TEXT NOT NULL, state TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b));
+    CREATE INDEX IF NOT EXISTS friends_b ON friends (b);
+    """
+let friendsMax = 100, friendAsksMax = 20, friendApp = "3.5"
 
 /// The app knows news kinds from `v` on (12 §1: an older app can't decode them).
 func knows(_ app: String?, _ v: String) -> Bool { app.flatMap { verCmp($0, v) }.map { $0 >= 0 } ?? false }
@@ -22,43 +27,82 @@ func weekDays(_ now: Date) -> (key: String, days: [String]) {
 }
 
 extension SaveDB {
+    /// 12 §2.4 (3.5): me and my friends' cards (2.1's shape), the requests to me and mine out.
     func team(_ r: TeamReq, now: Date) -> Reply {
-        guard let id = trainerID(r.id) else { return .error(400, "bad_id") }
-        return guarded {
-            guard let t = try trainer(id.key) else { return .error(404, "no_trainer") }
-            guard r.session == t.session else { return .error(409, "conflict", ["reason": .s("replaced")]) }
-            guard try hasPIN(id.key) else { return .error(403, "pin_needed") }
-            let tester = isTestID(id.key)                                                         // test IDs (zz + 6 digits) see each other; players never see them
-            if let c = teamCache[tester], now.timeIntervalSince1970 - c.at < 10 { return Reply(raw: 200, c.body) }   // 16+ teammates asking every few minutes: one build per 10 s
+        readGate(r.id, r.session) { key in
             let (week, days) = weekDays(now), today = Walk.key(now)
+            let keys = [key] + (try friendKeys(key))
             var steps: [String: (today: Int, week: Int)] = [:]
             let inWeek = days.map { "'\($0)'" }.joined(separator: ",")
             for s in try db.rows("SELECT key, day, n FROM steps_day WHERE day IN (\(inWeek))") {
-                guard let k = s.text("key"), let n = s.int("n") else { continue }
+                guard let k = s.text("key"), keys.contains(k), let n = s.int("n") else { continue }
                 steps[k, default: (0, 0)].week += n
                 if s.text("day") == today { steps[k, default: (0, 0)].today += n }
             }
-            let rows = try db.rows("""
-                SELECT t.key, t.name, t.app, t.updated_at, p.bank_at, t.walk FROM trainers t LEFT JOIN play p ON p.key = t.key
-                WHERE t.walk IS NOT NULL ORDER BY t.key
-                """)
             var cards: [TeamCard] = []
-            for row in rows where knows(row.text("app"), "3.0") {
-                guard let k = row.text("key"), tester || !isTestID(k), let w = row.text("walk").flatMap(decodeWalk) else { continue }
-                let last = max(Double(row.int("updated_at") ?? 0), row.real("bank_at") ?? 0)
-                let s = steps[k] ?? (0, 0)
+            for k in keys {
+                guard let row = try db.rows("SELECT t.name, t.updated_at, p.bank_at, t.walk FROM trainers t LEFT JOIN play p ON p.key = t.key WHERE t.key = :k",
+                                            ["k": .text(k)]).first, let w = row.text("walk").flatMap(decodeWalk) else { continue }
+                let last = max(Double(row.int("updated_at") ?? 0), row.real("bank_at") ?? 0), s = steps[k] ?? (0, 0)
                 cards.append(TeamCard(name: row.text("name") ?? k, walk: w, today: s.today, week: s.week, idle: max(0, Int(now.timeIntervalSince1970 - last))))
             }
+            let asks = try db.rows("SELECT t.name FROM friends f JOIN trainers t ON t.key = f.a WHERE f.b = :k AND f.state = 'pending' ORDER BY f.at", ["k": .text(key)]).compactMap { $0.text("name") }
+            let sent = try db.rows("SELECT t.name FROM friends f JOIN trainers t ON t.key = f.b WHERE f.a = :k AND f.state = 'pending' ORDER BY f.at", ["k": .text(key)]).compactMap { $0.text("name") }
             let e = JSONEncoder(); e.outputFormatting = .sortedKeys
-            let body = try e.encode(TeamReply(week: week, cards: cards))
-            teamCache[tester] = (now.timeIntervalSince1970, body)
-            return Reply(raw: 200, body)
+            return try e.encode(TeamReply(week: week, cards: cards, requests: asks, sent: sent))
+        }
+    }
+    func friendKeys(_ key: String) throws -> [String] {
+        try db.rows("SELECT CASE WHEN a = :k THEN b ELSE a END AS f FROM friends WHERE (a = :k OR b = :k) AND state = 'friends' ORDER BY at", ["k": .text(key)]).compactMap { $0.text("f") }
+    }
+    func areFriends(_ x: String, _ y: String) throws -> Bool {
+        try !db.rows("SELECT 1 AS n FROM friends WHERE ((a = :x AND b = :y) OR (a = :y AND b = :x)) AND state = 'friends'", ["x": .text(x), "y": .text(y)]).isEmpty
+    }
+    /// 친구 (12 §2.4): ask (mutual at once if they asked first), accept, decline, remove (a request out too). nil = done.
+    func friendAct(_ act: Act, key: String, name: String, now: Int) throws -> String? {
+        func other(_ raw: String) throws -> (key: String, name: String)? {
+            guard let id = trainerID(raw), id.key != key, let t = try trainer(id.key), knows(t.app, "3.0") else { return nil }
+            return (id.key, t.name)
+        }
+        func pending(_ a: String, _ b: String) throws -> Bool {
+            try !db.rows("SELECT 1 AS n FROM friends WHERE a = :a AND b = :b AND state = 'pending'", ["a": .text(a), "b": .text(b)]).isEmpty
+        }
+        switch act {
+        case .friendRequest(let raw):
+            guard let o = try other(raw) else { return "친구를 맺을 수 없는\n트레이너예요" }
+            if try areFriends(key, o.key) { return "이미 친구예요" }
+            if try pending(o.key, key) {                                                          // they asked first: friends now
+                try db.rows("UPDATE friends SET state = 'friends', at = :now WHERE a = :a AND b = :b", ["now": .int(now), "a": .text(o.key), "b": .text(key)])
+                try post(.friendAdded(name: name), to: o.key, from: key, fromName: name, app: friendApp, now: now)
+                return nil
+            }
+            if try pending(key, o.key) { return "이미 신청했어요" }
+            guard try friendKeys(key).count < friendsMax else { return "친구가 너무 많아요\n(\(friendsMax)명)" }
+            let asked = try db.rows("SELECT count(*) AS n FROM friends WHERE a = :k AND state = 'pending'", ["k": .text(key)]).first?.int("n") ?? 0
+            guard asked < friendAsksMax else { return "걸어 둔 신청이\n너무 많아요" }
+            try db.rows("INSERT INTO friends (a, b, state, at) VALUES (:a, :b, 'pending', :now)", ["a": .text(key), "b": .text(o.key), "now": .int(now)])
+            try post(.friendRequest(from: name), to: o.key, from: key, fromName: name, app: friendApp, now: now)
+            return nil
+        case .friendAccept(let raw), .friendDecline(let raw):
+            guard let o = try other(raw), try pending(o.key, key) else { return "그 신청은 이제\n없어요" }
+            if case .friendAccept = act {
+                guard try friendKeys(key).count < friendsMax else { return "친구가 너무 많아요\n(\(friendsMax)명)" }
+                try db.rows("UPDATE friends SET state = 'friends', at = :now WHERE a = :a AND b = :b", ["now": .int(now), "a": .text(o.key), "b": .text(key)])
+                try post(.friendAdded(name: name), to: o.key, from: key, fromName: name, app: friendApp, now: now)
+            } else { try db.rows("DELETE FROM friends WHERE a = :a AND b = :b", ["a": .text(o.key), "b": .text(key)]) }
+            return nil
+        case .friendRemove(let raw):
+            guard let id = trainerID(raw) else { return "친구가 아니에요" }
+            try db.rows("DELETE FROM friends WHERE (a = :k AND b = :o) OR (a = :o AND b = :k AND state = 'friends')", ["k": .text(key), "o": .text(id.key)])
+            return db.changes > 0 ? nil : "친구가 아니에요"
+        default: return nil
         }
     }
 
     /// The greet act's own part (the engine has done the steps): who to, once an hour; nil = sent.
     func greet(from key: String, name: String, to raw: String, companion: Mon, now: Int) throws -> String? {
         guard let to = trainerID(raw), to.key != key, let t = try trainer(to.key), knows(t.app, "3.0") else { return "인사할 수 없는\n트레이너예요" }
+        guard try areFriends(key, to.key) else { return "친구에게만\n인사할 수 있어요" }   // 12 §2.4 (3.5)
         let last = try db.rows("SELECT max(at) AS at FROM inbox WHERE from_key = :f AND to_key = :t AND payload LIKE '{\"hello\"%'", ["f": .text(key), "t": .text(to.key)]).first?.int("at")
         if let last, now - last < greetEvery { return "조금 뒤에 다시\n인사할 수 있어요" }
         try post(.hello(from: name, dex: companion.dex, shiny: companion.shiny == true), to: to.key, from: key, fromName: name, app: "3.2", now: now)

@@ -18,11 +18,15 @@ struct TeamCard: Codable, Equatable {
     }
 }
 struct TeamReq: Codable, Equatable { var id, session: String }              // /v2/team and /v2/trades
-struct TeamReply: Codable, Equatable { var week: String; var cards: [TeamCard] }
+struct TeamReply: Codable, Equatable { var week: String; var cards: [TeamCard]; var requests: [String]? = nil, sent: [String]? = nil }   // 3.5: me and my friends; requests to me, mine out
 
 /// 12 §3 (M2): an offer — what `from` gives, what it wants of `to` (nil: their choice); state open · done · declined · cancelled · expired · failed.
 struct TradeOffer: Codable, Equatable { var id: Int; var from, to: String; var mon: Mon; var want: Mon?; var at: Int; var state: String }
 struct TradesReply: Codable, Equatable { var incoming, outgoing: [TradeOffer] }
+/// 12 §3.3 (3.5): the 교환 게시판 — POST /v2/market. A post (its Pokémon, the species wished for, how many offers), an offer on one.
+struct Listing: Codable, Equatable { var id: Int; var from: String; var mon: Mon; var wish: [Int]; var at: Int; var bids: Int; var mine: Bool }
+struct Bid: Codable, Equatable { var id: Int; var listing: Int; var from: String; var mon: Mon; var at: Int; var state: String }
+struct MarketReply: Codable, Equatable { var listings: [Listing]; var offers: [Bid]; var myBids: [Bid] }   // every open post; offers on mine; mine on others'
 /// /v2/box: a teammate's box, to pick what to ask for.
 struct BoxReq: Codable, Equatable { var id, session, of: String }
 struct BoxReply: Codable, Equatable { var name: String; var box: [Mon] }

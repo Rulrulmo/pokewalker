@@ -20,6 +20,9 @@ enum Act: Codable, Equatable {
     case tradeOffer(to: String, give: Int, want: Int?)           // 교환 (12 §3): one of our box's for one of theirs (nil: what they choose)
     case tradeAccept(id: Int, give: Int?), tradeDecline(id: Int), tradeCancel(id: Int)
     case raid, raidBall                                          // the co-op raid (12 §4): a fight with this week's boss (1칸 of power); a ball once the team beat it
+    case friendRequest(to: String), friendAccept(from: String), friendDecline(from: String), friendRemove(name: String)   // 친구 (12 §2.4, 3.5)
+    case marketList(give: Int, wish: [Int]), marketUnlist(id: Int)                         // 교환 게시판 (12 §3.3, 3.5): put one up (wished species shown), take it down
+    case marketBid(listing: Int, give: Int), marketWithdraw(bid: Int), marketAccept(bid: Int)   // offer one of ours for it, take that back; the poster picks one
 }
 enum BattleCmd: Codable, Equatable { case fight(slot: Int), ball, item(name: String), swap(to: Int), replace(to: Int), run, forfeit }
 /// Pokémon by uid (their places move): 함께 걷기, 상자로, 워커로, 놓아주기, 중복 놓아주기, 기술 바꾸기, the waiting move (nil = 배우지 않는다), 통신 진화.
@@ -40,6 +43,8 @@ enum News: Codable, Equatable {
     case traded(id: Int, with: String, gave: Mon, got: Mon)                                 // it went through (got: after a trade evolution)
     case tradeClosed(id: Int, with: String, why: String)                                    // declined, taken back, out of time, or a Pokémon gone
     case raidCleared(dex: Int)                                                              // the team beat this week's boss (12 §4.3; app 3.4 on): a ball awaits
+    case friendRequest(from: String), friendAdded(name: String)                             // 친구 (12 §2.4; app 3.5 on): someone asked; it's mutual now
+    case marketBid(listing: Int, from: String, mon: Mon)                                    // an offer on my 게시판 post (12 §3.3; app 3.5 on)
 }
 struct RadarShown: Codable, Equatable { var bush: Int, window: Double, chain: Int }
 /// result: caught · won · lost · fled (it got away) · ran (we did) · forfeit. chain: a wild fight's (0 = over); streak · bp: the tower's.

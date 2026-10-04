@@ -138,19 +138,23 @@ S4=$(printf '%s' "$BODY" | jq -r .session)
 jq -n --arg id "$ID4" --arg s "$S4" '{id: $id, session: $s, seq: 1, act: {steps: {}}, app: "3.2"}' > "$TMP/req"
 CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body")
 ok "its first act" is 200
+SEQ3=$((SEQ3 + 1)); act $SEQ3 "{\"friendRequest\":{\"to\":\"$ID4\"}}"; ok "친구 신청 (3.5)" is 200 '.out.cannot' null
+jq -n --arg id "$ID4" --arg s "$S4" --arg f "$ID3" '{id: $id, session: $s, seq: 2, act: {friendAccept: {from: $f}}, app: "3.5"}' > "$TMP/req"
+CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body")
+ok "수락 (the request's news with it)" is 200 '.out.news[0].friendRequest.from' "$ID3"
 jq -n --arg id "$ID3" --arg s "$S3" '{id: $id, session: $s}' > "$TMP/req"
 CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/team"); BODY=$(cat "$TMP/body")
-ok "/v2/team: both cards" is 200 "[.cards[].name | select(. == \"$ID3\" or . == \"$ID4\")] | length" 2
+ok "/v2/team: me and my friend" is 200 '[.cards[].name] | length' 2
 SEQ3=$((SEQ3 + 1)); act $SEQ3 "{\"greet\":{\"to\":\"$ID4\"}}"; ok "인사 → sent" is 200 '.out.cannot' null
 SEQ3=$((SEQ3 + 1)); act $SEQ3 "{\"greet\":{\"to\":\"$ID4\"}}"; ok "again at once → once an hour" is 200 '.out.cannot | startswith("조금 뒤에")' true
-jq -n --arg id "$ID4" --arg s "$S4" '{id: $id, session: $s, seq: 2, act: {steps: {}}, app: "3.2"}' > "$TMP/req"
+jq -n --arg id "$ID4" --arg s "$S4" '{id: $id, session: $s, seq: 3, act: {steps: {}}, app: "3.2"}' > "$TMP/req"
 CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body")
 ok "the other's next act brings hello" is 200 '.out.news[0].hello.from' "$ID3"
 
 # 7 — plan 12 M2: a trade offered, seen, declined (a box Pokémon set by the admin)
-act3() { jq -n --arg id "$ID3" --arg s "$S3" --argjson q "$1" --argjson a "$2" '{id: $id, session: $s, seq: $q, act: $a, app: "3.3"}' > "$TMP/req"
+act3() { jq -n --arg id "$ID3" --arg s "$S3" --argjson q "$1" --argjson a "$2" '{id: $id, session: $s, seq: $q, act: $a, app: "3.5"}' > "$TMP/req"
     CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body"); }
-act4() { jq -n --arg id "$ID4" --arg s "$S4" --argjson q "$1" --argjson a "$2" '{id: $id, session: $s, seq: $q, act: $a, app: "3.3"}' > "$TMP/req"
+act4() { jq -n --arg id "$ID4" --arg s "$S4" --argjson q "$1" --argjson a "$2" '{id: $id, session: $s, seq: $q, act: $a, app: "3.5"}' > "$TMP/req"
     CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body"); }
 if admin set "$ID3" '$.box' '[{"dex":64,"level":20,"female":false,"uid":1000050}]' >/dev/null; then
     SEQ3=$((SEQ3 + 1)); act3 $SEQ3 "{\"tradeOffer\":{\"to\":\"$ID4\",\"give\":1000050}}"; ok "a trade offered" is 200 '.out.cannot' null
@@ -158,11 +162,26 @@ if admin set "$ID3" '$.box' '[{"dex":64,"level":20,"female":false,"uid":1000050}
     CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/trades"); BODY=$(cat "$TMP/body")
     ok "/v2/trades: it's there for the other" is 200 '.incoming[0].mon.dex' 64
     OFFER=$(printf '%s' "$BODY" | jq .incoming[0].id)
-    act4 3 '{"steps":{}}';                  ok "its news on the other's next act" is 200 '.out.news[0].tradeOffer.from' "$ID3"
-    act4 4 "{\"tradeDecline\":{\"id\":$OFFER}}"; ok "declined" is 200 '.out.cannot' null
+    act4 4 '{"steps":{}}';                  ok "its news on the other's next act" is 200 '.out.news[0].tradeOffer.from' "$ID3"
+    act4 5 "{\"tradeDecline\":{\"id\":$OFFER}}"; ok "declined" is 200 '.out.cannot' null
     SEQ3=$((SEQ3 + 1)); act3 $SEQ3 '{"steps":{}}'; ok "the offerer hears it" is 200 '.out.news[0].tradeClosed.why' "상대가 거절했어요"
 else
     echo "SKIP  trade (needs: sudo -u pokewalker $PS set $ID3 '\$.box' …)"
+fi
+
+# 8b — plan 12 §3.3: the 교환 게시판 (a test ID's posts show to test IDs only) — up, an offer on it, taken down
+if admin set "$ID4" '$.box' '[{"dex":19,"level":5,"female":false,"uid":1000060}]' >/dev/null; then
+    SEQ3=$((SEQ3 + 1)); act3 $SEQ3 '{"marketList":{"give":1000050,"wish":[19]}}'; ok "게시판: put up" is 200 '.out.cannot' null
+    jq -n --arg id "$ID4" --arg s "$S4" '{id: $id, session: $s}' > "$TMP/req"
+    CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/market"); BODY=$(cat "$TMP/body")
+    ok "/v2/market: the other sees it" is 200 "[.listings[] | select(.from == \"$ID3\") | .wish[0]] | .[0]" 19
+    POST=$(printf '%s' "$BODY" | jq "[.listings[] | select(.from == \"$ID3\")][0].id")
+    act4 6 "{\"marketBid\":{\"listing\":$POST,\"give\":1000060}}"; ok "an offer on it" is 200 '.out.cannot' null
+    SEQ3=$((SEQ3 + 1)); act3 $SEQ3 '{"steps":{}}'; ok "the poster hears it" is 200 '.out.news[0].marketBid.from' "$ID4"
+    SEQ3=$((SEQ3 + 1)); act3 $SEQ3 "{\"marketUnlist\":{\"id\":$POST}}"; ok "taken down" is 200 '.out.cannot' null
+    act4 7 '{"steps":{}}';                  ok "the offerer hears that" is 200 '.out.news[0].tradeClosed.why' "상대가 글을 내렸어요"
+else
+    echo "SKIP  게시판 (needs: sudo -u pokewalker $PS set $ID4 '\$.box' …)"
 fi
 
 # 8 — plan 12 M3: the co-op raid (a test ID's own raid: the team's isn't touched) — the lobby, a fight with power, its damage counted
