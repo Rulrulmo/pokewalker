@@ -169,7 +169,7 @@ extension Walker {
     func homeKey() -> Bool? {
         switch screen {
         case .home: true
-        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn: false
+        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team: false
         case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn: false; default: nil }
         default: nil
         }
@@ -189,6 +189,7 @@ extension Walker {
             case .say(_, let next, _): screen = next                                               // like ●
             case .menu: screen = .home
             case .card: screen = .menu(menuAt("트레이너 카드"))
+            case .team(let s, let t, let card): screen = card ? .team(sel: s, tab: t, card: false) : .menu(menuAt("팀"))   // the card → the list → the menu
             case .items: screen = .box(-1, act: nil, confirm: false)                                  // back to 포켓몬
             case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : .menu(menuAt("포켓몬"))   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
             case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : .menu(menuAt("도감"))   // the entry page → the grid → the menu
@@ -296,6 +297,10 @@ extension Walker {
             guard k == 1 else { return }
             towerNext(now)
         case .card(let p): screen = k == 1 ? .menu(menuAt("트레이너 카드")) : .card((p + (k == 0 ? 2 : 1)) % 3)
+        case .team(let s, let t, let card):                                                      // ◀ ▶ a teammate (on a card: the next one's card), ● its card / 인사
+            if k != 1 { teamStep(k == 0 ? -1 : 1); return }
+            guard let c = teamRows(t)[safe: s]?.card else { return }
+            if !card { screen = .team(sel: s, tab: t, card: true) } else if !isMe(c), !visitorGreeted(c.name) { greet(c.name, back: screen) }
         case .say(_, let next, _): screen = next
         case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
             if k == 1 { if dexList(f).contains(n) { screen = .dex(n, filter: f, detail: !detail) } } else { gridStep(k == 0 ? -1 : 1, wrap: true) }
@@ -367,6 +372,9 @@ extension Walker {
         case "포켓몬": screen = .box(-1, act: nil, confirm: false)                                  // the companion first
         case "상점", "BP 교환소": screen = .shop(bp: menuItems[i] == "BP 교환소", sel: 0, qty: nil)
         case "배틀 타워": screen = .tower(pick: nil)
+        case "팀":
+            guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: .menu(i), since: now); return }
+            c.wantTeam(now); screen = .team(sel: 0, tab: 0, card: false)
         default: screen = .dex(state.companion.dex, filter: 0, detail: false)
         }
     }
@@ -376,6 +384,7 @@ extension Walker {
     func touch(_ x: Int, _ y: Int) -> Bool {
         if frozen || waiting != nil { return true }
         if case .say = screen { press(1); return true }
+        if case .home = screen, visitorTouched(x, y) { return true }                             // a teammate's companion dropped by: 인사
         guard let k = stickerAt(x, y) else { return false }                                        // the LCD is to look at, but for the walker's stickers on home:
         lastInput = Date()
         if let u = state.id(-2 - k) { pairWith(u, back: screen, Date(), quietly: true) }          // a tap = walk with that one

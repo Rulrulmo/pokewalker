@@ -46,6 +46,20 @@ struct Outcome: Codable, Equatable {
     var cannot: String? = nil                                    // not now, and why (the LCD's lines, "\n" between): nothing of the act happened, its steps did
     static func no(_ why: String) -> Outcome { var o = Outcome(); o.cannot = why; return o }
 }
+extension Outcome {
+    /// Read news one by one, skipping kinds this app doesn't know (docs/plans/12 §1: later additions need no version gate); the rest as synthesized.
+    init(from d: Decoder) throws {
+        struct Lossy: Decodable { let news: News?; init(from d: Decoder) throws { news = try? News(from: d) } }
+        let c = try d.container(keyedBy: CodingKeys.self)
+        news = (try c.decodeIfPresent([Lossy].self, forKey: .news) ?? []).compactMap(\.news)
+        changed = try c.decodeIfPresent(Bool.self, forKey: .changed) ?? false
+        radar = try c.decodeIfPresent(RadarShown.self, forKey: .radar); missed = try c.decodeIfPresent(Bool.self, forKey: .missed)
+        battle = try c.decodeIfPresent(Battle.self, forKey: .battle); beats = try c.decodeIfPresent([Beat].self, forKey: .beats)
+        end = try c.decodeIfPresent(BattleEnd.self, forKey: .end); ball = try c.decodeIfPresent(String.self, forKey: .ball)
+        mon = try c.decodeIfPresent(Mon.self, forKey: .mon); watts = try c.decodeIfPresent(Int.self, forKey: .watts)
+        cannot = try c.decodeIfPresent(String.self, forKey: .cannot)
+    }
+}
 /// What goes on between actions and isn't in the save: the radar shown, a chain holding, the fight on, a tower run, steps held during a fight.
 /// A new session starts it over (docs/plans/11 §0).
 struct Play: Codable, Equatable {

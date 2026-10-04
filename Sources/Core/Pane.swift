@@ -96,6 +96,18 @@ struct ItemsModel: Equatable {
     var rows: [Row]; var sel: Int; var walker, bag: Int; var action: String?; var hint: String
     var sellAll: Int? = nil                                            // W for everything sellable at once (nil: nothing to sell)
 }
+/// 팀 (docs/plans/12 §2): the tabs, a page of teammates (rank on the rank tabs, the companion, walking now, the tab's number), the pager, a note.
+struct TeamModel: Equatable {
+    struct Row: Equatable { var rank: Int?; var name: String; var dex: Int; var shiny: Bool; var value: String; var walking: Bool; var me: Bool }
+    static let perPage = 6
+    var tabs: [String]; var tab: Int; var rows: [Row]; var sel, first, count: Int; var note: String; var week: String
+}
+/// A teammate's card: the walker's three, a few lines, and 인사하기 (nil: it's us).
+struct TeamCardModel: Equatable {
+    struct Mini: Equatable { var dex, level: Int; var shiny: Bool }
+    struct Line: Equatable { var key, value: String }
+    var name: String; var me, walking: Bool; var when: String; var walker: [Mini]; var lines: [Line]; var greet: String?
+}
 /// The save server holding the game: what's up, a line or two, and the one button (ID 입력 / 여기서 계속; nil = none).
 struct LoginModel: Equatable { var title: String; var lines: [String]; var button: String? }
 /// Whatever the pane shows; all nil = no page (the card's idle height).
@@ -103,12 +115,14 @@ struct PaneContent: Equatable {
     var login: LoginModel? = nil
     var battle: SideModel?; var dex: DexModel?; var shop: ShopModel?; var menu: MenuModel?; var status: StatusModel?; var grid: GridModel?; var mon: MonModel?
     var radar: RadarModel?; var card: CardModel?; var learn: LearnModel?; var tower: TowerModel?; var items: ItemsModel?; var course: CourseModel?; var train: TrainModel?; var relearn: RelearnModel?
+    var team: TeamModel? = nil, teamCard: TeamCardModel? = nil
 }
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
     static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 406 : menu != nil ? 354
+            : team != nil ? 446 : teamCard != nil ? 420
             : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 353 : status != nil ? 354 : Layout.idle
     }
 }

@@ -43,6 +43,7 @@ import Foundation
     var waiting: Waiting? = nil
     var news: [News] = []                                                  // the server's, shown at home one at a time (settle)
     var fight: Battle? = nil, fightEnd: BattleEnd? = nil                   // the fight as the server last sent it; its end, once its beats have played
+    var visitor: Visitor? = nil, nextVisit = 0, greeted: [String: Date] = [:]   // 12 (M1): a teammate's companion on home; the steps it next comes at; 인사 sent (by key)
     var drag: (from: Int, at: CGPoint)? = nil                              // 포켓몬's grid: a Pokémon dragged (the page's code it began on, the pointer in page points)
     var chainNext: Int? = nil                                              // a chain holds (its length): its next bush is asked for once home's news are shown
 
@@ -86,7 +87,7 @@ import Foundation
         case .say(_, let next, let since) where now.timeIntervalSince(since) > 3: screen = next
         case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
-        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .relearn: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
+        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
         default: break
         }
         cloudTick(now)                                                                             // the server's answers (their screens, the save) …
@@ -108,6 +109,10 @@ import Foundation
         if case .tower(_?) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -TowerModel.perPage, .pageDown: TowerModel.perPage][k] { towerStep(d); return true }   // the tower's picker: ↑ ↓ a row, page up / down a page
         switch screen { case .course, .train, .relearn: if let d = [Key.up: -1, .down: 1, .pageUp: -CourseModel.perPage, .pageDown: CourseModel.perPage][k] { listRow(d); return true }; default: break }   // the lists: the same
         if case .items = screen, let d = [Key.up: -1, .down: 1, .pageUp: -6, .pageDown: 6][k] { listRow(d); return true }   // 도구: six rows in view
+        if case .team(let s, let t, false) = screen {                                             // 팀: ↑ ↓ a row, page up / down a page, tab the next tab
+            if let d = [Key.up: -1, .down: 1, .pageUp: -TeamModel.perPage, .pageDown: TeamModel.perPage][k] { teamStep(d, wrap: false); return true }
+            if k == .tab { screen = .team(sel: 0, tab: (t + (shift ? 3 : 1)) % 4, card: false); _ = s; host?.redraw(.all); return true }
+        }
         switch screen { case .dex(_, _, false), .box(_, .none, _, false): if let d = [Key.up: -6, .down: 6, .pageUp: -30, .pageDown: 30][k] { gridStep(d, ends: abs(d) == 30); return true }; default: break }   // the grids: ↑ ↓ a row, page up / down a page
         if k == .tab {
             switch screen {
@@ -144,6 +149,7 @@ import Foundation
         case .shop(let bp, _, _), .shopConfirm(let bp, _, _): return (bp ? "BP 교환소" : "상점", "")
         case .radar: return ("포켓 레이더", state.here.name)
         case .card: return ("트레이너 카드", "")
+        case .team(_, let t, let card): return (card ? "팀원" : "팀", card ? "" : t == 0 ? "지금 걷는 중이 위" : "이번 주 순위 · \(Walker.teamTabs[t])")
         case .learn: return ("기술 배우기", "")
         case .relearn(let r, _, _): return ("기술 바꾸기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .course: return ("코스", "\(courses.indices.filter(state.unlocked).count) / \(courses.count) 열림")

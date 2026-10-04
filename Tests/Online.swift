@@ -158,6 +158,33 @@ import AppKit
     check(rows.first?.note == "잡음 \(mine)/\(first.count)" && rows.filter { !$0.open }.allSatisfy { !$0.note.hasPrefix("잡음") } && rows.contains { !$0.open },
           "코스: an open course says 잡음 n/m (of what walks there, as the 도감's 이 코스 tab); a locked one still says what opens it", "\(rows.map(\.note))")
 
+    // 12 (M1): the team — its order and ranks, a card's 인사 (the other side's hello, its companion on home), a teammate dropping by
+    let tsv = FakeCloud()
+    let ta = online({ var s = Walk(); s.companion = Mon(dex: 25, level: 30, female: false); s.today = 500; return s }(), server: tsv)
+    let tb = online({ var s = Walk(); s.companion = Mon(dex: 6, level: 52, female: false); s.today = 900; return s }(), server: tsv)
+    for k in 0..<12 { var w = Walk(); w.companion = Mon(dex: 16 + k, level: 10, female: false); w.today = 100 * k; w.owned = Array(1...(10 + k)); w.towerBest = k; tsv.add("팀원\(k)", w) }
+    tb.cloud!.addSteps(3); tb.cloud!.saveNow(); drain(tb)                                         // tb acted just now: walking
+    ta.cloud!.teamDue = true; ta.screen = .menu(menuAt("팀")); ta.press(1); drain(ta)          // (its list from its login is under 10 s old: fetched again here)
+    let tRows = ta.teamRows(0), ranks = ta.teamRows(2), opened: Bool = { if case .team(0, 0, false) = ta.screen { return true }; return false }()
+    let bName = tb.myName, aName = ta.myName
+    check(opened && tRows.first?.card.name.lowercased() == bName.lowercased() && tRows.count == 14 && ranks.count == 11 && ranks.last.map { ta.isMe($0.card) } == true && ranks.first?.rank == 1
+          && ta.paneContent(Date()).team?.rows.count == TeamModel.perPage,
+          "팀: the menu's tile lists everyone (walking now first); a rank tab: the top 10 and me", "\(tRows.map(\.card.name)) \(ranks.count)")
+    let bi = tRows.firstIndex { $0.card.name.lowercased() == bName.lowercased() } ?? 0
+    ta.screen = .team(sel: bi, tab: 0, card: false); ta.pageTap(6010 + bi % TeamModel.perPage); let cardUp: Bool = { if case .team(bi, 0, true) = ta.screen { return true }; return false }()
+    ta.pageTap(6030); drain(ta)
+    let greetSaid = says(ta) == [josa(bName, "에게", "에게"), "인사했다! ♥"], tActs0 = tsv.acts.count
+    ta.screen = .team(sel: bi, tab: 0, card: true); let after = ta.paneContent(Date()).teamCard?.greet; ta.pageTap(6030); drain(ta)
+    check(cardUp && greetSaid && after == "인사했어요 ♥" && tsv.acts.count == tActs0, "팀: a click on the pick opens its card; 인사하기 → the server's greet, once (the button says so after)", "\(cardUp) \(greetSaid) \(String(describing: after))")
+    tb.screen = .home; tb.cloud!.addSteps(1); tb.cloud!.saveNow(); drain(tb)
+    let helloSays = says(tb) == [josa(aName, "이", "가") + " 인사했다! ♥"], helloVisitor = tb.visitor.map { $0.hello && $0.dex == 25 && $0.name.lowercased() == aName.lowercased() } == true
+    ta.screen = .home; _ = ta.cloud!.act(.greet(to: bName)); drain(ta)
+    check(helloSays && helloVisitor && tsv.acts.last == .greet(to: bName), "인사: the other side's next act brings hello — its line, the sender's companion on home with ♥", "\(says(tb)) \(String(describing: tb.visitor))")
+    tb.cloud!.addSteps(1); tb.cloud!.saveNow(); drain(tb); ta.cloud!.teamDue = true; drain(ta)       // (tb walking again)
+    ta.visitor = nil; ta.screen = .home; ta.state.total = 1_000; ta.nextVisit = 1; ta.tick(Date())
+    let visiting = ta.visitor.map { !$0.hello && $0.name.lowercased() == bName.lowercased() && $0.dex == 6 } == true && says(ta).last == "놀러 왔다!"
+    check(visiting && ta.nextVisit >= ta.state.total + 300, "놀러 오는 동료: every 300–600 steps on home, one walking now drops by (its trainer's companion), said on the LCD", "\(String(describing: ta.visitor)) \(says(ta))")
+
     // home's news: an egg found, its hatch, a new season
     let nv = online(Walk())
     nv.news = [.egg(dex: 175, left: 100), .hatch(mon: Mon(dex: 175, level: 1, female: false)), .season(to: 1)]; nv.screen = .home; nv.tick(Date())

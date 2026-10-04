@@ -141,6 +141,7 @@ extension Walker {
             for (k, p) in state.party().enumerated() { fb.text((p.mon.shiny == true ? "★" : "") + monNames[p.mon.dex] +  " Lv.\(p.mon.level)" + (p.mon.level != Walk.towerLevel ? "→\(Walk.towerLevel)" : ""), 2, 24 + 9 * k, 3, small: true) }
             fb.fill(0, 51, 96, 1, 2)
             fb.text(towerRun ? "● 다음 상대  ↩ 나가기" : "● 도전 \(Walk.towerFee)W", 0, 53, 3, center: true, small: true)
+        case .team(let sel, let tab, _): teamLCD(&fb, sel, tab, now)
         case .card(let p):
             header(p == 0 ? cardTitle : ["트레이너 카드", "최근 7일", "알"][p])
             if p == 2 {
@@ -336,9 +337,11 @@ extension Walker {
         if case .items(let sel) = { () -> Screen in if case .say(_, let n, _) = screen { return n }; return screen }() { return PaneContent(items: itemsModel(sel)) }
         if let s = shopModel() { return PaneContent(shop: s) }
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }                       // a menu page's message (W가 부족하다 …): the list stays
+        if case .team(let sel, let tab, let card) = sc { return teamPane(sel, tab, card) }
         if case .menu(let i) = sc {
-            let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워"]   // offline: what needs the server, dimmed
-            let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승"]
+            let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "팀"]   // offline: what needs the server, dimmed
+            let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
+            let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "팀": walking > 0 ? "지금 걷는 중 \(walking)명" : "팀원 · 이번 주 순위"]
             return PaneContent(menu: MenuModel(rows: menuItems.map { off && needs.contains($0) ? .init(name: $0, note: "연결되면 할 수 있어요", off: true) : .init(name: $0, note: notes[$0] ?? "") }, sel: i))
         }
         switch sc {                                                                               // the rest of the walker's pages: what you press is here, the LCD shows it
@@ -398,6 +401,15 @@ extension Walker {
         switch (screen, code) {
         case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
         case (.card, 5200...5202): screen = .card(code - 5200)
+        case (.team(let sel, _, _), 6000...6003): screen = .team(sel: code - 6000 == 0 ? sel : 0, tab: code - 6000, card: false)   // a tab (a rank tab from its top)
+        case (.team(let sel, let tab, _), 6010...6015):                                          // a row: the first click picks it, a click on the pick opens its card
+            let at = sel / TeamModel.perPage * TeamModel.perPage + code - 6010
+            guard at < teamRows(tab).count else { return }
+            screen = .team(sel: at, tab: tab, card: at == sel)
+        case (.team(let sel, let tab, _), 6020), (.team(let sel, let tab, _), 6021):             // ◀ ▶ a page, round
+            let per = TeamModel.perPage, n = teamRows(tab).count, pages = max(1, (n + per - 1) / per)
+            screen = .team(sel: min(n - 1, ((sel / per + (code == 6020 ? pages - 1 : 1)) % pages) * per), tab: tab, card: false)
+        case (.team(let sel, let tab, true), 6030): if let c = teamRows(tab)[safe: sel]?.card { greet(c.name, back: .team(sel: sel, tab: tab, card: true)) }
         case (.learn, 5300...5304): screen = .learn(sel: code - 5300); press(1)
         case (.items, 5600..<5700): screen = .items(code - 5600)
         case (.items, 5700): press(1)

@@ -94,9 +94,10 @@ extension Walker {
             rewarded = count
             if let g = got.first { screen = .say(["도감 \(count)종 달성!", g + " 해금"] + got.dropFirst().prefix(1), next: .home, since: now); notify("unlock", "도감 \(count)종 달성!", got.joined(separator: " · ") + " 해금") }
         case .chain(_, let bonus, let reward): chainNote = "+\(bonus)W" + (reward.map { " · " + $0 } ?? "")   // under "연쇄 n!" on the next bush
-        case .hello(let from, _, _):                                                              // a teammate's 인사 (docs/plans/12 §2.3; the sticker is the team UI's)
+        case .hello(let from, let dex, let shiny):                                               // a teammate's 인사 (12 §2.3): its companion drops by, ♥
+            visitor = Visitor(name: from, dex: dex, shiny: shiny, until: now.addingTimeInterval(90), hello: true)
             screen = .say([josa(from, "이", "가") + " 인사했다! ♥"], next: .home, since: now)
-            notify("pet", josa(from, "이", "가") + " 인사했어요 ♥", "팀원의 인사")
+            notify("pet", josa(from, "이", "가") + " 인사했어요 ♥", josa(monNames[dex], "과", "와") + " 함께 · 눌러서 답인사")
         }
     }
 

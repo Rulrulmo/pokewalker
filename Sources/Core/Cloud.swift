@@ -48,7 +48,7 @@ final class CloudInbox: @unchecked Sendable {
     /// The PIN the server wants (docs/plans/10 §3): this trainer's (wrong: the last one wasn't), a new one (a 2.0 ID has none yet), or none for a while (too many wrong).
     enum PinAsk: Equatable { case enter(wrong: Bool), set, locked(until: Date) }
     /// A request out, kept to read its reply by: an act carries its seq.
-    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, legacy, setPin, act(Int) }
+    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, legacy, setPin, act(Int), team }
     /// This PC's, in cloud.json next to the save: the ID as typed, the server's session, a random id made once, whether the 1.x save went up, the
     /// server's trust token for this PC (the PIN goes in once a PC: 10 §3), and steps walked here that haven't gone up yet (a quit while offline).
     struct Seat: Codable, Equatable { var trainerID: String? = nil, session: String? = nil, device: String? = nil, legacyUploaded: Bool? = nil, trust: String? = nil, steps: Int? = nil }
@@ -73,6 +73,11 @@ final class CloudInbox: @unchecked Sendable {
     private(set) var out: (seq: Int, act: Act, body: Data)? = nil          // the act out: sent again as it was (the same seq) after no answer
     var answers: [(act: Act, reply: ActReply?)] = []                       // for the walker: each act's reply, nil = none (offline, dropped …)
     var stepsAt = Date.distantPast                                         // the next steps-only act (every 15 s while there are some)
+    // docs/plans/12 (M1): the team, as the server last listed it (not in the act order: it reads, it changes nothing)
+    private(set) var team: TeamReply? = nil, teamAt: Date? = nil
+    var teamDue = false                                                    // asked for (the 팀 page opened): it goes once no act is waiting
+    var teamNews = false                                                   // a new list came: the walker redraws
+    static let teamEvery: TimeInterval = 180
     var deviceName: String { String(appDeviceName.prefix(64)) }
     var seatFile: URL { dir.appendingPathComponent("cloud.json") }
 
@@ -126,6 +131,8 @@ final class CloudInbox: @unchecked Sendable {
     func saveNow() { if phase == .on { stepsAt = .distantPast; retryAt = .distantPast } }
     /// Steps not yet in the server's save (unsent, and those in the request out): the walker walks them on top of base.
     var ahead: Int { unsent + sending }
+    /// The team, fresh: now if it's older than 10 s (the server's own reuse), else as it is.
+    func wantTeam(_ now: Date) { if teamAt.map({ now.timeIntervalSince($0) > 10 }) ?? true { teamDue = true } }
     /// The walker's: what has come back (each act once).
     func takeAnswers() -> [(act: Act, reply: ActReply?)] { let t = answers; answers = []; return t }
 
@@ -140,7 +147,8 @@ final class CloudInbox: @unchecked Sendable {
         if let o = out { post(.act(o.seq), "v2/act", o.body); return }                          // no answer last time: the same act, the same seq (the server may have it)
         if let a = queued { queued = nil; sendAct(a, now); return }
         if legacy != nil, seat.legacyUploaded != true { send(.legacy); return }
-        if unsent > 0 || base == nil, now >= stepsAt { sendAct(.steps, now) }                  // (no save yet: a new trainer's comes with its first act)
+        if unsent > 0 || base == nil, now >= stepsAt { sendAct(.steps, now); return }           // (no save yet: a new trainer's comes with its first act)
+        if base != nil, teamDue || teamAt.map({ now.timeIntervalSince($0) > Cloud.teamEvery }) ?? true { teamDue = false; teamAt = teamAt ?? now; send(.team) }   // (every 3 minutes: who's walking now)
     }
     /// Quitting: the steps go up (after the act out), waiting at most `timeout`. The reply comes on URLSession's queue, so the main thread can wait.
     func flush(timeout: TimeInterval = 2) {
@@ -180,12 +188,13 @@ final class CloudInbox: @unchecked Sendable {
         case .create: post(a, "v1/create", json(["id": id, "device": device, "device_name": deviceName, "app": appVersion, "pin": pendingPIN ?? ""]))
         case .setPin: post(a, "v1/pin", json(["id": id, "session": seat.session ?? "", "pin": pendingPIN ?? ""]))
         case .legacy: post(a, "v1/legacy", json(["id": id, "device": device, "walk": legacy ?? ""]))
+        case .team: post(a, "v2/team", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .act: break
         }
     }
     private func sendAct(_ a: Act, _ now: Date) {
         guard let id = seat.trainerID, let session = seat.session else { answers.append((a, nil)); return }
-        let n = unsent, req = ActReq(id: id, session: session, seq: seq + 1, steps: n > 0 ? n : nil, act: a)
+        let n = unsent, req = ActReq(id: id, session: session, seq: seq + 1, steps: n > 0 ? n : nil, act: a, app: appVersion)   // app: which news kinds it knows (12 §1)
         guard let body = try? JSONEncoder().encode(req) else { answers.append((a, nil)); return }
         unsent = 0; sending = n; stepsAt = now.addingTimeInterval(Cloud.stepsEvery)
         out = (req.seq, a, body); post(.act(req.seq), "v2/act", body)
@@ -212,6 +221,10 @@ final class CloudInbox: @unchecked Sendable {
                 seq = n; rev = r.rev; lastSaved = now
                 if let w = r.walk { base = w; rebased = true }
                 answers.append((o.act, r))
+            case (.team, 200):
+                if let r = try? JSONDecoder().decode(TeamReply.self, from: body) { team = r; teamAt = now; teamNews = true }
+            case (.team, 409) where j["reason"] as? String == "replaced": drop(); phase = .replaced
+            case (.team, 403) where j["error"] as? String == "pin_needed": phase = .pin(.set)
             case (_, 426): phase = .oldApp; NSLog("pokewalker: cloud: the server wants app %@ (this is %@)", j["need"] as? String ?? "?", appVersion)
             case (.login(_, let resume), 200): loggedIn(j, resume: resume, now)
             case (.create, 200) where j["session"] is String:
@@ -236,6 +249,7 @@ final class CloudInbox: @unchecked Sendable {
                 switch a {
                 case .login, .create: asking = a
                 case .legacy: legacy = nil
+                case .team: break                                                                   // (again in 3 minutes)
                 case .act: if let o = out { answers.append((o.act, nil)) }; out = nil; sending = 0   // not one the server will take: dropped
                 case .setPin: pendingPIN = nil; phase = .pin(.set)
                 }
@@ -265,7 +279,7 @@ final class CloudInbox: @unchecked Sendable {
         case .login(_, true): phase = .replaced                                               // 여기서 계속 again, once it's back
         case .login where seat.session != nil && base != nil: phase = .on; asking = a          // played here before: steps pile up, acts wait for the server
         case .login, .create: asking = a
-        case .legacy: break
+        case .legacy, .team: break
         case .setPin: phase = .pin(.set)                                                        // the button again, once it's back
         case .act: if let o = out { answers.append((o.act, nil)) }; if let q = queued { answers.append((q, nil)); queued = nil }
         }
@@ -414,6 +428,8 @@ extension Walker {
         guard let c = cloud else { return }
         c.tick(now)
         actTick(c, now)
+        if c.teamNews { c.teamNews = false; refreshPane(now, force: true); host?.redraw(.all) }   // a new team list: the 팀 page, the menu's tile
+        visitTick(now)
         if c.phase != cloudShown { showCloud(c.phase); cloudShown = c.phase; cloudAsked = nil }   // a new answer from the server: its question may come again
         cloudQuestion(c)
     }
@@ -464,6 +480,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     var rows: [String: Row] = [:], paths: [String] = [], acts: [Act] = [], steps: [Int] = [], held: [() -> Void] = [], clock = 10_000
     var down = false, html: Int? = nil, lose = false, hold = false, old: String? = nil, pins = false
     var rng = Seeded(s: 77), nextUID = 1_000_001, now: Date? = nil, stepCap: Int? = nil       // stepCap: the steps allowance (the real one fills at 15 a second)
+    var lastAct: [String: Date] = [:], inbox: [String: [News]] = [:], greeted: [String: Date] = [:]   // 12 §2 (M1): each trainer's last act, its undelivered 인사, a pair's last one
     func release() { let h = held; held = []; h.forEach { $0() } }
     static func text(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return (try? e.encode(w)).flatMap { String(data: $0, encoding: .utf8) } ?? "" }
     /// The trainer's save as the server has it; an admin's `pokeserver set` (a new rev).
@@ -476,7 +493,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if down { done(0, Data()); return }
         if let h = html { done(h, Data("<html><body>Bad gateway</body></html>".utf8)); return }          // Cloudflare's own: the server never saw it
         var (s, d): (Int, Data)
-        if path == "v2/act" { (s, d) = act(json) }
+        if path == "v2/act" { (s, d) = act(json) } else if path == "v2/team" { (s, d) = team(json) }
         else { let (st, body) = answer(path, (try? JSONSerialization.jsonObject(with: json)) as? [String: Any] ?? [:]); (s, d) = (st, (try? JSONSerialization.data(withJSONObject: body)) ?? Data()) }
         if lose { lose = false; s = 0; d = Data() }
         let st = s, dd = d
@@ -496,12 +513,32 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         var w = r.walk.flatMap(Cloud.walk) ?? Engine.fresh(now: now ?? Date(), starter: 1_000_000)
         var ids = Issued(next: max(nextUID, (w.lastUID ?? 0) + 1))
         let taken = min(q.steps ?? 0, stepCap ?? .max)
-        let o = Engine.apply(q.act, steps: taken, walk: &w, play: &r.play, rng: &rng, now: now ?? Date(), ids: &ids)
-        nextUID = ids.next; acts.append(q.act); steps.append(q.steps ?? 0); clock += 1
+        var o = Engine.apply(q.act, steps: taken, walk: &w, play: &r.play, rng: &rng, now: now ?? Date(), ids: &ids)
+        nextUID = ids.next; acts.append(q.act); steps.append(q.steps ?? 0); clock += 1; lastAct[id.key] = now ?? Date()
+        if case .greet(let to) = q.act, o.cannot == nil {                                                  // 12 §2.3: into their inbox, once an hour a pair
+            if let t = trainerID(to), t.key != id.key, rows[t.key]?.walk != nil {
+                let pair = id.key + ">" + t.key
+                if let g = greeted[pair], (now ?? Date()).timeIntervalSince(g) < 3600 { o = .no("조금 뒤에 다시\n인사할 수 있어요") }
+                else { greeted[pair] = now ?? Date(); inbox[t.key, default: []].append(.hello(from: r.name, dex: w.companion.dex, shiny: w.companion.shiny == true)) }
+            } else { o = .no("인사할 수 없는\n트레이너예요") }
+        }
+        if let a = q.app, verCmp(a, "3.2").map({ $0 >= 0 }) == true, let mail = inbox.removeValue(forKey: id.key) { o.news += mail }   // (3.2 on: hello)
         if o.changed || first { r.rev += 1; r.walk = FakeCloud.text(w); r.at = clock }
         let reply = (try? JSONEncoder().encode(ActReply(rev: r.rev, walk: o.changed || first ? w : nil, taken: q.steps.map { _ in taken }, out: o))) ?? Data()
         r.seq = q.seq; r.reply = reply; rows[id.key] = r
         return (200, reply)
+    }
+    /// POST /v2/team: every trainer with a save, as cards (idle: since its last act here).
+    func team(_ d: Data) -> (Int, Data) {
+        guard let q = try? JSONDecoder().decode(TeamReq.self, from: d), let id = trainerID(q.id), let r = rows[id.key] else { return err(404, ["error": "no_trainer"]) }
+        guard q.session == r.session else { return err(409, ["error": "conflict", "reason": "replaced"]) }
+        if pins, r.pin == nil { return err(403, ["error": "pin_needed"]) }
+        let at = now ?? Date()
+        let cards = rows.keys.sorted().compactMap { k -> TeamCard? in
+            guard let row = rows[k], let w = row.walk.flatMap(Cloud.walk) else { return nil }
+            return TeamCard(name: row.name, walk: w, today: w.today, week: w.today, idle: lastAct[k].map { Int(at.timeIntervalSince($0)) } ?? 999_999)
+        }
+        return (200, (try? JSONEncoder().encode(TeamReply(week: "2026-W40", cards: cards))) ?? Data())
     }
     func answer(_ path: String, _ j: [String: Any]) -> (Int, [String: Any]) {
         guard let id = (j["id"] as? String).flatMap(trainerID) else { return (400, ["error": "bad_id"]) }
@@ -617,7 +654,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     vs.down = true; v.cloud!.addSteps(30); v.cloud!.saveNow(); v.tick(Date()); v.tick(Date())
     v.screen = .menu(menuAt("포켓 레이더")); let tiles = v.paneContent(Date()).menu?.rows ?? []; v.press(1)
     let refused = says(v) == Walker.offlineLines && v.waiting == nil, row = v.cloudMenuTitle
-    let dimmed = tiles.filter(\.off).map(\.name) == ["포켓 레이더", "상점", "BP 교환소", "배틀 타워"] && tiles.first { $0.off }?.note == "연결되면 할 수 있어요"
+    let dimmed = tiles.filter(\.off).map(\.name) == ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "팀"] && tiles.first { $0.off }?.note == "연결되면 할 수 있어요"
     vs.down = false; v.tick(Date() + 121); drain(v)
     chk(refused && dimmed && row.hasSuffix("연결 안 됨 · 올릴 걸음 30") && served(v)?.total == 37 && v.cloud!.ahead == 0,
               "3.0 offline: what needs the server dimmed on the menu (연결되면 할 수 있어요), and says so at once; steps pile up (the right-click: 연결 안 됨 · 올릴 걸음 n); back, they go up", row)

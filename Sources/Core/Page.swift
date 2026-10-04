@@ -81,6 +81,7 @@ extension Canvas {
         else if let m = p.menu { drawMenu(m) } else if let m = p.battle { drawBattle(m) } else if let i = p.items { drawItems(i) } else if let r = p.radar { drawRadar(r) }
         else if let k = p.card { tabs(["트레이너 카드", "최근 7일", "알"], k.page, 198, code: 5200) } else if let l = p.learn { drawLearn(l) }
         else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let l = p.relearn { drawRelearn(l) }
+        else if let t = p.team { drawTeam(t) } else if let t = p.teamCard { drawTeamCard(t) }
         else if let s = p.status { drawStatus(s) }
     }
     let X0: CGFloat = 9, X1: CGFloat = 207                                                         // the content column (card points): the bezel's edges
@@ -380,12 +381,12 @@ extension Canvas {
 
     // MARK: 메뉴: 2 x 5 tiles, the one on the LCD red
     func drawMenu(_ m: MenuModel) {
-        let rh: CGFloat = 31, gap: CGFloat = 4, cw = (X1 - X0 - gap) / 2
+        let five = m.rows.count > 8, rh: CGFloat = five ? 25 : 31, gap: CGFloat = five ? 3 : 4, cw = (X1 - X0 - 4) / 2   // 9 tiles (3.2's 팀): five shorter rows, the page's height kept (= home's status sheet)
         for (i, row) in m.rows.enumerated() {
-            let rc = r(X0 + CGFloat(i % 2) * (cw + gap), 203 + CGFloat(i / 2) * (rh + gap), cw, rh), on = i == m.sel
+            let rc = r(X0 + CGFloat(i % 2) * (cw + 4), 203 + CGFloat(i / 2) * (rh + gap), cw, rh), on = i == m.sel
             c.fill(.rounded(rc, 9 * K), on ? Ink.red : Ink.tile)
-            c.say(row.name, rc.minX + x(9), rc.minY + x(10.5), font(10, .bold), on ? .white : row.off ? Ink.sub : Ink.ink, maxW: rc.width - x(14))
-            c.say(row.note, rc.minX + x(9), rc.minY + x(22), font(8, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(14))
+            c.say(row.name, rc.minX + x(9), rc.minY + x(five ? 8.5 : 10.5), font(10, .bold), on ? .white : row.off ? Ink.sub : Ink.ink, maxW: rc.width - x(14))
+            c.say(row.note, rc.minX + x(9), rc.minY + x(five ? 18.5 : 22), font(8, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(14))
             hits.append((rc, 3000 + i))
         }
     }
@@ -551,6 +552,51 @@ extension Page {
         let here = m.rows[safe: m.sel - m.first]?.here == true, rc = r(X0, 352, X1 - X0, 30)
         c.fill(.rounded(rc, 10 * K), m.go == nil ? Ink.tile : Ink.red)
         c.say(m.go ?? (here ? "지금 걷는 코스" : "아직 잠겨 있어요"), rc.midX, rc.midY, font(11, .bold), m.go == nil ? Ink.sub : .white, 0.5); if m.go != nil { hits.append((rc, 5820)) }
+    }
+    // MARK: 팀 (docs/plans/12 §2): the list on a tab, a teammate's card
+    /// A small pill on a row's right, ending at xr; returns where the next thing ends.
+    func pillAt(_ t: String, _ xr: CGFloat, _ midY: CGFloat, _ fill: Color, _ ink: Color) -> CGFloat {
+        let f = font(7.5, .bold), w = width(t, f) + x(8); c.pill(CGRect(x: xr - w, y: midY - x(5.5), width: w, height: x(11)), fill); c.say(t, xr - w / 2, midY, f, ink, 0.5); return xr - w - x(5)
+    }
+    func drawTeam(_ m: TeamModel) {
+        c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 60))
+        if !m.week.isEmpty { c.say(m.week, x(X1 - 2), y(206), font(8.5, .medium), Ink.faint, 1) }
+        tabs(m.tabs, m.tab, 214, code: 6000)
+        if m.rows.isEmpty { c.say(m.note, x(Layout.w / 2), y(300), font(10, .medium), Ink.sub, 0.5); return }
+        for (i, row) in m.rows.enumerated() {
+            let rc = r(X0, 242 + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: m.first + i == m.sel, row.me ? Ink.tint(Ink.blue, 0.10) : nil)
+            var xl = rc.minX + x(8)
+            if let k = row.rank { c.say("\(k)", xl + x(6), rc.midY, font(10, .bold), k <= 3 ? Ink.red : Ink.sub, 0.5); xl += x(16) }
+            c.image(iconImage(row.dex), CGRect(x: xl - x(2), y: rc.midY - x(15), width: 28 * K, height: 28 * K), alpha: 1)
+            xl += x(28)
+            var xr = rc.maxX - x(9) - c.say(row.value, rc.maxX - x(9), rc.midY, font(9, .semibold), Ink.ink, 1) - x(6)
+            if row.walking { xr = pillAt("걷는 중", xr, rc.midY, Ink.tint(Ink.green, 0.18), Ink.green) }
+            if row.me { xr = pillAt("나", xr, rc.midY, Ink.tint(Ink.blue, 0.16), Ink.blue) }
+            c.say((row.shiny ? "★ " : "") + row.name, xl, rc.midY, font(10, .bold), Ink.ink, maxW: xr - xl)
+            hits.append((rc, 6010 + i))
+        }
+        let per = TeamModel.perPage, pages = max(1, (m.count + per - 1) / per)
+        pager("\(m.first / per + 1) / \(pages)", 420, prev: pages > 1, next: pages > 1, codes: (6020, 6021))
+    }
+    func drawTeamCard(_ m: TeamCardModel) {
+        var xr = x(X1 - 2)
+        if m.walking { xr = pillAt("걷는 중", xr, y(206), Ink.tint(Ink.green, 0.18), Ink.green) } else { xr -= c.say(m.when, xr, y(206), font(9, .medium), Ink.sub, 1) + x(6) }
+        if m.me { xr = pillAt("나", xr, y(206), Ink.tint(Ink.blue, 0.16), Ink.blue) }
+        c.say(m.name + "의 트레이너 카드", x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: xr - x(X0 + 2))
+        let cw = (X1 - X0 - 2 * 4) / 3
+        for i in 0..<3 {                                                                            // the walker's three
+            let rc = r(X0 + CGFloat(i) * (cw + 4), 216, cw, 42); tile(rc, 10, on: false)
+            if let e = m.walker[safe: i] {
+                c.image(iconImage(e.dex), CGRect(x: rc.midX - 16 * K, y: rc.minY - x(3), width: 32 * K, height: 32 * K), alpha: 1)
+                c.say("Lv.\(e.level)", rc.midX, rc.maxY - x(7), font(8, .bold), Ink.sub, 0.5)
+                if e.shiny { c.say("★", rc.maxX - x(5), rc.minY + x(6), font(7, .bold), Ink.gold, 1) }
+            } else { c.say("비어 있음", rc.midX, rc.midY, font(7.5, .medium), Ink.faint, 0.5) }
+        }
+        var yy: CGFloat = 272
+        for l in m.lines { c.say(l.key, x(X0 + 2), y(yy), font(9, .medium), Ink.sub); c.say(l.value, x(X0 + 48), y(yy), font(10, .semibold), Ink.ink, maxW: x(X1 - X0 - 50)); yy += 17 }
+        guard let g = m.greet else { return }
+        let rc = r(X0, 380, X1 - X0, 30), on = g == "인사하기 ♥"
+        c.fill(.rounded(rc, 10 * K), on ? Ink.red : Ink.tile); c.say(g, rc.midX, rc.midY, font(11, .bold), on ? .white : Ink.sub, 0.5); if on { hits.append((rc, 6030)) }
     }
     /// 대단한 특훈: the companion's six stats (trained ones and 31s marked), the pick, then its button (or why not).
     func drawTrain(_ m: TrainModel) {

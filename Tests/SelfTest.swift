@@ -651,7 +651,7 @@ import AppKit                                                                   
     let v = online(s0w, rng: 14)
     v.press(1); v.press(2); let homeStays = on(v) { if case .home = $0 { return true }; return false } && v.emote?.kind == 1
     v.press(4); let menuUp = on(v) { if case .menu(menuAt("포켓 레이더")) = $0 { return true }; return false } && v.compose(Date()).sprites.count == 1 && v.homeKey() == false; v.press(0)
-    check(homeStays && menuUp && on(v) { if case .menu(menuAt("배틀 타워")) = $0 { return true }; return false }, "home: ● pats (♥), ▶ does nothing; the 메뉴 key opens the menu on the pane (the LCD stays home); ◀ goes round")
+    check(homeStays && menuUp && on(v) { if case .menu(menuItems.count - 1) = $0 { return true }; return false }, "home: ● pats (♥), ▶ does nothing; the 메뉴 key opens the menu on the pane (the LCD stays home); ◀ goes round")
     v.press(4); check(on(v) { if case .home = $0 { return true }; return false } && v.homeKey() == true, "… the same key again: home"); v.press(4)
     let sv = Walker(state: Walk()); sv.persist = false; sv.screen = .home
     sv.strollX = sv.strollRange.upperBound - 0.5; sv.strollRight = true; sv.lastStep = Date(); sv.strollAt = Date().addingTimeInterval(-0.2); sv.stroll(Date())

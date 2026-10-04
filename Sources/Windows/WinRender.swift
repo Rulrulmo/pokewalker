@@ -31,9 +31,9 @@ import Foundation
     }
     var n = 0
     /// One shot: the look reset (SIZE size, 몬스터볼, 컬러, smooth text), `set` puts the screen, then the pane and the frame at T, as the app orders them.
-    func take(_ name: String, size: CGFloat = 2, lcd: Bool = false, _ set: (Walker) -> Void) {
+    func take(_ name: String, size: CGFloat = 2, lcd: Bool = false, on v0: Walker? = nil, _ set: (Walker) -> Void) {
         SIZE = size; theme = 0; lcdStyle = 0; paperStyle = 0; smoothText = true
-        let v = Walker(state: base()); v.persist = false; v.sideOn = true; v.rng = Seeded(s: 1); v.lastStep = .distantPast
+        let v = v0 ?? Walker(state: base()); v.persist = false; v.sideOn = true; v.rng = Seeded(s: 1); v.lastStep = .distantPast
         set(v); v.refreshPane(T, force: true); let fb = v.compose(T)
         let k: CGFloat = lcd ? 3 : 2, page = Page(); page.walker = v
         let r = Raster(Int((Layout.w * K * k).rounded()), Int(((v.cardH * K).rounded() * k).rounded()))
@@ -52,6 +52,16 @@ import Foundation
     take("items") { v in v.screen = .items(2) }
     take("items_scrolled") { v in v.screen = .items(7) }                                         // 3.1: the header's 팔 것 모두 팔기, a row further down
     take("course_list") { v in v.state.earned = 100_000; v.state.owned = Array(1...120); v.screen = .course(5) }   // 3.1: 잡음 n/m on the open ones
+    let tsrv = FakeCloud(), tme = online(base(), server: tsrv)                                     // 3.2: the team (the self-test's fake server, five teammates)
+    for (k, n) in ["민수", "지은", "도윤", "서연", "하은"].enumerated() {
+        var w = Walk(), tr = Seeded(s: UInt64(k + 9)); w.companion = Mon.wild([6, 282, 448, 133, 25][k], level: 30 + 5 * k, &tr); w.caught = [Mon.wild(16, level: 20, &tr)]
+        w.today = 2000 * (5 - k); w.owned = Array(1...(40 + 30 * k)); w.towerBest = 3 * k; tsrv.add(n, w); tsrv.lastAct[n] = k < 2 ? Date() : Date().addingTimeInterval(-3600)
+    }
+    tme.cloud!.teamDue = true; drain(tme)
+    take("team_list", on: tme) { v in v.screen = .team(sel: 0, tab: 0, card: false) }
+    take("team_ranks", on: tme) { v in v.screen = .team(sel: 0, tab: 1, card: false) }
+    take("team_card", on: tme) { v in v.screen = .team(sel: 1, tab: 0, card: true) }
+    take("home_visitor") { v in v.visitor = Visitor(name: "민수", dex: 6, shiny: false, until: T.addingTimeInterval(60), hello: true) }
     take("grid_drag") { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(T, force: true); v.drag = (10001, CGPoint(x: 150 * K, y: 30 * K)) }   // 3.1: one of the box carried onto the walker's row
     take("dex_grid") { v in v.screen = .dex(25, filter: 0, detail: false) }
     take("dex_entry") { v in still(v, "dex", 25); v.screen = .dex(25, filter: 0, detail: true) }
