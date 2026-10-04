@@ -161,6 +161,28 @@ import AppKit
     take("market_pick_post", fme) { v in v.screen = .market(.pick(MarketPick(give: v.myTradeBox[4].uid, side: 0, at: 4))) }
     take("market_pick_wish", fme) { v in v.screen = .market(.pick(MarketPick(give: v.myTradeBox[4].uid, wish: [25, 133, 6], side: 1, at: 5))) }
     take("market_pick_bid", fme) { v in v.screen = .market(.pick(MarketPick(listing: 4, give: v.myTradeBox[3].uid, side: 0, at: 3))) }
+    // 3.6 (12 §5, docs/plans/13): shop tabs, items on anyone, battle items on the bench, live battles
+    let shop36 = online({ var s = base(); s.watts = 9999; s.bp = 400; return s }())
+    take("shop_tab_heal", shop36) { v in v.screen = .shop(bp: false, sel: 0, qty: nil) }
+    take("shop_tab_mint", shop36) { v in v.screen = .shop(bp: false, sel: v.shopRows(false, v.shopTabs(false).firstIndex(of: "민트") ?? 0).first ?? 0, qty: nil) }
+    take("shop_bp_tabs", shop36) { v in v.screen = .shop(bp: true, sel: 0, qty: nil) }
+    let it36 = online({ var s = base(); var r = Seeded(s: 71); s.box = (0..<14).map { k in Mon.wild([19, 133, 25, 1, 4, 7, 16, 41, 129, 92, 66, 74, 95, 63][k], level: 5 + 6 * k, &r) }
+        s.bag = ["이상한사탕", "고집민트", "불꽃의돌", "타우린", "은색병뚜껑"]; return s }())
+    take("item_pick_candy", it36) { v in v.screen = .itemOn(ItemOn(item: "이상한사탕", pick: -1, at: 0)) }
+    take("item_pick_stone", it36) { v in v.screen = .itemOn(ItemOn(item: "불꽃의돌", pick: v.itemRefs.firstIndex { v.state.mon($0)?.dex == 133 }.map { v.itemRefs[$0] }, at: v.itemRefs.firstIndex { v.state.mon($0)?.dex == 133 } ?? 0)) }
+    take("item_pick_cap_none", it36) { v in v.screen = .itemOn(ItemOn(item: "은색병뚜껑", pick: nil, at: 3)) }
+    take("items_candy_button", it36) { v in v.screen = .items(v.state.inventory.firstIndex(of: "이상한사탕") ?? 0) }
+    take("mon_mint", it36) { v in v.state.box[3].mint = natures.firstIndex { $0.name == "고집" }; v.screen = .box(3, act: nil, confirm: false, detail: true) }
+    var bb = Battle(wild: Mon(dex: 129, level: 5, female: false), party: [it36.state.companion] + it36.state.caught); bb.mine[1].hp = 0; bb.mine[1].down = true
+    take("battle_item_target", it36) { v in v.itemFor = "기력의조각"; v.fight = bb; v.screen = .party(bb, sel: 1) }
+    take("duel_card", fme) { v in let i = v.teamRows(0).firstIndex { !v.isMe($0.card) && Walker.walkingNow($0.card) } ?? 0; v.screen = .team(sel: i, tab: 0, card: true) }
+    take("duel_card_idle", fme) { v in let i = v.teamRows(0).firstIndex { !v.isMe($0.card) && !Walker.walkingNow($0.card) } ?? 0; v.screen = .team(sel: i, tab: 0, card: true) }
+    take("duel_invite", tme) { v in v.duelOn = true; v.duel = DuelView(id: 1, state: "invited", opponent: "민수", challenger: false, deadline: Int(Date().timeIntervalSince1970) + 47); v.screen = .duel(.invite(id: 1, from: "민수")) }
+    take("duel_wait_accept", tme) { v in v.duelOn = true; v.duel = DuelView(id: 1, state: "invited", opponent: "지은", challenger: true, deadline: Int(Date().timeIntervalSince1970) + 52); v.screen = .duel(.waitAccept(id: 1, to: "지은")) }
+    var db36 = Battle(party: [Mon(dex: 25, level: 50, female: false), Mon(dex: 6, level: 50, female: false)], trainer: "민수", foes: [Mon(dex: 448, level: 50, female: false), Mon(dex: 130, level: 50, female: false)]); db36.pvp = true
+    take("duel_menu", tme) { v in v.duelOn = true; v.duelWait = false; v.duel = DuelView(id: 1, state: "active", opponent: "민수", challenger: true, battle: db36, turn: 1, need: "move", deadline: Int(Date().timeIntervalSince1970) + 24); v.fight = db36; v.screen = .battle(db36, sel: 0) }
+    take("duel_waiting", tme) { v in v.duelOn = true; v.duelWait = true; v.duel = DuelView(id: 1, state: "active", opponent: "민수", challenger: true, battle: db36, turn: 1, need: nil, deadline: Int(Date().timeIntervalSince1970) + 19); v.fight = db36; v.screen = .battle(db36, sel: 0) }
+    take("duel_won", tme) { v in v.duelOn = false; v.duelWait = false; v.screen = .say(["이겼다!", "+3 BP"], next: .home, since: Date()) }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
     return n

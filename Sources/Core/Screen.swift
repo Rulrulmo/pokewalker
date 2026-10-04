@@ -26,7 +26,9 @@ indirect enum Screen {
     case beats(Battle, [Beat], since: Date, from: Battle)              // one exchange playing out; `from` = HP before it
     case card(Int), items(Int)                                         // 도구: everything carried (the walker's + the bag), the picked row (from 포켓몬's last chip)
     case course(Int)                                                   // 코스: the pick (an index into courses; its picture on the LCD)
-    case train(Int)                                                    // 대단한 특훈 with 은색병뚜껑: the companion's stat picked (0 HP … 5 스피드)
+    case train(Int)                                                    // 대단한 특훈 with 은색병뚜껑: the stat picked (0 HP … 5 스피드), on Walker.trainRef (3.6: any of ours)
+    case itemOn(ItemOn)                                                // 3.6 (docs/plans/13): who gets the 도구 page's item
+    case duel(DuelStep)                                                // 12 §5 (3.6): a live battle's invitation (mine out, or one to me); the fight itself is on the battle screens
     case say([String], next: Screen, since: Date)                      // any button or 3 s
     case evolve(from: Mon, to: Mon, since: Date)                       // already applied to the state; this is the show
     case dex(Int, filter: Int, detail: Bool)                           // the pick's dex number; filter = the grid's tab (전체 / 잡음 / 못 잡음 / 이 코스); detail = the entry page

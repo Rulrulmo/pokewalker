@@ -91,7 +91,14 @@ import Foundation
     take("market_board", on: tme) { v in v.screen = .market(.board(tab: 0, sel: 0)) }
     take("market_post_mine", on: tme) { v in v.screen = .market(.post(id: 8, sel: 0)) }
     take("market_pick_wish", on: tme) { v in v.screen = .market(.pick(MarketPick(give: v.myTradeBox[3].uid, wish: [25, 133], side: 1, at: 24))) }
-    take("traded", on: tme) { v in v.screen = .traded(gave: v.state.box[2], got: tsrv.walk("민수")!.box[4], with: "민수", since: T - 5) }
+    take("shop_tabs", on: tme) { v in v.screen = .shop(bp: false, sel: v.shopRows(false, v.shopTabs(false).firstIndex(of: "민트") ?? 0).first ?? 0, qty: nil) }   // 3.6
+    serve(tme) { w in w.bag = ["이상한사탕", "불꽃의돌"] }
+    take("item_pick", on: tme) { v in v.screen = .itemOn(ItemOn(item: "이상한사탕", pick: -1, at: 0)) }
+    take("duel_card", on: tme) { v in v.screen = .team(sel: v.teamRows(0).firstIndex { !v.isMe($0.card) && Walker.walkingNow($0.card) } ?? 0, tab: 0, card: true) }
+    take("duel_invite", on: tme) { v in v.duelOn = true; v.duel = DuelView(id: 1, state: "invited", opponent: "민수", challenger: false, deadline: now + 47); v.screen = .duel(.invite(id: 1, from: "민수")) }
+    var wd = Battle(party: [Mon(dex: 25, level: 50, female: false)], trainer: "민수", foes: [Mon(dex: 448, level: 50, female: false)]); wd.pvp = true
+    take("duel_waiting", on: tme) { v in v.duelOn = true; v.duelWait = true; v.duel = DuelView(id: 1, state: "active", opponent: "민수", challenger: true, battle: wd, turn: 1, deadline: now + 19); v.fight = wd; v.screen = .battle(wd, sel: 0) }
+    take("traded", on: tme) { v in v.duelOn = false; v.duelWait = false; v.screen = .traded(gave: v.state.box[2], got: tsrv.walk("민수")!.box[4], with: "민수", since: T - 5) }
     take("grid_drag") { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(T, force: true); v.drag = (10001, CGPoint(x: 150 * K, y: 30 * K)) }   // 3.1: one of the box carried onto the walker's row
     take("dex_grid") { v in v.screen = .dex(25, filter: 0, detail: false) }
     take("dex_entry") { v in still(v, "dex", 25); v.screen = .dex(25, filter: 0, detail: true) }

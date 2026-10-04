@@ -45,13 +45,14 @@ extension Walker {
             let lines: [TeamCardModel.Line] = [
                 .init(key: "도감", value: "잡음 \(c.owned) · 봤음 \(c.seen)" + (c.shinies > 0 ? " · 이로치 \(c.shinies)" : "")),
                 .init(key: "타워", value: "최고 \(c.towerBest)연승 · BP \(c.bp.formatted())"),
-                .init(key: "레이더", value: "최고 연쇄 \(c.bestChain)"),
+                .init(key: "레이더", value: "최고 연쇄 \(c.bestChain)" + (c.duelWins + c.duelLosses > 0 ? " · 대전 \(c.duelWins)승 \(c.duelLosses)패" : "")),
                 .init(key: "걸음", value: "오늘 \(c.today.formatted()) · 이번 주 \(c.week.formatted())"),
                 .init(key: "누적", value: "\(c.total.formatted())걸음"),
                 .init(key: "코스", value: courses[safe: c.course]?.name ?? "-"),
             ]
             return PaneContent(teamCard: TeamCardModel(name: c.name, me: isMe(c), walking: Walker.walkingNow(c) && !isMe(c), when: isMe(c) ? "" : ago(c.idle), walker: c.walker.prefix(3).map(mini), lines: lines,
-                                                       greet: isMe(c) ? nil : visitorGreeted(c.name) ? "인사했어요 ♥" : "인사하기 ♥", remove: !isMe(c)))
+                                                       greet: isMe(c) ? nil : visitorGreeted(c.name) ? "인사했어요 ♥" : "인사하기 ♥", remove: !isMe(c),
+                                                       duel: isMe(c) ? nil : Walker.walkingNow(c) ? "대전 신청" : "걷는 중일 때 대전"))
         }
         let per = TeamModel.perPage, first = s / per * per
         let page = rows[first..<min(rows.count, first + per)].map { r in

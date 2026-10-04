@@ -77,18 +77,18 @@ import AppKit
     // the bag: a candy that levels into an evolution, a vitamin, a 진화의 돌, 전부 팔기; 중복 놓아주기
     var rat = Mon(dex: 19, level: 19, female: false); rat.exp = expTable[growthRate[19]][19]
     let bv = online({ var s = Walk(); s.companion = rat; s.bag = ["이상한사탕", "타우린", "금구슬", "진주"]; return s }(), rng: 5)
-    bv.screen = .items(row(bv, "이상한사탕")); bv.press(1); drain(bv)
+    bv.screen = .items(row(bv, "이상한사탕")); bv.press(1); bv.press(1); drain(bv)                 // (3.6: who gets it — the companion, picked already; ● uses it)
     let candySaid = says(bv) == [monNames[19] + " Lv.20!"], noLevelNews = !bv.news.contains { if case .level = $0 { return true }; return false }
     bv.press(1); bv.screen = .home; bv.tick(Date())
     let candyEvolves: Bool = { if case .evolve(let f, let t, _) = bv.screen { return f.dex == 19 && t.dex == 20 }; return false }()
-    bv.screen = .items(row(bv, "타우린")); bv.press(1); drain(bv)
+    bv.screen = .items(row(bv, "타우린")); bv.press(1); bv.press(1); drain(bv)
     let vitamin = says(bv).last == "노력치 10" && bv.state.companion.evs?[1] == 10
     let w0 = bv.state.watts; bv.screen = .home; bv.sellAll(); drain(bv)
     let sold = bv.state.watts - w0, soldSaid = says(bv) == ["전부 팔았다", "+\(sold)W"] && sold > 0 && bv.state.count("금구슬") == 0 && bv.state.count("진주") == 0
     check(candySaid && noLevelNews && candyEvolves && vitamin && soldSaid, "3.0 bag: 이상한사탕 (its line, no second 레벨 업!), the evolution it brings at home; 타우린; 전부 팔기",
           "\(candySaid) \(noLevelNews) \(candyEvolves) \(vitamin) \(soldSaid) \(says(bv))")
     let sv = online({ var s = Walk(); s.companion = Mon(dex: 133, level: 20, female: false); s.bag = ["불꽃의돌"]; s.box = (0..<3).map { Mon(dex: 16, level: 5 + $0, female: false) }; return s }())
-    sv.screen = .items(0); sv.press(1); drain(sv)
+    sv.screen = .items(0); sv.press(1); sv.press(1); drain(sv)
     let stoned: Bool = { if case .evolve(let f, let t, _) = sv.screen { return f.dex == 133 && t.dex == 136 }; return false }()
     sv.screen = .home; sv.releaseDupes(16); drain(sv)
     check(stoned && sv.state.count("불꽃의돌") == 0 && sv.state.companion.dex == 136 && says(sv).first == "2마리를 놓아줬다" && sv.state.box.count == 1,
@@ -445,5 +445,120 @@ import AppKit
     check(withdrawLabel?.hasPrefix("제안 거두기") == true && withdrawn.last == "제안을 거뒀어요", "제안 거두기 → the poster hears it", "\(String(describing: withdrawLabel)) \(withdrawn)")
     fa.cloud!.marketDue = true; drain(fa); fa.screen = .market(.post(id: p2, sel: nil)); fa.pageTap(8131); drain(fa)
     check(says(fa) == ["글을 내렸다"] && sv.listings.allSatisfy { !$0.open }, "글 내리기 → off the board", "\(says(fa))")
+    return c
+}
+
+/// docs/plans/13 (3.6): items on any of ours (the 도구 page asks who: a box one's 이상한사탕 evolves it, a mint on the walker's, a stone on a box
+/// one), in a fight on the bench and on a fainted one (no revive by itself any more); the shops' tabs.
+@MainActor func itemChecks() -> [(Bool, String)] {
+    var c: [(Bool, String)] = []
+    func check(_ ok: Bool, _ name: String, _ why: @autoclosure () -> String = "") { c.append((ok, ok ? name : name + " — " + why())) }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    var rat = Mon(dex: 19, level: 19, female: false); rat.exp = expTable[growthRate[19]][19]
+    let iw = online({ var s = Walk(); s.companion = Mon(dex: 25, level: 30, female: false); s.caught = [Mon(dex: 16, level: 10, female: false)]
+                      s.box = [rat, Mon(dex: 133, level: 20, female: false)]; s.bag = ["이상한사탕", "고집민트", "불꽃의돌"]; return s }())
+    func useOn(_ item: String, _ ref: Int) {
+        iw.screen = .items(iw.state.inventory.firstIndex(of: item) ?? 0); iw.press(1)
+        if case .itemOn(var p) = iw.screen { p.at = iw.itemRefs.firstIndex(of: ref) ?? 0; iw.screen = .itemOn(p); iw.press(1); iw.press(1) }
+        drain(iw)
+    }
+    iw.screen = .items(iw.state.inventory.firstIndex(of: "이상한사탕") ?? 0); let label = iw.paneContent(Date()).items?.action; iw.press(1)
+    let picker = iw.paneContent(Date()).pick
+    let ratRef = iw.state.box.firstIndex { $0.dex == 19 } ?? 0
+    useOn("이상한사탕", ratRef); let candySaid = says(iw); iw.press(1); iw.screen = .home; iw.tick(Date())
+    let evolved: Bool = { if case .evolve(let f, let t, _) = iw.screen { return f.dex == 19 && t.dex == 20 }; return false }()
+    check(label == "쓸 포켓몬 고르기" && picker?.mine.dex == 25 && picker?.base == 8300 && candySaid == ["꼬렛 Lv.20!"] && evolved && iw.state.box.contains { $0.dex == 20 },
+          "도구 → who (the companion picked first) → a box one: 이상한사탕 levels it, and it evolves (home shows it)", "\(String(describing: label)) \(candySaid) \(evolved) \(iw.state.box.map(\.dex))")
+    iw.tick(Date() + 7); useOn("고집민트", -2)
+    let k = natures.firstIndex { $0.name == "고집" } ?? 0, pidgey = iw.state.caught.first, mintSaid = says(iw)
+    iw.screen = .box(-2, act: nil, confirm: false, detail: true); let page = iw.paneContent(Date()).mon
+    check(pidgey?.mint == k && mintSaid.last == "능력치가 고집 성격처럼" && page?.nature.contains("(민트: 고집)") == true && page?.up == natures[k].up,
+          "고집민트 on the walker's: its stats follow 고집, its page says both", "\(String(describing: pidgey?.mint)) \(mintSaid) \(String(describing: page?.nature))")
+    useOn("불꽃의돌", iw.state.box.firstIndex { $0.dex == 133 } ?? 0)
+    check(iw.state.box.contains { $0.dex == 136 } && iw.state.count("불꽃의돌") == 0, "불꽃의돌 on a box 이브이 → 부스터", "\(iw.state.box.map(\.dex))")
+    iw.screen = .items(0); serve(iw) { $0.bag = ["이상한사탕"]; $0.companion.level = 100; $0.caught[0].level = 100; for i in $0.box.indices { $0.box[i].level = 100 } }
+    check(iw.paneContent(Date()).items?.action == nil, "an item nobody could use offers nothing", "\(String(describing: iw.paneContent(Date()).items?.action))")
+
+    // in a fight: the bench's HP, a fainted one back up; none by itself
+    let bw = online({ var s = Walk(); s.companion = Mon(dex: 25, level: 30, female: false); s.caught = [Mon(dex: 16, level: 30, female: false)]; s.bag = ["좋은상처약", "기력의조각"]; return s }())
+    var b = Battle(wild: Mon(dex: 129, level: 3, female: false), party: [bw.state.companion, bw.state.caught[0]]); b.mine[1].hp = 5
+    fightOn(bw, b)
+    let list = bw.battleItems(b).map(\.name)
+    bw.screen = .bagBattle(b, sel: list.firstIndex(of: "좋은상처약") ?? 0); bw.press(1)
+    let asks: Bool = { if case .party(_, 1) = bw.screen { return bw.itemFor == "좋은상처약" }; return false }(), msg = bw.sideModel(Date())?.message
+    bw.press(1); drain(bw); playOut(bw)
+    check(list == ["좋은상처약"] && asks && msg == "좋은상처약을 누구에게 쓸까?" && (bw.fight?.mine[1].hp ?? 0) > 5 && bw.state.count("좋은상처약") == 0,
+          "a fight's bag: 좋은상처약 asks who (the bench one, hurt) → its HP back", "\(list) \(asks) \(String(describing: msg)) \(bw.fight?.mine[1].hp ?? -1)")
+    calm(bw); serve(bw) { $0.bag = ["기력의조각"] }
+    var fb2 = Battle(wild: Mon(dex: 129, level: 3, female: false), party: [bw.state.companion, bw.state.caught[0]]); fb2.mine[1].hp = 0; fb2.mine[1].down = true
+    fightOn(bw, fb2); bw.screen = .bagBattle(fb2, sel: 0); bw.press(1); bw.press(1); drain(bw); playOut(bw)
+    check((bw.fight?.mine[1].hp ?? 0) > 0 && bw.state.count("기력의조각") == 0, "기력의조각 on the fainted bench one: back up", "\(bw.fight?.mine[1].hp ?? -1)")
+
+    // the shops' tabs
+    let sw = online({ var s = Walk(); s.watts = 9999; return s }())
+    sw.screen = .shop(bp: false, sel: 0, qty: nil); let m0 = sw.shopModel()
+    _ = sw.key(.tab); let m1 = sw.shopModel(); sw.shopTap(2900 + (sw.shopTabs(false).firstIndex(of: "민트") ?? 0)); let mints = sw.shopModel()
+    sw.press(0); let wrapped = sw.shopModel()
+    check(m0?.tabs.first == "회복" && m0?.tab == 0 && m1?.tab == 1 && mints?.rows.count == Walk.mints.count && mints?.rows.allSatisfy { $0.name.hasSuffix("민트") } == true
+          && wrapped?.sel == Walk.mints.count - 1 && wrapped?.tab == mints?.tab,
+          "the shop's tabs: 회복 first; Tab the next; a tab's click its rows (21 민트); ◀ goes round within the tab", "\(String(describing: m0?.tabs)) \(String(describing: mints?.rows.count))")
+    return c
+}
+
+/// 12 §5 (3.6): a live battle on one fake server — the challenge from a friend's card (walking now), the invitation's news and page, 수락: the
+/// opening plays on both sides (the other's through its poll), picks in turn (the first one waits for the other's), to the end: 이겼다 +3BP
+/// and the record; a declined one and a cancelled one.
+@MainActor func duelChecks() -> [(Bool, String)] {
+    var c: [(Bool, String)] = []
+    func check(_ ok: Bool, _ name: String, _ why: @autoclosure () -> String = "") { c.append((ok, ok ? name : name + " — " + why())) }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func act(_ w: Walker) { w.news = []; w.screen = .home; w.cloud!.addSteps(1); w.cloud!.saveNow(); drain(w); drain(w) }
+    func pump(_ ws: [Walker]) { for _ in 0..<4 { for w in ws { w.tick(Date()); drain(w) } } }
+    let sv = FakeCloud()
+    let da = online({ var s = Walk(); s.companion = Mon(dex: 150, level: 70, female: false); return s }(), server: sv)
+    let db = online({ var s = Walk(); s.companion = Mon(dex: 10, level: 5, female: false); return s }(), server: sv)
+    let aName = da.myName, bName = db.myName
+    sv.befriend(aName, bName); act(db); da.cloud!.teamDue = true; drain(da); drain(da)
+    let bi = da.teamRows(0).firstIndex { $0.card.name.lowercased() == bName.lowercased() } ?? 0
+    da.screen = .team(sel: bi, tab: 0, card: true); let card = da.paneContent(Date()).teamCard; da.pageTap(6032); drain(da)
+    let waiting: Bool = { if case .duel(.waitAccept(_, let to)) = da.screen { return to.lowercased() == bName.lowercased() }; return false }()
+    check(card?.duel == "대전 신청" && waiting && da.duelOn && sv.duels.count == 1 && da.paneContent(Date()).duel?.buttons == ["신청 취소"],
+          "대전 신청 (a friend walking now) → the server's invitation; this side waits (신청 취소)", "\(String(describing: card?.duel)) \(waiting)")
+    act(db); let invited = says(db) == [josa(aName, "이", "가") + " 대전을 신청했다!"]; db.press(1)
+    let page = db.paneContent(Date()).duel
+    db.pageTap(6300); drain(db)
+    let opening: Bool = { if case .beats = db.screen { return true }; return false }()
+    playOut(db); pump([da, db]); playOut(da)
+    let dbMenu: Bool = { if case .battle(let b, 0) = db.screen { return db.battleMenu(b) == ["공격", "기권"] && !db.duelWait }; return false }()
+    let daMenu: Bool = { if case .battle = da.screen { return !da.duelWait }; return false }()
+    check(invited && page?.buttons == ["수락", "거절"] && opening && dbMenu && daMenu && da.title().0 == "실시간 대전",
+          "the invitation's news → its page (수락 · 거절); 수락: the opening plays on both sides, then each picks (공격 · 기권: no items, no running)", "\(invited) \(String(describing: page)) \(opening) \(dbMenu) \(daMenu) \(da.screen)")
+    da.press(1); da.press(1); drain(da)
+    let daWaits = da.duelWait && da.sideModel(Date())?.message.hasPrefix("상대를 기다리는 중") == true
+    db.press(1); db.press(1); drain(db); pump([da, db])
+    var n = 0
+    while n < 30, da.duelOn || db.duelOn {                                                            // to the end: each picks when asked
+        n += 1
+        for w in [da, db] {
+            switch w.screen {
+            case .beats: playOut(w)
+            case .battle(let b, _) where !w.duelWait: w.screen = .battle(b, sel: 0); w.press(1); if case .moves(let x, _) = w.screen { w.screen = .moves(x, sel: x.mine[x.me].pp.firstIndex { $0 > 0 } ?? 0); w.press(1) }; drain(w)
+            case .party(let b, _): w.screen = .party(b, sel: b.mine.indices.first { b.mine[$0].alive && $0 != b.me } ?? 0); w.press(1); drain(w)
+            default: break
+            }
+        }
+        pump([da, db])
+    }
+    let won = says(da), lost = says(db)
+    act(da); act(db)
+    check(daWaits && won == ["이겼다!", "+3 BP"] && lost.first == josa(aName, "에게", "에게") + " 졌다..." && da.state.bp == 3 && da.state.duelWins == 1 && db.state.duelLosses == 1 && sv.duels.first?.state == "over",
+          "a pick waits for the other's (상대를 기다리는 중); turn by turn to the end: 이겼다! +3 BP, the record on both sides", "\(daWaits) \(won) \(lost) \(String(describing: da.state.bp)) \(String(describing: sv.duels.first?.state))")
+    // declined; cancelled
+    da.screen = .home; da.challenge(bName); drain(da); act(db); db.press(1); db.pageTap(6301); drain(db)
+    let declined = says(db) == ["대전 신청을", "거절했다"]; pump([da, db])
+    let heard = says(da) == ["대전이", "상대가 거절했다"]
+    da.screen = .home; da.challenge(bName); drain(da); da.pageTap(6300); drain(da)
+    let cancelled = says(da) == ["대전 신청을", "취소했다"] && !da.duelOn
+    check(declined && heard && cancelled, "거절: said there, heard here (its poll); 신청 취소", "\(says(db)) \(says(da))")
     return c
 }

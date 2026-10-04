@@ -34,6 +34,9 @@ extension Walker {
             stage(&fb, b, now, .idle)
             fb.text("기권할까?", 2, 52, 3, small: true)
             for (k, o) in ["아니오", "예"].enumerated() { let x = 48 + 24 * k, w = fb.text(o, x + 1, 52, 3, small: true); if (k == 1) == yes { fb.invert(x, 52, w + 2, 12) } }
+        case .battle(let b, _) where duelWait:
+            stage(&fb, b, now, .idle)
+            fb.text("상대를 기다리는 중" + String(repeating: ".", count: Int(now.timeIntervalSinceReferenceDate * 2) % 4), 2, 52, 3, small: true)
         case .battle(let b, let sel):
             stage(&fb, b, now, .idle)
             let opts = battleMenu(b)
@@ -143,6 +146,8 @@ extension Walker {
             fb.text(towerRun ? "● 다음 상대  ↩ 나가기" : "● 도전 \(Walk.towerFee)W", 0, 53, 3, center: true, small: true)
         case .team(let sel, let tab, _): teamLCD(&fb, sel, tab, now)
         case .trade(let s): tradeLCD(&fb, s, now)
+        case .itemOn(let p): itemOnLCD(&fb, p, now)
+        case .duel(let s): duelLCD(&fb, s, now)
         case .raid: raidLCD(&fb, now)
         case .market(let s): marketLCD(&fb, s, now)
         case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
@@ -171,9 +176,9 @@ extension Walker {
             header("코스")
             fb.course(c.art, 22, 15, weather: i == state.course ? state.weather ?? .sunny : .sunny, t: t, hour: state.hour, season: state.season)
             fb.text(c.name + (i == state.course ? " · 지금" : open ? "" : " · 잠김"), 48, 52, open ? 3 : 1, center: true, small: true)
-        case .train(let k):                                                                        // 대단한 특훈: the companion's IVs, the pick
+        case .train(let k):                                                                        // 대단한 특훈: that one's IVs (trainRef), the pick
             header("대단한 특훈")
-            let c = state.companion, iv = c.effectiveIVs, names = ["HP", "공격", "방어", "특공", "특방", "스피드"]
+            let c = state.mon(trainRef) ?? state.companion, iv = c.effectiveIVs, names = ["HP", "공격", "방어", "특공", "특방", "스피드"]
             fb.text(monNames[c.dex] + " Lv.\(c.level)", 2, 15)
             for j in 0..<6 { let s = "\(names[j]) \(iv[j])"; fb.text(s, 2 + (j % 3) * 32, 30 + (j / 3) * 10, j == k ? 3 : 2, small: true); if j == k { fb.invert(1 + (j % 3) * 32, 29 + (j / 3) * 10, textWidth(s, small: true) + 2, 9) } }
             fb.text("은색병뚜껑 ×\(state.count("은색병뚜껑"))", 2, 52, 2, small: true)
@@ -298,7 +303,7 @@ extension Walker {
     /// A click on a page still up under its own message (산 뒤, 연승!, W가 부족하다 …): the message ends and the click counts.
     func throughSay() {
         guard case .say(_, let next, _) = screen else { return }
-        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade, .raid, .market, .team: screen = next; default: break }
+        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade, .raid, .market, .team, .itemOn, .duel: screen = next; default: break }
     }
     func gridTap(_ code: Int) {
         guard !frozen, waiting == nil else { return }
@@ -345,6 +350,8 @@ extension Walker {
         if case .trade(let s) = sc { return tradePane(s, now) }
         if case .raid(let tab) = sc { return raidPane(tab, now) }
         if case .market(let s) = sc { return marketPane(s, now) }
+        if case .itemOn(let p) = sc { return itemOnPane(p, now) }
+        if case .duel(let s) = sc { return duelPane(s, now) }
         if case .menu(let i) = sc {
             let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드"]   // offline: what needs the server, dimmed
             let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
@@ -380,7 +387,7 @@ extension Walker {
             let lv = courses[i].all.map(\.level), about = "Lv.\(lv.min() ?? 1)–\(lv.max() ?? 1) · " + courses[i].types.map { typeKo[$0] ?? $0 }.joined(separator: " · ")
             return PaneContent(course: CourseModel(rows: rows, sel: i, first: first, count: courses.count, opened: courses.indices.filter(state.unlocked).count, go: go, about: about))
         case .train(let k):
-            let c = state.companion, iv = c.effectiveIVs, raw = c.ivs ?? Array(repeating: 15, count: 6), names = ["HP", "공격", "방어", "특공", "특방", "스피드"]
+            let c = state.mon(trainRef) ?? state.companion, iv = c.effectiveIVs, raw = c.ivs ?? Array(repeating: 15, count: 6), names = ["HP", "공격", "방어", "특공", "특방", "스피드"]
             let ready = c.level >= Walk.hyperLevel, caps = state.count("은색병뚜껑")
             let go = ready && iv[k] < 31 && caps > 0 ? "\(names[k]) \(iv[k]) → 31 특훈" : nil
             let note = !ready ? "Lv.\(Walk.hyperLevel)부터 특훈할 수 있어요" : caps == 0 ? "은색병뚜껑이 없어요" : iv[k] >= 31 ? "이미 최고예요" : ""
@@ -418,6 +425,9 @@ extension Walker {
             screen = .team(sel: min(max(0, n - 1), ((sel / per + (code == 6230 ? pages - 1 : 1)) % pages) * per), tab: 4, card: false)
         case (.team(_, 4, false), 6240): askFriend()
         case (.market, 8000...8199): marketTap(code, Date())
+        case (.itemOn, 8300...8399): itemOnTap(code, Date())
+        case (.duel, 6300...6301): duelTap(code, Date())
+        case (.team(let sel, let tab, true), 6032): if let c = teamRows(tab)[safe: sel]?.card, !isMe(c), Walker.walkingNow(c) { challenge(c.name) }   // 대전 신청
         case (.trade, 6000...6199): tradeTap(code, Date())
         case (.raid, 7000...7010): raidTap(code, Date())
         case (.team(let sel, let tab, _), 6010...6015):                                          // a row: the first click picks it, a click on the pick opens its card
@@ -488,8 +498,14 @@ extension Walker {
     }
     /// What 도구's button does for item n (nil = nothing here), and a note ({동료} = the companion's name).
     func itemUse(_ n: String) -> (String?, String) {
-        let c = state.companion
-        switch ItemKind.of(n) {
+        let c = state.companion, kind = ItemKind.of(n)
+        if Walker.targeted(kind) {                                                                 // 3.6 (docs/plans/13): any of ours — who gets it is asked next
+            let who = itemRefs.filter { itemNot(n, $0) == nil }.count
+            if who == 0 { return (nil, itemNot(n, -1).map { "동료: " + $0 } ?? "쓸 수 있는 포켓몬이 없어요") }
+            if case .evolution = kind, let e = state.stoneEvolutions(Date()).first(where: { $0.item == n }) { return ("쓸 포켓몬 고르기", "동료는 \(monNames[e.to])(으)로 진화") }
+            return ("쓸 포켓몬 고르기", "쓸 수 있는 포켓몬 \(who)마리")
+        }
+        switch kind {
         case .candy: return c.level < 100 ? ("{동료}에게 먹이기".replacingOccurrences(of: "{동료}", with: monNames[c.dex]), "지금 Lv.\(c.level)") : (nil, "이미 Lv.100")
         case .vitamin(let k, _): return ("{동료}에게 먹이기".replacingOccurrences(of: "{동료}", with: monNames[c.dex]), "지금 \(c.evs?[k] ?? 0) · 합 \((c.evs ?? []).reduce(0, +))/510")
         case .evReset: return ("{동료}에게 먹이기".replacingOccurrences(of: "{동료}", with: monNames[c.dex]), "지금 합 \((c.evs ?? []).reduce(0, +))")
@@ -512,9 +528,9 @@ extension Walker {
     }
     /// A Pokémon in full, for its page.
     func monPage(_ m: Mon, act: Int? = nil, confirm: Bool = false) -> MonModel {
-        let n = natures[m.nature ?? 0], neutral = n.up == n.down, name = ["HP", "공격", "방어", "특공", "특방", "스피드"]   // the chips' and hexagons' names: every note fits its line
+        let n = natures[m.mint ?? m.nature ?? 0], neutral = n.up == n.down, name = ["HP", "공격", "방어", "특공", "특방", "스피드"]   // the chips' and hexagons' names: every note fits its line; a mint's nature drives them (3.6)
         let note = neutral ? "능력치에 영향을 주지 않는 성격" : josa(name[n.up], "이", "가") + " 10% 높고 " + josa(name[n.down], "이", "가") + " 10% 낮은 성격"
-        var p = MonModel(nature: m.natureName, natureNote: note, ability: m.abilityName, abilityNote: abilityDescs[m.abilityID] ?? "", up: neutral ? nil : n.up, down: neutral ? nil : n.down,
+        var p = MonModel(nature: m.natureName + (m.mint.map { $0 != (m.nature ?? 0) ? " (민트: " + natures[$0].name + ")" : "" } ?? ""), natureNote: note, ability: m.abilityName, abilityNote: abilityDescs[m.abilityID] ?? "", up: neutral ? nil : n.up, down: neutral ? nil : n.down,
                         ivs: m.effectiveIVs, evs: m.evs ?? Array(repeating: 0, count: 6), hyper: m.hyper ?? [], v: m.perfectIVs, evTotal: (m.evs ?? []).reduce(0, +), confirm: confirm && act != nil, sel: act.flatMap { $0 < 2 ? $0 : nil })
         p.moves = m.moves.compactMap { moveTable[$0]?.name }; return p
     }
@@ -551,16 +567,16 @@ extension Walker {
         case .shopConfirm(let b, let s, let y): bp = b; sel = s; qty = nil; ask = y
         default: return nil
         }
-        let ws = wares(bp), unit = bp ? "BP" : "W", w = ws[safe: sel]
-        let rows = ws.map { w in ShopModel.Row(name: state.wareName(w), note: state.wareNote(w), price: w.once && state.owned(w) > 0 ? "보유" : "\(w.price.formatted())\(unit)",
+        let ws = wares(bp), unit = bp ? "BP" : "W", w = ws[safe: sel], tab = shopTab(bp, sel), ids = shopRows(bp, tab)
+        let rows = ids.map { ws[$0] }.map { w in ShopModel.Row(name: state.wareName(w), note: state.wareNote(w), price: w.once && state.owned(w) > 0 ? "보유" : "\(w.price.formatted())\(unit)",
                                                  owned: state.owned(w), can: state.canBuy(w, bp: bp) > 0, once: w.once) }
         let cost = (w?.price ?? 0) * (qty ?? 0)
         let hint = said ?? w.map { w in
             w.once && state.owned(w) > 0 ? "이미 가지고 있어요" : state.canBuy(w, bp: bp) == 0 ? "\(unit)가 부족해요 · \(w.price.formatted())\(unit) 필요" : "클릭하거나 ●를 누르면 몇 개 살지 정해요"
         } ?? ""
         let spend = ask != nil ? w?.price ?? 0 : cost
-        return ShopModel(title: bp ? "BP 교환소" : "상점", rows: rows, sel: sel, qty: qty, most: w.map { max(1, state.canBuy($0, bp: bp)) } ?? 1,
-                         total: "\(spend.formatted())\(unit)", hint: hint, ask: ask)
+        return ShopModel(title: bp ? "BP 교환소" : "상점", rows: rows, sel: ids.firstIndex(of: sel) ?? 0, qty: qty, most: w.map { max(1, state.canBuy($0, bp: bp)) } ?? 1,
+                         total: "\(spend.formatted())\(unit)", hint: hint, ask: ask, tabs: shopTabs(bp), tab: tab, ids: ids)
     }
 }
 

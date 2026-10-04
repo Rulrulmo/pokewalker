@@ -246,6 +246,7 @@ extension Walker {
     /// goes on in the new session where the server keeps runs (its login says so); on one that doesn't, the run waits too.
     var installBlocker: String? {
         if inBattle || (towerRun && cloud?.keepsRuns != true) { return "배틀이 끝나면" }
+        if duelOn { return "대전이 끝나면" }
         switch screen { case .beats, .evolve, .hatch, .radar, .traded: return "지금 하는 게 끝나면"; default: break }
         return waiting != nil ? "지금 하는 게 끝나면" : nil
     }

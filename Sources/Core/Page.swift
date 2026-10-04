@@ -83,7 +83,7 @@ extension Canvas {
         else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let l = p.relearn { drawRelearn(l) }
         else if let t = p.team { drawTeam(t) } else if let t = p.teamCard { drawTeamCard(t) }
         else if let t = p.trades { drawTrades(t) } else if let o = p.offer { drawOffer(o) } else if let k = p.pick { drawPick(k) }
-        else if let r = p.raid { drawRaid(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
+        else if let d = p.duel { drawDuel(d) } else if let r = p.raid { drawRaid(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
         else if let s = p.status { drawStatus(s) }
     }
     let X0: CGFloat = 9, X1: CGFloat = 207                                                         // the content column (card points): the bezel's edges
@@ -337,8 +337,10 @@ extension Canvas {
 
     // MARK: 상점: rows, then how many
     func drawShop(_ s: ShopModel) {
-        let top: CGFloat = 196, rows = 6, rh: CGFloat = 27
-        if s.title != shopTitle { shopTitle = s.title; shopTop = max(0, s.sel - 2) }             // a stable window: a click never scrolls the row under the pointer away
+        if !s.tabs.isEmpty { tabs(s.tabs, s.tab, 198, code: 2900) }                                 // 3.6: kinds as tabs (2900 + t)
+        let top: CGFloat = s.tabs.isEmpty ? 196 : 224, rows = 6, rh: CGFloat = 27
+        let key = s.title + "|\(s.tab)"
+        if key != shopTitle { shopTitle = key; shopTop = max(0, s.sel - 2) }             // a stable window: a click never scrolls the row under the pointer away
         if s.sel < shopTop { shopTop = s.sel } else if s.sel >= shopTop + rows { shopTop = s.sel - rows + 1 }
         shopTop = max(0, min(shopTop, s.rows.count - rows)); let first = shopTop
         for (i, row) in s.rows.enumerated() where i >= first && i < first + rows {
@@ -350,7 +352,7 @@ extension Canvas {
             let own = row.once ? "" : "보유 \(row.owned)"
             c.say(own, x(X1 - 8), y(yy + 20), font(8, .medium), Ink.sub, 1)
             c.say(row.note, x(X0 + 8), y(yy + 20), font(8, .medium), Ink.sub, maxW: x(X1 - X0 - 24) - width(own, font(8, .medium)))
-            hits.append((rc, 2100 + i))
+            hits.append((rc, 2100 + (s.ids[safe: i] ?? i)))
         }
         if s.rows.count > rows {                                                                   // where in the list: a thin bar on the right
             let track = r(X1 - 1.5, top + 4, 1.2, CGFloat(rows) * rh - 8)
@@ -600,10 +602,14 @@ extension Page {
         var yy: CGFloat = 272
         for l in m.lines { c.say(l.key, x(X0 + 2), y(yy), font(9, .medium), Ink.sub); c.say(l.value, x(X0 + 48), y(yy), font(10, .semibold), Ink.ink, maxW: x(X1 - X0 - 50)); yy += 17 }
         guard let g = m.greet else { return }
-        let half = m.remove ? (X1 - X0 - 5) / 2 : X1 - X0
-        let rc = r(X0, 380, half, 30), on = g == "인사하기 ♥"
-        c.fill(.rounded(rc, 10 * K), on ? Ink.red : Ink.tile); c.say(g, rc.midX, rc.midY, font(11, .bold), on ? .white : Ink.sub, 0.5); if on { hits.append((rc, 6030)) }
-        if m.remove { let tr = r(X0 + half + 5, 380, half, 30); c.fill(.rounded(tr, 10 * K), Ink.tile); c.say("친구 끊기", tr.midX, tr.midY, font(11, .bold), Ink.sub, 0.5); hits.append((tr, 6031)) }
+        var buttons: [(String, Int, Color, Color, Bool)] = [(g == "인사하기 ♥" ? "인사 ♥" : "인사했어요", 6030, g == "인사하기 ♥" ? Ink.red : Ink.tile, g == "인사하기 ♥" ? .white : Ink.sub, g == "인사하기 ♥")]
+        if let d = m.duel { let on = d == "대전 신청"; buttons.append((on ? d : "대전 (걷는 중일 때)", 6032, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 3.6: a live battle
+        if m.remove { buttons.append(("친구 끊기", 6031, Ink.tile, Ink.sub, true)) }
+        let n = CGFloat(buttons.count), bw = (X1 - X0 - 5 * (n - 1)) / n
+        for (i, b) in buttons.enumerated() {
+            let rc = r(X0 + CGFloat(i) * (bw + 5), 380, bw, 30); c.fill(.rounded(rc, 10 * K), b.2)
+            c.say(b.0, rc.midX, rc.midY, font(n > 2 ? 10 : 11, .bold), b.3, 0.5, maxW: rc.width - x(6)); if b.4 { hits.append((rc, b.1)) }
+        }
     }
     // MARK: 교환 (docs/plans/12 §3): the open offers, one offer, making or answering one
     /// The 교환 tab: 팀's tabs (교환 picked), a page of offers — to me (green 받음) and mine (blue 보냄): whose Pokémon, for what, the time left.
@@ -766,6 +772,20 @@ extension Page {
             let rc = r(X0 + CGFloat(i) * (cw + 5), yy, cw, 30), strong = m.strong == i, live = !(m.body == nil && i == 0 && m.sel == nil)
             c.fill(.rounded(rc, 10 * K), strong ? Ink.red : Ink.tile); c.say(t, rc.midX, rc.midY, font(11, .bold), strong ? .white : live ? Ink.ink : Ink.faint, 0.5, maxW: rc.width - x(10))
             if live { hits.append((rc, 8130 + i)) }
+        }
+    }
+    // MARK: 실시간 대전's invitation (12 §5): who, the rules, the time left, my record, its buttons
+    func drawDuel(_ m: DuelModel) {
+        let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .semibold), Ink.red, 1)
+        c.say(m.title, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)
+        let card = r(X0, 218, X1 - X0, 50); c.fill(.rounded(card, 10 * K), Ink.tile)
+        c.say(m.line, card.minX + x(10), card.minY + x(16), font(9.5, .semibold), Ink.ink, maxW: card.width - x(20))
+        c.say("공격 · 교체 · 기권 · 한 번에 30초", card.minX + x(10), card.minY + x(34), font(8.5, .medium), Ink.sub, maxW: card.width - x(20))
+        c.say(m.record, x(X0 + 2), y(282), font(9, .medium), Ink.sub)
+        let n = CGFloat(m.buttons.count), cw = (X1 - X0 - 5 * (n - 1)) / n
+        for (i, t) in m.buttons.enumerated() {
+            let rc = r(X0 + CGFloat(i) * (cw + 5), 292, cw, 30), strong = i == 0 && t == "수락"
+            c.fill(.rounded(rc, 10 * K), strong ? Ink.red : Ink.tile); c.say(t, rc.midX, rc.midY, font(11, .bold), strong ? .white : Ink.ink, 0.5); hits.append((rc, 6300 + i))
         }
     }
     // MARK: 레이드 (docs/plans/12 §4): the boss, the team's HP, power, a tab of rows, the button

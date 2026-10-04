@@ -50,7 +50,7 @@ var resourceDir: URL? { Bundle.main.resourceURL }
 /// The app's version, platform and this PC's name, for the save server (Core/Cloud.swift). The Mac reads Info.plist's CFBundleShortVersionString; Windows has
 /// no bundle, so it uses windowsVersion — bump it with Info.plist (the Mac's self-test fails until they match). The name is the kernel's host name / Windows'
 /// COMPUTERNAME, never a DNS lookup (ProcessInfo.hostName can be one, and stall the main thread for seconds).
-let windowsVersion = "3.5.1"
+let windowsVersion = "3.6"
 #if os(Windows)
 let appVersion = windowsVersion, appPlatform = "windows", appDeviceName = ProcessInfo.processInfo.environment["COMPUTERNAME"] ?? "Windows"
 #else

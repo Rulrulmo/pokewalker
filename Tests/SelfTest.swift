@@ -859,9 +859,10 @@ import AppKit                                                                   
     check(shopV.shopModel()?.hint.contains("받았다") == true && shopV.shopModel()?.qty == nil, "the panel stays up through the shop's message (shown in its box)")
     // a legend: how many, then 정말? (아니오 first), and never by a double-click or a held key
     let lg = online({ var s = Walk(); s.watts = 9999; return s }(), rng: 42)
-    lg.screen = .shop(bp: false, sel: 0, qty: nil); lg.press(0); lg.press(1); lg.press(1)                                  // ◀ wraps to 칠색조, ● how many, ●
+    let hoOh = lg.wares(false).firstIndex { if case .legend(let k) = $0.kind { return Walk.legendShop[k].dex == 250 }; return false } ?? 0
+    lg.screen = .shop(bp: false, sel: hoOh, qty: nil); lg.press(1); lg.press(1)                                             // 칠색조 (its tab, 전설), ● how many, ●
     let asked = on(lg) { if case .shopConfirm(false, _, false) = $0 { return true }; return false }
-    lg.press(1); check(asked && lg.state.watts == 9999 && on(lg) { if case .shop(false, _, nil) = $0 { return true }; return false }, "칠색조: ◀ ● ● asks, and ● on 아니오 buys nothing")
+    lg.press(1); check(asked && lg.state.watts == 9999 && on(lg) { if case .shop(false, _, nil) = $0 { return true }; return false }, "칠색조: ● ● asks, and ● on 아니오 buys nothing")
     lg.press(1); lg.press(1); lg.press(2); lg.press(1); drain(lg)
     check(lg.state.watts == 0 && lg.state.legendBought(250) && (lg.state.box.last?.uid ?? 0) > 1_000_000, "… and ▶ 예 ● brings it (the server's 칠색조)")
     let dc = Walker(state: { var s = Walk(); s.watts = 1000; return s }()); dc.persist = false; dc.rng = Seeded(s: 43)
@@ -984,9 +985,9 @@ import AppKit                                                                   
     let fastEnd = nw.beatState(Date()) != nil; nw.tick(Date())
     check(nw.battleSpeed >= 1 && fastEnd && { if case .beats = nw.screen { return false }; return true }(), "배틀 속도 runs the beats' clock (x\(nw.battleSpeed))")
     serve(nw) { w in var m = Mon(dex: 25, level: 60, female: false, uid: w.companion.uid); m.ivs = [10, 31, 31, 31, 31, 31]; w.companion = m; w.bag = ["은색병뚜껑"] }
-    nw.screen = .items(0); let capUse = nw.paneContent(Date()).items?.action; nw.press(1); let trainPage = nw.paneContent(Date()).train
+    nw.screen = .items(0); let capUse = nw.paneContent(Date()).items?.action; nw.press(1); nw.press(1); let trainPage = nw.paneContent(Date()).train   // (3.6: who, then which stat)
     nw.pageTap(5910); drain(nw)
-    check(capUse?.contains("고르기") == true && trainPage?.sel == 0 && trainPage?.go != nil && nw.state.companion.effectiveIVs[0] == 31 && nw.state.count("은색병뚜껑") == 0, "은색병뚜껑: 도구 → pick a stat → 특훈")
+    check(capUse?.contains("고르기") == true && trainPage?.sel == 0 && trainPage?.go != nil && nw.state.companion.effectiveIVs[0] == 31 && nw.state.count("은색병뚜껑") == 0, "은색병뚜껑: 도구 → who (the companion) → pick a stat → 특훈")
     serve(nw) { $0.box = [Mon(dex: 19, level: 8, female: false), Mon(dex: 19, level: 3, female: false), Mon(dex: 19, level: 5, female: false)] }
     nw.screen = .box(0, act: 0, confirm: true, detail: true); check(nw.paneContent(Date()).mon?.dupes == 2, "놓아줄까? also offers 중복 n마리 (that species' spares)")
     // 1.4: the walker's ones evolve too (after a fight they levelled in; at launch if they're already past it)
@@ -1099,9 +1100,9 @@ import AppKit                                                                   
     let iv = online({ var s = Walk(); s.items = ["상처약"]; s.bag = ["이상한사탕", "금구슬", "금속코트"]; s.companion = Mon(dex: 95, level: 20, female: false)
                                  s.box = [Mon(dex: 16, level: 5, female: false)]; return s }(), rng: 91)
     iv.screen = .items(0); let im = iv.paneContent(Date()).items
-    iv.pageTap(5600 + (im?.rows.firstIndex { $0.name == "이상한사탕" } ?? 0)); let candyAct = iv.paneContent(Date()).items?.action; iv.pageTap(5700); drain(iv)
+    iv.pageTap(5600 + (im?.rows.firstIndex { $0.name == "이상한사탕" } ?? 0)); let candyAct = iv.paneContent(Date()).items?.action; iv.pageTap(5700); iv.press(1); drain(iv)
     check(im?.rows.map(\.name).sorted() == ["금구슬", "금속코트", "상처약", "이상한사탕"] && im?.rows.first { $0.name == "상처약" }?.onWalker == 1 && im?.walker == 1 && im?.bag == 3
-          && candyAct?.hasSuffix("먹이기") == true && iv.state.companion.level == 21 && iv.state.count("이상한사탕") == 0,
+          && candyAct == "쓸 포켓몬 고르기" && iv.state.companion.level == 21 && iv.state.count("이상한사탕") == 0,
           "도구: the walker's and the bag's in one list (워커 marked); a row's button uses it (이상한사탕: +1 level)")
     iv.screen = .box(-1, act: nil, confirm: false, detail: true); let onix = iv.paneContent(Date()).mon
     check(onix?.evos.first?.contains("강철톤 · 교환") == true && onix?.evos.first?.contains("(있음)") == true && onix?.evos.contains { $0 == "교환하면 받는 쪽에서 진화해요" } == true && onix?.evoAction == nil,
@@ -1132,7 +1133,7 @@ import AppKit                                                                   
     #else
     let frameTimer = { (_: Walker) -> [(Bool, String)] in [] }                                    // P3: Windows' SetTimer shell
     #endif
-    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks(timer: frameTimer) + notebookChecks() + stepGateChecks() + signChecks() + ed25519Checks() + cloudChecks() + actChecks() + tradeChecks() + raidChecks() + socialChecks() + updateFixtureChecks() + updateChecks() { check(ok, name) }   // the drawing files' own checks
+    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks(timer: frameTimer) + notebookChecks() + stepGateChecks() + signChecks() + ed25519Checks() + cloudChecks() + actChecks() + tradeChecks() + raidChecks() + socialChecks() + itemChecks() + duelChecks() + updateFixtureChecks() + updateChecks() { check(ok, name) }   // the drawing files' own checks
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0
 }

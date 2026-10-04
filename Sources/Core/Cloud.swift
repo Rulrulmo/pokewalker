@@ -24,7 +24,7 @@ struct HTTPLink: CloudLink {
     }
     func get(_ path: String, done: @escaping @Sendable (Int, Data) -> Void) { send(request(path), done) }
     private func request(_ path: String) -> URLRequest {                                       // 15 s without a byte is no answer (a long download is fine)
-        var r = URLRequest(url: HTTPLink.base.appendingPathComponent(path), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
+        var r = URLRequest(url: HTTPLink.base.appendingPathComponent(path), cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: path == "v2/duel" ? 35 : 15)   // (a duel's long poll holds up to 25 s)
         for (k, v) in ["X-App-Key": HTTPLink.appKey, "User-Agent": "PokeWalker/\(appVersion) (\(appPlatform))"] { r.setValue(v, forHTTPHeaderField: k) }
         return r
     }
@@ -48,7 +48,7 @@ final class CloudInbox: @unchecked Sendable {
     /// The PIN the server wants (docs/plans/10 §3): this trainer's (wrong: the last one wasn't), a new one (a 2.0 ID has none yet), or none for a while (too many wrong).
     enum PinAsk: Equatable { case enter(wrong: Bool), set, locked(until: Date) }
     /// A request out, kept to read its reply by: an act carries its seq.
-    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, legacy, setPin, act(Int), team, trades, box(String), raid, market }
+    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, legacy, setPin, act(Int), team, trades, box(String), raid, market, duel }
     /// This PC's, in cloud.json next to the save: the ID as typed, the server's session, a random id made once, whether the 1.x save went up, the
     /// server's trust token for this PC (the PIN goes in once a PC: 10 §3), and steps walked here that haven't gone up yet (a quit while offline).
     struct Seat: Codable, Equatable { var trainerID: String? = nil, session: String? = nil, device: String? = nil, legacyUploaded: Bool? = nil, trust: String? = nil, steps: Int? = nil }
@@ -86,6 +86,11 @@ final class CloudInbox: @unchecked Sendable {
     private(set) var raid: RaidReply? = nil; var raidDue = false
     // 12 §3.3 (3.5): the 교환 게시판 as the server last listed it (a read)
     private(set) var market: MarketReply? = nil; var marketDue = false
+    // 12 §5 (3.6): a live battle's polls — a lane of their own (a long poll holds up to 25 s; acts and steps don't wait for it)
+    var duelPoll: DuelReq? = nil                                           // the next one to send (the walker's: since, wait, version)
+    private(set) var duelInFlight = false; var duelRetryAt = Date.distantPast
+    var duelReplies: [DuelView?] = []                                      // for the walker, in order (nil: none open)
+    func takeDuel() -> [DuelView?] { let t = duelReplies; duelReplies = []; return t }
     // a tower run through a new session (docs/plans/12's note): the login says whether one goes on; nil = a server that doesn't keep them
     private(set) var keepsRuns = false; var towerCarried: Bool? = nil
     var deviceName: String { String(appDeviceName.prefix(64)) }
@@ -157,6 +162,10 @@ final class CloudInbox: @unchecked Sendable {
     func tick(_ now: Date) {
         if case .pin(.locked(let until)) = phase, now >= until { phase = .pin(.enter(wrong: false)) }   // the lock's over: the box again
         take(now)
+        if phase == .on, base != nil, !duelInFlight, now >= duelRetryAt, var q = duelPoll, let id = seat.trainerID {   // the duel's lane: whatever else is out
+            duelPoll = nil; q.id = id; q.session = seat.session ?? ""; duelInFlight = true
+            link.post("v2/duel", (try? JSONEncoder().encode(q)) ?? Data()) { [inbox] s, b in inbox.put((.duel, s, b)) }
+        }
         guard inFlight == nil, now >= retryAt else { return }
         if let a = asking { asking = nil; send(a); return }
         guard phase == .on else { return }
@@ -210,6 +219,7 @@ final class CloudInbox: @unchecked Sendable {
         case .legacy: post(a, "v1/legacy", json(["id": id, "device": device, "walk": legacy ?? ""]))
         case .team: post(a, "v2/team", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .market: post(a, "v2/market", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
+        case .duel: break                                                                         // (its own lane: tick)
         case .raid: post(a, "v2/raid", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .trades: post(a, "v2/trades", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .box(let of): post(a, "v2/box", (try? JSONEncoder().encode(BoxReq(id: id, session: seat.session ?? "", of: of))) ?? Data())
@@ -232,6 +242,14 @@ final class CloudInbox: @unchecked Sendable {
     // MARK: replies (08b §10's table; docs/plans/11 §3)
     private func take(_ now: Date) {
         for (a, s, body) in inbox.take() {
+            if a == .duel {                                                                         // the duel's lane: its own in-flight, its own retry
+                duelInFlight = false
+                let j = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+                if s == 200, let r = try? JSONDecoder().decode(DuelReply.self, from: body) { duelReplies.append(r.duel) }
+                else if s == 409, j?["reason"] as? String == "replaced" { drop(); phase = .replaced }
+                else { duelRetryAt = now.addingTimeInterval(3); duelReplies.append(nil) }      // (no answer: again in a moment)
+                continue
+            }
             inFlight = nil
             guard s != 0, s < 500, let j = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else { offline(a, now); continue }
             backoff = 0; retryAt = .distantPast                                                  // the server answered: online
@@ -280,7 +298,7 @@ final class CloudInbox: @unchecked Sendable {
                 switch a {
                 case .login, .create: asking = a
                 case .legacy: legacy = nil
-                case .team, .trades, .box, .raid, .market: break                                             // (again in 3 minutes; a box when asked again)
+                case .team, .trades, .box, .raid, .market, .duel: break                                             // (again in 3 minutes; a box when asked again)
                 case .act: if let o = out { answers.append((o.act, nil)) }; out = nil; sending = 0   // not one the server will take: dropped
                 case .setPin: pendingPIN = nil; phase = .pin(.set)
                 }
@@ -311,7 +329,7 @@ final class CloudInbox: @unchecked Sendable {
         case .login(_, true): phase = .replaced                                               // 여기서 계속 again, once it's back
         case .login where seat.session != nil && base != nil: phase = .on; asking = a          // played here before: steps pile up, acts wait for the server
         case .login, .create: asking = a
-        case .legacy, .team, .trades, .box, .raid, .market: break
+        case .legacy, .team, .trades, .box, .raid, .market, .duel: break
         case .setPin: phase = .pin(.set)                                                        // the button again, once it's back
         case .act: if let o = out { answers.append((o.act, nil)) }; if let q = queued { answers.append((q, nil)); queued = nil }
         }
@@ -462,7 +480,8 @@ extension Walker {
         c.tick(now)
         actTick(c, now)
         if c.teamNews || c.tradesNews { c.teamNews = false; c.tradesNews = false; refreshPane(now, force: true); host?.redraw(.all) }   // a new team list, offers, a box: the pages, the menu's tile
-        if let t = c.towerCarried { c.towerCarried = nil; towerRun = t }                          // a login: a tower run goes on (the server kept it) or none does
+        if let t = c.towerCarried { c.towerCarried = nil; towerRun = t }
+        duelTick(c, now)                                                                          // 12 §5: a live battle's polls and what they bring                          // a login: a tower run goes on (the server kept it) or none does
         visitTick(now)
         if c.phase != cloudShown { showCloud(c.phase); cloudShown = c.phase; cloudAsked = nil }   // a new answer from the server: its question may come again
         cloudQuestion(c)
@@ -533,7 +552,8 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if down { done(0, Data()); return }
         if let h = html { done(h, Data("<html><body>Bad gateway</body></html>".utf8)); return }          // Cloudflare's own: the server never saw it
         var (s, d): (Int, Data)
-        if path == "v2/act" { (s, d) = act(json) } else if path == "v2/team" { (s, d) = team(json) } else if path == "v2/trades" { (s, d) = trades(json) } else if path == "v2/box" { (s, d) = box(json) } else if path == "v2/raid" { (s, d) = raidLobby(json) } else if path == "v2/market" { (s, d) = marketBoard(json) }
+        if path == "v2/duel" { duelRead(json, done); return }                                                   // (its long poll may wait: its own answer)
+        if path == "v2/act" { (s, d) = act(json); flushDuelWaiters() } else if path == "v2/team" { (s, d) = team(json) } else if path == "v2/trades" { (s, d) = trades(json) } else if path == "v2/box" { (s, d) = box(json) } else if path == "v2/raid" { (s, d) = raidLobby(json) } else if path == "v2/market" { (s, d) = marketBoard(json) }
         else { let (st, body) = answer(path, (try? JSONSerialization.jsonObject(with: json)) as? [String: Any] ?? [:]); (s, d) = (st, (try? JSONSerialization.data(withJSONObject: body)) ?? Data()) }
         if lose { lose = false; s = 0; d = Data() }
         let st = s, dd = d
@@ -565,6 +585,9 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             } else { o = .no("인사할 수 없는\n트레이너예요") }
         }
         raided(q.act, id.key, r.name, &w, &o)
+        let preDuel = w
+        if o.cannot == nil, let why = duelAct(q.act, id.key, r.name, &w, &o) { o.cannot = why }
+        if w != preDuel { o.changed = true }                                                               // a duel over: this side's BP and record
         if o.cannot == nil, let why = social(q.act, id.key, r.name, &w, &o.news) { o.cannot = why } else if case .marketAccept = q.act, o.cannot == nil { o.changed = true }
         if o.cannot == nil, let why = trade(q.act, id.key, r.name, &w, &o.news) { o.cannot = why } else if case .tradeAccept = q.act, o.cannot == nil { o.changed = true }
         if let a = q.app, verCmp(a, "3.2").map({ $0 >= 0 }) == true, let mail = inbox.removeValue(forKey: id.key) { o.news += mail }   // (3.2 on: hello)
@@ -650,6 +673,135 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         mail[other, default: []] += [.traded(id: id, with: name, gave: theirsOut, got: sent)] + sentNews
         rows[other]?.rev += 1; rows[other]?.walk = FakeCloud.text(theirs); stale.insert(other)
         return true
+    }
+    // 12 §5 (3.6): live battles — one Battle from the challenger's side (pvp: the other's pick is foePlan), the other sees it mirrored
+    struct FakeDuel {
+        var id: Int; var a, b, aName, bName: String; var state: String; var battle: Battle? = nil; var turns: [[Beat]] = []
+        var planA: BattleCmd? = nil, planB: BattleCmd? = nil, needA: String? = nil, needB: String? = nil, idleA = 0, idleB = 0
+        var deadline: Int; var version = 0; var winner: String? = nil, why: String? = nil
+    }
+    var duels: [FakeDuel] = [], nextDuel = 1, duelWaiters: [(key: String, since: Int, version: Int, done: @Sendable (Int, Data) -> Void)] = []
+    var clockNow: Int { Int((now ?? Date()).timeIntervalSince1970) }
+    func duelIndex(_ key: String) -> Int? { duels.lastIndex { ($0.a == key || $0.b == key) && ["invited", "active"].contains($0.state) } ?? duels.lastIndex { $0.a == key || $0.b == key } }
+    func duelAct(_ act: Act, _ key: String, _ name: String, _ w: inout Walk, _ o: inout Outcome) -> String? {
+        if let i = duelIndex(key) { duelTick(i, actor: key, &w) }
+        switch act {
+        case .duelChallenge(let raw):
+            guard let to = trainerID(raw), to.key != key, let them = rows[to.key], them.walk != nil else { return "대전할 수 없는\n트레이너예요" }
+            guard isFriend(key, to.key) else { return "친구와만\n대전할 수 있어요" }
+            for k in [key, to.key] where duels.contains(where: { ($0.a == k || $0.b == k) && ["invited", "active"].contains($0.state) }) { return k == key ? "이미 대전 중이에요" : "상대가 대전 중이에요" }
+            duels.append(FakeDuel(id: nextDuel, a: key, b: to.key, aName: name, bName: them.name, state: "invited", deadline: clockNow + 60)); nextDuel += 1
+            mail[to.key, default: []].append(.duelInvite(id: nextDuel - 1, from: name)); o.duel = duelView(duels.count - 1, key, since: 0)
+        case .duelAccept(let id), .duelDecline(let id), .duelCancel(let id):
+            guard let i = duels.firstIndex(where: { $0.id == id }), duels[i].state == "invited" else { return "그 대전은 이제\n없어요" }
+            switch act {
+            case .duelCancel: guard duels[i].a == key else { return "그 대전은 이제\n없어요" }; duels[i].state = "cancelled"
+            case .duelDecline: guard duels[i].b == key else { return "그 대전은 이제\n없어요" }; duels[i].state = "declined"
+            default:
+                guard duels[i].b == key, let theirs = rows[duels[i].a]?.walk.flatMap(Cloud.walk) else { return "그 대전은 이제\n없어요" }
+                func party(_ x: Walk) -> [Mon] { x.party().map { p -> Mon in var m = p.mon; if m.known == nil { m.known = m.moves }; m.level = Walk.towerLevel; return m } }
+                var b = Battle(party: party(theirs), trainer: name, foes: party(w)); b.pvp = true; b.seed = rng.next()
+                duels[i].turns = [b.begin(weather: nil, &rng)]; duels[i].battle = b
+                duels[i].state = "active"; (duels[i].needA, duels[i].needB) = ("move", "move"); duels[i].deadline = clockNow + 30
+            }
+            duels[i].version += 1; o.duel = duelView(i, key, since: 0)
+        case .duelMove(let id, let cmd):
+            guard let i = duels.firstIndex(where: { $0.id == id }), duels[i].state == "active", let b = duels[i].battle else { return "그 대전은 이제\n없어요" }
+            let first = duels[i].a == key
+            guard first || duels[i].b == key else { return "그 대전은 이제\n없어요" }
+            guard let need = first ? duels[i].needA : duels[i].needB else { return "상대를 기다리는 중이에요" }
+            let s: Side = first ? .me : .it, mine = first ? b.mine : b.theirs, cur = first ? b.me : b.it
+            switch (need, cmd) {
+            case ("move", .forfeit): break
+            case ("move", .fight(let slot)): if b.forcedMove(s) == nil, b.f(s).pp[safe: slot] == 0 { return "기술의 남은\nPP가 없다!" }
+            case ("move", .swap(let k)), ("replace", .replace(let k)): guard mine.indices.contains(k), mine[k].alive, k != cur else { return "교체할 수 없어요" }; if need == "move", let why = b.switchBlock(s) { return why }
+            default: return need == "replace" ? "다음 포켓몬을\n골라 주세요" : "대전에서는 쓸 수 없어요"
+            }
+            if first { duels[i].planA = cmd; duels[i].needA = nil; duels[i].idleA = 0 } else { duels[i].planB = cmd; duels[i].needB = nil; duels[i].idleB = 0 }
+            duels[i].version += 1
+            duelResolve(i, actor: key, &w)
+            o.duel = duelView(i, key, since: duels[i].turns.count - 1)
+        default: return nil
+        }
+        return nil
+    }
+    /// Picks not made in time are made (two in a row: that side gives up); an invitation past its minute goes.
+    func duelTick(_ i: Int, actor: String?, _ w: inout Walk) {
+        guard clockNow > duels[i].deadline else { return }
+        if duels[i].state == "invited" { duels[i].state = "expired"; duels[i].version += 1; return }
+        guard duels[i].state == "active", let b = duels[i].battle else { return }
+        for first in [true, false] {
+            guard let need = first ? duels[i].needA : duels[i].needB else { continue }
+            let s: Side = first ? .me : .it, mine = first ? b.mine : b.theirs, cur = first ? b.me : b.it, idle = (first ? duels[i].idleA : duels[i].idleB) + 1
+            let pick: BattleCmd = idle >= 2 ? .forfeit : need == "replace" ? .replace(to: mine.indices.first { mine[$0].alive && $0 != cur } ?? cur)
+                : .fight(slot: b.f(s).moves.indices.first { b.usable(s).contains(b.f(s).moves[$0]) } ?? 0)
+            if first { duels[i].planA = pick; duels[i].needA = nil; duels[i].idleA = idle } else { duels[i].planB = pick; duels[i].needB = nil; duels[i].idleB = idle }
+        }
+        duels[i].version += 1; duelResolve(i, actor: actor, &w, timedOut: true)
+    }
+    /// Both picks in: the turn (or the replacements), the next needs, or the end (the winner's BP, both records).
+    func duelResolve(_ i: Int, actor: String?, _ w: inout Walk, timedOut: Bool = false) {
+        guard duels[i].state == "active", duels[i].needA == nil, duels[i].needB == nil, var b = duels[i].battle else { return }
+        func finish(_ winner: String, _ why: String) {
+            duels[i].state = "over"; duels[i].winner = winner; duels[i].why = why; (duels[i].needA, duels[i].needB) = (nil, nil); duels[i].version += 1
+            for k in [duels[i].a, duels[i].b] {
+                func change(_ x: inout Walk) { if k == winner { x.bp = (x.bp ?? 0) + 3; x.duelWins = (x.duelWins ?? 0) + 1 } else { x.duelLosses = (x.duelLosses ?? 0) + 1 } }
+                if k == actor { change(&w); continue }
+                guard var x = rows[k]?.walk.flatMap(Cloud.walk) else { continue }
+                change(&x); rows[k]?.rev += 1; rows[k]?.walk = FakeCloud.text(x); stale.insert(k)
+            }
+        }
+        if duels[i].planA == .forfeit || duels[i].planB == .forfeit {
+            let aQuit = duels[i].planA == .forfeit
+            finish(aQuit ? duels[i].b : duels[i].a, timedOut && (aQuit ? duels[i].idleA : duels[i].idleB) >= 2 ? "timeout" : "forfeit"); return
+        }
+        var beats: [Beat] = []
+        if b.mustReplace || b.foeMustReplace == true {
+            if case .replace(let k)? = duels[i].planA, b.mustReplace { beats += b.replace(k) }
+            if case .replace(let k)? = duels[i].planB, b.foeMustReplace == true { beats += b.replaceFoe(k) }
+        } else {
+            var mine: Move = .fight(165)
+            switch duels[i].planA { case .fight(let slot)?: mine = .fight(b.forcedMove(.me) ?? b.f(.me).moves[safe: slot] ?? 165); case .swap(let k)?: mine = .swap(k); default: break }
+            switch duels[i].planB { case .fight(let slot)?: b.foePlan = .fight(b.forcedMove(.it) ?? b.f(.it).moves[safe: slot] ?? 165); case .swap(let k)?: b.foePlan = .swap(k); default: b.foePlan = .fight(165) }
+            if case .fight(let id) = mine, b.usable(.me).isEmpty, b.forcedMove(.me) == nil, id != 165 { mine = .fight(165) }
+            beats = b.turn(mine, &rng); b.foePlan = nil
+        }
+        duels[i].turns.append(beats); duels[i].battle = b; (duels[i].planA, duels[i].planB) = (nil, nil); duels[i].version += 1
+        if b.over { finish(beats.last == .won ? duels[i].a : duels[i].b, "faint"); return }
+        switch (b.mustReplace, b.foeMustReplace == true) {
+        case (false, false): (duels[i].needA, duels[i].needB) = ("move", "move")
+        case (let x, let y): (duels[i].needA, duels[i].needB) = (x ? "replace" : nil, y ? "replace" : nil)
+        }
+        duels[i].deadline = clockNow + 30
+    }
+    /// The battle as `key` sees it: the turns after `since`, its side first, the lines worded for it.
+    func duelView(_ i: Int, _ key: String, since: Int) -> DuelView? {
+        let d = duels[i], first = d.a == key
+        var v = DuelView(id: d.id, state: d.state, opponent: first ? d.bName : d.aName, challenger: first, turn: d.turns.count,
+                         need: first ? d.needA : d.needB, deadline: ["active", "invited"].contains(d.state) ? d.deadline : nil, version: d.version)
+        let fresh = Array(d.turns.dropFirst(max(0, since)).joined())
+        if let b = d.battle {
+            if first { v.battle = b; v.beats = fresh }
+            else { let words = duelWords(ours: b.mine.map(\.mon.dex), theirs: b.theirs.map(\.mon.dex)); v.battle = b.mirrored(name: d.aName); v.beats = fresh.map { $0.flipped(words) } }
+        }
+        if d.state == "over", let wnr = d.winner { v.result = DuelResult(won: wnr == key, why: d.why ?? "faint", bp: wnr == key ? 3 : 0) }
+        return v
+    }
+    /// POST /v2/duel: my live battle; with wait and an unchanged version, the answer waits for the next change (flushDuelWaiters).
+    func duelRead(_ d: Data, _ done: @escaping @Sendable (Int, Data) -> Void) {
+        guard let q = try? JSONDecoder().decode(DuelReq.self, from: d), let id = trainerID(q.id), let r = rows[id.key] else { done(404, Data()); return }
+        guard q.session == r.session else { let (s, b) = err(409, ["error": "conflict", "reason": "replaced"]); done(s, b); return }
+        guard let i = duelIndex(id.key) else { done(200, (try? JSONEncoder().encode(DuelReply(duel: nil))) ?? Data()); return }
+        var none = Walk(); duelTick(i, actor: nil, &none)
+        if q.wait == true, let v = q.version, v == duels[i].version { duelWaiters.append((id.key, q.since ?? 0, v, done)); return }
+        done(200, (try? JSONEncoder().encode(DuelReply(duel: duelView(i, id.key, since: q.since ?? 0)))) ?? Data())
+    }
+    func flushDuelWaiters() {
+        let waiting = duelWaiters; duelWaiters = []
+        for x in waiting {
+            guard let i = duelIndex(x.key), duels[i].version != x.version else { duelWaiters.append(x); continue }
+            x.done(200, (try? JSONEncoder().encode(DuelReply(duel: duelView(i, x.key, since: x.since)))) ?? Data())
+        }
     }
     // 12 §2.4 (3.5): 친구 — pairs, requests (to → from)
     var friends: Set<String> = [], friendAsks: [String: Set<String>] = [:]
@@ -897,7 +1049,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
 
     // the server's "not now" (out.cannot): its lines on the LCD, back where it was; nothing changed but the steps
     serve(v) { w in var e = [0, 0, 0, 0, 0, 0]; e[0] = 100; w.companion.evs = e; w.bag = ["맥스업"] }
-    let vRev = vs.rows[vk]?.rev; v.screen = .items(0); v.press(1); drain(v)
+    let vRev = vs.rows[vk]?.rev; v.screen = .items(0); v.useItem("맥스업", back: .items(0)); drain(v)   // (3.6's page wouldn't offer it: the server's no, asked anyway)
     chk(says(v) == ["먹어도 효과가", "없을 것 같다"] && v.state.count("맥스업") == 1 && vs.rows[vk]?.rev == vRev, "3.0 act: the server's no (맥스업 at 100: 먹어도 효과가 / 없을 것 같다) on the LCD, nothing used", "\(says(v)) \(v.screen) \(v.state.inventory) \(String(describing: vs.acts.last))")
 
     // the session: out of step (409 seq) → logged in again, its save; another PC took it → locked, 여기서 계속; 426; 404

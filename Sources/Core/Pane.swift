@@ -15,6 +15,7 @@ struct ShopModel: Equatable {
     var title: String; var rows: [Row]; var sel: Int; var qty: Int?; var most: Int; var total: String
     var hint: String                                                   // the bottom row when nothing is being counted: a message, or why not
     var ask: Bool?                                                     // a once-only row's 정말? (true = 예 highlighted)
+    var tabs: [String] = [], tab = 0, ids: [Int] = []                  // 3.6 (docs/plans/13): the tab the pick is on; rows = that tab's (ids: their place in the whole list)
 }
 /// The status sheet (home's page, and any screen without one of its own): the companion, today, then the rest.
 struct StatusModel: Equatable {
@@ -109,6 +110,7 @@ struct TeamCardModel: Equatable {
     struct Line: Equatable { var key, value: String }
     var name: String; var me, walking: Bool; var when: String; var walker: [Mini]; var lines: [Line]; var greet: String?
     var remove = false                                                 // 친구 끊기 beside 인사하기 (a friend's card)
+    var duel: String? = nil                                            // 3.6: 대전 신청 (a friend walking now), or why not; nil: none (my own card)
 }
 /// 교환 (12 §3): a Pokémon in an offer as its tile shows it; dex nil = none (name says what goes there instead: 아무거나, 골라 주세요).
 struct TradeSlot: Equatable { var label: String; var dex: Int? = nil; var level = 0; var shiny = false; var name: String; var v = 0; var more: [Int] = [] }   // more: the 게시판's wished species after the first
@@ -148,6 +150,8 @@ struct MarketPostModel: Equatable {
     struct Offer: Equatable { var dex: Int; var shiny: Bool; var line, sub: String }
     var title, note: String; var mon, wish: TradeSlot; var body: MonModel?; var offers: [Offer]; var sel: Int?; var buttons: [String]; var strong: Int?
 }
+/// 실시간 대전's invitation (12 §5): who, the rules in a line, the time left, its buttons (수락 · 거절, or 신청 취소).
+struct DuelModel: Equatable { var title, line, note: String; var buttons: [String]; var record: String }
 /// 레이드 (12 §4): this week's boss, the team's HP, my power (3 칸), a tab of rows (기여 순위: rank, name, damage and share; 최근 공격: the
 /// fight's lead, name, damage, when), the button (도전 / 볼 던지기; nil: not now — hint says why).
 struct RaidModel: Equatable {
@@ -168,14 +172,15 @@ struct PaneContent: Equatable {
     var trades: TradeListModel? = nil, offer: TradeOfferModel? = nil, pick: TradePickModel? = nil
     var raid: RaidModel? = nil
     var friendReqs: FriendReqModel? = nil, board: MarketBoardModel? = nil, post: MarketPostModel? = nil
+    var duel: DuelModel? = nil
 }
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
     static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
     static let home: CGFloat = 406                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size)
     var height: CGFloat {
-        login != nil ? 330 : battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 406 : menu != nil ? PaneContent.home
-            : team != nil ? 446 : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? 446 : board != nil ? 446 : post != nil ? 482
+        login != nil ? 330 : battle != nil ? 311 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? 434 : menu != nil ? PaneContent.home
+            : team != nil ? 446 : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? 446 : board != nil ? 446 : post != nil ? 482 : duel != nil ? 330
             : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 365 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 353 : status != nil ? PaneContent.home : Layout.idle
     }
 }

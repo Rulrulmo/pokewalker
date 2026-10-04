@@ -24,7 +24,8 @@ extension Walker {
         var sc = screen, said: String? = nil
         if case .say(let lines, let next, _) = sc { said = lines.joined(separator: " "); sc = next }   // a fight's own message (PP가 없다 …): the battle page stays, the message in its box
         switch sc {
-        case .battle(let x, let sel): b = x; msg = "무엇을 할까?"; mode = .menu(battleMenu(x), sel)
+        case .battle(let x, _) where duelOn && duelWait: b = x; msg = "상대를 기다리는 중…" + (duelLeft(now).map { " (\($0)초)" } ?? ""); mode = .none   // 12 §5: our pick is in
+        case .battle(let x, let sel): b = x; msg = "무엇을 할까?" + (duelOn ? duelLeft(now).map { " (\($0)초)" } ?? "" : ""); mode = .menu(battleMenu(x), sel)
         case .moves(let x, let sel):
             b = x; msg = "어떤 기술을 쓸까?"
             let f = x.mine[x.me]
@@ -32,10 +33,10 @@ extension Walker {
                 let m = moveTable[id]!, real = x.moveType(.me, m)
                 return .init(name: m.name, type: real.type.isEmpty ? m.type : real.type, power: Moves.fixedOrVariable.contains(id) ? 0 : real.power, effect: x.hint(id, real.type), pp: f.pp[k], maxPP: m.pp, status: m.isStatus)
             }, sel)
-        case .party(let x, let sel): b = x; msg = x.mustReplace ? "다음은 누구를 내보낼까?" : "누구로 교체할까?"; mode = .party(x.mine.enumerated().map { card($1, out: $0 == x.me) }, sel)
+        case .party(let x, let sel): b = x; msg = itemFor.map { josa($0, "을", "를") + " 누구에게 쓸까?" } ?? (x.mustReplace ? "다음은 누구를 내보낼까?" : "누구로 교체할까?"); mode = .party(x.mine.enumerated().map { card($1, out: $0 == x.me) }, sel)
         case .forfeit(let x, let yes):
             let s = state.towerStreak ?? 0
-            b = x; msg = s > 0 ? "기권할까? \(s)연승이 끝난다" : "기권할까? 참가비 \(Walk.towerFee)W는 돌아오지 않는다"; mode = .ask(yes)
+            b = x; msg = duelOn ? "기권할까? 이 대전은 지게 된다" : s > 0 ? "기권할까? \(s)연승이 끝난다" : "기권할까? 참가비 \(Walk.towerFee)W는 돌아오지 않는다"; mode = .ask(yes)
         case .bagBattle(let x, let sel): b = x; msg = "무엇을 사용할까?"; mode = .items(battleItems(x).map { "\($0.name) ×\(state.count($0.name))" }, sel)
         case .beats:
             guard let s = beatState(now) else { return nil }
@@ -61,7 +62,7 @@ extension Walker {
         }
         press(1)
     }
-    func battleMenu(_ b: Battle) -> [String] { raidOn ? ["공격", "도구"] + (b.mine.count > 1 ? ["교체"] : []) + ["후퇴"] : b.trainer == nil ? ["공격", "볼", "도구"] + (b.mine.count > 1 ? ["교체"] : []) + ["도망"] : ["공격", "도구", "교체", "기권"] }   // wild: 교체 once the walker has someone
+    func battleMenu(_ b: Battle) -> [String] { duelOn ? ["공격"] + (b.mine.count > 1 ? ["교체"] : []) + ["기권"] : raidOn ? ["공격", "도구"] + (b.mine.count > 1 ? ["교체"] : []) + ["후퇴"] : b.trainer == nil ? ["공격", "볼", "도구"] + (b.mine.count > 1 ? ["교체"] : []) + ["도망"] : ["공격", "도구", "교체", "기권"] }   // wild: 교체 once the walker has someone
     /// Menu labels' x ranges (drawn and tapped from the same layout).
     func menuRanges(_ labels: [String]) -> [Range<Int>] {
         var x = 1, out: [Range<Int>] = []

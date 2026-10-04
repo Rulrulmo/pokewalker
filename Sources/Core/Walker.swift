@@ -46,6 +46,8 @@ import Foundation
     var visitor: Visitor? = nil, nextVisit = 0, greeted: [String: Date] = [:]   // 12 (M1): a teammate's companion on home; the steps it next comes at; 인사 sent (by key)
     var drag: (from: Int, at: CGPoint)? = nil                              // 포켓몬's grid: a Pokémon dragged (the page's code it began on, the pointer in page points)
     var chainNext: Int? = nil                                              // a chain holds (its length): its next bush is asked for once home's news are shown
+    var trainRef = -1, itemFor: String? = nil
+    var duel: DuelView? = nil, duelOn = false, duelSeen = 0, duelShown: Battle? = nil, duelWait = false   // 12 §5: the live battle's last view, polling, turns played, the battle shown, our pick in                              // 3.6: who 대단한 특훈 is on; an item whose target the fight's party screen asks for
     var raidOn = false, raidThen: Screen? = nil                            // 12 (M3): a raid fight is on (its menu, lines, HUD); where a raid ball's show goes after
 
     init(state: Walk) { self.state = state }
@@ -89,7 +91,7 @@ import Foundation
         case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
         case .traded(_, _, _, let since) where now.timeIntervalSince(since) > 6: screen = .home
-        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
+        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid, .itemOn: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
         case .trade, .market: if now.timeIntervalSince(lastInput) > 60 { screen = .home }       // (a trade is weighed up: longer)
         default: break
         }
@@ -109,6 +111,11 @@ import Foundation
         if frozen { if k == .enter, !held { press(1) }; return true }                              // another PC has it: ● = 여기서 계속, nothing else
         if waiting != nil { return true }                                                          // an act's answer on the way
         if case .shop(_, _, let q) = screen, let d = [Key.up: -1, .down: 1][k] { shopStep(q == nil ? d : -10 * d); return true }
+        if case .shop(let bp, let sel, nil) = screen, k == .tab {                                    // 3.6: the next tab (shift: the one before), its first row
+            let n = max(1, shopTabs(bp).count), t = (shopTab(bp, sel) + (shift ? n - 1 : 1)) % n
+            if let first = shopRows(bp, t).first { screen = .shop(bp: bp, sel: first, qty: nil); lastInput = Date(); host?.redraw(.all) }
+            return true
+        }
         if case .tower(_?) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -TowerModel.perPage, .pageDown: TowerModel.perPage][k] { towerStep(d); return true }   // the tower's picker: ↑ ↓ a row, page up / down a page
         switch screen { case .course, .train, .relearn: if let d = [Key.up: -1, .down: 1, .pageUp: -CourseModel.perPage, .pageDown: CourseModel.perPage][k] { listRow(d); return true }; default: break }   // the lists: the same
         if case .items = screen, let d = [Key.up: -1, .down: 1, .pageUp: -6, .pageDown: 6][k] { listRow(d); return true }   // 도구: six rows in view
@@ -128,7 +135,7 @@ import Foundation
             }
             return true
         }
-        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn, .learn, .menu, .box, .trade, .team, .raid, .market: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, pick a bush too early, go on from 포켓몬 to a page and its 진화 / 함께, or pick and send a trade
+        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn, .learn, .menu, .box, .trade, .team, .raid, .market, .itemOn, .duel: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, pick a bush too early, go on from 포켓몬 to a page and its 진화 / 함께, or pick and send a trade
         guard let i = [Key.left: 0, .enter: 1, .right: 2, .back: 3, .menu: 4][k] else { return false }
         press(i); return true
     }
@@ -143,7 +150,8 @@ import Foundation
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }
         let fight: Battle? = switch sc { case .battle(let b, _), .moves(let b, _), .party(let b, _), .bagBattle(let b, _), .forfeit(let b, _), .beats(let b, _, _, _): b; default: nil }
         if let b = fight {
-            if raidThen != nil { return ("레이드", "볼 던지기") }                                       // a raid ball's throw on the battle stage
+            if raidThen != nil { return ("레이드", "볼 던지기") }
+            if duelOn { return ("실시간 대전", "vs \(duel?.opponent ?? "")" + (duelLeft().map { " · \($0)초" } ?? "")) }                                       // a raid ball's throw on the battle stage
             if raidOn { return ("레이드 배틀", "남은 줄 \(b.theirs.filter(\.alive).count) / \(b.theirs.count) · \(min(b.turnNo + 1, Engine.raidTurns))/\(Engine.raidTurns)턴") }
             guard let tr = b.trainer else { return ("야생 배틀", state.here.name) }
             let left = { (fs: [Fighter]) in fs.filter(\.alive).count }
@@ -169,6 +177,8 @@ import Foundation
         case .relearn(let r, _, _): return ("기술 바꾸기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .course: return ("코스", "\(courses.indices.filter(state.unlocked).count) / \(courses.count) 열림")
         case .train: return ("대단한 특훈", "은색병뚜껑 ×\(state.count("은색병뚜껑"))")
+        case .itemOn(let p): return ("도구", p.item)
+        case .duel: return ("실시간 대전", duelLeft().map { "\($0)초 남음" } ?? "")
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
         case .raid: return ("레이드", cloud?.raid.map { "다음 주 " + monNames[$0.next] } ?? "")
         default: return (state.here.name, cloudNote ?? (gate.held ? "자동 입력 감지 · 걸음 멈춤" : when))                                                 // screens without a page of their own: the status sheet

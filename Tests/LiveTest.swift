@@ -396,3 +396,74 @@ import Foundation
     print(failed == 0 ? "PASS live social" : "FAIL \(failed)")
     return failed == 0
 }
+
+/// `PokeWalker --live-duel <idA> <idB> <pin>` (a dev build only): docs/plans/12 §5 against the real server with two new zz test IDs (their starters
+/// as Lv.50 copies): friends first (request, accept), A challenges B from its card, B's next act brings the invitation, 수락, then both pick in
+/// real time (the polls bring each turn) to the end — the winner's +3 BP and both records; then a declined one.
+@MainActor func liveDuelTest(_ a: String, _ b: String, _ pin: String) -> Bool {
+    var failed = 0
+    func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-liveduel-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    func walker(_ id: String) -> (Walker, Cloud, TestHost) {                                        // (the host comes back: the walker holds it weakly)
+        let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
+        let c = Cloud(link: HTTPLink(), dir: tmp.appendingPathComponent(id, isDirectory: true))
+        h.texts = [id]; h.pins = [pin, pin, pin]
+        w.startCloud(c, file: tmp.appendingPathComponent(id + ".json"), bak: tmp.appendingPathComponent(id + ".bak"))
+        return (w, c, h)
+    }
+    let (wa, ca, ha) = walker(a), (wb, cb, hb) = walker(b)
+    @discardableResult func run(_ secs: Double, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end { wa.tick(Date()); wb.tick(Date()); if done() { return true }; Thread.sleep(forTimeInterval: 0.1) }
+        return done()
+    }
+    func idle(_ c: Cloud) -> Bool { c.inFlight == nil && c.queued == nil && c.out == nil }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func settle(_ w: Walker, _ c: Cloud) { run(15) { w.waiting == nil && idle(c) } }
+    func next(_ w: Walker, _ c: Cloud, until: () -> Bool) -> Bool { w.news = []; w.screen = .home; c.addSteps(2); c.saveNow(); return run(25, until: until) }
+    check(run(40) { ca.phase == .on && cb.phase == .on && ca.base != nil && cb.base != nil }, "live duel: \(a) and \(b) logged in (\(ha.asked), \(hb.asked))")
+    wa.screen = .home; wa.act(.friendRequest(to: b), back: .home); settle(wa, ca)
+    _ = next(wb, cb) { says(wb).first?.hasSuffix("친구 신청을 했다!") == true }
+    wb.screen = .home; wb.act(.friendAccept(from: a), back: .home); settle(wb, cb)
+    _ = next(wb, cb) { idle(cb) }; ca.teamDue = true; run(15) { ca.team?.cards.count == 2 && idle(ca) }
+    let bi = wa.teamRows(0).firstIndex { !wa.isMe($0.card) } ?? 0
+    wa.screen = .team(sel: bi, tab: 0, card: true); let card = wa.paneContent(Date()).teamCard
+    check(card?.duel == "대전 신청", "live: friends, B walking now — 대전 신청 on its card (\(card?.duel ?? "-"))")
+    wa.pageTap(6032); settle(wa, ca)
+    let waiting: Bool = { if case .duel(.waitAccept) = wa.screen { return true }; return false }()
+    check(waiting && wa.duelOn, "live duelChallenge: the invitation out — A waits (\(wa.screen))")
+    let invited = next(wb, cb) { says(wb).first == josa(a, "이", "가") + " 대전을 신청했다!" }
+    wb.press(1); run(10) { wb.duel?.deadline != nil }
+    check(invited && wb.duel?.deadline != nil, "live duelInvite: B's next act brings it; its poll the minute left (\(wb.duelLeft() ?? -1) s)")
+    wb.pageTap(6300); settle(wb, cb)
+    let started = run(30) { if case .beats = wa.screen { return true }; if case .battle = wa.screen { return true }; return false }
+    check(started, "live duelAccept: the opening plays on both sides (A's through its long poll)")
+    var turns = 0, end = Date().addingTimeInterval(240)
+    while Date() < end, wa.duelOn || wb.duelOn {
+        run(0.3) { false }
+        for (w, c) in [(wa, ca), (wb, cb)] where w.waiting == nil && idle(c) {
+            switch w.screen {
+            case .beats(_, let bs, let since, _) where Date().timeIntervalSince(since) * w.battleSpeed > bs.map(\.length).reduce(0, +): w.tick(Date())
+            case .battle(let bt, _) where !w.duelWait:
+                w.screen = .battle(bt, sel: 0); w.press(1)
+                if case .moves(let x, _) = w.screen { w.screen = .moves(x, sel: x.mine[x.me].pp.firstIndex { $0 > 0 } ?? 0); w.press(1); if w === wa { turns += 1 } }
+            case .party(let bt, _): w.screen = .party(bt, sel: bt.mine.indices.first { bt.mine[$0].alive && $0 != bt.me } ?? 0); w.press(1)
+            default: break
+            }
+        }
+    }
+    let ra = says(wa), rb = says(wb), aWon = ra.first == "이겼다!", bWon = rb.first == "이겼다!"
+    check(!wa.duelOn && !wb.duelOn && aWon != bWon && (aWon ? rb : ra).first?.hasSuffix("졌다...") == true, "live duel: \(turns) turns to the end — A \(ra), B \(rb)")
+    let winner = aWon ? wa : wb, wc = aWon ? ca : cb, bp0 = winner.state.bp ?? 0
+    _ = next(winner, wc) { (winner.state.duelWins ?? 0) == 1 }
+    check((winner.state.duelWins ?? 0) == 1 && (winner.state.bp ?? 0) >= bp0, "live: the winner's save — 1승, BP \(winner.state.bp ?? 0)")
+    wa.screen = .home; wa.challenge(b); settle(wa, ca)
+    _ = next(wb, cb) { says(wb).first?.hasSuffix("대전을 신청했다!") == true }
+    wb.press(1); wb.pageTap(6301); settle(wb, cb)
+    let declined = says(wb) == ["대전 신청을", "거절했다"]
+    let heard = run(30) { says(wa) == ["대전이", "상대가 거절했다"] }
+    check(declined && heard, "live duelDecline: B says so; A hears it through its poll — \(says(wa))")
+    print(failed == 0 ? "PASS live duel" : "FAIL \(failed)")
+    return failed == 0
+}

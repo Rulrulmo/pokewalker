@@ -105,8 +105,7 @@ extension Walker {
         case .raidCleared(let dex): raidNews(dex, now)                                            // the co-op raid (12 §4.3): the team beat the boss (Core/RaidView.swift)
         case .friendRequest, .friendAdded: friendNews(n, now)                                     // 친구 (12 §2.4): someone asked; it's mutual now (Core/TeamView.swift)
         case .marketBid(let id, let from, let m): marketNews(id, from, m, now)                    // the 게시판 (12 §3.3): an offer on my post (Core/MarketView.swift)
-        case .duelInvite(_, let from):                                                            // 실시간 대전 (12 §5; minimal: the UI is the Mac's)
-            screen = .say([josa(from, "이", "가") + " 대전을 신청했다!"], next: .home, since: now); notify("pet", josa(from, "이", "가") + " 대전을 신청했어요", "1분 안에 수락할 수 있어요")
+        case .duelInvite(let id, let from): duelInvited(id, from, now)                            // 실시간 대전 (12 §5): a friend asked (Core/DuelScreen.swift)
         }
     }
 
@@ -141,6 +140,7 @@ extension Walker {
     func giveUpRadar() { chainNote = nil; _ = cloud?.act(.radarPick(bush: -1)) }
     /// A fight's act from the fight as shown (b): the server plays the turn; its beats play from b; an end waits for them (endOfFight).
     func turn(_ cmd: BattleCmd, from b: Battle, back: Screen, _ now: Date) {
+        if duelOn { duelPick(cmd, b, back: back, now); return }                                    // a live battle: this side's pick, nothing played here
         act(.battle(cmd: cmd), back: back, now, quiet: true) { [weak self] o, now in self?.played(o, from: b, now) }
     }
     func played(_ o: Outcome, from b: Battle, _ now: Date) -> Screen? {
@@ -153,6 +153,7 @@ extension Walker {
     /// The beats are over: the fight goes on (its menu, or who comes in next), or it ended (the server's end).
     func beatsDone(_ b: Battle, _ last: Beat, _ now: Date) -> Screen {
         if let s = raidThrown(now) { return s }                                                    // a raid ball's throw (no fight behind it)
+        if duelOn { return duelAfterBeats(now) }                                                   // a live battle: whatever the server says next
         if last.ends || fightEnd != nil { return endOfFight(b, now) }
         return b.mustReplace ? .party(b, sel: b.mine.indices.first { b.mine[$0].alive } ?? 0) : .battle(b, sel: 0)
     }
