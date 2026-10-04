@@ -32,7 +32,7 @@ func actName(_ a: Act) -> String {
     case .battle(let c): "battle \(c)"; case .buy(let bp, let i, let l, let s, let q): "buy \(i ?? l.map { "legend \($0)" } ?? s ?? "?") ×\(q)\(bp ? " (BP)" : "")"
     case .use(let i, _): "use \(i)"; case .sellAll: "sell all"; case .mon(let op): "mon \(op)"; case .course(let c): "course \(c)"; case .greet(let to): "greet \(to)"
     case .tradeOffer(let to, let g, let wnt): "trade offer → \(to) \(g)\(wnt.map { " for \($0)" } ?? "")"; case .tradeAccept(let i, let g): "trade accept #\(i)\(g.map { " with \($0)" } ?? "")"
-    case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"
+    case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"; case .raid: "raid"; case .raidBall: "raid ball"
     }
 }
 func savedText(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return String(decoding: (try? e.encode(w.shared)) ?? Data(), as: UTF8.self) }
@@ -75,7 +75,13 @@ extension SaveDB {
                 }
 
                 var ids = Issued(next: try nextUID(id.key, w)), g = SystemRandomNumberGenerator()
+                if case .raid = r.act { row.play.raidBoss = try raidBoss(id.key, now: now) }        // 12 §4: the engine fights the server's boss
+                let fightWeek = row.play.raid
                 var out = Engine.apply(r.act, steps: taken, walk: &w, play: &row.play, rng: &g, now: now, ids: &ids)
+                row.play.raidBoss = nil
+                if let week = fightWeek, let dealt = out.end?.dealt {                                   // a raid fight ended: its damage to the team's boss
+                    out.end?.dealt = try raidHit(week, key: id.key, name: t.name, lead: out.battle?.mine.first?.mon.dex ?? w.companion.dex, dealt: dealt, now: unix)
+                }
                 if out.cannot == nil {
                     switch r.act {
                     case .greet(let to): out.cannot = try greet(from: id.key, name: t.name, to: to, companion: w.companion, now: unix)   // 12 §2.3: into their inbox
@@ -83,6 +89,9 @@ extension SaveDB {
                         let was = w; var more: [News] = []
                         if let why = try tradeAct(r.act, key: id.key, name: t.name, walk: &w, news: &more, now: unix) { out.cannot = why; w = was }
                         else { out.news += more; if w != was { out.changed = true } }
+                    case .raidBall:                                                                     // 12 §4.3: ServerRaid.swift
+                        let was = w
+                        if let why = try raidBall(id.key, walk: &w, out: &out, now: now) { out.cannot = why; w = was } else if w != was { out.changed = true }
                     default: break
                     }
                 }

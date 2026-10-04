@@ -235,3 +235,54 @@ extension SaveDB { func setPlay(_ key: String, _ p: Play) throws { try db.rows("
     #expect(o.walk?.watts == 777 && o.out.changed == false)
     #expect(try reply(await act(db, "관리", s, 4, .steps, at: 64)).walk == nil)                     // once
 }
+
+@Test func coopRaid() async throws {                                                               // docs/plans/12 M3
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브")
+    func go(_ who: String, _ s: String, _ seq: Int, _ act: Act, steps: Int? = nil, at t: Double) async throws -> ActReply {
+        try reply(await db.act(ActReq(id: who, session: s, seq: seq, steps: steps, act: act, app: "3.4"), now: base.addingTimeInterval(t)))
+    }
+    _ = try await go("앨리스", a, 1, .steps, steps: 3000, at: 200)
+    _ = try await go("보브", b, 1, .steps, steps: 3000, at: 200)
+    try await setWalk(db, "앨리스") { w in                                                            // a party that can hurt a Lv.70 legend
+        var c = Mon(dex: 445, level: 100, female: false); c.uid = firstUID; c.known = [89, 200, 337, 14]; c.ivs = Array(repeating: 31, count: 6); w.companion = c
+    }
+    var lobby = try JSONDecoder().decode(RaidReply.self, from: await db.raidLobby(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(201)).body)
+    #expect(raidRotation.contains(lobby.boss.dex) && lobby.boss.level == 70 && lobby.boss.perfectIVs >= 4)
+    #expect(lobby.hpTotal == lobby.barHP * raidBarsPerFighter * 2 && lobby.hpLeft == lobby.hpTotal)          // two walked lately: 28 bars
+    var seq = 2, t = 202.0
+    var lastNews: [News] = []
+    func fight(_ who: String, _ s: String, _ q: inout Int) async throws -> BattleEnd? {
+        var o = try await go(who, s, q, .raid, at: t); q += 1; t += 1
+        while let bt = o.out.battle, o.out.end == nil, o.out.cannot == nil {
+            let x = bt.mine[bt.me], slot = x.pp.indices.first { x.pp[$0] > 0 && moveTable[x.moves[$0]]?.isStatus == false } ?? 0   // (프레셔: 2 PP a move)
+            o = try await go(who, s, q, .battle(cmd: bt.mustReplace ? .replace(to: bt.mine.indices.first { bt.mine[$0].alive && $0 != bt.me } ?? 0) : .fight(slot: slot)), at: t); q += 1; t += 1
+        }
+        lastNews = o.out.news
+        return o.out.end
+    }
+    let end = try #require(try await fight("앨리스", a, &seq))
+    lobby = try JSONDecoder().decode(RaidReply.self, from: await db.raidLobby(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(t)).body)
+    #expect(lobby.hpLeft == lobby.hpTotal - (end.dealt ?? 0) && lobby.mine.fights == 1 && lobby.fighters.map(\.name) == ["앨리스"])
+    #expect(try await go("앨리스", a, seq, .raidBall, at: t).out.cannot == "아직 보스가\n쓰러지지 않았어요"); seq += 1
+
+    try await db.squeezeRaid(lobby.week, to: lobby.hpTotal - lobby.hpLeft + 1)                          // 1 HP left: the next fight beats it
+    let last = try #require(try await fight("앨리스", a, &seq))
+    #expect(last.dealt == 1)
+    #expect(lastNews.contains(.raidCleared(dex: lobby.boss.dex)))                                     // in the very reply that beat it
+    var thrown = 0, caught = false
+    while !caught {
+        let o = try await go("앨리스", a, seq, .raidBall, at: t); seq += 1; t += 1
+        guard let th = o.out.raidThrow else { #expect(o.out.cannot == "볼이 남아 있지\n않아요"); break }
+        if thrown == 0 { #expect(th.reward && o.walk?.bag.filter { $0 == "이상한사탕" }.count == 5) } else { #expect(!th.reward) }
+        thrown += 1; caught = th.caught
+        if caught { #expect(th.mon?.dex == lobby.boss.dex && o.walk?.box.contains { $0.uid == th.mon?.uid } == true) }
+    }
+    #expect(thrown >= 1 && thrown <= 5)
+    #expect(try await go("보브", b, 2, .raidBall, at: t).out.cannot == "이번 주에 싸워야\n잡을 수 있어요")   // didn't fight
+    let z = try await newTrainer(db, "zz654321")                                                        // a tester: its own raid
+    _ = try await go("zz654321", z, 1, .steps, steps: 10, at: t)
+    let zl = try JSONDecoder().decode(RaidReply.self, from: await db.raidLobby(TeamReq(id: "zz654321", session: z), now: base.addingTimeInterval(t)).body)
+    #expect(zl.week == lobby.week + "-test" && zl.hpLeft == zl.hpTotal)
+}
+extension SaveDB { func squeezeRaid(_ week: String, to total: Int) throws { try db.rows("UPDATE raids SET hp_total = :t WHERE week = :w", ["t": .int(total), "w": .text(week)]) } }

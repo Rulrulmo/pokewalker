@@ -100,6 +100,9 @@ extension Walker {
             screen = .say([josa(from, "이", "가") + " 인사했다! ♥"], next: .home, since: now)
             notify("pet", josa(from, "이", "가") + " 인사했어요 ♥", josa(monNames[dex], "과", "와") + " 함께 · 눌러서 답인사")
         case .tradeOffer, .traded, .tradeClosed: tradeNews(n, now)                                   // 교환 (12 §3): an offer come, one gone through or closed (Core/TradeView.swift)
+        case .raidCleared(let dex):                                                               // the co-op raid (12 §4.3; minimal: the raid UI is the Mac's)
+            screen = .say(["팀이 " + josa(monNames[dex], "을", "를"), "쓰러뜨렸다! 잡을 기회"], next: .home, since: now)
+            notify("unlock", "팀이 " + josa(monNames[dex], "을", "를") + " 쓰러뜨렸어요", "레이드에서 볼을 던질 수 있어요")
         }
     }
 

@@ -183,3 +183,34 @@ private struct Desk {
     }
     print("wire: " + String(decoding: try JSONEncoder().encode(ActReq(id: "민수", session: "s", seq: 1, steps: 5, act: .buy(bp: false, item: "상처약", legend: nil, shell: nil, qty: 2))), as: UTF8.self))
 }
+
+@Test func engineRaidFight() {                                                                     // docs/plans/12 §4.2
+    var d = Desk()
+    #expect(d.act(.raid).cannot == "이번 주 레이드가\n없어요")
+    var g = Seeded(s: 9); let boss = Mon.wild(382, level: 70, perfect: 4, &g)
+    d.p.raidBoss = RaidBoss(week: "2026-W40", boss: boss, left: 10_000)
+    #expect(d.act(.raid).cannot == "파워가 부족하다\n(1,000걸음마다 1칸)")
+    d.act(.steps, steps: 2500)
+    #expect(d.w.raidPower == 2500)
+    let start = d.act(.raid)
+    #expect(start.cannot == nil && start.battle?.theirs.count == 3 && d.w.raidPower == 1500 && d.p.raid == "2026-W40")
+    #expect(d.act(.battle(cmd: .ball)).cannot == "레이드 보스는\n볼로 잡을 수 없다")
+    guard let end = d.fightOut(ball: false) else { Issue.record("no end"); return }
+    #expect(end.end?.dealt != nil && d.p.raid == nil && d.p.battle == nil)
+    #expect((end.battle?.turnNo ?? 99) <= Engine.raidTurns)
+    d.p.raidBoss = RaidBoss(week: "2026-W40", boss: boss, left: 0)
+    #expect(d.act(.raid).cannot == "이번 주 보스는\n이미 쓰러졌어요")
+}
+
+@Test func engineOutcomeRoundTrip() throws {                                                       // every Outcome field set: the app's lossy decoder must read each one
+    var d = Desk(); d.act(.steps, steps: 3000)
+    let shown = d.act(.radar), start = d.act(.radarPick(bush: shown.radar!.bush))
+    var o = start
+    o.news = [.find(item: "상처약"), .dex(count: 3)]; o.changed = true; o.radar = shown.radar; o.missed = true
+    o.end = BattleEnd(result: "won", chain: 1, streak: 2, bp: 3, dealt: 4); o.ball = "슈퍼볼"; o.mon = d.w.companion; o.watts = 5
+    o.raidThrow = RaidThrow(caught: true, shakes: 3, balls: 2, mon: d.w.companion, reward: true); o.cannot = "왜"
+    let back = try JSONDecoder().decode(Outcome.self, from: JSONEncoder().encode(o))
+    #expect(back == o)
+    let mirror = Mirror(reflecting: o).children.compactMap(\.label)
+    #expect(mirror.count == 12, "Outcome has \(mirror.count) fields: \(mirror) — set the new one above and read it in Outcome.init(from:)")
+}

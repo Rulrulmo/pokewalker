@@ -166,7 +166,7 @@ extension SaveDB {
             try db.rows("UPDATE trainers SET key = :nk, name = :n, session = NULL, device = NULL WHERE key = :k", a.merging(["n": .text(n.name)]) { $1 })
             try db.rows("UPDATE history SET key = :nk WHERE key = :k", a)
             try db.rows("UPDATE OR IGNORE legacy SET key = :nk WHERE key = :k", a)
-            for t in ["pins", "flags", "mons", "chains", "grants", "steps_day", "actions"] { try db.rows("UPDATE \(t) SET key = :nk WHERE key = :k", a) }
+            for t in ["pins", "flags", "mons", "chains", "grants", "steps_day", "actions", "raid_hits", "raid_catch"] { try db.rows("UPDATE \(t) SET key = :nk WHERE key = :k", a) }
             for t in ["trust", "pin_fails", "play"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }   // play: the session ends anyway
             for (t, c) in [("inbox", "to_key"), ("inbox", "from_key"), ("trades", "to_key"), ("trades", "from_key")] { try db.rows("UPDATE \(t) SET \(c) = :nk WHERE \(c) = :k", a) }
             return "\(k) → \(n.key) (\(n.name)); its PC gets no_trainer on its next save and asks for an ID"
@@ -183,7 +183,7 @@ extension SaveDB {
                 try Data(w.utf8).write(to: file, options: .atomic)
                 kept = "save kept as \(file.path)"
             }
-            for t in ["history", "trainers", "pins", "trust", "pin_fails", "mons", "chains", "grants", "play", "steps_day", "actions"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
+            for t in ["history", "trainers", "pins", "trust", "pin_fails", "mons", "chains", "grants", "play", "steps_day", "actions", "raid_hits", "raid_catch"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
             for t in ["inbox", "trades"] { try db.rows("DELETE FROM \(t) WHERE to_key = :k OR from_key = :k", ["k": .text(k)]) }
             return "\(k): deleted, \(kept)"
         }

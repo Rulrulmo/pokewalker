@@ -38,6 +38,7 @@ struct Walk: Codable, Equatable {
     var ballsRefunded: Bool? = nil                                     // 1.10's one-time refund of bought balls ran
     var audited: Int? = nil, corrected: Bool? = nil                    // 1.7's one-time check ran; it took back a macro's gains (the trainer card says so)
     var bought: [String]? = nil                                        // one-off BP buys (device colours)
+    var raidPower: Int? = nil                                          // the co-op raid's power: steps banked, 3,000 at most (1,000 = 1칸: docs/plans/12 §4.2)
 
     var here: Course { courses[course] }
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.
@@ -65,6 +66,7 @@ struct Walk: Codable, Equatable {
         rollover(now)
         guard n > 0 else { return false }
         today += n; total += n; courseSteps += n; remainder += n
+        raidPower = min(3000, (raidPower ?? 0) + n)
         let w = remainder / 20; remainder %= 20
         watts = min(9999, watts + w); earned += w
         egg?.left -= n

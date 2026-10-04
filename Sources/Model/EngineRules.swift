@@ -6,6 +6,7 @@ enum Engine {
     static let radarFee = 10, radarWait = 1.5, radarSlack = 3.0          // the find shows after 1.5 s; a pick counts until 1.5 + window + 3 s (the network)
     static func radarWindow(_ chain: Int) -> Double { max(0.8, 2.0 - 0.25 * Double(chain)) }
     static let bpShells: [(name: String, bp: Int)] = [("배틀 골드", 40)]   // the device colours the BP 교환소 sells (Core's shells with a bp)
+    static let raidPowerCost = 1000, raidTurns = 6, raidBars = 3        // 12 §4.2: a fight is 1칸 of power, 6 turns at most, 3 of the boss's bars at most
 
     /// A new trainer's first save (the server makes it): the starter with its issued uid, today, the 1.x one-time jobs marked done.
     static func fresh(now: Date, starter uid: Int) -> Walk {
@@ -53,8 +54,8 @@ struct EngineRun<R: RandomNumberGenerator> {
     /// The act itself; a reason when it can't be done.
     mutating func act1(_ act: Act) -> String? {
         if p.battle != nil { switch act { case .battle, .steps: break; default: return "배틀 중이에요" } }
-        switch act { case .steps, .radar, .radarPick, .mon(.learn), .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel: break; default: p.chain = nil }   // a held chain lets only these through (the team's acts don't touch play)
-        if p.radar != nil { switch act { case .steps, .radarPick, .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel: break; default: p.radar = nil; p.chain = nil } }   // the radar shown: anything else gives it up
+        switch act { case .steps, .radar, .radarPick, .mon(.learn), .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall: break; default: p.chain = nil }   // a held chain lets only these through (the team's acts don't touch play)
+        if p.radar != nil { switch act { case .steps, .radarPick, .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall: break; default: p.radar = nil; p.chain = nil } }   // the radar shown: anything else gives it up
         switch act {
         case .steps: return nil
         case .radar: return radar()
@@ -76,7 +77,8 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .course(let i):
             guard courses.indices.contains(i), w.unlocked(i), i != w.course else { return "갈 수 없는 코스예요" }
             w.setCourse(i, &r); return nil
-        case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel: return nil   // the server's: another trainer's save or inbox (ServerTeam / ServerTrade)
+        case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall: return nil   // the server's: another trainer's save, the inbox, the team's raid
+        case .raid: return raid()
         }
     }
 
@@ -165,6 +167,7 @@ struct EngineRun<R: RandomNumberGenerator> {
             }
         case .ball:
             guard b.trainer == nil else { return "트레이너의 포켓몬은\n잡을 수 없다" }
+            guard p.raid == nil else { return "레이드 보스는\n볼로 잡을 수 없다" }
             if b.locked { return locked }
             let roll = Walk.rollBall(chain: b.chain, &r); out.ball = roll.name   // free: which ball it turns out to be is luck (and the chain)
             beats = b.turn(.capture, &r, ball: roll.boost)
@@ -194,6 +197,9 @@ struct EngineRun<R: RandomNumberGenerator> {
             let h = p.held; p.held = 0; walkNow(h)                          // the fight's held steps
             return nil
         }
+        if p.raid != nil, !(beats.last?.ends ?? false), b.turnNo >= Engine.raidTurns {          // a raid fight's 6 turns are up
+            beats += [.note(.it, text: josa(monNames[b.wild.dex], "의", "의") + " 기세에 밀려났다!"), .fled]; b.over = true
+        }
         if let last = beats.last, last.ends { beats += ended(&b, last) }
         out.battle = b; out.beats = beats
         if out.end == nil { p.battle = b }
@@ -213,6 +219,15 @@ struct EngineRun<R: RandomNumberGenerator> {
         let result = switch last { case .caught: "caught"; case .won: "won"; case .lost: "lost"; case .fled: "fled"; default: "ran" }
         p.battle = nil
         var end = BattleEnd(result: result)
+        if p.raid != nil {                                                                          // 12 §4.2: the damage (the server counts it), a BP a bar, EXP as a wild fight's
+            let bars = b.theirs.filter { !$0.alive }.count
+            end.dealt = b.theirs.reduce(0) { $0 + ($1.maxHP - $1.hp) }; end.bp = bars
+            w.writeBack(p.party ?? [], b.mine.map(\.mon)); p.party = nil; p.raid = nil
+            let h = p.held; p.held = 0; walkNow(h)
+            if bars > 0 { w.bp = (w.bp ?? 0) + bars }
+            growth(); out.end = end
+            return []
+        }
         if b.trainer == nil {
             w.writeBack(p.party ?? [], b.mine.map(\.mon)); p.party = nil                         // EXP, EVs, levels (moves queued)
             let h = p.held; p.held = 0; walkNow(h)
@@ -230,6 +245,20 @@ struct EngineRun<R: RandomNumberGenerator> {
         growth()
         out.end = end
         return []
+    }
+    /// 12 §4.2: this week's boss (the server's), 1칸 of power; our party (the tower's three) at its own levels, against 3 of its bars.
+    mutating func raid() -> String? {
+        guard let rb = p.raidBoss else { return "이번 주 레이드가\n없어요" }
+        guard rb.left > 0 else { return "이번 주 보스는\n이미 쓰러졌어요" }
+        guard (w.raidPower ?? 0) >= Engine.raidPowerCost else { return "파워가 부족하다\n(1,000걸음마다 1칸)" }
+        w.raidPower = (w.raidPower ?? 0) - Engine.raidPowerCost
+        let refs = w.party().map(\.ref)
+        p.party = refs.map { w.id($0)! }                                                            // uids first: the fighters carry them, EXP goes back by them
+        var b = Battle(wild: rb.boss, party: refs.compactMap { w.mon($0) }); b.seed = r.next()
+        b.theirs += Array(repeating: Fighter(rb.boss), count: Engine.raidBars - 1)                  // a bar down: it stands up again
+        w.see(rb.boss.dex)
+        out.beats = b.begin(weather: nil, &r); p.battle = b; p.raid = rb.week; out.battle = b
+        return nil
     }
     mutating func tower() -> String? {
         if !p.tower { guard w.spend(Walk.towerFee) else { return "W가 부족하다\n(\(Walk.towerFee)W 필요)" }; w.towerStreak = 0; p.tower = true }

@@ -51,6 +51,7 @@ func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?, release: 
     post(router, "/v2/team", appKey: appKey, id: { (r: TeamReq) in r.id }) { r in await db.team(r, now: Date()) }   // plan 12 M1: ServerTeam.swift
     post(router, "/v2/trades", appKey: appKey, id: { (r: TeamReq) in r.id }) { r in await db.trades(r, now: Date()) }   // plan 12 M2: ServerTrade.swift
     post(router, "/v2/box", appKey: appKey, id: { (r: BoxReq) in r.id }) { r in await db.box(r, now: Date()) }
+    post(router, "/v2/raid", appKey: appKey, id: { (r: TeamReq) in r.id }) { r in await db.raidLobby(r, now: Date()) }   // plan 12 M3: ServerRaid.swift
 
     let app = Application(router: router, configuration: .init(address: .hostname("127.0.0.1", port: port), serverName: "pokeserver"))
     let log = app.logger

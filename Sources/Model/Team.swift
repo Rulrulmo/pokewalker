@@ -26,3 +26,13 @@ struct TradesReply: Codable, Equatable { var incoming, outgoing: [TradeOffer] }
 /// /v2/box: a teammate's box, to pick what to ask for.
 struct BoxReq: Codable, Equatable { var id, session, of: String }
 struct BoxReply: Codable, Equatable { var name: String; var box: [Mon] }
+
+/// 12 §4.4 (M3): the raid's lobby — POST /v2/raid.
+struct RaidFighter: Codable, Equatable { var name: String; var dealt: Int }
+struct RaidHit: Codable, Equatable { var name: String; var dex: Int; var dealt: Int; var at: Int }       // dex: that fight's lead
+struct RaidMine: Codable, Equatable { var dealt: Int, fights: Int; var balls: Int?; var caught: Bool; var canCatch: Bool }
+struct RaidReply: Codable, Equatable {
+    var week: String; var boss: Mon; var next: Int
+    var hpTotal: Int, hpLeft: Int, barHP: Int, ends: Int                     // ends: the week's end (unix)
+    var fighters: [RaidFighter]; var recent: [RaidHit]; var mine: RaidMine
+}
