@@ -6,7 +6,7 @@ enum Engine {
     static let radarFee = 10, radarWait = 1.5, radarSlack = 3.0          // the find shows after 1.5 s; a pick counts until 1.5 + window + 3 s (the network)
     static func radarWindow(_ chain: Int) -> Double { max(0.8, 2.0 - 0.25 * Double(chain)) }
     static let bpShells: [(name: String, bp: Int)] = [("배틀 골드", 40)]   // the device colours the BP 교환소 sells (Core's shells with a bp)
-    static let raidPowerCost = 1000, raidTurns = 6, raidBars = 3        // 12 §4.2: a fight is 1칸 of power, 6 turns at most, 3 of the boss's bars at most
+    static let raidPowerCost = 10_000, raidTurns = 6, raidBars = 3      // 12 §4.2: a fight is 1칸 of power (3.8: 10,000 steps, was 1,000 — docs/plans/14 ⑧), 6 turns at most, 3 bars at most
     static let raidPowerMax = 3 * raidPowerCost                         // what the power bank holds (3칸)
 
     /// A new trainer's first save (the server makes it): the starter with its issued uid, today, the 1.x one-time jobs marked done.

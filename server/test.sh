@@ -185,11 +185,11 @@ else
 fi
 
 # 8 — plan 12 M3: the co-op raid (a test ID's own raid: the team's isn't touched) — the lobby, a fight with power, its damage counted
-if admin set "$ID3" '$.raidPower' 3000 >/dev/null; then
+if admin set "$ID3" '$.raidPower' 30000 >/dev/null; then
     jq -n --arg id "$ID3" --arg s "$S3" '{id: $id, session: $s}' > "$TMP/req"
     CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/raid"); BODY=$(cat "$TMP/body")
     ok "/v2/raid: this week's boss, the testers' raid" is 200 '[.boss.level, (.week | endswith("-test")), .hpLeft == .hpTotal] | tostring' '[70,true,true]'
-    SEQ3=$((SEQ3 + 1)); act3 $SEQ3 '{"raid":{}}'; ok "a raid fight (1칸 of power)" is 200 '[(.out.battle.theirs | length), .walk.raidPower] | tostring' '[3,2000]'
+    SEQ3=$((SEQ3 + 1)); act3 $SEQ3 '{"raid":{}}'; ok "a raid fight (1칸 of power)" is 200 '[(.out.battle.theirs | length), .walk.raidPower] | tostring' '[3,20000]'
     for _ in 1 2 3 4 5 6 7; do                                                      # running away: out by the 6th turn at the latest
         SEQ3=$((SEQ3 + 1)); act3 $SEQ3 '{"battle":{"cmd":{"run":{}}}}'
         [ "$(printf '%s' "$BODY" | jq -r '.out.end.result // empty')" ] && break
@@ -199,7 +199,7 @@ if admin set "$ID3" '$.raidPower' 3000 >/dev/null; then
     CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/raid"); BODY=$(cat "$TMP/body")
     ok "the lobby: one fight of mine" is 200 '.mine.fights' 1
 else
-    echo "SKIP  raid (needs: sudo -u pokewalker $PS set $ID3 '\$.raidPower' 3000)"
+    echo "SKIP  raid (needs: sudo -u pokewalker $PS set $ID3 '\$.raidPower' 30000)"
 fi
 
 # 9 — plan 12 §5, 14 §5 (3.8): a live battle between the two friends — their 대전 파티, asked, said yes, three picked each, given up (the other wins)

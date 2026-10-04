@@ -189,11 +189,11 @@ private struct Desk {
     #expect(d.act(.raid()).cannot == "이번 주 레이드가\n없어요")
     var g = Seeded(s: 9); let boss = Mon.wild(382, level: 70, perfect: 4, &g)
     d.p.raidBoss = RaidBoss(week: "2026-W40", boss: boss, left: 10_000)
-    #expect(d.act(.raid()).cannot == "파워가 부족하다\n(1,000걸음마다 1칸)")
-    d.act(.steps, steps: 2500)
-    #expect(d.w.raidPower == 2500)
+    #expect(d.act(.raid()).cannot == "파워가 부족하다\n(10,000걸음마다 1칸)")
+    d.act(.steps, steps: 25_000)
+    #expect(d.w.raidPower == 25_000)
     let start = d.act(.raid())
-    #expect(start.cannot == nil && start.battle?.theirs.count == 3 && d.w.raidPower == 1500 && d.p.raid == "2026-W40")
+    #expect(start.cannot == nil && start.battle?.theirs.count == 3 && d.w.raidPower == 15_000 && d.p.raid == "2026-W40")
     #expect(d.act(.battle(cmd: .ball)).cannot == "레이드 보스는\n볼로 잡을 수 없다")
     guard let end = d.fightOut(ball: false) else { Issue.record("no end"); return }
     #expect(end.end?.dealt != nil && d.p.raid == nil && d.p.battle == nil)
@@ -207,10 +207,10 @@ private struct Desk {
     var a = Mon(dex: 6, level: 40, female: false); a.uid = firstUID + 1; var b = Mon(dex: 9, level: 35, female: false); b.uid = firstUID + 2
     d.w.box = [a, b]; d.w.lastUID = firstUID + 2
     d.p.raidBoss = RaidBoss(week: "2026-W40", boss: Mon.wild(382, level: 70, perfect: 4, &g), left: 10_000)
-    d.act(.steps, steps: 2500)
+    d.act(.steps, steps: 25_000)
     #expect(d.act(.raid(party: [])).cannot == "1~3마리를\n골라 주세요")
     #expect(d.act(.raid(party: [firstUID, firstUID, firstUID + 1])).cannot == "1~3마리를\n골라 주세요")
-    #expect(d.act(.raid(party: [firstUID + 9])).cannot == "그 포켓몬은\n없어요" && d.w.raidPower == 2500)    // nothing spent on a refusal
+    #expect(d.act(.raid(party: [firstUID + 9])).cannot == "그 포켓몬은\n없어요" && d.w.raidPower == 25_000)    // nothing spent on a refusal
     let start = d.act(.raid(party: [firstUID + 2, firstUID + 1]))
     #expect(start.cannot == nil && start.battle?.mine.map(\.mon.dex) == [9, 6] && start.battle?.mine.first?.mon.level == 35 && d.p.party == [firstUID + 2, firstUID + 1])
 }

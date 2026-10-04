@@ -38,7 +38,7 @@ struct Walk: Codable, Equatable {
     var ballsRefunded: Bool? = nil                                     // 1.10's one-time refund of bought balls ran
     var audited: Int? = nil, corrected: Bool? = nil                    // 1.7's one-time check ran; it took back a macro's gains (the trainer card says so)
     var bought: [String]? = nil                                        // one-off BP buys (device colours)
-    var raidPower: Int? = nil                                          // the co-op raid's power: steps banked, 3,000 at most (1,000 = 1칸: docs/plans/12 §4.2)
+    var raidPower: Int? = nil                                          // the co-op raid's power: steps banked, Engine.raidPowerMax at most (3.8: 10,000 = 1칸, 30,000 at most)
     var duelWins: Int? = nil, duelLosses: Int? = nil                   // 실시간 대전 (12 §5): the record
     var duelParty: [Int]? = nil                                        // 3.8 (14 §5.1): the 대전 파티's uids, 3–6 (one let go or traded drops out)
 

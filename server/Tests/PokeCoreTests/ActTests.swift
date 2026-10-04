@@ -251,7 +251,9 @@ extension SaveDB { func setPlay(_ key: String, _ p: Play) throws { try db.rows("
     _ = try await go("보브", b, 1, .steps, steps: 3000, at: 200)
     try await setWalk(db, "앨리스") { w in                                                            // a party that can hurt a Lv.70 legend
         var c = Mon(dex: 445, level: 100, female: false); c.uid = firstUID; c.known = [89, 200, 337, 14]; c.ivs = Array(repeating: 31, count: 6); w.companion = c
+        w.raidPower = Engine.raidPowerMax                                                         // (3.8: 10,000 steps a 칸 — more than the test's allowance walks)
     }
+    try await setWalk(db, "보브") { $0.raidPower = Engine.raidPowerMax }
     var lobby = try JSONDecoder().decode(RaidReply.self, from: await db.raidLobby(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(201)).body)
     #expect(raidRotation.contains(lobby.boss.dex) && lobby.boss.level == 70 && lobby.boss.perfectIVs >= 4)
     #expect(lobby.hpTotal == lobby.barHP * raidBarsPerFighter * 2 && lobby.hpLeft == lobby.hpTotal)          // two walked lately: 8 bars
