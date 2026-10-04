@@ -27,7 +27,10 @@ extension Walker {
     /// Box Pokémon of mine already in an offer of mine (the server takes each in one at a time).
     var offeredUIDs: Set<Int> { Set((cloud?.trades?.outgoing ?? []).compactMap(\.mon.uid)) }
     /// The 팀 tabs as shown: 교환's with how many wait for me.
-    var teamTabLabels: [String] { Array(Walker.teamTabs.dropLast()) + [friendRequestsIn > 0 ? "신청 \(friendRequestsIn)" : "신청"] }
+    var teamTabLabels: [String] {
+        let n = (visits?.away == nil ? 0 : 1) + guests.count
+        return Array(Walker.teamTabs.prefix(4)) + [friendRequestsIn > 0 ? "신청 \(friendRequestsIn)" : "신청", n > 0 ? "맡기기 \(n)" : "맡기기"] + (teamTabCount > 6 ? ["전체"] : [])
+    }
     static func isTrade(_ a: Act) -> Bool { switch a { case .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel: true; default: false } }
     func monLine(_ m: Mon) -> String { (m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)" }
     /// What's left of an offer's day.
@@ -274,10 +277,18 @@ extension Walker {
         let mine = o.want ?? give.flatMap { u in state.box.first { $0.uid == u } }
         let body = josa(o.from, "의", "의") + " " + monLine(o.mon) + " ↔ 내 " + (mine.map(monLine) ?? "포켓몬") + "\n교환하면 되돌릴 수 없어요."
         guard host?.confirm("교환할까요?", body, ok: "교환") ?? true else { return }
-        act(.tradeAccept(id: o.id, give: o.want == nil ? give : nil), back: back, now, lines: ["교환 중..."]) { [weak self] _, _ in
-            self?.cloud?.forgetOffer(o.id); self?.cloud?.tradesDue = true
-            return .home
+        act(.tradeAccept(id: o.id, give: o.want == nil ? give : nil), back: back, now, lines: ["교환 중..."]) { [weak self] _, now in
+            guard let self else { return nil }
+            cloud?.forgetOffer(o.id); cloud?.tradesDue = true
+            return tradedShow(now) ?? .home                                                          // (3.8: trade news are quiet — my own accept still shows)
         }
+    }
+    /// My own accept's trade, out of the news as its show (an evolution after it plays at home).
+    func tradedShow(_ now: Date) -> Screen? {
+        guard let i = news.firstIndex(where: { if case .traded = $0 { return true }; return false }), case .traded(let id, let with, let gave, let got) = news.remove(at: i) else { return nil }
+        cloud?.forgetOffer(id); var shown = got
+        for n in news { if case .evolve(let u, let from, _, _) = n, u == got.uid { shown.dex = from; break } }
+        return .traded(gave: gave, got: shown, with: with, since: now)
     }
 
     // MARK: home: the news

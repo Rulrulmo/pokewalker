@@ -83,7 +83,7 @@ extension Canvas {
         else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let l = p.relearn { drawRelearn(l) }
         else if let t = p.team { drawTeam(t) } else if let t = p.teamCard { drawTeamCard(t) }
         else if let t = p.trades { drawTrades(t) } else if let o = p.offer { drawOffer(o) } else if let k = p.pick { drawPick(k) }
-        else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let r = p.raid { drawRaid(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
+        else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let v = p.visits { drawVisits(v) } else if let r = p.raid { drawRaid(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
         else if let s = p.status { drawStatus(s) }
     }
     let X0: CGFloat = 9, X1: CGFloat = 207                                                         // the content column (card points): the bezel's edges
@@ -409,6 +409,7 @@ extension Canvas {
             let low = rh < 31
             c.say(row.name, rc.minX + x(9), rc.minY + x(low ? 9.5 : five ? 8.5 : 10.5), font(10, .bold), on ? .white : row.off ? Ink.sub : Ink.ink, maxW: rc.width - x(14))
             c.say(row.note, rc.minX + x(9), rc.minY + x(low ? 20 : five ? 18.5 : 22), font(8, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(14))
+            if row.dot { let d = x(7); c.fill(.oval(CGRect(x: rc.maxX - x(9) - d / 2, y: rc.minY + x(9) - d / 2, width: d, height: d)), on ? .white : Ink.red) }   // 3.8: something waits there
             hits.append((rc, 3000 + i))
         }
     }
@@ -580,14 +581,22 @@ extension Page {
     func pillAt(_ t: String, _ xr: CGFloat, _ midY: CGFloat, _ fill: Color, _ ink: Color) -> CGFloat {
         let f = font(7.5, .bold), w = width(t, f) + x(8); c.pill(CGRect(x: xr - w, y: midY - x(5.5), width: w, height: x(11)), fill); c.say(t, xr - w / 2, midY, f, ink, 0.5); return xr - w - x(5)
     }
+    /// The friends' tabs: one row, or (3.8: 맡기기, 전체) two — the content moves down by what this returns.
+    @discardableResult func teamTabs(_ labels: [String], _ sel: Int) -> CGFloat {
+        guard labels.count > 5 else { tabs(labels, sel, 214, code: 6000); return 0 }
+        let half = (labels.count + 1) / 2
+        tabs(Array(labels.prefix(half)), sel < half ? sel : -1, 214, code: 6000)
+        tabs(Array(labels.dropFirst(half)), sel >= half ? sel - half : -1, 238, code: 6000 + half)
+        return 24
+    }
     func drawTeam(_ m: TeamModel) {
         c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 60))
         if !m.week.isEmpty { c.say(m.week, x(X1 - 2), y(206), font(8.5, .medium), Ink.faint, 1) }
-        tabs(m.tabs, m.tab, 214, code: 6000)
-        if m.rows.isEmpty { c.say(m.note, x(Layout.w / 2), y(300), font(10, .medium), Ink.sub, 0.5); return }
-        if let h = m.hint { c.say(h, x(Layout.w / 2), y(242 + CGFloat(m.rows.count) * 29 + 14), font(9, .medium), Ink.faint, 0.5) }   // only me: how to add one
+        let d = teamTabs(m.tabs, m.tab)
+        if m.rows.isEmpty { c.say(m.note, x(Layout.w / 2), y(300 + d), font(10, .medium), Ink.sub, 0.5); return }
+        if let h = m.hint { c.say(h, x(Layout.w / 2), y(242 + d + CGFloat(m.rows.count) * 29 + 14), font(9, .medium), Ink.faint, 0.5) }   // only me: how to add one
         for (i, row) in m.rows.enumerated() {
-            let rc = r(X0, 242 + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: m.first + i == m.sel, row.me ? Ink.tint(Ink.blue, 0.10) : nil)
+            let rc = r(X0, 242 + d + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: m.first + i == m.sel, row.me ? Ink.tint(Ink.blue, 0.10) : nil)
             var xl = rc.minX + x(8)
             if let k = row.rank { c.say("\(k)", xl + x(6), rc.midY, font(10, .bold), k <= 3 ? Ink.red : Ink.sub, 0.5); xl += x(16) }
             c.image(iconImage(row.dex), CGRect(x: xl - x(2), y: rc.midY - x(15), width: 28 * K, height: 28 * K), alpha: 1)
@@ -599,7 +608,7 @@ extension Page {
             hits.append((rc, 6010 + i))
         }
         let per = TeamModel.perPage, pages = max(1, (m.count + per - 1) / per)
-        pager("\(m.first / per + 1) / \(pages)", 420, prev: pages > 1, next: pages > 1, codes: (6020, 6021))
+        pager("\(m.first / per + 1) / \(pages)", 420 + d, prev: pages > 1, next: pages > 1, codes: (6020, 6021))
     }
     func drawTeamCard(_ m: TeamCardModel) {
         var xr = x(X1 - 2)
@@ -621,9 +630,12 @@ extension Page {
         var buttons: [(String, Int, Color, Color, Bool)] = [(g == "인사하기 ♥" ? "인사 ♥" : "인사했어요", 6030, g == "인사하기 ♥" ? Ink.red : Ink.tile, g == "인사하기 ♥" ? .white : Ink.sub, g == "인사하기 ♥")]
         if let d = m.duel { let on = d == "대전 신청"; buttons.append((on ? d : "대전 (걷는 중일 때)", 6032, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 3.6: a live battle
         if m.remove { buttons.append(("친구 끊기", 6031, Ink.tile, Ink.sub, true)) }
-        let n = CGFloat(buttons.count), bw = (X1 - X0 - 5 * (n - 1)) / n
+        if let v = m.visit { let on = v == "맡기기"; buttons.insert((v, 6034, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on), at: min(2, buttons.count)) }   // 3.8: 맡겨 키우기
+        if let q = m.request { let on = q == "친구 신청"; buttons = [(q, 6033, on ? Ink.red : Ink.tile, on ? .white : Ink.sub, on)] }   // the 전체 tab: someone not a friend
+        let perRow = buttons.count > 3 ? 2 : buttons.count, rowsN = (buttons.count + perRow - 1) / max(1, perRow)
+        let n = CGFloat(perRow), bw = (X1 - X0 - 5 * (n - 1)) / n
         for (i, b) in buttons.enumerated() {
-            let rc = r(X0 + CGFloat(i) * (bw + 5), 380, bw, 30); c.fill(.rounded(rc, 10 * K), b.2)
+            let rc = r(X0 + CGFloat(i % perRow) * (bw + 5), 380 + CGFloat(i / perRow) * 34 - (rowsN > 1 ? 0 : 0), bw, 30); c.fill(.rounded(rc, 10 * K), b.2)
             c.say(b.0, rc.midX, rc.midY, font(n > 2 ? 10 : 11, .bold), b.3, 0.5, maxW: rc.width - x(6)); if b.4 { hits.append((rc, b.1)) }
         }
     }
@@ -724,13 +736,13 @@ extension Page {
     // MARK: 친구's 신청 tab (12 §2.4): requests to me (수락 · 거절), mine (거두기), 친구 신청 by ID
     func drawFriendReqs(_ m: FriendReqModel) {
         c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
-        tabs(m.tabs, 4, 214, code: 6000)
+        let d = teamTabs(m.tabs, 4)
         if m.rows.isEmpty {
-            c.say("친구 신청이 없어요", x(Layout.w / 2), y(300), font(10, .medium), Ink.sub, 0.5)
-            c.say("친구의 트레이너 ID로 신청해 보세요", x(Layout.w / 2), y(318), font(9, .medium), Ink.faint, 0.5)
+            c.say("친구 신청이 없어요", x(Layout.w / 2), y(300 + d), font(10, .medium), Ink.sub, 0.5)
+            c.say("친구의 트레이너 ID로 신청해 보세요", x(Layout.w / 2), y(318 + d), font(9, .medium), Ink.faint, 0.5)
         }
         for (i, row) in m.rows.enumerated() {
-            let rc = r(X0, 242 + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: false, row.mine ? nil : Ink.tint(Ink.green, 0.08))
+            let rc = r(X0, 242 + d + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: false, row.mine ? nil : Ink.tint(Ink.green, 0.08))
             c.miniBall(CGPoint(x: rc.minX + x(14), y: rc.midY), 5.5 * K)
             var xr = rc.maxX - x(6)
             for (t, code, strong) in row.mine ? [("거두기", 6200 + i, false)] : [("거절", 6210 + i, false), ("수락", 6200 + i, true)] {
@@ -741,8 +753,26 @@ extension Page {
             c.say(row.mine ? "내가 보낸 신청 · 기다리는 중" : "나에게 친구 신청", rc.minX + x(26), rc.midY + x(6.5), font(8, .medium), row.mine ? Ink.faint : Ink.green, maxW: xr - rc.minX - x(30))
         }
         let per = FriendReqModel.perPage, pages = max(1, (m.count + per - 1) / per)
-        if pages > 1 { pager("\(m.first / per + 1) / \(pages)", 390, prev: true, next: true, codes: (6230, 6231)) }
-        let rc = r(X0, 410, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), Ink.red); c.say("ID로 친구 신청", rc.midX, rc.midY, font(11, .bold), .white, 0.5); hits.append((rc, 6240))
+        if pages > 1 { pager("\(m.first / per + 1) / \(pages)", 390 + d, prev: true, next: true, codes: (6230, 6231)) }
+        let rc = r(X0, 410 + d, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), Ink.red); c.say("ID로 친구 신청", rc.midX, rc.midY, font(11, .bold), .white, 0.5); hits.append((rc, 6240))
+    }
+    // MARK: 맡겨 키우기 (14 §3): mine away (데려오기), the ones I raise (돌려보내기), how it works
+    func drawVisits(_ m: VisitsModel) {
+        c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
+        let d = teamTabs(m.tabs, m.tab)
+        if m.rows.isEmpty { c.say("맡기거나 맡은 포켓몬이 없어요", x(Layout.w / 2), y(300 + d), font(10, .medium), Ink.sub, 0.5) }
+        for (i, row) in m.rows.enumerated() {
+            let rc = r(X0, 242 + d + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: false, row.mine ? Ink.tint(Ink.blue, 0.08) : nil)
+            c.image(iconImage(row.dex), CGRect(x: rc.minX + x(6), y: rc.midY - x(15), width: 28 * K, height: 28 * K), alpha: 1)
+            let f = font(9, .bold), w = width(row.button, f) + x(16), pr = CGRect(x: rc.maxX - x(6) - w, y: rc.midY - x(8.5), width: w, height: x(17))
+            c.pill(pr, Ink.board); c.say(row.button, pr.midX, pr.midY, f, Ink.sub, 0.5); hits.append((pr, 6400 + i))
+            c.say(row.line, rc.minX + x(36), rc.midY - x(5.5), font(9.5, .bold), Ink.ink, maxW: pr.minX - rc.minX - x(40))
+            c.say(row.sub, rc.minX + x(36), rc.midY + x(6), font(8, .medium), Ink.sub, maxW: pr.minX - rc.minX - x(40))
+        }
+        var lines: [String] = [], cur = "", f = font(8.5, .medium)
+        for w in m.hint.split(separator: " ") { let t = cur.isEmpty ? String(w) : cur + " " + w; if width(t, f) > x(X1 - X0 - 4), !cur.isEmpty { lines.append(cur); cur = String(w) } else { cur = t } }
+        lines.append(cur); f = font(8.5, .medium)
+        for (k, l) in lines.prefix(3).enumerated() { c.say(l, x(X0 + 2), y(400 + d + CGFloat(k) * 13), f, Ink.faint, maxW: x(X1 - X0 - 4)) }
     }
     // MARK: 교환 게시판 (12 §3.3): the board, one post
     func drawBoard(_ m: MarketBoardModel) {
@@ -762,7 +792,7 @@ extension Page {
         let per = MarketBoardModel.perPage, pages = max(1, (m.count + per - 1) / per)
         pager("\(m.first / per + 1) / \(pages)", 384, prev: pages > 1, next: pages > 1, codes: (8020, 8021))
         let rc = r(X0, 408, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.post == nil ? Ink.tile : Ink.red)
-        c.say(m.post ?? "올린 글은 3개까지예요", rc.midX, rc.midY, font(11, .bold), m.post == nil ? Ink.sub : .white, 0.5); if m.post != nil { hits.append((rc, 8030)) }
+        c.say(m.post ?? m.footer ?? "올린 글은 3개까지예요", rc.midX, rc.midY, font(m.post == nil && m.footer != nil ? 9.5 : 11, .bold), m.post == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.post != nil { hits.append((rc, 8030)) }
     }
     /// A post: its Pokémon ⇄ what's wished for; another's: the Pokémon in full and 제안 (or 거두기); mine: the offers (a click picks one), 교환 · 내리기.
     func drawPost(_ m: MarketPostModel) {

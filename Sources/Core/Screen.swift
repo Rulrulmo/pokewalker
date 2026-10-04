@@ -28,6 +28,7 @@ indirect enum Screen {
     case course(Int)                                                   // 코스: the pick (an index into courses; its picture on the LCD)
     case train(Int)                                                    // 대단한 특훈 with 은색병뚜껑: the stat picked (0 HP … 5 스피드), on Walker.trainRef (3.6: any of ours)
     case itemOn(ItemOn)                                                // 3.6 (docs/plans/13): who gets the 도구 page's item
+    case visitPick(ItemOn)                                             // 3.8: which of ours goes to a friend for 맡겨 키우기 (item = the friend's name)
     case hold(ref: Int, sel: Int)                                      // 3.7: 지니게 하기 for one of ours (ref as box's), the row picked
     case duel(DuelStep)                                                // 12 §5 (3.6): a live battle's invitation (mine out, or one to me); the fight itself is on the battle screens
     case say([String], next: Screen, since: Date)                      // any button or 3 s

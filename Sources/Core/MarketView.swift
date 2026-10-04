@@ -13,7 +13,14 @@ enum MarketStep {
 struct MarketPick: Equatable { var listing: Int? = nil; var give: Int? = nil; var wish: [Int] = []; var side = 0; var at = 0 }
 
 extension Walker {
-    static let marketTabs = ["전체", "내 글", "내 제안"], marketDays = 3, marketPosts = 3, marketBids = 5
+    static let marketTabs = ["전체", "내 글", "내 제안", "받기"], marketDays = 3, marketPosts = 3, marketBids = 5
+    /// 3.8 (docs/plans/14 §2.2): the 받기 함 — Pokémon waiting for me (got in a trade, back from a post or an offer, home from 맡겨 키우기).
+    var claims: [Claim] { market?.claims ?? [] }
+    /// The 교환 tile's red dot: something to take, or offers on my posts not looked at yet.
+    var marketDot: Bool { !claims.isEmpty || (market?.unseen ?? 0) > 0 }
+    func claimLine(_ k: Claim) -> String {
+        switch k.kind { case "traded": josa(k.from, "에게서", "에게서") + " 온 " + monLine(k.mon); case "visit": josa(k.from, "에게서", "에게서") + " 돌아온 " + monLine(k.mon); default: "돌아온 " + monLine(k.mon) }
+    }
     var market: MarketReply? { cloud?.market }
     func listing(_ id: Int) -> Listing? { market?.listings.first { $0.id == id } }
     func myBid(on id: Int) -> Bid? { market?.myBids.first { $0.listing == id } }
@@ -39,12 +46,27 @@ extension Walker {
     }
     var marketNote: String {
         guard let m = market else { return "모두의 게시판" }
+        if !claims.isEmpty { return "받을 포켓몬 \(claims.count)마리" }
+        if let u = m.unseen, u > 0 { return "새 제안 \(u)건" }
         return offersIn > 0 ? "받은 제안 \(offersIn)건" : "글 \(m.listings.count)개 · 내 글 \(myPosts.count)/\(Walker.marketPosts)"
+    }
+    /// One of my posts opened: its offers count as seen (the server's, with the next read); anyone's: its page.
+    func openPost(_ id: Int) {
+        if listing(id)?.mine == true, let c = cloud { c.marketSeen = id; c.marketDue = true }
+        screen = .market(.post(id: id, sel: nil))
     }
 
     // MARK: the pane
     func marketPane(_ s: MarketStep, _ now: Date) -> PaneContent {
         switch s {
+        case .board(let tab, let sel) where tab == 3:                                              // 3.8: 받기 — a click takes it into the box
+            let ks = claims, sel = min(sel, max(0, ks.count - 1)), per = MarketBoardModel.perPage, first = sel / per * per
+            let page = ks[min(first, ks.count)..<min(ks.count, first + per)].map { k in
+                MarketBoardModel.Row(dex: k.mon.dex, shiny: k.mon.shiny == true, line: claimLine(k), sub: (k.note.map { $0 + " · " } ?? "") + (k.mon.item.map { $0 + " 지님 · " } ?? "") + ago(max(60, Int(now.timeIntervalSince1970) - k.at)),
+                                     pill: "받기", tint: 1)
+            }
+            return PaneContent(board: MarketBoardModel(tabs: marketTabLabels, tab: 3, rows: page, sel: sel, first: first, count: ks.count, note: "받을 포켓몬 \(ks.count)마리 · 누르면 상자로",
+                                                       empty: "받을 포켓몬이 없어요", post: nil, footer: "교환으로 받거나 돌아온 포켓몬이 여기 와요"))
         case .board(let tab, let sel):
             let rows = boardRows(tab), sel = min(sel, max(0, rows.count - 1)), per = MarketBoardModel.perPage, first = sel / per * per
             let page = rows[min(first, rows.count)..<min(rows.count, first + per)].map { l -> MarketBoardModel.Row in
@@ -54,15 +76,14 @@ extension Walker {
                                      sub: "그 글: " + monLine(l.mon) + " · " + marketLeft(l.at, now), pill: "제안함", tint: 2)
                 default:
                     return .init(dex: l.mon.dex, shiny: l.mon.shiny == true, line: (l.mine ? "내 " : josa(l.from, "의", "의") + " ") + monLine(l.mon),
-                                 sub: marketLeft(l.at, now) + " · 원해요 " + wishText(l.wish),
+                                 sub: (l.note.map { "“" + $0 + "” · " } ?? "") + marketLeft(l.at, now) + " · 원해요 " + wishText(l.wish),
                                  pill: l.mine ? (l.bids > 0 ? "제안 \(l.bids)" : "내 글") : mine != nil ? "제안함" : nil, tint: l.mine ? (l.bids > 0 ? 1 : 2) : 2)
                 }
             }
-            let tabs = ["전체", offersIn > 0 ? "내 글 \(offersIn)" : "내 글", "내 제안"]
             let note = market == nil ? (cloud?.online == false ? "연결되면 볼 수 있어요" : "불러오는 중…")
                 : "글 \(market?.listings.count ?? 0)개 · 내 글 \(myPosts.count)/\(Walker.marketPosts) · 내 제안 \(market?.myBids.count ?? 0)/\(Walker.marketBids)"
             let empty = market == nil ? note : ["아직 올라온 글이 없어요", "올린 글이 없어요", "건 제안이 없어요"][tab]
-            return PaneContent(board: MarketBoardModel(tabs: tabs, tab: tab, rows: page, sel: sel, first: first, count: rows.count, note: note, empty: empty,
+            return PaneContent(board: MarketBoardModel(tabs: marketTabLabels, tab: tab, rows: page, sel: sel, first: first, count: rows.count, note: note, empty: empty,
                                                        post: market != nil && myPosts.count < Walker.marketPosts ? "글 올리기 · \(myPosts.count)/\(Walker.marketPosts)" : nil))
         case .post(let id, let sel):
             guard let l = listing(id) else { return marketPane(.board(tab: 0, sel: 0), now) }
@@ -71,11 +92,11 @@ extension Walker {
             if l.mine {
                 let os = offers(on: id).map { b in MarketPostModel.Offer(dex: b.mon.dex, shiny: b.mon.shiny == true, line: josa(b.from, "의", "의") + " " + monLine(b.mon),
                                                                          sub: b.mon.natureName + (b.mon.perfectIVs > 0 ? " · \(b.mon.perfectIVs)V" : "") + " · " + ago(max(60, Int(now.timeIntervalSince1970) - b.at))) }
-                return PaneContent(post: MarketPostModel(title: "내 글", note: marketLeft(l.at, now), mon: slot("올린 포켓몬", l.mon), wish: wish, body: nil, offers: os,
+                return PaneContent(post: MarketPostModel(title: "내 글", note: (l.note.map { "“" + $0 + "” · " } ?? "") + marketLeft(l.at, now), mon: slot("올린 포켓몬", l.mon), wish: wish, body: nil, offers: os,
                                                          sel: sel.flatMap { $0 < os.count ? $0 : nil }, buttons: ["이 제안으로 교환", "글 내리기"], strong: sel != nil && sel! < os.count ? 0 : nil))
             }
             let b = myBid(on: id)
-            return PaneContent(post: MarketPostModel(title: josa(l.from, "의", "의") + " 글", note: marketLeft(l.at, now), mon: slot("받을 포켓몬", l.mon), wish: wish, body: monPage(l.mon),
+            return PaneContent(post: MarketPostModel(title: josa(l.from, "의", "의") + " 글", note: (l.note.map { "“" + $0 + "” · " } ?? "") + marketLeft(l.at, now), mon: slot("받을 포켓몬", l.mon), wish: wish, body: monPage(l.mon),
                                                      offers: [], sel: nil, buttons: [b.map { "제안 거두기 · 내 " + monLine($0.mon) } ?? "내 포켓몬으로 제안"], strong: b == nil ? 0 : nil))
         case .pick(let p):
             let list = marketPickList(p), per = TradePickModel.perPage, at = min(p.at, max(0, list.count - 1)), first = at / per * per
@@ -107,6 +128,7 @@ extension Walker {
                                                     bob: Int(now.timeIntervalSinceReferenceDate * 2) % 2 == 0, marks: marks, base: 8100))
         }
     }
+    var marketTabLabels: [String] { ["전체", (market?.unseen ?? 0) > 0 ? "내 글 •" : offersIn > 0 ? "내 글 \(offersIn)" : "내 글", "내 제안", claims.isEmpty ? "받기" : "받기 \(claims.count)"] }
     /// The grid a pick shows: my box (the 포켓몬 grid's order), or — wishing — the species seen (as Pokémon of that species).
     func marketPickList(_ p: MarketPick) -> [Mon] { p.side == 1 ? seenList.sorted().map { Mon(dex: $0, level: 1, female: false) } : myTradeBox }
 
@@ -121,6 +143,10 @@ extension Walker {
             if m.perfectIVs > 0 { let w = fb.text("\(m.perfectIVs)V", 94, 15 + 11 * lines.count, m.perfectIVs >= 3 ? 3 : 2, right: true, small: true); if m.perfectIVs >= 3 { fb.draw(vDiamond, 94 - w - 7, 17 + 11 * lines.count, vPal) } }
         }
         switch s {
+        case .board(3, let sel):
+            guard let k = claims[safe: min(sel, max(0, claims.count - 1))] else { head("받기"); fb.text("받을 포켓몬이 없다", 0, 30, 2, center: true); return }
+            show(k.mon, "claim \(k.id)", [k.kind == "traded" ? "교환" : k.kind == "visit" ? "놀러 갔다 옴" : "돌아옴", k.from])
+            fb.text("● 받기", 94, 52, 2, right: true, small: true)
         case .board(let tab, let sel):
             let rows = boardRows(tab)
             guard let l = rows[safe: min(sel, max(0, rows.count - 1))] else { head("교환 게시판"); fb.text(market == nil ? "불러오는 중..." : "글이 없다", 0, 30, 2, center: true); return }
@@ -149,9 +175,10 @@ extension Walker {
     func marketPress(_ k: Int, _ s: MarketStep, _ now: Date) {
         switch s {
         case .board(let tab, let sel):
-            let n = boardRows(tab).count
+            let n = tab == 3 ? claims.count : boardRows(tab).count
             if k != 1 { if n > 0 { screen = .market(.board(tab: tab, sel: ((sel + (k == 0 ? -1 : 1)) % n + n) % n)) }; return }
-            if let l = boardRows(tab)[safe: sel] { screen = .market(.post(id: l.id, sel: nil)) } else if tab == 1 { startPost(now) }
+            if tab == 3 { if let c = claims[safe: sel] { claim(c, now) }; return }
+            if let l = boardRows(tab)[safe: sel] { openPost(l.id) } else if tab == 1 { startPost(now) }
         case .post(let id, let sel):
             guard let l = listing(id) else { screen = .market(.board(tab: 0, sel: 0)); return }
             if l.mine {
@@ -171,8 +198,8 @@ extension Walker {
         lastInput = Date(); host?.redraw(.all)
         switch s {
         case .board(let tab, let sel):
-            if k == .tab { screen = .market(.board(tab: (tab + (shift ? 2 : 1)) % 3, sel: 0)); return true }
-            let n = boardRows(tab).count
+            if k == .tab { screen = .market(.board(tab: (tab + (shift ? 3 : 1)) % 4, sel: 0)); return true }
+            let n = tab == 3 ? claims.count : boardRows(tab).count
             if let d = [Key.up: -1, .down: 1, .pageUp: -MarketBoardModel.perPage, .pageDown: MarketBoardModel.perPage][k] { if n > 0 { screen = .market(.board(tab: tab, sel: max(0, min(n - 1, sel + d)))) }; return true }
         case .pick(var p):
             if k == .tab { if p.listing == nil { p.side = 1 - p.side; p.at = 0; screen = .market(.pick(p)) }; return true }
@@ -199,13 +226,15 @@ extension Walker {
     func marketTap(_ code: Int, _ now: Date) {
         guard case .market(let s) = screen else { return }
         switch (s, code) {
-        case (.board, 8000...8002): screen = .market(.board(tab: code - 8000, sel: 0))
+        case (.board, 8000...8003): screen = .market(.board(tab: code - 8000, sel: 0))
+        case (.board(3, let sel), 8010..<8020):                                                    // 받기: a click takes it
+            if let c = claims[safe: sel / MarketBoardModel.perPage * MarketBoardModel.perPage + code - 8010] { claim(c, now) }
         case (.board(let tab, let sel), 8010..<8020):
             let at = sel / MarketBoardModel.perPage * MarketBoardModel.perPage + code - 8010
             guard let l = boardRows(tab)[safe: at] else { return }
-            screen = at == sel ? .market(.post(id: l.id, sel: nil)) : .market(.board(tab: tab, sel: at))
+            if at == sel { openPost(l.id) } else { screen = .market(.board(tab: tab, sel: at)) }
         case (.board(let tab, let sel), 8020...8021):
-            let per = MarketBoardModel.perPage, n = boardRows(tab).count, pages = max(1, (n + per - 1) / per)
+            let per = MarketBoardModel.perPage, n = tab == 3 ? claims.count : boardRows(tab).count, pages = max(1, (n + per - 1) / per)
             screen = .market(.board(tab: tab, sel: min(max(0, n - 1), ((sel / per + (code == 8020 ? pages - 1 : 1)) % pages) * per)))
         case (.board, 8030): startPost(now)
         case (.post(let id, _), 8110..<8120): if listing(id)?.mine == true, code - 8110 < offers(on: id).count { screen = .market(.post(id: id, sel: code - 8110)) }
@@ -263,7 +292,9 @@ extension Walker {
                 return .say(["교환을 제안했다!", "글쓴이가 고르면 교환돼요"], next: .market(.post(id: id, sel: nil)), since: now)
             }
         } else {
-            act(.marketList(give: g, wish: p.wish), back: back, now) { [weak self] _, now in
+            let raw = host?.askText(title: "한마디", message: "글에 붙일 한마디 (20자까지 · 비워도 돼요)")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let note = raw.isEmpty ? nil : String(raw.prefix(20))                                   // 3.8 (14 §2.4)
+            act(.marketList(give: g, wish: p.wish, note: note), back: back, now) { [weak self] _, now in
                 self?.cloud?.marketDue = true
                 return .say(["게시판에", "글을 올렸다!"], next: .market(.board(tab: 1, sel: 0)), since: now)
             }
@@ -277,7 +308,11 @@ extension Walker {
             guard l.mine, let k = sel, let b = offers(on: l.id)[safe: k] else { return }
             let along = [l.mon.item.map { "내 " + monNames[l.mon.dex] + "의 " + $0 }, b.mon.item.map { josa(b.from, "의", "의") + " " + monNames[b.mon.dex] + "의 " + $0 }].compactMap { $0 }
             guard host?.confirm("교환할까요?", "내 " + monLine(l.mon) + " ↔ " + josa(b.from, "의", "의") + " " + monLine(b.mon) + (along.isEmpty ? "" : "\n지닌 도구도 함께 가요: " + along.joined(separator: ", ")) + "\n다른 제안은 모두 닫히고, 되돌릴 수 없어요.", ok: "교환") ?? true else { return }
-            act(.marketAccept(bid: b.id), back: back, now, lines: ["교환 중..."]) { [weak self] _, _ in self?.cloud?.marketDue = true; self?.dropBidNews(l.id); return .home }
+            act(.marketAccept(bid: b.id), back: back, now, lines: ["교환 중..."]) { [weak self] _, now in
+                guard let self else { return nil }
+                cloud?.marketDue = true; dropBidNews(l.id)
+                return tradedShow(now) ?? .home                                                      // 3.8: my own pick shows; others' are quiet
+            }
         case "글 내리기":
             guard l.mine else { return }
             act(.marketUnlist(id: l.id), back: back, now) { [weak self] _, now in
@@ -295,11 +330,15 @@ extension Walker {
     }
     /// Offers on a post now settled (picked, taken down), still waiting for home: not said any more.
     func dropBidNews(_ id: Int) { news.removeAll { if case .marketBid(id, _, _) = $0 { return true }; return false } }
-    /// An offer on my post came (news): said, then that post with its offers — unless its withdrawal came with it (that says it).
-    func marketNews(_ listing: Int, _ from: String, _ m: Mon, _ now: Date) {
-        cloud?.marketDue = true
-        if news.contains(where: { if case .tradeClosed(listing, let w, _) = $0 { return w == from }; return false }) { return }
-        screen = .say([josa(from, "이", "가") + " 교환을 제안했다!", monLine(m)], next: .market(.post(id: listing, sel: nil)), since: now)
-        notify("pet", josa(from, "이", "가") + " 교환을 제안했어요", monLine(m) + " · 메뉴 → 교환 → 내 글")
+    /// 3.8 (docs/plans/14 ①): the board's news make no screen — the 교환 tile's red dot (the next read) says something came.
+    func marketNews(_ listing: Int, _ from: String, _ m: Mon, _ now: Date) { cloud?.marketDue = true }
+    /// 받기: that one into the box (a trade evolution happens now: home shows it).
+    func claim(_ k: Claim, _ now: Date) {
+        act(.claim(id: k.id), back: .market(.board(tab: 3, sel: 0)), now) { [weak self] o, now in
+            guard let self else { return nil }
+            cloud?.marketDue = true
+            let evolves = o.news.contains { if case .evolve = $0 { return true }; return false }
+            return .say([josa(monNames[k.mon.dex], "을", "를") + " 받았다!", "상자로 보냈다"], next: evolves ? .home : .market(.board(tab: 3, sel: 0)), since: now)
+        }
     }
 }

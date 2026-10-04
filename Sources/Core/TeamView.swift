@@ -4,7 +4,9 @@ import Foundation
 // (Cloud.team, /v2/team); the walker only sorts and shows it.
 
 extension Walker {
-    static let teamTabs = ["친구", "걸음", "도감", "타워", "신청"]                                 // 3.5 (12 §2.4): friends; 신청 = requests to me and mine out
+    static let teamTabs = ["친구", "걸음", "도감", "타워", "신청", "맡기기", "전체"]              // 3.5: friends, 신청 = requests; 3.8: 맡기기 (14 §3), 전체 (VIEW_ALL only)
+    var teamTabCount: Int { cloud?.team?.all != nil ? 7 : 6 }
+    func isFriend(_ name: String) -> Bool { (cloud?.team?.cards ?? []).contains { trainerID($0.name)?.key == trainerID(name)?.key } }
     /// A teammate is walking now: an act within the last minute (the app sends steps every 15 s).
     static func walkingNow(_ c: TeamCard) -> Bool { c.idle < 60 }
     var myName: String { cloud?.seat.trainerID ?? "" }
@@ -12,8 +14,8 @@ extension Walker {
     /// The cards as a tab orders them: 팀 = walking now first, then today's steps; 걸음 · 도감 · 타워 = this week's ranks, the top 10 and me
     /// (ties share a rank). rank: nil on 팀.
     func teamRows(_ tab: Int) -> [(rank: Int?, card: TeamCard)] {
-        let cards = cloud?.team?.cards ?? []
-        guard tab > 0 else {
+        let cards = tab == 6 ? cloud?.team?.all ?? [] : cloud?.team?.cards ?? []                   // 전체: every trainer (VIEW_ALL), sorted as 친구
+        guard tab > 0, tab != 6 else {
             return cards.sorted { a, b in Walker.walkingNow(a) != Walker.walkingNow(b) ? Walker.walkingNow(a) : a.today != b.today ? a.today > b.today : a.name < b.name }.map { (nil, $0) }
         }
         func key(_ c: TeamCard) -> Int { tab == 1 ? c.week : tab == 2 ? c.owned : c.towerBest }
@@ -38,6 +40,7 @@ extension Walker {
         let rows = teamRows(tab), s = min(sel, max(0, rows.count - 1))
         let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
         if tab == 4 && !card { return friendReqPane(sel) }
+        if tab == 5 && !card { return visitsPane(Date()) }
         let friends = max(0, (cloud?.team?.cards.count ?? 1) - 1)
         let note = cloud?.team == nil ? (cloud?.online == false ? "연결되면 볼 수 있어요" : "불러오는 중…") : friends == 0 ? "아직 친구가 없어요" : "친구 \(friends)명 · 지금 걷는 중 \(walking)명"
         if card, let c = rows[safe: s]?.card {
@@ -50,9 +53,12 @@ extension Walker {
                 .init(key: "누적", value: "\(c.total.formatted())걸음"),
                 .init(key: "코스", value: courses[safe: c.course]?.name ?? "-"),
             ]
+            let friend = isFriend(c.name) && !isMe(c), asked = (cloud?.team?.sent ?? []).contains { trainerID($0)?.key == trainerID(c.name)?.key }
             return PaneContent(teamCard: TeamCardModel(name: c.name, me: isMe(c), walking: Walker.walkingNow(c) && !isMe(c), when: isMe(c) ? "" : ago(c.idle), walker: c.walker.prefix(3).map(mini), lines: lines,
-                                                       greet: isMe(c) ? nil : visitorGreeted(c.name) ? "인사했어요 ♥" : "인사하기 ♥", remove: !isMe(c),
-                                                       duel: isMe(c) ? nil : Walker.walkingNow(c) ? "대전 신청" : "걷는 중일 때 대전"))
+                                                       greet: friend ? (visitorGreeted(c.name) ? "인사했어요 ♥" : "인사하기 ♥") : nil, remove: friend,
+                                                       duel: friend ? (Walker.walkingNow(c) ? "대전 신청" : "걷는 중일 때 대전") : nil,
+                                                       visit: friend ? (visits?.away != nil ? "맡긴 포켓몬이 있어요" : Walker.walkingNow(c) ? "맡기기" : "걷는 중일 때 맡기기") : nil,
+                                                       request: !friend && !isMe(c) ? (asked ? "신청했어요" : "친구 신청") : nil))
         }
         let per = TeamModel.perPage, first = s / per * per
         let page = rows[first..<min(rows.count, first + per)].map { r in
@@ -63,6 +69,7 @@ extension Walker {
     }
     /// The LCD on the friends' pages: the picked friend's companion, its name, level, and whether it's walking now (신청: the request picked).
     func teamLCD(_ fb: inout FB, _ sel: Int, _ tab: Int, _ now: Date) {
+        if tab == 5 { visitsLCD(&fb, sel, now); return }
         if tab == 4 {
             let reqs = friendReqRows
             fb.text("친구 신청", 2, 0); fb.fill(0, 12, 96, 1, 2)
@@ -83,7 +90,7 @@ extension Walker {
     /// ◀ ▶ (and the wheel, ↑ ↓): a row (on a card: the next teammate's card), round.
     func teamStep(_ d: Int, wrap: Bool = true) {
         guard case .team(let sel, let tab, let card) = screen else { return }
-        let n = tab == 4 ? friendReqRows.count : teamRows(tab).count; guard n > 0 else { return }
+        let n = tab == 4 ? friendReqRows.count : tab == 5 ? (visits?.away == nil ? 0 : 1) + guests.count : teamRows(tab).count; guard n > 0 else { return }
         lastInput = Date(); host?.redraw(.all)
         screen = .team(sel: wrap ? ((sel + d) % n + n) % n : max(0, min(n - 1, sel + d)), tab: tab, card: card)
     }
@@ -160,6 +167,7 @@ extension Walker {
     /// Home, now and then (every 300–600 steps): one of those walking now drops by as a sticker for a while; a tap on it = 인사.
     func visitTick(_ now: Date) {
         if let v = visitor, now >= v.until { visitor = nil; host?.redraw(.lcd) }
+        if !guests.isEmpty, visitor?.hello != true { return }                                       // 3.8: guests walk along (14 §3): no drop-bys meanwhile
         guard case .home = screen, waiting == nil, news.isEmpty, let c = cloud, c.online, let team = c.team else { return }
         if nextVisit == 0 { nextVisit = state.total + Int.random(in: 300...600, using: &rng); return }
         guard state.total >= nextVisit, visitor == nil else { return }

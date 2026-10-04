@@ -112,12 +112,14 @@ extension Walker {
             visitor = Visitor(name: from, dex: dex, shiny: shiny, until: now.addingTimeInterval(90), hello: true)
             screen = .say([josa(from, "이", "가") + " 인사했다! ♥"], next: .home, since: now)
             notify("pet", josa(from, "이", "가") + " 인사했어요 ♥", josa(monNames[dex], "과", "와") + " 함께 · 눌러서 답인사")
-        case .tradeOffer, .traded, .tradeClosed: tradeNews(n, now)                                   // 교환 (12 §3): an offer come, one gone through or closed (Core/TradeView.swift)
+        case .tradeOffer: tradeNews(n, now)                                                         // a 1:1 offer (from a 3.3–3.4 app: Core/TradeView.swift)
+        case .traded(let id, _, _, _), .tradeClosed(let id, _, _): cloud?.forgetOffer(id); cloud?.tradesDue = true; cloud?.marketDue = true   // 3.8 (14 ①): quiet — the 교환 tile's red dot
         case .raidCleared(let dex): raidNews(dex, now)                                            // the co-op raid (12 §4.3): the team beat the boss (Core/RaidView.swift)
         case .friendRequest, .friendAdded: friendNews(n, now)                                     // 친구 (12 §2.4): someone asked; it's mutual now (Core/TeamView.swift)
         case .marketBid(let id, let from, let m): marketNews(id, from, m, now)                    // the 게시판 (12 §3.3): an offer on my post (Core/MarketView.swift)
         case .duelInvite(let id, let from): duelInvited(id, from, now)                            // 실시간 대전 (12 §5): a friend asked (Core/DuelScreen.swift)
-        case .claimReady, .visitCame, .visitDone: break                                         // 3.8 (docs/plans/14): minimal — the red dot, 맡겨 키우기 are the Mac's
+        case .claimReady: cloud?.marketDue = true                                                  // 3.8 (14 §2.2): something to take — the red dot
+        case .visitCame, .visitDone: visitNews(n, now)                                             // 3.8 (14 §3): 맡겨 키우기 (Core/TeamView.swift)
         }
     }
 

@@ -91,7 +91,7 @@ import Foundation
         case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
         case .traded(_, _, _, let since) where now.timeIntervalSince(since) > 6: screen = .home
-        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid, .itemOn, .hold: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
+        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid, .itemOn, .hold, .visitPick: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
         case .trade, .market: if now.timeIntervalSince(lastInput) > 60 { screen = .home }       // (a trade is weighed up: longer)
         default: break
         }
@@ -122,7 +122,7 @@ import Foundation
         if case .hold(let r, let s) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -6, .pageDown: 6][k] { let n = holdRows(r).count; if n > 0 { screen = .hold(ref: r, sel: max(0, min(n - 1, s + d))); lastInput = Date(); host?.redraw(.all) }; return true }
         if case .team(let s, let t, false) = screen {                                             // 팀: ↑ ↓ a row, page up / down a page, tab the next tab
             if let d = [Key.up: -1, .down: 1, .pageUp: -TeamModel.perPage, .pageDown: TeamModel.perPage][k] { teamStep(d, wrap: false); return true }
-            if k == .tab { screen = .team(sel: 0, tab: (t + (shift ? 4 : 1)) % 5, card: false); _ = s; host?.redraw(.all); return true }
+            if k == .tab { let n = teamTabCount; screen = .team(sel: 0, tab: (t + (shift ? n - 1 : 1)) % n, card: false); _ = s; host?.redraw(.all); return true }
         }
         if case .trade = screen, tradeKey(k, shift: shift) { return true }
         if case .market = screen, marketKey(k, shift: shift) { return true }                    // 교환 게시판: its rows, tabs, the pick's grid
@@ -136,7 +136,7 @@ import Foundation
             }
             return true
         }
-        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn, .learn, .menu, .box, .trade, .team, .raid, .market, .itemOn, .duel, .hold: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, pick a bush too early, go on from 포켓몬 to a page and its 진화 / 함께, or pick and send a trade
+        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn, .learn, .menu, .box, .trade, .team, .raid, .market, .itemOn, .duel, .hold, .visitPick: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, pick a bush too early, go on from 포켓몬 to a page and its 진화 / 함께, or pick and send a trade
         guard let i = [Key.left: 0, .enter: 1, .right: 2, .back: 3, .menu: 4][k] else { return false }
         press(i); return true
     }
@@ -167,7 +167,8 @@ import Foundation
         case .shop(let bp, _, _), .shopConfirm(let bp, _, _): return (bp ? "BP 교환소" : "상점", "")
         case .radar: return ("포켓 레이더", state.here.name)
         case .card: return ("트레이너 카드", "")
-        case .team(_, let t, let card): return ("친구", card ? "" : t == 0 ? "지금 걷는 중이 위" : t == 4 ? "친구 신청" : "이번 주 순위 · \(Walker.teamTabs[t])")
+        case .team(_, let t, let card): return ("친구", card ? "" : t == 0 ? "지금 걷는 중이 위" : t == 4 ? "친구 신청" : t == 5 ? "맡겨 키우기 · 5시간" : t == 6 ? "모든 트레이너" : "이번 주 순위 · \(Walker.teamTabs[t])")
+        case .visitPick: return ("맡겨 키우기", "5시간 · 키운 걸음만큼 경험치")
         case .trade(.list): return ("교환", "받은 신청")
         case .market(.board): return ("교환 게시판", "모두의 글 · 3일 동안")
         case .market(.post(let id, _)): return ("교환 게시판", listing(id).map { $0.mine ? "내 글 · 제안 \($0.bids)개" : "제안은 하나만" } ?? "")

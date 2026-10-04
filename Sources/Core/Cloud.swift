@@ -86,6 +86,7 @@ final class CloudInbox: @unchecked Sendable {
     private(set) var raid: RaidReply? = nil; var raidDue = false
     // 12 §3.3 (3.5): the 교환 게시판 as the server last listed it (a read)
     private(set) var market: MarketReply? = nil; var marketDue = false
+    var marketSeen: Int? = nil                                             // 3.8 (14 §2.2): one of my posts just opened — its offers count as seen (sent with the next read)
     // 12 §5 (3.6): a live battle's polls — a lane of their own (a long poll holds up to 25 s; acts and steps don't wait for it)
     var duelPoll: DuelReq? = nil                                           // the next one to send (the walker's: since, wait, version)
     private(set) var duelInFlight = false; var duelRetryAt = Date.distantPast
@@ -218,7 +219,7 @@ final class CloudInbox: @unchecked Sendable {
         case .setPin: post(a, "v1/pin", json(["id": id, "session": seat.session ?? "", "pin": pendingPIN ?? ""]))
         case .legacy: post(a, "v1/legacy", json(["id": id, "device": device, "walk": legacy ?? ""]))
         case .team: post(a, "v2/team", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
-        case .market: post(a, "v2/market", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
+        case .market: post(a, "v2/market", (try? JSONEncoder().encode(MarketReq(id: id, session: seat.session ?? "", seen: marketSeen))) ?? Data()); marketSeen = nil
         case .duel: break                                                                         // (its own lane: tick)
         case .raid: post(a, "v2/raid", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .trades: post(a, "v2/trades", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
@@ -588,7 +589,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         let preDuel = w
         if o.cannot == nil, let why = duelAct(q.act, id.key, r.name, &w, &o) { o.cannot = why }
         if w != preDuel { o.changed = true }                                                               // a duel over: this side's BP and record
-        if o.cannot == nil, let why = social(q.act, id.key, r.name, &w, &o.news) { o.cannot = why } else if case .marketAccept = q.act, o.cannot == nil { o.changed = true }
+        if o.cannot == nil, let why = social(q.act, id.key, r.name, &w, &o.news) { o.cannot = why } else if o.cannot == nil { switch q.act { case .marketAccept, .marketList, .marketBid, .marketUnlist, .marketWithdraw, .claim: o.changed = true; default: break } }
         if o.cannot == nil, let why = trade(q.act, id.key, r.name, &w, &o.news) { o.cannot = why } else if case .tradeAccept = q.act, o.cannot == nil { o.changed = true }
         if let a = q.app, verCmp(a, "3.2").map({ $0 >= 0 }) == true, let mail = inbox.removeValue(forKey: id.key) { o.news += mail }   // (3.2 on: hello)
         if let a = q.app, verCmp(a, "3.3").map({ $0 >= 0 }) == true, let m = mail.removeValue(forKey: id.key) { o.news += m }        // (3.3 on: 교환's)
@@ -810,6 +811,14 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     func isFriend(_ a: String, _ b: String) -> Bool { friends.contains(FakeCloud.pair(a, b)) }
     // 12 §3.3 (3.5): the 교환 게시판 — posts (the poster's key, open), offers on them (the bidder's key, the poster's)
     var listings: [(l: Listing, key: String, open: Bool)] = [], bids: [(b: Bid, key: String, poster: String)] = [], nextListing = 1, nextBid = 1
+    // 3.8 (14 §2): what waits in each one's 받기 함 (traded · returned · visit), offers seen by the poster
+    var claimBox: [String: [Claim]] = [:], nextClaim = 1, seenBids: Set<Int> = []
+    func giveClaim(_ key: String, _ kind: String, from: String, _ m: Mon, note: String? = nil) {
+        claimBox[key, default: []].append(Claim(id: nextClaim, kind: kind, from: from, mon: m, at: clockNow, note: note)); nextClaim += 1
+        mail[key, default: []].append(.claimReady(id: nextClaim - 1, kind: kind))
+    }
+    /// The one held out of the box (a post's, an offer's): straight back into it (its own act).
+    func backToBox(_ m: Mon, _ w: inout Walk) { _ = w.keep(m) }
     /// 친구 and the 게시판's acts (the server's: other trainers, the board), on the acting trainer's save (w) and its news. A reason = cannot.
     func social(_ a: Act, _ key: String, _ name: String, _ w: inout Walk, _ news: inout [News]) -> String? {
         let at = Int((now ?? Date()).timeIntervalSince1970)
@@ -830,15 +839,19 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             guard let f = trainerID(raw) else { return "친구가 아니에요" }
             if friendAsks[f.key]?.remove(key) != nil { return nil }                                       // my own request, taken back
             guard friends.remove(FakeCloud.pair(key, f.key)) != nil else { return "친구가 아니에요" }
-        case .marketList(let give, let wish, _):
+        case .marketList(let give, let wish, let note):
             guard let r = w.ref(uid: give), r >= 0, let mon = w.mon(r) else { return "상자의 포켓몬만\n올릴 수 있어요" }
             guard !used(give) else { return "이미 올리거나\n제안한 포켓몬이에요" }
             guard listings.filter({ $0.open && $0.key == key }).count < 3 else { return "올린 글이\n너무 많아요 (3개)" }
-            listings.append((Listing(id: nextListing, from: name, mon: mon, wish: Array(wish.prefix(3)), at: at, bids: 0, mine: false), key, true)); nextListing += 1
+            let n = note.map { String($0.trimmingCharacters(in: .whitespaces).prefix(20)) }.flatMap { $0.isEmpty ? nil : $0 }
+            w.box.remove(at: r)                                                                            // 3.8: held out of the box while it's up
+            listings.append((Listing(id: nextListing, from: name, mon: mon, wish: Array(wish.prefix(3)), at: at, bids: 0, mine: false, note: n), key, true)); nextListing += 1
         case .marketUnlist(let id):
             guard let i = listings.firstIndex(where: { $0.l.id == id && $0.open && $0.key == key }) else { return "그 글은 이제\n없어요" }
-            listings[i].open = false
-            for b in bids.indices where bids[b].b.listing == id && bids[b].b.state == "open" { bids[b].b.state = "declined"; mail[bids[b].key, default: []].append(.tradeClosed(id: id, with: name, why: "상대가 글을 내렸어요")) }
+            listings[i].open = false; backToBox(listings[i].l.mon, &w)
+            for b in bids.indices where bids[b].b.listing == id && bids[b].b.state == "open" {
+                bids[b].b.state = "declined"; mail[bids[b].key, default: []].append(.tradeClosed(id: id, with: name, why: "상대가 글을 내렸어요")); giveClaim(bids[b].key, "returned", from: name, bids[b].b.mon)
+            }
         case .marketBid(let id, let give):
             guard let i = listings.firstIndex(where: { $0.l.id == id && $0.open }) else { return "그 글은 이제\n없어요" }
             guard listings[i].key != key else { return "내 글에는\n제안할 수 없어요" }
@@ -846,29 +859,48 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             guard !used(give) else { return "이미 올리거나\n제안한 포켓몬이에요" }
             guard !bids.contains(where: { $0.b.listing == id && $0.key == key && $0.b.state == "open" }) else { return "이 글에는 이미\n제안했어요" }
             guard bids.filter({ $0.key == key && $0.b.state == "open" }).count < 5 else { return "걸어 둔 제안이\n너무 많아요 (5개)" }
+            w.box.remove(at: r)                                                                            // 3.8: held out of the box while it's offered
             bids.append((Bid(id: nextBid, listing: id, from: name, mon: mon, at: at, state: "open"), key, listings[i].key)); nextBid += 1
             mail[listings[i].key, default: []].append(.marketBid(listing: id, from: name, mon: mon))
         case .marketWithdraw(let id):
             guard let b = bids.firstIndex(where: { $0.b.id == id && $0.key == key && $0.b.state == "open" }) else { return "그 제안은 이제\n없어요" }
-            bids[b].b.state = "cancelled"; mail[bids[b].poster, default: []].append(.tradeClosed(id: bids[b].b.listing, with: name, why: "제안을 거뒀어요"))
+            bids[b].b.state = "cancelled"; backToBox(bids[b].b.mon, &w); mail[bids[b].poster, default: []].append(.tradeClosed(id: bids[b].b.listing, with: name, why: "제안을 거뒀어요"))
         case .marketAccept(let id):
             guard let b = bids.firstIndex(where: { $0.b.id == id && $0.poster == key && $0.b.state == "open" }), let i = listings.firstIndex(where: { $0.l.id == bids[b].b.listing && $0.open }) else { return "그 제안은 이제\n없어요" }
             let post = listings[i], bid = bids[b]
-            guard let mine = post.l.mon.uid, w.ref(uid: mine).map({ $0 >= 0 }) == true else { listings[i].open = false; return "올린 포켓몬이\n상자에 없어요" }
             listings[i].open = false; bids[b].b.state = "done"
-            for k in bids.indices where bids[k].b.listing == post.l.id && bids[k].b.state == "open" { bids[k].b.state = "declined"; mail[bids[k].key, default: []].append(.tradeClosed(id: post.l.id, with: name, why: "다른 제안이 선택됐어요")) }
-            guard let u2 = bid.b.mon.uid, exchange(id: post.l.id, key, name, &w, mine: mine, other: bid.key, theirs: u2, &news) else { return "상대 포켓몬이\n상자에 없어요" }
+            for k in bids.indices where bids[k].b.listing == post.l.id && bids[k].b.state == "open" {
+                bids[k].b.state = "declined"; mail[bids[k].key, default: []].append(.tradeClosed(id: post.l.id, with: name, why: "다른 제안이 선택됐어요")); giveClaim(bids[k].key, "returned", from: name, bids[k].b.mon)
+            }
+            var got = bid.b.mon; got.uid = nextUID; nextUID += 1; got.ot = got.ot ?? bid.b.from; _ = w.keep(got)          // 3.8: the poster's comes now (its act) …
+            if let e = Walk.tradeEvolution(of: got, giverBag: got.item.map { [$0] } ?? []), let ref = w.ref(uid: got.uid!) {   // (a trade evolution: by the held item only, if it needs one)
+                w.evolve(Evo(from: e.from, to: e.to, way: e.way, level: e.level, item: nil, female: e.female, time: e.time, place: e.place, party: e.party), ref: ref, shed: false)
+                if var m = w.mon(ref), e.item != nil { m.item = nil; w.setMon(ref, m) }
+                news.append(.evolve(uid: got.uid!, from: e.from, to: e.to, shed: nil))
+            }
+            news.append(.traded(id: post.l.id, with: bid.b.from, gave: post.l.mon, got: w.mon(w.ref(uid: got.uid!) ?? 0) ?? got))
+            giveClaim(bid.key, "traded", from: name, post.l.mon)                                          // … the bidder's waits in its 받기 함
+            mail[bid.key, default: []].append(.traded(id: post.l.id, with: name, gave: bid.b.mon, got: post.l.mon))
+        case .claim(let id):
+            guard let i = claimBox[key]?.firstIndex(where: { $0.id == id }), let k = claimBox[key]?.remove(at: i) else { return "이미 받았어요" }
+            var m = k.mon; m.uid = nextUID; nextUID += 1; if k.kind == "traded" { m.ot = m.ot ?? k.from }; _ = w.keep(m)
+            if k.kind == "traded", let e = Walk.tradeEvolution(of: m, giverBag: m.item.map { [$0] } ?? []), let ref = w.ref(uid: m.uid!) {
+                w.evolve(Evo(from: e.from, to: e.to, way: e.way, level: e.level, item: nil, female: e.female, time: e.time, place: e.place, party: e.party), ref: ref, shed: false)
+                news.append(.evolve(uid: m.uid!, from: e.from, to: e.to, shed: nil))
+            }
         default: break
         }
         return nil
     }
     /// POST /v2/market: every open post (newest first), the offers on mine, mine on others'.
     func marketBoard(_ d: Data) -> (Int, Data) {
-        guard let q = try? JSONDecoder().decode(TeamReq.self, from: d), let id = trainerID(q.id), let r = rows[id.key] else { return err(404, ["error": "no_trainer"]) }
+        guard let q = try? JSONDecoder().decode(MarketReq.self, from: d), let id = trainerID(q.id), let r = rows[id.key] else { return err(404, ["error": "no_trainer"]) }
         guard q.session == r.session else { return err(409, ["error": "conflict", "reason": "replaced"]) }
         let k = id.key, open = bids.filter { $0.b.state == "open" }
+        if let s = q.seen { for b in open where b.b.listing == s && b.poster == k { seenBids.insert(b.b.id) } }   // 3.8: that post opened — its offers seen
         let ls = listings.filter(\.open).reversed().map { p -> Listing in var l = p.l; l.mine = p.key == k; l.bids = open.filter { $0.b.listing == p.l.id }.count; return l }
-        let reply = MarketReply(listings: Array(ls), offers: open.filter { $0.poster == k }.map(\.b), myBids: open.filter { $0.key == k }.map(\.b))
+        let reply = MarketReply(listings: Array(ls), offers: open.filter { $0.poster == k }.map(\.b), myBids: open.filter { $0.key == k }.map(\.b),
+                                claims: claimBox[k] ?? [], unseen: open.filter { $0.poster == k && !seenBids.contains($0.b.id) }.count)
         return (200, (try? JSONEncoder().encode(reply)) ?? Data())
     }
     /// 12 §4: a raid fight's end counted (its damage up to what's left; the team's clear told to every fighter — this one in its reply) and a ball.

@@ -178,8 +178,8 @@ extension Walker {
     func homeKey() -> Bool? {
         switch screen {
         case .home: true
-        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold: false
-        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold: false; default: nil }
+        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold, .visitPick: false
+        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold, .visitPick: false; default: nil }
         default: nil
         }
     }
@@ -205,6 +205,7 @@ extension Walker {
             case .itemOn(let p): screen = .items(state.inventory.firstIndex(of: p.item) ?? 0)
             case .duel: screen = .home                                                             // (the invitation stays open: its minute)
             case .hold(let r, _): screen = .box(r, act: nil, confirm: false, detail: true)
+            case .visitPick(let p): screen = teamRows(0).firstIndex { trainerID($0.card.name)?.key == trainerID(p.item)?.key }.map { .team(sel: $0, tab: 0, card: true) } ?? .team(sel: 0, tab: 0, card: false)
             case .items: screen = .box(-1, act: nil, confirm: false)                                  // back to 포켓몬
             case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : .menu(menuAt("포켓몬"))   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
             case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : .menu(menuAt("도감"))   // the entry page → the grid → the menu
@@ -326,6 +327,7 @@ extension Walker {
         case .team(let s, let t, let card):                                                      // ◀ ▶ a teammate (on a card: the next one's card), ● its card / 인사
             if k != 1 { teamStep(k == 0 ? -1 : 1); return }
             if t == 4, !card { if let r = friendReqRows[safe: s], !r.mine { friendReq(r, accept: true, now) } else if friendReqRows.isEmpty { askFriend(now) }; return }   // 신청: ● accepts (none: ID로 신청)
+            if t == 5, !card { visitEnd(s, now); return }                                            // 맡기기: ● ends the pick's (데려오기 / 돌려보내기)
             guard let c = teamRows(t)[safe: s]?.card else { return }
             if !card { screen = .team(sel: s, tab: t, card: true) } else if !isMe(c), !visitorGreeted(c.name) { greet(c.name, back: screen) }
         case .trade(let s): tradePress(k, s, now)
@@ -334,6 +336,7 @@ extension Walker {
         case .itemOn(let p): itemOnPress(k, p, now)
         case .duel(let s): duelPress(k, s, now)
         case .hold(let r, let s): holdPress(k, r, s, now)
+        case .visitPick(let p): visitPickPress(k, p, now)
         case .say(_, let next, _): screen = next
         case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
             if k == 1 { if dexList(f).contains(n) { screen = .dex(n, filter: f, detail: !detail) } } else { gridStep(k == 0 ? -1 : 1, wrap: true) }
@@ -421,7 +424,7 @@ extension Walker {
     func touch(_ x: Int, _ y: Int) -> Bool {
         if frozen || waiting != nil { return true }
         if case .say = screen { press(1); return true }
-        if case .home = screen, visitorTouched(x, y) { return true }                             // a teammate's companion dropped by: 인사
+        if case .home = screen, visitorTouched(x, y) || guestTouched(x, y) { return true }       // a friend's companion dropped by, or one I'm raising: 인사
         guard let k = stickerAt(x, y) else { return false }                                        // the LCD is to look at, but for the walker's stickers on home:
         lastInput = Date()
         if let u = state.id(-2 - k) { pairWith(u, back: screen, Date(), quietly: true) }          // a tap = walk with that one
