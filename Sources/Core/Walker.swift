@@ -130,6 +130,7 @@ import Foundation
             switch screen {
             case .dex(_, let f, false): gridTap(4100 + (f + (shift ? 3 : 1)) % 4)
             case .box(_, .none, _, false): gridTap(4100 + (boxSort + (shift ? 3 : 1)) % 4)
+            case .items(let sel): let n = itemTabs.count, t = itemTab(sel).tab; if n > 1 { pageTap(5720 + (t + (shift ? n - 1 : 1)) % n) }   // 3.8.5: the bag's tabs
             default: if chevron != nil { toggleStatus() }                                   // where the status sheet is: fold / unfold it
             }
             return true
@@ -183,7 +184,7 @@ import Foundation
         case .duel(.queued): return ("랜덤 매칭", duelLeft().map { "\($0)초 남음" } ?? "")
         case .duel: return ("실시간 대전", duelLeft().map { "\($0)초 남음" } ?? "")
         case .squad(let s): switch s.kind { case .tower: return ("배틀 타워", "파티 고르기 · Lv.50"); case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return ("레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")) }
-        case .hold(let r, _): return ("지니게 하기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
+        case .hold(let r, _): return ("도구 주기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
         case .raid: return ("레이드", cloud?.raid.map { "다음 주 " + monNames[$0.next] } ?? "")
         default: return (state.here.name, cloudNote ?? (gate.held ? "자동 입력 감지 · 걸음 멈춤" : when))                                                 // screens without a page of their own: the status sheet

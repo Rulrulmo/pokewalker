@@ -53,6 +53,12 @@ final class FakeUpdates: CloudLink, @unchecked Sendable {
     u.tick(t0 + 31); u.tick(t0 + 32); u.tick(t0 + 33)                                               // the question; its answer → the download; the download's verdict
     c.append((early && link.paths == ["v1/update", "v1/download/mac"] && !u.busy && u.nextCheck == t0 + 31 + Updater.period,
               "update: asked ~30 s after launch (then every 6 h); a signed newer one is downloaded"))
+    let linkB = FakeUpdates(), uB = Updater(link: linkB, dir: tmp.appendingPathComponent("uB"), app: shipped, platform: "mac", now: t0, blocked: "앱을 응용 프로그램 폴더로 옮겨 주세요")
+    uB.tick(t0 + 31); uB.tick(t0 + 32); uB.tick(t0 + 33)
+    c.append((linkB.paths == ["v1/update"] && uB.available == "9.9" && uB.heard == .available && !uB.busy && Update.ready(tmp.appendingPathComponent("uB")) == nil
+              && Update.blocker(URL(fileURLWithPath: "/private/var/folders/x/AppTranslocation/A1/d/PokeWalker.app")) == "앱을 응용 프로그램 폴더로 옮겨 주세요"
+              && Update.blocker(repo.appendingPathComponent("PokeWalker.app")) == "개발 빌드" && Update.blocker(shipped) == nil,
+              "3.8.5: where it can't install (translocated, a folder it can't write) it still asks — a newer one is noted, never downloaded; the menu's why"))
     let link2 = FakeUpdates(); link2.zip = Data("pokewalker 9.9 maC\n".utf8)                       // the size, not the bytes
     let d2 = tmp.appendingPathComponent("u2"), u2 = Updater(link: link2, dir: d2, app: shipped, platform: "mac", now: t0)
     u2.tick(t0 + 31); u2.tick(t0 + 32); u2.tick(t0 + 33)

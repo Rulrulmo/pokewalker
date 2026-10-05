@@ -722,6 +722,18 @@ import AppKit
     sw.screen = .shop(bp: false, sel: 0, qty: nil); let shop = sw.shopModel(), bpTabs: ShopModel? = { sw.screen = .shop(bp: true, sel: 0, qty: nil); return sw.shopModel() }()
     check(shop?.tabs.contains("지닌 도구") == true && shop?.tabs.contains("열매") == true && (shop?.tabs.count ?? 0) > 6 && sw.paneContent(Date()).shop != nil && bpTabs?.tabs.contains("지닌 도구") == true,
           "the shops: 지닌 도구 (and 열매) tabs, two rows of them", "\(String(describing: shop?.tabs)) \(String(describing: bpTabs?.tabs))")
+    // 3.8.5 (docs/plans/14 §11): 도구 주기 — from a Pokémon's page, what the bag can do for it (the stones it evolves by only; caps under Lv.50 dimmed), then what it can hold
+    let gw = online({ var s = Walk(); s.companion = Mon(dex: 1, level: 30, female: false); s.box = [Mon(dex: 25, level: 30, female: false)]
+                      s.bag = ["이상한사탕", "타우린", "불꽃의돌", "천둥의돌", "먹다남은음식", "은색병뚜껑"]; return s }())
+    gw.screen = .box(0, act: nil, confirm: false, detail: true); gw.gridTap(4410); let give = gw.paneContent(Date()).hold
+    gw.screen = .hold(ref: 0, sel: give?.rows.firstIndex { $0.name == "이상한사탕" } ?? 0); let candyBtn = gw.paneContent(Date()).hold?.action; gw.press(1); drain(gw)
+    let fed = gw.state.box.first { $0.dex == 25 }?.level == 31 && gw.state.count("이상한사탕") == 0
+    gw.press(1); let back: Bool = { if case .hold(0, _) = gw.screen { return true }; return false }()
+    gw.screen = .hold(ref: 0, sel: gw.holdRows(0).firstIndex { $0.name == "은색병뚜껑" } ?? 0); let capBtn = gw.paneContent(Date()).hold?.action; gw.press(1)
+    check(give?.rows.map(\.name) == ["은색병뚜껑", "이상한사탕", "타우린", "천둥의돌", "먹다남은음식"] && give?.rows.prefix(4).allSatisfy(\.use) == true && give?.rows.last?.use == false
+          && give?.rows.first?.why == "Lv.50부터" && candyBtn == "이상한사탕 먹이기" && fed && back && capBtn == nil && says(gw) == ["이 포켓몬에게는", "Lv.50부터"] && gw.title().0 == "도구 주기",
+          "3.8.5: 도구 주기 from a Pokémon's page — what can be used on it (its stones only; one that wouldn't help dimmed with why), then what it can hold; 먹이기 there, back to the list",
+          "\(String(describing: give?.rows.map(\.name))) \(String(describing: candyBtn)) \(fed) \(says(gw))")
     return c
 }
 

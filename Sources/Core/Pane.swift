@@ -56,7 +56,7 @@ struct MonModel: Equatable {
 }
 /// 지니게 하기 (docs/plans/13 ⑤): who, what it holds now, the bag's holdable items (빼기 first while it holds one), the pick's line, the button.
 struct HoldModel: Equatable {
-    struct Row: Equatable { var name: String; var count: Int; var note: String; var take: Bool }   // take: the 빼기 row
+    struct Row: Equatable { var name: String; var count: Int; var note: String; var take: Bool; var use = false; var why: String? = nil }   // take: the 빼기 row; use (3.8.5): one to use on it (why: what it wouldn't do, dimmed)
     var who: String; var now: String?; var rows: [Row]; var sel: Int; var action: String?; var hint: String
 }
 /// 포켓몬 레이더: the four bushes as on the LCD, the one rustling marked.
@@ -96,6 +96,7 @@ struct ItemsModel: Equatable {
     struct Row: Equatable { var name: String; var count, onWalker: Int }
     var rows: [Row]; var sel: Int; var walker, bag: Int; var action: String?; var hint: String
     var sellAll: Int? = nil                                            // W for everything sellable at once (nil: nothing to sell)
+    var tabs: [String] = [], tab = 0                                   // 3.8.5 (14 §11): the bag's kinds with something in them (rows: the tab's)
 }
 /// 팀 (docs/plans/12 §2): the tabs, a page of teammates (rank on the rank tabs, the companion, walking now, the tab's number), the pager, a note.
 struct TeamModel: Equatable {
@@ -208,7 +209,7 @@ extension PaneContent {
     static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
     static let home: CGFloat = 406                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size)
     var height: CGFloat {
-        login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 446 : dex != nil ? 390 : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
+        login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 472 : dex != nil ? 390 : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
             : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 446 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446
             : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 444 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
     }

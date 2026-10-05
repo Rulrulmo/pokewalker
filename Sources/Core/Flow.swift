@@ -335,7 +335,7 @@ extension Walker {
         case .items(let sel):                                                                     // ◀ ▶ a row, ● its use
             let n = state.inventory.count
             guard n > 0 else { return }
-            if k != 1 { screen = .items((min(sel, n - 1) + (k == 0 ? n - 1 : 1)) % n); return }
+            if k != 1 { let o = itemOrder, at = o.firstIndex(of: min(sel, n - 1)) ?? 0; screen = .items(o[(at + (k == 0 ? n - 1 : 1)) % n]); return }   // (in the tabs' order: across them)
             let name = state.inventory[min(sel, n - 1)], back = { [weak self] (s: Int) in Screen.items(min(s, max(0, (self?.state.inventory.count ?? 1) - 1))) }
             let kind = ItemKind.of(name)
             if Walker.targeted(kind) { if itemUse(name).0 != nil { pickFor(name) } }                    // 3.6: who gets it first (docs/plans/13)

@@ -253,6 +253,14 @@ import AppKit
     take("learn_text_keep", mv382) { v in v.state.learning = [v.state.id(-1)!, 87]; v.screen = .learn(sel: 4) }
     take("relearn_slots", mv382) { v in v.state.learning = nil; v.screen = .relearn(ref: -1, slot: 3, at: nil) }
     take("relearn_pick", mv382) { v in v.screen = .relearn(ref: -1, slot: 0, at: v.state.companion.relearnable.dropFirst(2).first) }
+    // 3.8.5: the bag's tabs; 도구 주기 from a Pokémon's page
+    let b385 = online({ var s = base(); s.items = ["상처약"]; s.bag = ["이상한사탕", "타우린", "고집민트", "불꽃의돌", "천둥의돌", "먹다남은음식", "구애머리띠", "오랭열매", "자뭉열매", "은색병뚜껑", "몬스터볼", "금구슬", "좋은상처약", "플러스파워"]
+        s.box = [Mon(dex: 25, level: 30, female: false)]; return s }())
+    take("items_tabs", b385) { v in v.screen = .items(v.state.inventory.firstIndex(of: "이상한사탕") ?? 0) }
+    take("items_tabs_berries", b385) { v in v.screen = .items(v.state.inventory.firstIndex(of: "오랭열매") ?? 0) }
+    take("give_page", b385) { v in v.screen = .hold(ref: 0, sel: 1) }
+    take("give_page_dim", b385) { v in v.screen = .hold(ref: 0, sel: 0) }
+    take("mon_give_link", b385) { v in v.screen = .box(0, act: nil, confirm: false, detail: true) }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
     return n

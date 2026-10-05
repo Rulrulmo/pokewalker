@@ -46,8 +46,8 @@ extension Walker {
         }
         if let u = updater {                                                                      // auto-update (Core/Update.swift): check, download, install in one click
             if cloud == nil { m.append(.separator) }
-            m.append(updateRow(u))
-        }
+            m += updateRows(u)                                                                    // (3.8.5: where it can't install, why and a check)
+        } else if persist, let a = Update.appURL, Store.devBuild(a) { m.append(MenuItem("자동 업데이트 없음 · 개발 빌드", enabled: false)) }
         m.append(.separator)
         m.append(MenuItem("종료", key: "q", action: { self.host?.quit() }))
         return m

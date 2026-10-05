@@ -284,7 +284,7 @@ extension Canvas {
             let w = c.say(h, x(X0 + 34), y(yy + 19), font(9, .bold), Ink.ink, maxW: x(90))
             c.say(m.heldNote ?? "", x(X0 + 34) + w + x(5), y(yy + 19), font(8.5, .medium), Ink.sub, maxW: x(X1 - 4) - (x(X0 + 34) + w + x(5)) - x(28))
         } else { c.say("없음", x(X0 + 34), y(yy + 19), font(9, .medium), Ink.faint) }
-        c.say(m.held == nil ? "지니게 하기" : "바꾸기", x(X1 - 2), y(yy + 19), font(8.5, .bold), Ink.red, 1)
+        c.say("도구 주기", x(X1 - 2), y(yy + 19), font(8.5, .bold), Ink.red, 1)                          // 3.8.5: what the bag can do for it, and what it can hold
         yy += 30
         let mrc = r(X0, yy - 2, X1 - X0, 29); c.fill(.rounded(mrc, 8 * K), Ink.tile); hits.append((mrc, 4409))   // its four moves, two a line; a click: 기술 바꾸기
         c.say("기술", x(X0 + 5), y(yy + 6), font(9, .medium), Ink.sub); c.say("바꾸기", x(X0 + 5), y(yy + 19), font(8.5, .bold), Ink.red)
@@ -831,19 +831,23 @@ extension Page {
     func drawHold(_ m: HoldModel) {
         c.say(m.who, x(X0 + 2), y(206), font(12, .bold), Ink.ink)
         c.say(m.now.map { "지금 " + $0 } ?? "지닌 도구 없음", x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
-        if m.rows.isEmpty { c.say("지닐 수 있는 도구가 없어요", x(Layout.w / 2), y(280), font(10, .medium), Ink.sub, 0.5); c.say("상점 · BP 교환소의 지닌 도구 탭에서 사요", x(Layout.w / 2), y(298), font(9, .medium), Ink.faint, 0.5) }
+        if m.rows.isEmpty { c.say("줄 수 있는 도구가 없어요", x(Layout.w / 2), y(280), font(10, .medium), Ink.sub, 0.5); c.say("상점 · BP 교환소에서 사요", x(Layout.w / 2), y(298), font(9, .medium), Ink.faint, 0.5) }
         let top = max(0, min(m.sel - 2, m.rows.count - 6))
         for (i, row) in m.rows.enumerated() where i >= top && i < top + 6 {
             let rc = r(X0, 216 + CGFloat(i - top) * 29, X1 - X0, 26); tile(rc, 9, on: i == m.sel, row.take ? Ink.tint(Ink.blue, 0.08) : nil)
             pixelArt(gem, gemPal, CGPoint(x: rc.minX + x(14), y: rc.midY), 2.5 * K)
-            let cw = row.take ? c.say("빼기", rc.maxX - x(9), rc.midY, font(9, .bold), Ink.blue, 1) : c.say("×\(row.count)", rc.maxX - x(9), rc.midY, font(10, .semibold), Ink.ink, 1)
-            c.say(row.name, rc.minX + x(28), rc.midY - x(5), font(10, .bold), Ink.ink, maxW: rc.width - x(40) - cw)
-            c.say(row.note, rc.minX + x(28), rc.midY + x(6.5), font(8, .medium), Ink.sub, maxW: rc.width - x(40) - cw)
+            var cw = row.take ? c.say("빼기", rc.maxX - x(9), rc.midY, font(9, .bold), Ink.blue, 1) : c.say("×\(row.count)", rc.maxX - x(9), rc.midY, font(10, .semibold), row.why == nil ? Ink.ink : Ink.faint, 1)
+            if !row.take {                                                                          // 3.8.5: 쓰기 (on it) or 지니기
+                let t = row.use ? "쓰기" : "지니기", col = row.why != nil ? Ink.faint : row.use ? Ink.green : Ink.blue
+                cw = rc.maxX - x(9) - pillAt(t, rc.maxX - x(9) - cw - x(5), rc.midY, Ink.tint(col, 0.16), col)
+            }
+            c.say(row.name, rc.minX + x(28), rc.midY - x(5), font(10, .bold), row.why == nil ? Ink.ink : Ink.faint, maxW: rc.width - x(40) - cw)
+            c.say(row.why ?? row.note, rc.minX + x(28), rc.midY + x(6.5), font(8, .medium), row.why == nil ? Ink.sub : Ink.faint, maxW: rc.width - x(40) - cw)
             hits.append((rc, 5980 + i - top))
         }
         c.say(m.hint, x(X0 + 2), y(398), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
         let rc = r(X0, 408, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.action == nil ? Ink.tile : Ink.red)
-        c.say(m.action ?? "지닐 수 있는 도구가 없어요", rc.midX, rc.midY, font(11, .bold), m.action == nil ? Ink.sub : .white, 0.5); if m.action != nil { hits.append((rc, 5999)) }
+        c.say(m.action ?? (m.rows.isEmpty ? "줄 수 있는 도구가 없어요" : "이 포켓몬에게는 쓸 수 없어요"), rc.midX, rc.midY, font(11, .bold), m.action == nil ? Ink.sub : .white, 0.5); if m.action != nil { hits.append((rc, 5999)) }
     }
     // MARK: 3.8's picks in order (14 §4–5): the strip (who goes, in order), a duel's other six, ours numbered, the button
     /// One Pokémon in a slot or cell: its icon (snapped), ★ for 이로치.
@@ -1034,17 +1038,21 @@ extension Page {
         }
         c.say("워커 \(m.walker) · 가방 \(m.bag)", x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: right - x(X0 + 2))   // (never under the pill)
         if m.rows.isEmpty { c.say("없음", x(Layout.w / 2), y(260), font(10, .medium), Ink.sub, 0.5); return }
-        let top = max(0, min(m.sel - 2, m.rows.count - 6))
-        for (i, row) in m.rows.enumerated() where i >= top && i < top + 6 {
-            let rc = r(X0, 216 + CGFloat(i - top) * 29, X1 - X0, 26)
+        let two = m.tabs.count > 4                                                                 // 3.8.5: the bag's kinds as tabs (5720 + t), more than four on two rows
+        if two { let half = (m.tabs.count + 1) / 2; tabs(Array(m.tabs.prefix(half)), m.tab < half ? m.tab : -1, 214, code: 5720); tabs(Array(m.tabs.dropFirst(half)), m.tab >= half ? m.tab - half : -1, 238, code: 5720 + half) }
+        else if m.tabs.count > 1 { tabs(m.tabs, m.tab, 214, code: 5720) }
+        let y0: CGFloat = two ? 266 : m.tabs.count > 1 ? 242 : 216, shown = two ? 5 : m.tabs.count > 1 ? 6 : 7
+        let top = max(0, min(m.sel - 2, m.rows.count - shown))
+        for (i, row) in m.rows.enumerated() where i >= top && i < top + shown {
+            let rc = r(X0, y0 + CGFloat(i - top) * 29, X1 - X0, 26)
             tile(rc, 9, on: i == m.sel)
             pixelArt(gem, gemPal, CGPoint(x: rc.minX + x(14), y: rc.midY), 2.5 * K); c.say(row.name, rc.minX + x(28), rc.midY, font(10, .bold), Ink.ink, maxW: rc.width - x(90))
             var xr = rc.maxX - x(9) - c.say("×\(row.count)", rc.maxX - x(9), rc.midY, font(10, .semibold), Ink.ink, 1)
             if row.onWalker > 0 { let t = "워커", f = font(7.5, .bold), w = width(t, f) + x(8); xr -= x(5); c.pill(CGRect(x: xr - w, y: rc.midY - x(5.5), width: w, height: x(11)), Ink.tint(Ink.blue, 0.16)); c.say(t, xr - w / 2, rc.midY, f, Ink.blue, 0.5) }
             hits.append((rc, 5600 + i))
         }
-        c.say(m.hint, x(X0 + 2), y(398), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
-        let rc = r(X0, 408, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.action == nil ? Ink.tile : Ink.red)
+        c.say(m.hint, x(X0 + 2), y(424), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
+        let rc = r(X0, 434, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.action == nil ? Ink.tile : Ink.red)
         c.say(m.action ?? "여기선 쓸 수 없어요", rc.midX, rc.midY, font(11, .bold), m.action == nil ? Ink.sub : .white, 0.5); if m.action != nil { hits.append((rc, 5700)) }
     }
 }

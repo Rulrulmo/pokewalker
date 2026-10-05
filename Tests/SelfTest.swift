@@ -1109,11 +1109,12 @@ import AppKit                                                                   
     // 도구: the walker's and the bag's together, and what each does from there; 워커로; how a Pokémon evolves, and the companion's evolving now
     let iv = online({ var s = Walk(); s.items = ["상처약"]; s.bag = ["이상한사탕", "금구슬", "금속코트"]; s.companion = Mon(dex: 95, level: 20, female: false)
                                  s.box = [Mon(dex: 16, level: 5, female: false)]; return s }(), rng: 91)
-    iv.screen = .items(0); let im = iv.paneContent(Date()).items
-    iv.pageTap(5600 + (im?.rows.firstIndex { $0.name == "이상한사탕" } ?? 0)); let candyAct = iv.paneContent(Date()).items?.action; iv.pageTap(5700); iv.press(1); drain(iv)
-    check(im?.rows.map(\.name).sorted() == ["금구슬", "금속코트", "상처약", "이상한사탕"] && im?.rows.first { $0.name == "상처약" }?.onWalker == 1 && im?.walker == 1 && im?.bag == 3
-          && candyAct == "쓸 포켓몬 고르기" && iv.state.companion.level == 21 && iv.state.count("이상한사탕") == 0,
-          "도구: the walker's and the bag's in one list (워커 marked); a row's button uses it (이상한사탕: +1 level)")
+    iv.screen = .items(iv.state.inventory.firstIndex(of: "상처약") ?? 0); let im = iv.paneContent(Date()).items, allTabs = Set(iv.state.inventory.map(Walk.bagTab))
+    iv.pageTap(5720 + (im?.tabs.firstIndex(of: "육성") ?? 0)); let itm = iv.paneContent(Date()).items; let candyAct = itm?.action; iv.pageTap(5700); iv.press(1); drain(iv)
+    check(im?.tabs == Walk.bagTabs.filter(allTabs.contains) && im?.tabs.contains("회복") == true && im?.rows.map(\.name) == ["상처약"] && im?.rows.first?.onWalker == 1 && im?.walker == 1 && im?.bag == 3
+          && itm?.rows.map(\.name) == ["이상한사탕"] && itm?.tab == im?.tabs.firstIndex(of: "육성") && candyAct == "쓸 포켓몬 고르기" && iv.state.companion.level == 21 && iv.state.count("이상한사탕") == 0,
+          "도구 (3.8.5): the walker's and the bag's by kind — the bag's tabs with something in them, a tab's rows (워커 marked); a row's button uses it (이상한사탕: +1 level)",
+          "\(String(describing: im?.tabs)) \(String(describing: im?.rows.map(\.name))) \(String(describing: itm?.rows.map(\.name)))")
     iv.screen = .box(-1, act: nil, confirm: false, detail: true); let onix = iv.paneContent(Date()).mon
     check(onix?.evos.first?.contains("강철톤 · 교환") == true && onix?.evos.first?.contains("(있음)") == true && onix?.evos.contains { $0 == "교환하면 받는 쪽에서 진화해요" } == true && onix?.evoAction == nil,
           "a Pokémon's page: how it evolves (교환 · 금속코트 in the bag: 있음); no solo 통신 진화 button any more (12 §3: a real trade evolves it)", "\(String(describing: onix?.evos)) \(String(describing: onix?.evoAction))")

@@ -98,6 +98,8 @@ import Foundation
     var wd = Battle(party: [Mon(dex: 25, level: 50, female: false)], trainer: "민수", foes: [Mon(dex: 448, level: 50, female: false)]); wd.pvp = true
     take("duel_waiting", on: tme) { v in v.duelOn = true; v.duelWait = true; v.duel = DuelView(id: 1, state: "active", opponent: "민수", challenger: true, battle: wd, turn: 1, deadline: now + 19); v.fight = wd; v.screen = .battle(wd, sel: 0) }
     serve(tme) { w in w.companion.item = "생명의구슬"; w.bag = ["구애머리띠", "먹다남은음식", "오랭열매"] }   // 3.7: 지닌 도구
+    serve(tme) { w in w.bag += ["이상한사탕", "고집민트", "먹다남은음식", "오랭열매", "불꽃의돌", "몬스터볼"] }                     // 3.8.5: the bag's tabs
+    take("items_tabs", on: tme) { v in v.duelOn = false; v.screen = .items(v.state.inventory.firstIndex(of: "이상한사탕") ?? 0) }
     take("hold_pick", on: tme) { v in v.duelOn = false; v.duelWait = false; v.screen = .hold(ref: -1, sel: 1) }
     take("mon_held", on: tme) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
     take("shop_held", on: tme) { v in v.screen = .shop(bp: false, sel: v.shopRows(false, v.shopTabs(false).firstIndex(of: "지닌 도구") ?? 0).first ?? 0, qty: nil) }

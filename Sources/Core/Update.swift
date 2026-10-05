@@ -96,11 +96,15 @@ enum Update {
     }
     /// Whether this app may update itself: not a dev build (build.sh beside it, or beside its dist/), not run from App Translocation (a random
     /// read-only copy of a download), and its folder writable (the swap renames it).
-    static func allowed(_ app: URL) -> Bool {
+    static func allowed(_ app: URL) -> Bool { blocker(app) == nil }
+    /// 3.8.5: why an update can't go in here, as the menu says it (nil: it can) — macOS runs a download where it was unzipped from a
+    /// translocated copy, a folder it can't write (Windows' Program Files, another admin's 응용 프로그램), a build run from the repository.
+    static func blocker(_ app: URL) -> String? {
         let fm = FileManager.default, parent = app.deletingLastPathComponent()
-        if app.path.contains("/AppTranslocation/") { return false }
-        if Store.devBuild(app) { return false }
-        return fm.isWritableFile(atPath: parent.path) && fm.isWritableFile(atPath: app.path)
+        if app.path.contains("/AppTranslocation/") { return "앱을 응용 프로그램 폴더로 옮겨 주세요" }
+        if Store.devBuild(app) { return "개발 빌드" }
+        guard fm.isWritableFile(atPath: parent.path), fm.isWritableFile(atPath: app.path) else { return appPlatform == "windows" ? "쓸 수 있는 폴더에 두어 주세요" : "쓸 수 있는 폴더로 옮겨 주세요" }
+        return nil
     }
 
     /// Launch, before any UI: a staged newer version goes in (the helper starts it again once this one exits: the caller exits), or the one just
@@ -197,18 +201,22 @@ final class UpdateInbox: @unchecked Sendable {
     let link: any CloudLink, dir: URL, app: URL, platform: String, inbox = UpdateInbox()
     private(set) var nextCheck: Date, busy = false
     var staged: String? = nil                                              // a version just staged: the walker's banner (once a version)
-    /// How a check ended with nothing staged: nothing newer, or it didn't work (offline, an error, a download that didn't check out).
-    enum Heard: Equatable { case newest, failed }
+    /// How a check ended with nothing staged: nothing newer, or it didn't work (offline, an error, a download that didn't check out); 3.8.5:
+    /// a newer one out that can't go in here (blocked).
+    enum Heard: Equatable { case newest, failed, available }
+    let blocked: String?                                                   // 3.8.5: why it can't install here (nil: it can) — then it only asks
+    var available: String? = nil                                           // a newer version out while blocked (signed): the menu and a banner say so
     var heard: Heard? = nil                                                // the last check's, for 업데이트 확인 (the walker clears it)
     private(set) var fetching: String? = nil                               // the version downloading
 
-    init(link: any CloudLink, dir: URL, app: URL, platform: String = appPlatform, now: Date = Date()) {
-        self.link = link; self.dir = dir; self.app = app; self.platform = platform; nextCheck = now.addingTimeInterval(Updater.first)
+    init(link: any CloudLink, dir: URL, app: URL, platform: String = appPlatform, now: Date = Date(), blocked: String? = nil) {
+        self.link = link; self.dir = dir; self.app = app; self.platform = platform; self.blocked = blocked; nextCheck = now.addingTimeInterval(Updater.first)
     }
-    /// The app's: never with persist == false (the self-test, renders), a dev build, or an app it can't replace. (3.0 has no server-off setting.)
+    /// The app's: never with persist == false (the self-test, renders) or a dev build; an app it can't replace still asks (3.8.5: blocked, so the
+    /// player hears a newer one is out and how to get it). (3.0 has no server-off setting.)
     static func app(persist: Bool) -> Updater? {
-        guard persist, let a = Update.appURL, Update.allowed(a) else { return nil }
-        return Updater(link: HTTPLink(), dir: Update.dir, app: a)
+        guard persist, let a = Update.appURL, !Store.devBuild(a) else { return nil }
+        return Updater(link: HTTPLink(), dir: Update.dir, app: a, blocked: Update.blocker(a))
     }
     func tick(_ now: Date) {
         for r in inbox.take() { take(r) }
@@ -228,6 +236,7 @@ final class UpdateInbox: @unchecked Sendable {
             guard let e = Update.accept(m, sig, platform: platform, over: appVersion, failed: Update.failed(dir)) else {
                 busy = false; heard = Update.newer(m, than: appVersion) ? .failed : .newest; return                                   // a newer one not taken: bad signature, no zip here …
             }
+            if blocked != nil { busy = false; available = e.version; heard = .available; return }   // 3.8.5: out, but it can't go in here — said, not fetched
             guard Update.ready(dir)?.version != e.version else { busy = false; return }           // staged already
             fetching = e.version
             let (dir, inbox) = (self.dir, self.inbox)
@@ -241,7 +250,7 @@ final class UpdateInbox: @unchecked Sendable {
 
 extension Walker {
     /// A staged update newer than this app, the updater on: the menu's 업데이트 설치 offers it.
-    var stagedUpdate: String? { updater.flatMap { Update.ready($0.dir) }.flatMap { verCmp($0.version, appVersion) == 1 ? $0.version : nil } }
+    var stagedUpdate: String? { updater.flatMap { $0.blocked == nil ? Update.ready($0.dir) : nil }.flatMap { verCmp($0.version, appVersion) == 1 ? $0.version : nil } }   // (blocked: nothing goes in here)
     /// Why not now (the row is greyed with it): a fight, a show on — nothing in progress is lost to a restart. A tower run between fights
     /// goes on in the new session where the server keeps runs (its login says so); on one that doesn't, the run waits too.
     var installBlocker: String? {
@@ -249,6 +258,12 @@ extension Walker {
         if duelOn { return "대전이 끝나면" }
         switch screen { case .beats, .evolve, .hatch, .radar, .traded: return "지금 하는 게 끝나면"; default: break }
         return waiting != nil ? "지금 하는 게 끝나면" : nil
+    }
+    /// The menu's rows: 3.8.5: where it can't install, why (greyed, the way out) and 업데이트 확인 (it says what's out); else updateRow's.
+    func updateRows(_ u: Updater) -> [MenuItem] {
+        guard let why = u.blocked else { return [updateRow(u)] }
+        let info = u.available.map { "\($0) 버전이 나왔어요 · " + why } ?? "자동 업데이트 안 됨 · " + why
+        return [MenuItem(info, enabled: false), u.busy || installWhenStaged ? MenuItem("업데이트 확인 중…", enabled: false) : MenuItem("업데이트 확인", action: { self.checkAndInstall() })]
     }
     /// The menu's row (no question asked: the click is the consent): a staged one installs; else one click checks, downloads and installs
     /// (installWhenStaged); greyed while a check or a download is on, or with a fight or a show on.
@@ -270,11 +285,16 @@ extension Walker {
     func updateTick(_ now: Date) {
         guard let u = updater else { return }
         if let v = u.staged { u.staged = nil; if !installWhenStaged { noteStaged(v) } }                // (a click's own download: no banner, it goes in)
+        if let v = u.available, let why = u.blocked, v != notedUpdate, !installWhenStaged {           // 3.8.5: out, can't go in here — a banner, once a version
+            notedUpdate = v; updateNotices += 1
+            notify("update", "\(v) 버전이 나왔어요", why + " · 그러면 자동으로 받아요")
+        }
         if installWhenStaged {
             if let v = stagedUpdate { if installBlocker == nil { installSoon(v, now) } }
             else if let h = u.heard {
                 u.heard = nil; installWhenStaged = false
-                let lines = h == .newest ? ["최신 버전이에요", appVersion] : ["업데이트를", "확인하지 못했어요"]
+                let lines = h == .newest ? ["최신 버전이에요", appVersion] : h == .available ? ["\(u.available ?? "") 버전이 나왔어요", u.blocked ?? ""] : ["업데이트를", "확인하지 못했어요"]
+                if h == .available { notedUpdate = u.available }                                    // (said here: no banner too)
                 if installBlocker == nil { screen = .say(lines, next: screen, since: now) } else { notify("update", lines.joined(separator: " "), "") }
             }
         }
