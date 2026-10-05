@@ -27,7 +27,7 @@ struct TeamReply: Codable, Equatable {
 }
 /// 14 §3 (3.8): 맡겨 키우기 — `owner`'s Pokémon raised by `host` until `ends` (unix); steps = what it's been raised so far.
 struct Visit: Codable, Equatable { var id: Int; var owner, host: String; var mon: Mon; var steps: Int; var ends: Int }
-struct Visits: Codable, Equatable { var away: Visit?; var guests: [Visit] }
+struct Visits: Codable, Equatable { var away: Visit?; var guests: [Visit]; var out: [Visit]? = nil }   // away: the newest of mine (apps before 3.8.5); out: all of mine (one a friend)
 
 /// 12 §3 (M2): an offer — what `from` gives, what it wants of `to` (nil: their choice); state open · done · declined · cancelled · expired · failed.
 struct TradeOffer: Codable, Equatable { var id: Int; var from, to: String; var mon: Mon; var want: Mon?; var at: Int; var state: String }

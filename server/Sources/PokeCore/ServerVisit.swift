@@ -2,7 +2,7 @@ import Foundation
 
 // docs/plans/14 §3 (3.8): 맡겨 키우기 (놀러가기). A trainer sends one of its walker's or box Pokémon to a friend walking now; for 5 hours every step
 // the friend walks is 1 EXP for it. Then (or when either ends it early) it goes home through the owner's 받기 함 with those steps, and the friend
-// gets 1 BP a 2,000 steps raised (5 at most) on its next act. One away per owner, two guests per host (3.8.1, the user; three before).
+// gets 1 BP a 2,000 steps raised (5 at most) on its next act. One away per owner and friend (3.8.5, the user; one in all before), two guests per host (3.8.1).
 
 let visitSchema = """
     CREATE TABLE IF NOT EXISTS visits (id INTEGER PRIMARY KEY AUTOINCREMENT, owner TEXT NOT NULL, owner_name TEXT NOT NULL, host TEXT NOT NULL, host_name TEXT NOT NULL,
@@ -39,7 +39,7 @@ extension SaveDB {
             guard try areFriends(key, to.key) else { return "친구에게만\n보낼 수 있어요" }
             guard try idle(to.key, now: now) < 60 else { return "지금 걷고 있는 친구에게만\n보낼 수 있어요" }
             guard knows(try appSeen(to.key), visitApp) else { return "상대가 3.8로\n업데이트해야 해요" }
-            guard try visitRows("owner = :k AND state = 'on'", ["k": .text(key)]).isEmpty else { return "이미 놀러 간\n포켓몬이 있어요" }
+            guard try visitRows("owner = :k AND host = :h AND state = 'on'", ["k": .text(key), "h": .text(to.key)]).isEmpty else { return josa(host.name, "에게", "에게") + " 이미\n맡긴 포켓몬이 있어요" }
             guard let ref = w.ref(uid: uid) else { return "그 포켓몬은\n없어요" }
             guard ref != -1 else { return "동료는 보낼 수 없어요" }
             guard try visitRows("host = :k AND state = 'on'", ["k": .text(to.key)]).count < visitGuests else { return josa(host.name, "은", "는") + " 이미\n\(visitGuests)마리를 맡고 있어요" }
@@ -84,7 +84,7 @@ extension SaveDB {
     /// /v2/team's part: mine away, the ones I'm raising.
     func visits(_ key: String) throws -> Visits {
         func view(_ v: VisitRow) -> Visit { Visit(id: v.id, owner: v.ownerName, host: v.hostName, mon: v.mon, steps: v.steps, ends: v.ends) }
-        return Visits(away: try visitRows("owner = :k AND state = 'on' ORDER BY id DESC", ["k": .text(key)]).first.map(view),
-                      guests: try visitRows("host = :k AND state = 'on' ORDER BY id", ["k": .text(key)]).map(view))
+        let mine = try visitRows("owner = :k AND state = 'on' ORDER BY id", ["k": .text(key)]).map(view)
+        return Visits(away: mine.last, guests: try visitRows("host = :k AND state = 'on' ORDER BY id", ["k": .text(key)]).map(view), out: mine)
     }
 }

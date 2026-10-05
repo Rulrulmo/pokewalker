@@ -545,7 +545,7 @@ extension SaveDB { func monState(_ key: String, _ uid: Int) throws -> String? { 
     #expect(try await go("앨리스", .visitSend(to: "보브", uid: firstUID)).out.cannot == "동료는 보낼 수 없어요")
     let sent = try await go("앨리스", .visitSend(to: "보브", uid: 1_000_001))
     #expect(sent.out.cannot == nil && sent.walk?.caught.isEmpty == true)
-    #expect(try await go("앨리스", .visitSend(to: "보브", uid: firstUID)).out.cannot == "이미 놀러 간\n포켓몬이 있어요")
+    #expect(try await go("앨리스", .visitSend(to: "보브", uid: firstUID)).out.cannot == "보브에게 이미\n맡긴 포켓몬이 있어요")   // (3.8.5: one a friend)
     let came = try await go("보브", .steps, steps: 3000, wait: 300)                                    // the host walks: its guest is raised
     #expect(came.out.news.contains { if case .visitCame(_, "앨리스", 16, false) = $0 { return true }; return false })
     _ = try await go("보브", .steps, steps: 1500, wait: 200)
@@ -598,4 +598,25 @@ extension SaveDB { func monState(_ key: String, _ uid: Int) throws -> String? { 
     _ = try await go("보브", .steps, app: "3.8")                                                       // 보브 on 3.8 now: the two ways don't meet
     #expect(try await go("앨리스", .duelChallenge(to: "보브"), app: "3.7").out.cannot == "상대는 3.8이에요\n업데이트해 주세요")
     #expect(try await go("앨리스", .duelQueue, app: "3.7").out.cannot == "대전은 3.8로\n업데이트해야 해요")
+}
+
+@Test func visitsOneAFriend() async throws {                                                        // 3.8.5: one of mine with each friend at a time
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브"), c = try await newTrainer(db, "캐럴")
+    var seq: [String: Int] = ["앨리스": 1, "보브": 1, "캐럴": 1], t = 60.0
+    let sess = ["앨리스": a, "보브": b, "캐럴": c]
+    func go(_ who: String, _ x: Act) async throws -> ActReply {
+        t += 1; defer { seq[who]! += 1 }
+        return try reply(await db.act(ActReq(id: who, session: sess[who]!, seq: seq[who]!, act: x, app: "3.8.5"), now: base.addingTimeInterval(t)))
+    }
+    for who in ["앨리스", "보브", "캐럴"] { _ = try await go(who, .steps) }
+    func mon(_ dex: Int, _ uid: Int) -> Mon { var m = Mon(dex: dex, level: 10, female: false); m.uid = uid; return m }
+    try await setWalk(db, "앨리스") { $0.box = [mon(16, 1_000_001), mon(19, 1_000_002), mon(129, 1_000_003)]; $0.lastUID = 1_000_003 }
+    for f in ["보브", "캐럴"] { _ = try await go("앨리스", .friendRequest(to: f)); _ = try await go(f, .friendRequest(to: "앨리스")) }
+    #expect(try await go("앨리스", .visitSend(to: "보브", uid: 1_000_001)).out.cannot == nil)
+    #expect(try await go("앨리스", .visitSend(to: "보브", uid: 1_000_002)).out.cannot == "보브에게 이미\n맡긴 포켓몬이 있어요")
+    _ = try await go("캐럴", .steps)
+    #expect(try await go("앨리스", .visitSend(to: "캐럴", uid: 1_000_002)).out.cannot == nil)
+    let v = try JSONDecoder().decode(TeamReply.self, from: await db.team(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(t)).body).visits
+    #expect(v?.out?.map(\.host) == ["보브", "캐럴"] && v?.away?.host == "캐럴")
 }
