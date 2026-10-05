@@ -636,7 +636,7 @@ extension Page {
         for l in m.lines { c.say(l.key, x(X0 + 2), y(yy), font(9, .medium), Ink.sub); c.say(l.value, x(X0 + 48), y(yy), font(10, .semibold), Ink.ink, maxW: x(X1 - X0 - 50)); yy += 17 }
         var buttons: [(String, Int, Color, Color, Bool)] = []                                       // (3.8.1: no 인사)
         if let d = m.duel { let on = d == "대전 신청"; buttons.append((on ? d : "걸을 때 대전", 6032, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 3.6: a live battle
-        if let v = m.visit { let on = v == "맡기기"; buttons.append((on ? v : v == "맡긴 포켓몬이 있어요" ? "이미 맡겼어요" : "걸을 때 맡기기", 6034, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 3.8: 맡겨 키우기
+        if let v = m.visit { let on = v == "맡기기"; buttons.append((on || v == "이미 맡겼어요" ? v : "걸을 때 맡기기", 6034, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 3.8: 맡겨 키우기
         if m.remove { buttons.append(("친구 끊기", 6031, Ink.tile, Ink.sub, true)) }
         if let q = m.request { let on = q == "친구 신청"; buttons = [(q, 6033, on ? Ink.red : Ink.tile, on ? .white : Ink.sub, on)] }   // the 전체 tab: someone not a friend
         let perRow = buttons.count > 3 ? 2 : buttons.count, rowsN = (buttons.count + perRow - 1) / max(1, perRow)
@@ -768,8 +768,8 @@ extension Page {
         c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
         let d = teamTabs(m.tabs, m.tab)
         if m.rows.isEmpty { c.say("맡기거나 맡은 포켓몬이 없어요", x(Layout.w / 2), y(300 + d), font(10, .medium), Ink.sub, 0.5) }
-        for (i, row) in m.rows.enumerated() {
-            let rc = r(X0, 242 + d + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: false, row.mine ? Ink.tint(Ink.blue, 0.08) : nil)
+        for (i, row) in m.rows.enumerated() where i >= m.first && i < m.first + VisitsModel.shown {
+            let rc = r(X0, 242 + d + CGFloat(i - m.first) * 29, X1 - X0, 26); tile(rc, 9, on: m.rows.count > VisitsModel.shown && i == m.sel, row.mine ? Ink.tint(Ink.blue, 0.08) : nil); hits.append((rc, 6440 + i))
             c.image(iconImage(row.dex), CGRect(x: rc.minX + x(6), y: rc.midY - x(15), width: 28 * K, height: 28 * K), alpha: 1)
             let f = font(9, .bold), w = width(row.button, f) + x(16), pr = CGRect(x: rc.maxX - x(6) - w, y: rc.midY - x(8.5), width: w, height: x(17))
             c.pill(pr, Ink.board); c.say(row.button, pr.midX, pr.midY, f, Ink.sub, 0.5); hits.append((pr, 6400 + i))

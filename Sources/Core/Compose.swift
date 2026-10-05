@@ -422,8 +422,9 @@ extension Walker {
         case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
         case (.card, 5200...5202): screen = .card(code - 5200)
         case (.team(let sel, _, _), 6000...6006): if code - 6000 < teamTabCount { screen = .team(sel: code - 6000 == 0 ? sel : 0, tab: code - 6000, card: false) }   // a tab (a rank tab from its top; 4 신청, 5 맡기기, 6 전체)
-        case (.team(_, 5, false), 6400...6403): visitEnd(code - 6400, Date())                    // 3.8: 데려오기 / 돌려보내기
-        case (.team(let sel, let tab, true), 6034): if let c = teamRows(tab)[safe: sel]?.card, isFriend(c.name), Walker.walkingNow(c), visits?.away == nil { startVisit(c.name) }   // 맡기기
+        case (.team(_, 5, false), 6400...6439): visitEnd(code - 6400, Date())                    // 3.8: 데려오기 / 돌려보내기 (the row's own place)
+        case (.team(_, 5, false), 6440...6479): screen = .team(sel: code - 6440, tab: 5, card: false)   // 3.8.5: a row: picked (the LCD shows it)
+        case (.team(let sel, let tab, true), 6034): if let c = teamRows(tab)[safe: sel]?.card, isFriend(c.name), Walker.walkingNow(c), visitTo(c.name) == nil { startVisit(c.name) }   // 맡기기 (3.8.5: one a friend)
         case (.team(let sel, let tab, true), 6033): if let c = teamRows(tab)[safe: sel]?.card { friendAct(.friendRequest(to: c.name), back: screen, Date()) { _ in [josa(c.name, "에게", "에게"), "친구 신청을 했다!"] } }
         case (.team(let sel, let tab, true), 6031): if let c = teamRows(tab)[safe: sel]?.card, !isMe(c) { unfriend(c.name) }   // 친구 끊기
         case (.team(let sel, 4, false), 6200..<6216):                                             // 신청: 수락 (or 거두기, mine) · 거절

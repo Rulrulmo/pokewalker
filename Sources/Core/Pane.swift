@@ -158,6 +158,8 @@ struct MarketPostModel: Equatable {
 struct VisitsModel: Equatable {
     struct Row: Equatable { var dex: Int; var shiny: Bool; var line, sub: String; var button: String; var mine: Bool }
     var tabs: [String]; var tab: Int; var rows: [Row]; var note: String; var hint: String
+    var first = 0, sel = 0                                             // 3.8.5: a window of five (rows: all; one a friend can be many), the pick
+    static let shown = 5
 }
 /// 3.8 (14 §4–5): picking several in order — the strip (who goes, in order; a click drops one), a duel's other six (species only), ours
 /// (a page of 6 × 4, each picked one numbered), the button (nil: the hint; goSel: the cursor's on it).

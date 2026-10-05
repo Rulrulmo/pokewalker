@@ -40,7 +40,7 @@ extension Walker {
         let rows = teamRows(tab), s = min(sel, max(0, rows.count - 1))
         let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
         if tab == 4 && !card { return friendReqPane(sel) }
-        if tab == 5 && !card { return visitsPane(Date()) }
+        if tab == 5 && !card { return visitsPane(sel, Date()) }
         let friends = max(0, (cloud?.team?.cards.count ?? 1) - 1)
         let note = cloud?.team == nil ? (cloud?.online == false ? "연결되면 볼 수 있어요" : "불러오는 중…") : friends == 0 ? "아직 친구가 없어요" : "친구 \(friends)명 · 지금 걷는 중 \(walking)명"
         if card, let c = rows[safe: s]?.card {
@@ -51,13 +51,14 @@ extension Walker {
                 .init(key: "레이더", value: "최고 연쇄 \(c.bestChain)" + (c.duelWins + c.duelLosses > 0 ? " · 대전 \(c.duelWins)승 \(c.duelLosses)패" : "")),
                 .init(key: "걸음", value: "오늘 \(c.today.formatted()) · 이번 주 \(c.week.formatted())"),
                 .init(key: "누적", value: "\(c.total.formatted())걸음"),
-                .init(key: "코스", value: courses[safe: c.course]?.name ?? "-"),
+                visitTo(c.name).map { v in .init(key: "맡김", value: monLine(v.mon) + " · " + visitLeft(v)) }   // 3.8.5: one of mine with this friend (its place: 코스)
+                    ?? .init(key: "코스", value: courses[safe: c.course]?.name ?? "-"),
             ]
             let friend = isFriend(c.name) && !isMe(c), asked = (cloud?.team?.sent ?? []).contains { trainerID($0)?.key == trainerID(c.name)?.key }
             return PaneContent(teamCard: TeamCardModel(name: c.name, me: isMe(c), walking: Walker.walkingNow(c) && !isMe(c), when: isMe(c) ? "" : ago(c.idle), walker: c.walker.prefix(3).map(mini), lines: lines,
                                                        remove: friend,
                                                        duel: friend ? (Walker.walkingNow(c) ? "대전 신청" : "걷는 중일 때 대전") : nil,
-                                                       visit: friend ? (visits?.away != nil ? "맡긴 포켓몬이 있어요" : Walker.walkingNow(c) ? "맡기기" : "걷는 중일 때 맡기기") : nil,
+                                                       visit: friend ? (visitTo(c.name) != nil ? "이미 맡겼어요" : Walker.walkingNow(c) ? "맡기기" : "걷는 중일 때 맡기기") : nil,
                                                        request: !friend && !isMe(c) ? (asked ? "신청했어요" : "친구 신청") : nil))
         }
         let per = TeamModel.perPage, first = s / per * per
@@ -90,7 +91,7 @@ extension Walker {
     /// ◀ ▶ (and the wheel, ↑ ↓): a row (on a card: the next teammate's card), round.
     func teamStep(_ d: Int, wrap: Bool = true) {
         guard case .team(let sel, let tab, let card) = screen else { return }
-        let n = tab == 4 ? friendReqRows.count : tab == 5 ? (visits?.away == nil ? 0 : 1) + guests.count : teamRows(tab).count; guard n > 0 else { return }
+        let n = tab == 4 ? friendReqRows.count : tab == 5 ? visitsOut.count + guests.count : teamRows(tab).count; guard n > 0 else { return }
         lastInput = Date(); host?.redraw(.all)
         screen = .team(sel: wrap ? ((sel + d) % n + n) % n : max(0, min(n - 1, sel + d)), tab: tab, card: card)
     }

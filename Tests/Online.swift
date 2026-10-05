@@ -648,7 +648,7 @@ import AppKit
     func act(_ w: Walker, _ n: Int = 1) { w.news = []; w.screen = .home; w.cloud!.addSteps(n); w.cloud!.saveNow(); drain(w); drain(w) }
     func team(_ w: Walker) { w.cloud!.teamDue = true; w.cloud!.tick(Date()); drain(w); drain(w) }
     let sv = FakeCloud()
-    let va = online({ var s = Walk(); s.companion = Mon(dex: 25, level: 20, female: false); s.box = [Mon(dex: 133, level: 10, female: false)]; return s }(), server: sv)
+    let va = online({ var s = Walk(); s.companion = Mon(dex: 25, level: 20, female: false); s.box = [Mon(dex: 133, level: 10, female: false), Mon(dex: 143, level: 10, female: false)]; return s }(), server: sv)
     let vb = online({ var s = Walk(); s.companion = Mon(dex: 1, level: 20, female: false); return s }(), server: sv)
     let other = online(Walk(), server: sv)
     let aName = va.myName, bName = vb.myName
@@ -658,10 +658,20 @@ import AppKit
     let pick = va.paneContent(Date()).pick
     va.press(1); va.press(1); drain(va); let sent = says(va); va.press(1); team(va)
     va.screen = .team(sel: 0, tab: 5, card: false); let mine = va.paneContent(Date()).visits
-    check(card?.visit == "맡기기" && pick?.title == josa(bName, "에게", "에게") + " 맡기기" && pick?.count == 1 && sent == [bName + "에게 이브이를", "맡겼다!", "5시간 뒤 받기로 돌아와요"]
+    check(card?.visit == "맡기기" && pick?.title == josa(bName, "에게", "에게") + " 맡기기" && pick?.count == 2 && sent == [bName + "에게 이브이를", "맡겼다!", "5시간 뒤 받기로 돌아와요"]
           && !va.state.box.contains { $0.dex == 133 } && mine?.rows.first?.button == "데려오기" && mine?.rows.first?.mine == true && va.teamTabLabels[5] == "맡기기 1",
           "a friend walking now: 맡기기 → pick one (the walker's · box's) → it goes (out of my box); my 맡기기 tab has it (데려오기)",
           "\(String(describing: card?.visit)) \(String(describing: pick?.title)) \(sent) \(String(describing: mine))")
+    // 3.8.5: one a friend at a time — this one's card says so (its line: what's with it); another friend can have one too
+    let vc = online({ var s = Walk(); s.companion = Mon(dex: 4, level: 20, female: false); return s }(), server: sv)
+    sv.befriend(aName, vc.myName); act(vc); team(va)
+    let bj = va.teamRows(0).firstIndex { $0.card.name.lowercased() == bName.lowercased() } ?? 0
+    va.screen = .team(sel: bj, tab: 0, card: true); let cardB = va.paneContent(Date()).teamCard; va.pageTap(6034); let stays: Bool = { if case .team = va.screen { return true }; return false }()
+    let cj = va.teamRows(0).firstIndex { $0.card.name.lowercased() == vc.myName.lowercased() } ?? 0
+    va.screen = .team(sel: cj, tab: 0, card: true); va.pageTap(6034); va.press(1); va.press(1); drain(va); let sent2 = says(va); va.press(1); team(va)
+    check(cardB?.visit == "이미 맡겼어요" && cardB?.lines.contains { $0.key == "맡김" && $0.value.hasPrefix("이브이") } == true && stays && sent2.dropFirst().first == "맡겼다!"
+          && va.visitsOut.count == 2 && va.visitTo(vc.myName)?.mon.dex == 143 && va.teamTabLabels[5] == "맡기기 2",
+          "3.8.5: one of mine a friend at a time — that friend's card says so (맡김 · its time left); another friend gets one too", "\(String(describing: cardB?.visit)) \(sent2) \(va.visitsOut.map(\.mon.dex))")
     act(vb); let came = says(vb); vb.press(1); team(vb)
     vb.screen = .team(sel: 0, tab: 5, card: false); let guestRow = vb.paneContent(Date()).visits?.rows.first
     act(vb, 4500); team(vb); let raised = vb.guests.first?.steps ?? 0
@@ -675,7 +685,7 @@ import AppKit
     let k = va.claims.first, dot = va.marketDot
     va.screen = .market(.board(tab: 3, sel: 0)); let row = va.paneContent(Date()).board?.rows.first; va.pageTap(8010); drain(va)
     let home = va.state.box.first { $0.dex == 133 }; team(va)
-    check(k?.kind == "visit" && dot && row?.pill == "받기" && (home?.level ?? 0) > 10 && va.visits?.away == nil,
+    check(k?.kind == "visit" && dot && row?.pill == "받기" && (home?.level ?? 0) > 10 && va.visitsOut.map(\.mon.dex) == [143],
           "home through the owner's 받기 함 (the red dot): taken, it has the EXP of the steps raised", "\(String(describing: k)) \(dot) \(String(describing: row)) \(String(describing: home?.level))")
     // 전체 (VIEW_ALL): every trainer — only for its accounts
     sv.viewAll.insert(aName.lowercased()); team(va); team(vb)

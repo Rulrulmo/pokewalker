@@ -28,7 +28,7 @@ extension Walker {
     var offeredUIDs: Set<Int> { Set((cloud?.trades?.outgoing ?? []).compactMap(\.mon.uid)) }
     /// The 팀 tabs as shown: 교환's with how many wait for me.
     var teamTabLabels: [String] {
-        let n = (visits?.away == nil ? 0 : 1) + guests.count
+        let n = visitsOut.count + guests.count
         return Array(Walker.teamTabs.prefix(4)) + [friendRequestsIn > 0 ? "신청 \(friendRequestsIn)" : "신청", n > 0 ? "맡기기 \(n)" : "맡기기"] + (teamTabCount > 6 ? ["전체"] : [])
     }
     static func isTrade(_ a: Act) -> Bool { switch a { case .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel: true; default: false } }

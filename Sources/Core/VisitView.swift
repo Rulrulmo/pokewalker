@@ -7,27 +7,31 @@ extension Walker {
     static let visitHours = 5
     var visits: Visits? { cloud?.team?.visits }
     var guests: [Visit] { visits?.guests ?? [] }
+    /// 3.8.5: mine away — one a friend at a time (the server's `out`; an older server's one `away`).
+    var visitsOut: [Visit] { visits?.out ?? (visits?.away.map { [$0] } ?? []) }
+    func visitTo(_ name: String) -> Visit? { visitsOut.first { trainerID($0.host)?.key == trainerID(name)?.key } }
     func visitLeft(_ v: Visit, _ now: Date = Date()) -> String {
         let s = max(0, v.ends - Int(now.timeIntervalSince1970))
         return s >= 3600 ? "\(s / 3600)시간 \(s % 3600 / 60)분 남음" : "\(max(1, s / 60))분 남음"
     }
 
     // MARK: the 맡기기 tab
-    func visitsPane(_ now: Date) -> PaneContent {
+    func visitsPane(_ sel: Int, _ now: Date) -> PaneContent {
         var rows: [VisitsModel.Row] = []
-        if let a = visits?.away {
+        for a in visitsOut {
             rows.append(.init(dex: a.mon.dex, shiny: a.mon.shiny == true, line: "내 " + monLine(a.mon) + " → " + a.host, sub: "\(a.steps.formatted())걸음 키움 · " + visitLeft(a, now), button: "데려오기", mine: true))
         }
         for g in guests {
             rows.append(.init(dex: g.mon.dex, shiny: g.mon.shiny == true, line: josa(g.owner, "의", "의") + " " + monLine(g.mon), sub: "\(g.steps.formatted())걸음 · +\(min(5, g.steps / 2000))BP · " + visitLeft(g, now),
                               button: "돌려보내기", mine: false))
         }
-        let note = cloud?.team == nil ? "불러오는 중…" : "보낸 포켓몬 \(visits?.away == nil ? 0 : 1)/1 · 맡은 포켓몬 \(guests.count)/\(Walker.guestsMax)"
+        let note = cloud?.team == nil ? "불러오는 중…" : "보낸 포켓몬 \(visitsOut.count) · 맡은 포켓몬 \(guests.count)/\(Walker.guestsMax)"
+        let s = min(sel, max(0, rows.count - 1)), first = max(0, min(s - 2, rows.count - VisitsModel.shown))
         return PaneContent(visits: VisitsModel(tabs: teamTabLabels, tab: 5, rows: rows, note: note,
-                                               hint: "지금 걷는 친구의 카드에서 맡기기 · 5시간 · 키운 걸음만큼 경험치 · 맡은 쪽은 2,000걸음마다 1BP (최대 5)"))
+                                               hint: "지금 걷는 친구의 카드에서 맡기기 · 친구마다 1마리 · 5시간 · 키운 걸음만큼 경험치 · 맡은 쪽은 2,000걸음마다 1BP (최대 5)", first: first, sel: s))
     }
     func visitsLCD(_ fb: inout FB, _ sel: Int, _ now: Date) {
-        let all = (visits?.away.map { [$0] } ?? []) + guests
+        let all = visitsOut + guests
         fb.text("맡겨 키우기", 2, 0); fb.fill(0, 12, 96, 1, 2)
         guard let v = all[safe: min(sel, max(0, all.count - 1))] else { fb.text("맡긴 포켓몬이 없다", 0, 30, 2, center: true); return }
         fb.mon(v.mon, Int(now.timeIntervalSinceReferenceDate * 2) % 2, 0, 2, anim: animT("visit \(v.id)", v.mon.dex, now))
@@ -36,7 +40,7 @@ extension Walker {
     }
     /// 데려오기 (mine) · 돌려보내기 (theirs): settled with the steps so far.
     func visitEnd(_ row: Int, _ now: Date) {
-        let all = (visits?.away.map { [$0] } ?? []) + guests
+        let all = visitsOut + guests
         guard let v = all[safe: row] else { return }
         let mine = trainerID(v.owner)?.key == trainerID(myName)?.key
         let back = Screen.team(sel: row, tab: 5, card: false)

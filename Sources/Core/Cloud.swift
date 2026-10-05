@@ -878,7 +878,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             guard let to = trainerID(raw), to.key != key, let host = rows[to.key], host.walk != nil else { return "보낼 수 없는\n트레이너예요" }
             guard isFriend(key, to.key) else { return "친구에게만\n보낼 수 있어요" }
             guard let seen = lastAct[to.key], (now ?? Date()).timeIntervalSince(seen) < 60 else { return "지금 걷고 있는 친구에게만\n보낼 수 있어요" }
-            guard !visitList.contains(where: { $0.on && $0.owner == key }) else { return "이미 놀러 간\n포켓몬이 있어요" }
+            guard !visitList.contains(where: { $0.on && $0.owner == key && $0.host == to.key }) else { return josa(host.name, "에게", "에게") + " 이미\n맡긴 포켓몬이 있어요" }   // (3.8.5: one a friend)
             guard let ref = w.ref(uid: uid) else { return "그 포켓몬은\n없어요" }
             guard ref != -1 else { return "동료는 보낼 수 없어요" }
             guard visitList.filter({ $0.on && $0.host == to.key }).count < Walker.guestsMax else { return josa(host.name, "은", "는") + " 이미\n\(Walker.guestsMax)마리를 맡고 있어요" }
@@ -911,7 +911,8 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     }
     func visitsOf(_ key: String) -> Visits {
         func view(_ v: FakeVisit) -> Visit { Visit(id: v.id, owner: v.ownerName, host: v.hostName, mon: v.mon, steps: v.steps, ends: v.ends) }
-        return Visits(away: visitList.last { $0.on && $0.owner == key }.map(view), guests: visitList.filter { $0.on && $0.host == key }.map(view))
+        return Visits(away: visitList.last { $0.on && $0.owner == key }.map(view), guests: visitList.filter { $0.on && $0.host == key }.map(view),
+                      out: visitList.filter { $0.on && $0.owner == key }.map(view))
     }
     // 12 §2.4 (3.5): 친구 — pairs, requests (to → from)
     var friends: Set<String> = [], friendAsks: [String: Set<String>] = [:]
