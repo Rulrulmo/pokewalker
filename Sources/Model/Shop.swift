@@ -180,6 +180,20 @@ extension Walk {
             }
         }
     }
+    /// The bag's tabs (3.8.5, the user): by kind, as the shops' — every berry under 열매, balls · valuables · TMs under 기타.
+    static let bagTabs = ["회복", "배틀", "육성", "민트", "지닌 도구", "열매", "진화", "기타"]
+    static func bagTab(_ i: String) -> String {
+        if i.hasSuffix("열매") { return "열매" }
+        switch ItemKind.of(i) {
+        case .heal, .revive: return "회복"
+        case .battle(let u): switch u { case .x, .guardSpec, .direHit: return "배틀"; default: return "회복" }
+        case .candy, .vitamin, .evReset, .bottleCap, .berry: return "육성"
+        case .mint: return "민트"
+        case .held: return "지닌 도구"
+        case .evolution: return "진화"
+        case .sell: return "기타"
+        }
+    }
     func wareName(_ w: Ware) -> String {
         switch w.kind { case .item(let i): i; case .legend(let k): monNames[Walk.legendShop[k].dex] + " (전설)"; case .shell(let s): s + " (기기 색)" }
     }

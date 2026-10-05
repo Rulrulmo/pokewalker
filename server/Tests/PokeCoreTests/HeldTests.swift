@@ -196,3 +196,12 @@ private func said(_ b: Battle, _ s: String) -> Bool {
     let o = Engine.apply(.battle(cmd: .fight(slot: 0)), steps: 0, walk: &w, play: &p, rng: &r, now: t0, ids: &ids)
     #expect(o.cannot == "구애머리띠로\n전광석화만 쓸 수 있다!")
 }
+
+@Test func bagTabs() {                                                                              // 3.8.5: the bag by kind, every item somewhere
+    let all = Walk.shop.map(\.item) + Walk.bpShop.map(\.item) + Walk.heldBP.map(\.item) + Walk.heldW.map(\.item) + Walk.mints
+        + ["불꽃의돌", "왕의징표석", "하이퍼볼", "금구슬", "기술머신07", "이상한사탕", "기력의조각", "블리열매"]
+    for i in all { #expect(Walk.bagTabs.contains(Walk.bagTab(i)), "\(i)") }
+    #expect(Walk.bagTab("상처약") == "회복" && Walk.bagTab("플러스파워") == "배틀" && Walk.bagTab("타우린") == "육성" && Walk.bagTab("고집민트") == "민트")
+    #expect(Walk.bagTab("구애머리띠") == "지닌 도구" && Walk.bagTab("자뭉열매") == "열매" && Walk.bagTab("유석열매") == "열매" && Walk.bagTab("불꽃의돌") == "진화")
+    #expect(Walk.bagTab("왕의징표석") == "진화" && Walk.bagTab("하이퍼볼") == "기타" && Walk.bagTab("기력의조각") == "회복")
+}
