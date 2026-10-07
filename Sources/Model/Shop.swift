@@ -46,13 +46,14 @@ extension Walk {
         if m.known == nil { m.known = m.moves }
         m.exp = e; m.level = Mon.level(dex: m.dex, exp: e); setMon(ref, m); queueMoves(ref, from: lv); return true   // levels, not steps: friendship untouched
     }
-    /// Gen IV: a vitamin adds 10 while that stat is under 100 (and the total under 510); an EV berry drops it to 100, then 10 at a time.
-    /// Used up only when it does something. Returns the new EV.
+    /// A vitamin adds 10 while that stat is under 255 (3.8.6, the user: Gen IV stopped them at 100) and the total under 510; an EV berry
+    /// takes 10 off, always (3.8.6, the user: Gen IV first dropped one over 100 to 100). Used up only when it does something. Returns the new EV.
+    static let vitaminCap = 255
     mutating func feedVitamin(_ i: String, _ ref: Int = -1) -> Int? {
         guard case .vitamin(let k, let d) = ItemKind.of(i), var m = mon(ref) else { return nil }
         var ev = m.evs ?? Array(repeating: 0, count: 6); let e = ev[k]
-        let new = d > 0 ? min(100, e + min(10, 510 - ev.reduce(0, +))) : e > 100 ? 100 : max(0, e - 10)
-        guard d > 0 ? e < 100 && new > e : e > 0, take(i) else { return nil }
+        let new = d > 0 ? min(Walk.vitaminCap, e + min(10, 510 - ev.reduce(0, +))) : max(0, e - 10)
+        guard d > 0 ? e < Walk.vitaminCap && new > e : e > 0, take(i) else { return nil }
         ev[k] = new; m.evs = ev; setMon(ref, m); return new
     }
     /// 순백떡: every EV back to 0. Used up only when there were some.

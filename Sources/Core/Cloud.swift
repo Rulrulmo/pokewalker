@@ -1195,9 +1195,9 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     chk(waits2 == [120, 240, 480, 960, 1800, 1800] && bo.backoff == 0 && bo.ahead == 0, "3.0 offline (an HTML 403 / 502, then no answer): again in 2, 4, 8, 16, 30, 30 minutes; back, the steps go up", "\(waits2) \(bo.phase) \(bo.ahead)")
 
     // the server's "not now" (out.cannot): its lines on the LCD, back where it was; nothing changed but the steps
-    serve(v) { w in var e = [0, 0, 0, 0, 0, 0]; e[0] = 100; w.companion.evs = e; w.bag = ["맥스업"] }
+    serve(v) { w in var e = [0, 0, 0, 0, 0, 0]; e[0] = Walk.vitaminCap; w.companion.evs = e; w.bag = ["맥스업"] }
     let vRev = vs.rows[vk]?.rev; v.screen = .items(0); v.useItem("맥스업", back: .items(0)); drain(v)   // (3.6's page wouldn't offer it: the server's no, asked anyway)
-    chk(says(v) == ["먹어도 효과가", "없을 것 같다"] && v.state.count("맥스업") == 1 && vs.rows[vk]?.rev == vRev, "3.0 act: the server's no (맥스업 at 100: 먹어도 효과가 / 없을 것 같다) on the LCD, nothing used", "\(says(v)) \(v.screen) \(v.state.inventory) \(String(describing: vs.acts.last))")
+    chk(says(v) == ["먹어도 효과가", "없을 것 같다"] && v.state.count("맥스업") == 1 && vs.rows[vk]?.rev == vRev, "3.0 act: the server's no (맥스업 at 255: 먹어도 효과가 / 없을 것 같다) on the LCD, nothing used", "\(says(v)) \(v.screen) \(v.state.inventory) \(String(describing: vs.acts.last))")
 
     // the session: out of step (409 seq) → logged in again, its save; another PC took it → locked, 여기서 계속; 426; 404
     vs.rows[vk]?.seq = 40; v.screen = .home; v.cloud!.addSteps(3); v.cloud!.saveNow(); drain(v); drain(v)

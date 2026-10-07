@@ -281,3 +281,21 @@ private struct Desk {
     #expect((1...467).allSatisfy { moveText($0) != nil } && moveText(0) == nil && moveText(468) == nil)
     #expect(moveText(194)?.contains("기절") == true && moveText(33)?.hasPrefix("상대를 향해서") == true)
 }
+
+@Test func vitaminsTo255() {                                                                        // 3.8.6 (the user): 영양제 up to 255 a stat, 510 in all
+    var d = Desk(); d.w.bag = Array(repeating: "타우린", count: 30)
+    for _ in 0..<26 { _ = d.act(.use(item: "타우린", stat: nil)) }
+    #expect(d.w.companion.evs?[1] == 255 && d.w.count("타우린") == 4)
+    #expect(d.act(.use(item: "타우린", stat: nil)).cannot == "먹어도 효과가\n없을 것 같다" && d.w.count("타우린") == 4)
+    d.w.companion.evs = [255, 0, 0, 0, 0, 250]; d.w.bag = ["타우린", "타우린"]
+    _ = d.act(.use(item: "타우린", stat: nil))
+    #expect(d.w.companion.evs?[1] == 5 && d.w.companion.evs?.reduce(0, +) == 510)
+    #expect(d.act(.use(item: "타우린", stat: nil)).cannot != nil && d.w.count("타우린") == 1)
+}
+
+@Test func evBerriesTenAtATime() {                                                                  // 3.8.6 (the user): -10 a berry, always (Gen IV dropped one over 100 to 100 first)
+    var d = Desk(); d.w.companion.evs = [250, 0, 0, 0, 0, 5]; d.w.bag = ["유석열매", "토망열매", "토망열매"]
+    _ = d.act(.use(item: "유석열매", stat: nil)); _ = d.act(.use(item: "토망열매", stat: nil))
+    #expect(d.w.companion.evs?[0] == 240 && d.w.companion.evs?[5] == 0)
+    #expect(d.act(.use(item: "토망열매", stat: nil)).cannot != nil && d.w.count("토망열매") == 1)
+}

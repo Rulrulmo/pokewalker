@@ -20,7 +20,7 @@ extension Walker {
         case .candy: return m.level >= 100 ? "이미 Lv.100" : nil
         case .vitamin(let k, let d):
             let ev = m.evs ?? Array(repeating: 0, count: 6)
-            return d > 0 ? (ev[k] >= 100 || ev.reduce(0, +) >= 510 ? "더 올릴 수 없어요" : nil) : (ev[k] == 0 ? "이미 0이에요" : nil)
+            return d > 0 ? (ev[k] >= Walk.vitaminCap || ev.reduce(0, +) >= 510 ? "더 올릴 수 없어요" : nil) : (ev[k] == 0 ? "이미 0이에요" : nil)
         case .evReset: return (m.evs ?? []).reduce(0, +) == 0 ? "노력치가 이미 0" : nil
         case .berry: return nil
         case .bottleCap: return m.level < Walk.hyperLevel ? "Lv.\(Walk.hyperLevel)부터" : m.effectiveIVs.allSatisfy { $0 >= 31 } ? "이미 모두 최고" : nil

@@ -620,3 +620,38 @@ extension SaveDB { func monState(_ key: String, _ uid: Int) throws -> String? { 
     let v = try JSONDecoder().decode(TeamReply.self, from: await db.team(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(t)).body).visits
     #expect(v?.out?.map(\.host) == ["보브", "캐럴"] && v?.away?.host == "캐럴")
 }
+
+@Test func endedFightStaysEnded() async throws {                                                    // 3.8.6 (the user: "a fight starts again after it ended?"): it never comes back
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스")
+    var seq = 1, t = 60.0
+    func go(_ x: Act, session: String? = nil, seq q: Int? = nil) async throws -> ActReply {
+        t += 1; let n = q ?? seq; if q == nil { seq += 1 }
+        return try reply(await db.act(ActReq(id: "앨리스", session: session ?? a, seq: n, act: x, app: "3.8.5"), now: base.addingTimeInterval(t)))
+    }
+    _ = try await go(.steps)
+    try await setWalk(db, "앨리스") { w in w.watts = 500; var c = Mon(dex: 445, level: 100, female: false); c.uid = firstUID; c.known = [89, 200, 337, 14]; w.companion = c }
+    // a radar find, the fight, to its end (a Lv.100 한카리아스: a KO or a catch soon)
+    var started: ActReply? = nil
+    for _ in 0..<20 where started?.out.battle == nil {
+        let r = try await go(.radar)
+        guard let bush = r.out.radar?.bush else { continue }
+        t += 1.6; started = try await go(.radarPick(bush: bush))
+    }
+    var last = try #require(started)
+    #expect(last.out.battle != nil && last.out.end == nil)
+    for _ in 0..<40 where last.out.end == nil { last = try await go(.battle(cmd: .fight(slot: 2))) }   // 드래곤크루: nothing in Gen IV is immune
+    #expect(last.out.end != nil)
+    let endSeq = seq - 1
+    // the reply lost: the same seq again gets the same end, and nothing starts over
+    let again = try await go(.battle(cmd: .fight(slot: 0)), seq: endSeq)
+    #expect(again.out.end == last.out.end && again.out.battle?.over == true)
+    // the next acts: no fight in them; a fight command is turned away
+    #expect(try await go(.steps).out.battle == nil)
+    #expect(try await go(.battle(cmd: .fight(slot: 0))).out.cannot == "배틀 중이 아니에요")
+    // a new login (the app restarted, another PC): still nothing
+    let l = await db.login(LoginReq(id: "앨리스", device: "mac", device_name: "MAC", app: "3.8.5", force: true, pin: "2468"), now: Int(base.timeIntervalSince1970 + t))
+    let s2 = try #require(string(l, "session"))
+    let after = try reply(await db.act(ActReq(id: "앨리스", session: s2, seq: 1, act: .battle(cmd: .fight(slot: 0)), app: "3.8.5"), now: base.addingTimeInterval(t + 1)))
+    #expect(after.out.cannot == "배틀 중이 아니에요" && after.out.battle == nil)
+}

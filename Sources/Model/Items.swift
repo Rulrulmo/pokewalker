@@ -7,7 +7,7 @@ enum ItemKind: Equatable {
     case battle(ItemUse)           // battle: status cures, 회복약, PP, X items
     case revive(Int)               // battle: a fainted one of ours back up with this % of max HP (by hand: 3.6 drops the auto-use)
     case candy                     // 이상한사탕: +1 level
-    case vitamin(Int, Int)         // fed: that stat's EVs ± 10 (영양제 up to 100, 노력치 내리는 열매 down)
+    case vitamin(Int, Int)         // fed: that stat's EVs ± 10 (영양제 up to 255 — Walk.vitaminCap —, 노력치 내리는 열매 10 down to 0: 3.8.6)
     case evReset                   // 순백떡 (SV's Fresh Start Mochi): every EV back to 0
     case bottleCap(Bool)           // 대단한 특훈 from Lv.50: 은색병뚜껑 one IV to 31, 금색병뚜껑 (true) all six
     case berry                     // fed: +500 friendship steps

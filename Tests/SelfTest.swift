@@ -236,9 +236,14 @@ import AppKit                                                                   
     var mb = Battle(wild: Mon(dex: 150, level: 70, female: false), companion: Mon(dex: 25, level: 50, female: false)); let mbBeats = mb.turn(.capture, &r, ball: 255)
     check(mbBeats.contains(.caught) && mb.over, "마스터볼: a sure catch, even a full-HP 뮤츠")
     w = Walk(); w.bag = ["이상한사탕"]; check(w.feedCandy() && w.companion.level == 6 && w.companion.points == 216 && !w.feedCandy(), "이상한사탕: exactly one level")
-    w.bag = ["타우린", "타우린", "유석열매"]; w.companion.evs = [0, 95, 0, 0, 0, 0]
-    check(w.feedVitamin("타우린") == 100 && w.feedVitamin("타우린") == nil && w.count("타우린") == 1 && w.feedVitamin("유석열매") == nil, "타우린: +10 up to 100, then no effect (kept); 유석열매 is HP")
-    w.companion.evs = [150, 0, 0, 0, 0, 0]; w.bag = ["유석열매", "유석열매"]; check(w.feedVitamin("유석열매") == 100 && w.feedVitamin("유석열매") == 90, "EV berry: down to 100, then -10")
+    w.bag = ["타우린", "타우린", "타우린", "유석열매"]; w.companion.evs = [0, 95, 0, 0, 0, 0]
+    check(w.feedVitamin("타우린") == 105 && w.count("타우린") == 2, "타우린: past 100 now (3.8.6: 255 a stat)")
+    w.companion.evs = [0, 250, 0, 0, 0, 0]
+    check(w.feedVitamin("타우린") == 255 && w.feedVitamin("타우린") == nil && w.count("타우린") == 1 && w.feedVitamin("유석열매") == nil, "타우린: +10 up to 255, then no effect (kept); 유석열매 is HP")
+    w.companion.evs = [0, 0, 250, 0, 0, 255]; w.bag = ["타우린"]
+    check(w.feedVitamin("타우린") == 5 && w.companion.evs?.reduce(0, +) == 510, "타우린: never past 510 in all")
+    w.companion.evs = [150, 0, 0, 0, 0, 0]; w.bag = ["유석열매", "유석열매"]; check(w.feedVitamin("유석열매") == 140 && w.feedVitamin("유석열매") == 130, "EV berry: -10 a berry, from anywhere (3.8.6)")
+    w.companion.evs = [5, 0, 0, 0, 0, 0]; w.bag = ["유석열매", "유석열매"]; check(w.feedVitamin("유석열매") == 0 && w.feedVitamin("유석열매") == nil && w.count("유석열매") == 1, "EV berry: never under 0; at 0 it's kept")
     check(ItemKind.of("순백떡") == .evReset && ItemKind.of("은색병뚜껑") == .bottleCap(false) && ItemKind.of("금색병뚜껑") == .bottleCap(true), "순백떡 / 병뚜껑 kinds")
     w.bag = ["순백떡"]; w.companion.evs = [0, 12, 0, 0, 0, 0]
     check(w.resetEVs() && w.companion.evs == [0, 0, 0, 0, 0, 0] && w.bag.isEmpty, "순백떡: every EV back to 0, used up")
