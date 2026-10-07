@@ -261,6 +261,16 @@ import AppKit
     take("give_page", b385) { v in v.screen = .hold(ref: 0, sel: 1) }
     take("give_page_dim", b385) { v in v.screen = .hold(ref: 0, sel: 0) }
     take("mon_give_link", b385) { v in v.screen = .box(0, act: nil, confirm: false, detail: true) }
+    // a full page of the 교환 게시판 (six rows, a second page) and of 친구 신청 (five, more after): the pager and the button clear the last row
+    let more = ["하은", "현우", "유나", "서연"].compactMap { n in fsrv.walk(n)?.box.first.map { (n, $0) } }
+    fsrv.listings += more.enumerated().map { k, x in lst(20 + k, x.0, x.1, k % 2 == 0 ? [25] : [], 3000 + 500 * k) }
+    fme.cloud!.marketDue = true; drain(fme); drain(fme)
+    take("market_all_full", fme) { v in v.duelOn = false; v.screen = .market(.board(tab: 0, sel: 0)) }
+    take("market_all_full_last", fme) { v in v.screen = .market(.board(tab: 0, sel: 5)) }
+    for k in 1...5 { fsrv.add("신청자\(k)", Walk()) }
+    fsrv.friendAsks[meK] = Set(["현우", "유나"] + (1...5).map { "신청자\($0)" })
+    fme.cloud!.teamDue = true; drain(fme); drain(fme)
+    take("friends_requests_full", fme) { v in v.screen = .team(sel: 0, tab: 4, card: false) }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
     return n

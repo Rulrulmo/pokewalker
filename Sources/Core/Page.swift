@@ -797,8 +797,8 @@ extension Page {
             hits.append((rc, 8010 + i))
         }
         let per = MarketBoardModel.perPage, pages = max(1, (m.count + per - 1) / per)
-        pager("\(m.first / per + 1) / \(pages)", 384, prev: pages > 1, next: pages > 1, codes: (8020, 8021))
-        let rc = r(X0, 408, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.post == nil ? Ink.tile : Ink.red)
+        pager("\(m.first / per + 1) / \(pages)", 418, prev: pages > 1, next: pages > 1, codes: (8020, 8021))   // (under a full page's sixth row: 413)
+        let rc = r(X0, 440, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.post == nil ? Ink.tile : Ink.red)
         c.say(m.post ?? m.footer ?? "올린 글은 3개까지예요", rc.midX, rc.midY, font(m.post == nil && m.footer != nil ? 9.5 : 11, .bold), m.post == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.post != nil { hits.append((rc, 8030)) }
     }
     /// A post: its Pokémon ⇄ what's wished for; another's: the Pokémon in full and 제안 (or 거두기); mine: the offers (a click picks one), 교환 · 내리기.

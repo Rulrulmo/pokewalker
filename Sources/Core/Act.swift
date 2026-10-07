@@ -35,14 +35,29 @@ extension Walker {
         if Walker.isMarket(a) { cloud?.marketDue = true }
         switch a { case .friendRequest, .friendAccept, .friendDecline, .friendRemove: cloud?.teamDue = true; default: break }
         news += w?.quiet == true ? r.out.news.filter { if case .level = $0 { return false }; return true } : r.out.news
-        if let why = r.out.cannot { if let w { screen = .say(why.components(separatedBy: "\n"), next: w.back, since: now) }; return }
+        if let why = r.out.cannot {
+            if case .battle = a, why == "배틀 중이 아니에요", inBattle, !duelOn { fightGone(now); return }   // 3.8.6: the server has none (a new session ended it): no fight left on screen
+            if let w { screen = .say(why.components(separatedBy: "\n"), next: w.back, since: now) }; return
+        }
         if let w { if let s = w.then(r.out, now) { screen = s }; return }
         late(r.out, now)
     }
     /// An answer nobody waits for any more (it came after the walker gave up on it): a radar shown then is given up; a fight goes on from here.
     func late(_ o: Outcome, _ now: Date) {
         if o.radar != nil { _ = cloud?.act(.radarPick(bush: -1)); return }
+        if let b = o.battle, inBattle, !duelOn, let cur = fight {            // 3.8.6: a turn's answer after the walker gave up on it, the fight still up: it plays
+            if case .beats = screen { return }                                                     // (one playing already: its own)
+            fight = o.end == nil ? b : nil; fightEnd = o.end                                        // its end too — never a fight the server has over left on screen
+            screen = (o.beats ?? []).isEmpty ? (o.end != nil ? endOfFight(b, now) : .battle(b, sel: 0)) : .beats(b, o.beats!, since: now, from: cur)
+            return
+        }
         if let b = o.battle, o.end == nil, !inBattle { fight = b; freshFight(); screen = (o.beats ?? []).isEmpty ? .battle(b, sel: 0) : .beats(b, o.beats!, since: now, from: b) }
+    }
+    /// 3.8.6: a fight the server no longer has (a new session ends it; it said 배틀 중이 아니에요): off the screen, said once.
+    func fightGone(_ now: Date) {
+        guard inBattle, !duelOn, raidThen == nil else { return }
+        fight = nil; fightEnd = nil; raidOn = false
+        screen = .say(["배틀이 끝났다", "(연결이 다시 이어짐)"], next: towerRun ? .tower(pick: nil) : .home, since: now)
     }
     /// What was going on stops here (a lock, another trainer): the server ends it with the session.
     func dropPlay() { waiting = nil; fight = nil; fightEnd = nil; chainNext = nil; growthThen = nil; towerRun = false; raidOn = false; raidThen = nil }
@@ -194,6 +209,7 @@ extension Walker {
     }
     /// 배틀 타워's ●: in (50 W) or, on a run, the next trainer.
     func towerNext(_ now: Date) {
+        guard calm else { return }                                                                 // (3.8.6: not the ● that ended 연승!)
         guard towerRun || state.watts >= Walk.towerFee else { screen = .say(["W가 부족하다", "(\(Walk.towerFee)W 필요)"], next: .tower(pick: nil), since: now); return }
         act(.tower, back: .tower(pick: nil), now, quiet: true) { [weak self] o, now in
             guard let self, let f = o.battle else { return nil }

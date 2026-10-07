@@ -482,7 +482,7 @@ extension Walker {
         c.tick(now)
         actTick(c, now)
         if c.teamNews || c.tradesNews { c.teamNews = false; c.tradesNews = false; refreshPane(now, force: true); host?.redraw(.all) }   // a new team list, offers, a box: the pages, the menu's tile
-        if let t = c.towerCarried { c.towerCarried = nil; towerRun = t }
+        if let t = c.towerCarried { c.towerCarried = nil; towerRun = t; fightGone(now) }   // (a login: a fight on is over at the server — 3.8.6)
         duelRecordTick(c); duelTick(c, now)                                                       // 12 §5: a live battle's polls and what they bring                          // a login: a tower run goes on (the server kept it) or none does
         if c.phase != cloudShown { showCloud(c.phase); cloudShown = c.phase; cloudAsked = nil }   // a new answer from the server: its question may come again
         cloudQuestion(c)

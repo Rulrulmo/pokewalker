@@ -4,7 +4,13 @@ import Foundation
 
 @MainActor final class Walker {
     var state: Walk
-    var screen = Screen.home
+    var screen = Screen.home { didSet { if case .say = oldValue, Walker.startsFights(screen) { calmAt = Date() } } }
+    /// 3.8.6: a message gone (a fight's end: n연승! · n 데미지!) onto a page whose ● or button starts a fight — for a moment that start isn't taken:
+    /// the ● or click that ended the message (or came just as it timed out) mustn't start the next fight.
+    var calmAt = Date.distantPast
+    static let calmFor: TimeInterval = 0.6
+    var calm: Bool { Date().timeIntervalSince(calmAt) >= Walker.calmFor }
+    static func startsFights(_ s: Screen) -> Bool { switch s { case .tower(nil), .raid: return true; case .squad(let q): return q.kind == .raid; default: return false } }
     weak var host: (any Host)?
     var lastInput = Date(), lastStep = Date.distantPast, lastSave = Date()
     var boxSort = 0                                                        // the 상자 grid's order: 번호순 / 레벨순 / V순 / 최근

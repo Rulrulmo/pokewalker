@@ -73,7 +73,7 @@ extension Walker {
     /// ● (and the pane's button): a fight (1칸), or once the team beat it a ball. ◀ ▶: the tabs.
     func raidPress(_ k: Int, _ tab: Int, _ now: Date) {
         if k != 1 { screen = .raid(tab: 1 - tab); return }
-        guard let r = cloud?.raid else { return }
+        guard let r = cloud?.raid, calm else { return }                                           // (3.8.6: not the ● that ended n 데미지!)
         if r.hpLeft > 0 {
             guard raidCells > 0 else { screen = .say(["파워가 부족하다", "(\(Engine.raidPowerCost.formatted())걸음마다 1칸)"], next: .raid(tab: tab), since: now); return }
             raidPick(now)                                                                           // 3.8: who goes first (1–3)

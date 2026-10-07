@@ -147,6 +147,7 @@ extension Walker {
         case .duelParty:
             act(.duelParty(uids: s.picked), back: .squad(s), now) { _, now in .say(["대전 파티를", "정했다!"], next: .duel(.hub(tab: 0, sel: 0)), since: now) }
         case .raid:
+            guard calm else { return }
             raidPicked = s.picked; raidFight(0, party: s.picked, back: .squad(s), now)
         case .duelPick(let id):
             act(.duelPick(id: id, slots: s.picked), back: .squad(s), now) { [weak self] o, now in

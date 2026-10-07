@@ -71,10 +71,29 @@ import AppKit
     fightOn(tv, near, tower: true); tv.screen = .moves(near, sel: 0); tv.press(1); drain(tv); playOut(tv)
     let won = says(tv) == ["1연승!", "+1 BP"] && tv.state.towerStreak == 1 && tv.state.bp == 1 && tv.towerRun
     tv.press(1); let lobby: Bool = { if case .tower(nil) = tv.screen { return true }; return false }()
-    tv.press(1); drain(tv); let nextFree = tv.inBattle && tv.state.watts == 50
+    tv.press(1); drain(tv); let calmHeld = !tv.inBattle                                            // 3.8.6: the ● right after 연승! doesn't start the next one
+    tv.calmAt = .distantPast; tv.press(1); drain(tv); let nextFree = tv.inBattle && tv.state.watts == 50
     if let f = tv.fight { tv.screen = .battle(f, sel: tv.battleMenu(f).firstIndex(of: "기권")!); tv.press(1); tv.press(2); tv.press(1); drain(tv) }
-    check(paid && won && lobby && nextFree && says(tv) == ["기권했다", "1연승에서 끝"] && !tv.towerRun && tv.state.towerStreak == 0 && !tv.inBattle,
-          "3.0 tower: in for 50 W; a win → 1연승! +1 BP, the lobby; the next trainer free; 기권 ends the run", "\(paid) \(won) \(lobby) \(nextFree) \(says(tv))")
+    check(paid && won && lobby && calmHeld && nextFree && says(tv) == ["기권했다", "1연승에서 끝"] && !tv.towerRun && tv.state.towerStreak == 0 && !tv.inBattle,
+          "3.0 tower: in for 50 W; a win → 1연승! +1 BP, the lobby (3.8.6: a ● at once there is let go); the next trainer free; 기권 ends the run", "\(paid) \(won) \(lobby) \(calmHeld) \(nextFree) \(says(tv))")
+    // 3.8.6: a fight the server no longer has never stays on screen — a login mid-fight (the server ends it), its 배틀 중이 아니에요, a late end
+    let gz = online({ var s = Walk(); s.companion = strong; return s }(), rng: 5)
+    var zb = Battle(wild: Mon(dex: 16, level: 3, female: false), party: [gz.state.companion])
+    fightOn(gz, zb, tower: false); gz.cloud!.towerCarried = false; gz.tick(Date())
+    let afterLogin = !gz.inBattle && gz.fight == nil && says(gz).first == "배틀이 끝났다"
+    let (gsv, gkey) = server(gz); gsv.rows[gkey]?.play.battle = nil                               // (the server has none now)
+    zb = Battle(wild: Mon(dex: 16, level: 3, female: false), party: [gz.state.companion]); gz.fight = zb; gz.screen = .moves(zb, sel: 0); gz.press(1); drain(gz)
+    let refused = !gz.inBattle && gz.fight == nil && says(gz).first == "배틀이 끝났다"
+    zb = Battle(wild: Mon(dex: 16, level: 3, female: false), party: [gz.state.companion]); gz.fight = zb; gz.screen = .battle(zb, sel: 0)
+    var lateEnd = Outcome(); lateEnd.battle = zb; lateEnd.end = BattleEnd(result: "won"); gz.late(lateEnd, Date())
+    check(afterLogin && refused && !gz.inBattle && gz.fight == nil, "3.8.6: a fight the server no longer has leaves the screen — after a login mid-fight, on its 배틀 중이 아니에요, when the end comes late",
+          "\(afterLogin) \(refused) \(gz.screen)")
+    // 3.8.6: a click on the lobby's button under a fight's end message ends the message only — no next fight from that click
+    let tc = online({ var s = Walk(); s.watts = 100; s.companion = strong; return s }(), rng: 4)
+    tc.towerRun = true; tc.screen = .say(["1연승!", "+1 BP"], next: .tower(pick: nil), since: Date()); tc.pageTap(5400); drain(tc)
+    let clickedThrough: Bool = { if case .tower(nil) = tc.screen { return !tc.inBattle }; return false }()
+    tc.calmAt = .distantPast; tc.pageTap(5400); drain(tc)
+    check(clickedThrough && tc.inBattle, "3.8.6: a click on 다음 상대 under 연승! ends the message, not the next fight from it; a click after starts it", "\(clickedThrough) \(tc.inBattle)")
 
     // the bag: a candy that levels into an evolution, a vitamin, a 진화의 돌, 전부 팔기; 중복 놓아주기
     var rat = Mon(dex: 19, level: 19, female: false); rat.exp = expTable[growthRate[19]][19]

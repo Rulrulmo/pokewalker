@@ -285,7 +285,7 @@ import Foundation
     var cleared = false, tries = 0, sent: [Int] = []
     while !cleared, tries < 3, wa.raidCells > 0, (ca.raid?.hpLeft ?? 0) > 0 {                       // A's three strongest (picked), until it's down
         tries += 1
-        wa.screen = .raid(tab: 0); wa.pageTap(7010)
+        wa.screen = .raid(tab: 0); wa.calmAt = .distantPast; wa.pageTap(7010)
         if case .squad(var q) = wa.screen {
             let best = wa.squadKeys(q).sorted { (wa.squadMon(q, $0)?.level ?? 0) > (wa.squadMon(q, $1)?.level ?? 0) }
             q.picked = Array(best.prefix(3)); wa.screen = .squad(q); sent = q.picked.compactMap { wa.squadMon(q, $0)?.dex }
@@ -305,7 +305,7 @@ import Foundation
     var tossed = 0, caught = false, rewarded = false
     while tossed < 6, !caught {
         guard let r = ca.raid, r.mine.canCatch, (r.mine.balls ?? 1) > 0 else { break }
-        wa.screen = .raid(tab: 0); wa.pageTap(7010); run(15) { wa.waiting == nil && idle(ca) }
+        wa.screen = .raid(tab: 0); wa.calmAt = .distantPast; wa.pageTap(7010); run(15) { wa.waiting == nil && idle(ca) }
         guard case .beats = wa.screen else { break }
         tossed += 1; run(8) { if case .beats = wa.screen { return false }; return true }
         caught = says(wa).first?.hasSuffix("잡았다!") == true
