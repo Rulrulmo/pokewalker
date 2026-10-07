@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<!-- The README's picture (docs/images/hero.png): the download page's top (server/Sources/PokeCore/ServerPage.swift: pageFonts, pageStyle's hero,
+     the hero's HTML) without its buttons and version line; home.png and battle.png are Mac renders (tools/hero/make.sh puts them here). -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2/dist/galmuri.css">
+<style>
+    :root { --red: #d62e2a; --band: #22252d; --bg: #fbfaf7; --line: #e8e5dd; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: #1c1d21; word-break: keep-all;
+        font: 16px/1.65 "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif; }
+    .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+    .pixel { font-family: Galmuri11, "Pretendard Variable", Pretendard, monospace; font-weight: 400; }
+    .ball { flex: none; width: 30px; height: 30px; border-radius: 50%; border: 3px solid var(--band); position: relative;
+        background: linear-gradient(#fff 0 43%, var(--band) 43% 57%, #fff 57%); }
+    .ball::after { content: ""; position: absolute; inset: 0; margin: auto; width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 3px solid var(--band); }
+    .brand { display: flex; align-items: center; gap: 12px; font-size: 21px; letter-spacing: .3px; }
+    .hero { background: var(--red); color: #fff; position: relative; overflow-x: clip; }
+    .hero::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+        background-image: radial-gradient(rgba(255, 255, 255, .13) 1.3px, transparent 1.5px); background-size: 18px 18px; }
+    .hero-in { position: relative; display: grid; grid-template-columns: 1.1fr .9fr; gap: 32px; align-items: center; padding-top: 48px; padding-bottom: 36px; }
+    .hero h1 { font-size: 52px; line-height: 1.18; font-weight: 800; letter-spacing: -.025em; margin: 28px 0 16px; }
+    .lede { font-size: 17px; line-height: 1.7; margin: 0; max-width: 31em; color: rgba(255, 255, 255, .92); }
+    .shots { position: relative; height: 430px; margin-bottom: -150px; z-index: 2; }
+    .shots img { position: absolute; top: 0; left: 50%; width: 236px; height: auto; filter: drop-shadow(0 20px 28px rgba(0, 0, 0, .32)); }
+    .shots .back { top: 60px; transform: translateX(-112%) rotate(-7deg); }
+    .shots .front { transform: translateX(-14%) rotate(4deg); }
+    .band { height: 22px; background: var(--band); position: relative; }
+    .band::after { content: ""; position: absolute; left: 50%; top: 50%; width: 62px; height: 62px; transform: translate(-50%, -50%); border-radius: 50%;
+        background: var(--bg); border: 8px solid var(--band); box-shadow: inset 0 0 0 5px var(--bg), inset 0 0 0 8px var(--line); }
+    .below { height: 160px; }
+</style></head>
+<body>
+<header class="hero"><div class="wrap hero-in"><div><div class="brand pixel"><span class="ball"></span>PokeWalker</div>
+<h1>일하는 동안,<br>포켓몬과 함께 걸어요</h1>
+<p class="lede">키보드를 누르고 마우스를 클릭할 때마다 한 걸음. 화면 구석의 몬스터볼 카드 안에서 동료가 걷고, 모은 W로 포켓몬을 만나요. HGSS의 포켓워커를 Mac과 Windows 데스크톱으로 옮겨 왔어요.</p>
+</div><div class="shots"><img class="back" src="battle.png" alt=""><img class="front" src="home.png" alt=""></div></div></header>
+<div class="band"></div><div class="below"></div>
+</body></html>

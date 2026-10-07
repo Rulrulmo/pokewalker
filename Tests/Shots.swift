@@ -271,6 +271,22 @@ import AppKit
     fsrv.friendAsks[meK] = Set(["현우", "유나"] + (1...5).map { "신청자\($0)" })
     fme.cloud!.teamDue = true; drain(fme); drain(fme)
     take("friends_requests_full", fme) { v in v.screen = .team(sel: 0, tab: 4, card: false) }
+    // the README's picture (tools/hero/): the download page's two — home and a wild battle — set up as WinRender's home and battle_menu
+    func heroBase() -> Walk {
+        var s = Walk(), r = Seeded(s: 3)
+        s.companion = Mon.wild(25, level: 30, &r); s.caught = [Mon.wild(16, level: 8, &r), Mon.wild(41, level: 9, &r)]
+        s.box = [Mon.wild(133, level: 20, &r), Mon.wild(147, level: 25, shiny: true, &r), Mon.wild(4, level: 12, perfect: 3, &r), Mon.wild(1, level: 5, &r), Mon.wild(95, level: 31, &r)]
+        s.items = ["상처약", "기력의조각"]; s.bag = ["이상한사탕", "금구슬", "타우린", "하이퍼볼", "천둥의돌", "라즈열매", "은색병뚜껑", "좋은상처약"]
+        s.watts = 1234; s.earned = 2500; s.bp = 40; s.weather = .sunny; s.egg = Egg(dex: 175, left: 300); s.towerBest = 5
+        s.total = 5250; s.today = 1234; s.history = [3000, 0, 4521, 812, 2210]; s.seen = [19, 150, 243]; s.dex()
+        return s
+    }
+    let heroW = Walker(state: heroBase()); heroW.persist = false; heroW.sideOn = true; heroW.lastStep = .distantPast
+    take("hero_home", heroW) { v in v.screen = .home }
+    take("hero_battle", heroW) { v in
+        var r = Seeded(s: 5), b = Battle(wild: Mon.wild(6, level: 30, &r), companion: v.state.companion, chain: 0); _ = b.begin(weather: nil, &r)
+        v.animOn = ("foe 0", 6, Date().addingTimeInterval(-60)); v.fight = b; v.screen = .battle(b, sel: 1)
+    }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
     return n
