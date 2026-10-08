@@ -555,6 +555,12 @@ import Foundation
     lists(wa, ca); lists(wb, cb)
     check(wa.isFriend(b) && wb.isFriend(a), "live: friends (\(wa.teamRows(0).count), \(wb.teamRows(0).count))")
 
+    // 3.9 (docs/plans/15 §3.1): the back-pay — A's best streak mailed 7연승's reward on an act; the 우편함 takes it (a rerun: taken before)
+    if let t = wa.mails.first(where: { $0.title == "7연승 달성 보상" && !$0.claimed }) {
+        let c0 = wa.state.count("이상한사탕"); wa.screen = .mail(.open(id: t.id)); wa.pageTap(8840); settle(wa, ca); let took = says(wa)
+        check(took.first?.hasPrefix("이상한사탕 ×3") == true && wa.state.count("이상한사탕") == c0 + 3, "live 3.9 우편함: 7연승 보상 (소급) — \(took), 사탕 \(c0) → \(wa.state.count("이상한사탕"))")
+    } else { check(wa.mails.contains { $0.title == "7연승 달성 보상" } && (wa.state.towerRewards ?? []).contains(7), "live 3.9 우편함: 7연승 보상 mailed (taken before) — \(wa.mails.map(\.title)) \(String(describing: wa.state.towerRewards))") }
+
     // ① the 게시판: a 한마디, an offer held out of the box, the red dot, seen on opening, accepted → B's 받기
     wa.openFeature("교환"); settle(wa, ca); lists(wa, ca); wa.pageTap(8030)
     let ghost = wa.myTradeBox.first { $0.dex == 93 } ?? wa.myTradeBox.first { $0.dex != 133 }!, kadabra = wb.myTradeBox.first { $0.dex == 64 } ?? wb.myTradeBox[0]
