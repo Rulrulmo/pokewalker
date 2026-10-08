@@ -349,14 +349,20 @@ extension SaveDB { func squeezeRaid(_ week: String, to total: Int) throws { try 
     let done = try await go("앨리스", a, 6, .marketAccept(bid: pick.id), at: 77)
     guard case .traded(post.id, "보브", let gave, let got)? = done.out.news.first else { Issue.record("\(done.out.news)"); return }
     #expect(gave.dex == 25 && got.dex == 65 && got.ot == "보브" && done.walk?.box.map(\.dex) == [16, 65])
-    let bob = try await go("보브", b, 4, .steps, at: 78)
-    #expect(bob.walk?.box.map(\.dex) == [25] && bob.out.news.contains { if case .traded(_, "앨리스", let g, let m) = $0 { return g.dex == 64 && m.dex == 25 }; return false })
+    func mails(_ who: String, _ s: String) async throws -> [Mail] {
+        try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: who, session: s), now: base.addingTimeInterval(100)).body).mails
+    }
+    let bob = try await go("보브", b, 4, .steps, at: 78)                                              // 3.9: nothing into a 3.5 app's save — it's mail now
+    #expect(bob.walk == nil && !bob.out.news.contains { if case .traded = $0 { return true }; return false })
+    #expect(try await mails("보브", b).map { "\($0.kind) \($0.gifts)" }.first?.hasPrefix("trade") == true)
     let carol = try await go("캐럴", c, 3, .steps, at: 79)
-    #expect(carol.out.news == [.tradeClosed(id: post.id, with: "앨리스", why: "다른 제안이 선택됐어요")] && carol.walk?.box.map(\.dex) == [133])   // back (a 3.5 app: at once)
+    #expect(carol.out.news == [.tradeClosed(id: post.id, with: "앨리스", why: "다른 제안이 선택됐어요")] && carol.walk == nil)
+    #expect(try await mails("캐럴", c).first?.kind == "returned")
     let cb = try await board("캐럴", c)
-    #expect(cb.listings.isEmpty && cb.myBids.isEmpty)
+    #expect(cb.listings.isEmpty && cb.myBids.isEmpty && cb.claims == [])
 
-    // taken down; out of time
+    // taken down; out of time (캐럴 has her 이브이 back, as if claimed on 3.9)
+    try await setWalk(db, "캐럴") { $0.box = [mon(133, 1_000_001)] }
     #expect(try await go("캐럴", c, 4, .marketList(give: 1_000_001, wish: []), at: 80).out.cannot == nil)
     let p2 = try #require(try await board("앨리스", a).listings.first).id
     #expect(try await go("앨리스", a, 7, .marketBid(listing: p2, give: 1_000_002), at: 81).out.cannot == nil)
@@ -477,7 +483,10 @@ extension SaveDB { func monState(_ key: String, _ uid: Int) throws -> String? { 
     let sess = ["앨리스": a, "보브": b, "캐럴": c]
     func go(_ who: String, _ x: Act) async throws -> ActReply {
         t += 1; defer { seq[who]! += 1 }
-        return try reply(await db.act(ActReq(id: who, session: sess[who]!, seq: seq[who]!, act: x, app: "3.8"), now: base.addingTimeInterval(t)))
+        return try reply(await db.act(ActReq(id: who, session: sess[who]!, seq: seq[who]!, act: x, app: "3.9"), now: base.addingTimeInterval(t)))
+    }
+    func mails(_ who: String) async throws -> [Mail] {
+        try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: who, session: sess[who]!), now: base.addingTimeInterval(t)).body).mails
     }
     func board(_ who: String, seen: Int? = nil) async throws -> MarketReply {
         try JSONDecoder().decode(MarketReply.self, from: await db.market(MarketReq(id: who, session: sess[who]!, seen: seen), now: base.addingTimeInterval(t)).body)
@@ -496,22 +505,23 @@ extension SaveDB { func monState(_ key: String, _ uid: Int) throws -> String? { 
     let done = try await go("앨리스", .marketAccept(bid: pick.id))
     guard case .traded(post.id, "보브", _, let got)? = done.out.news.first else { Issue.record("\(done.out.news)"); return }
     #expect(got.dex == 65 && done.walk?.box.map(\.dex) == [16, 65])                                 // 윤겔라 → 후딘, at once for the poster
-    // the bidder: nothing into its save until it claims
+    // the bidder: nothing into its save until it claims — from its 우편함 (3.9, plan 15)
     let bob = try await go("보브", .steps)
-    #expect(bob.walk == nil && bob.out.news.contains { if case .claimReady(_, "traded") = $0 { return true }; return false })
-    let bc = try #require(try await board("보브").claims?.first)
-    #expect(bc.kind == "traded" && bc.from == "앨리스" && bc.mon.dex == 61)
-    let claimed = try await go("보브", .claim(id: bc.id))
+    #expect(bob.walk == nil && bob.out.news.contains { if case .mailNew(_, "교환으로 받은 포켓몬") = $0 { return true }; return false })
+    let bc = try #require(try await mails("보브").first)
+    #expect(bc.kind == "trade" && bc.from == "앨리스" && bc.gifts.first.map { if case .mon(let m, _) = $0 { return m.dex == 61 }; return false } == true)
+    #expect(try await go("보브", .claim(id: bc.id)).out.cannot == "우편함에서 받아요\n(3.9로 업데이트)")
+    let claimed = try await go("보브", .mailClaim(id: bc.id))
     #expect(claimed.out.cannot == nil && claimed.out.mon?.dex == 186 && claimed.out.mon?.item == nil && claimed.out.mon?.ot == "앨리스")   // 왕의징표석 held: 왕구리
     #expect(claimed.walk?.box.map(\.dex) == [186] && claimed.out.news.contains { if case .evolve(_, 61, 186, _) = $0 { return true }; return false })
-    #expect(try await go("보브", .claim(id: bc.id)).out.cannot == "이미 받았어요")
+    #expect(try await go("보브", .mailClaim(id: bc.id)).out.cannot == "이미 받았어요")
     // the other offer: back through the 받기 함, never let go in the ledger meanwhile
     _ = try await go("캐럴", .steps)
     #expect(try await db.monState("캐럴", 1_000_001) == "kept")
-    let cc = try #require(try await board("캐럴").claims?.first)
-    #expect(cc.kind == "returned" && cc.mon.dex == 133 && cc.note == "다른 제안이 선택됐어요")
-    #expect(try await go("캐럴", .claim(id: cc.id)).walk?.box.map(\.dex) == [133])
-    #expect(try await board("캐럴").claims == [])
+    let cc = try #require(try await mails("캐럴").first)
+    #expect(cc.kind == "returned" && cc.body?.hasSuffix("다른 제안이 선택됐어요") == true && !cc.claimed)
+    #expect(try await go("캐럴", .mailClaim(id: cc.id)).walk?.box.map(\.dex) == [133])
+    #expect(try await mails("캐럴").first?.claimed == true)
     // my own: taken down, straight back
     _ = try await go("앨리스", .marketList(give: 1_000_002, wish: []))
     let p2 = try #require(try await board("앨리스").listings.first { $0.mine }).id
@@ -521,7 +531,7 @@ extension SaveDB { func monState(_ key: String, _ uid: Int) throws -> String? { 
     let p3 = try #require(try await board("캐럴").listings.first).id
     _ = try await go("캐럴", .marketBid(listing: p3, give: 1_000_001))
     _ = try await db.delete("앨리스", now: 1)
-    #expect(try await board("캐럴").claims?.map(\.mon.dex) == [133])
+    #expect(try await mails("캐럴").first.map { !$0.claimed && $0.kind == "returned" } == true)
 }
 
 @Test func visitsRaiseAndPay() async throws {                                                       // 3.8 (docs/plans/14 §3): 맡겨 키우기
@@ -553,20 +563,22 @@ extension SaveDB { func monState(_ key: String, _ uid: Int) throws -> String? { 
     #expect(host.visits?.guests.first?.steps == 4500 && host.visits?.guests.first?.mon.dex == 16 && owner.visits?.away?.host == "보브")
     _ = try await go("앨리스", .steps, wait: 60)
     #expect(try await db.monState("앨리스", 1_000_001) == "kept")                                      // away, not let go
-    // 5 hours on: home through 앨리스's 받기 함; 보브 gets 2 BP (4,500 steps)
+    // 5 hours on: home through 앨리스's 우편함 (3.9); 보브 gets 2 BP (4,500 steps)
     let paid = try await go("보브", .steps, wait: 5 * 3600)
     #expect(paid.out.news.contains(.visitDone(owner: "앨리스", dex: 16, steps: 4500, bp: 2)) && paid.walk?.bp == 2)
-    let ownerBoard = try JSONDecoder().decode(MarketReply.self, from: await db.market(MarketReq(id: "앨리스", session: a), now: base.addingTimeInterval(t)).body)
-    let home = try #require(ownerBoard.claims?.first)
-    #expect(home.kind == "visit" && home.note == "4,500걸음 키워 줬어요")
-    let back = try await go("앨리스", .claim(id: home.id))
+    let box = try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: "앨리스", session: a), now: base.addingTimeInterval(t)).body)
+    let home = try #require(box.mails.first)
+    #expect(home.kind == "visit" && home.body == "보브가 4,500걸음 키워 줬어요" && box.unread == 1)
+    #expect(try await go("앨리스", .mailClaim(id: home.id)).out.cannot == "우편함은 3.9부터예요")                 // (a 3.8 app)
+    let back = try await go("앨리스", .mailClaim(id: home.id), app: "3.9")
     #expect(back.out.cannot == nil && (back.out.mon?.level ?? 0) > 10 && back.walk?.box.first?.uid == 1_000_001)
-    // ended early by the host; an old app gets its 받기 함 by itself
+    // ended early by the host; an old app gets nothing by itself (the user: update to claim)
     _ = try await go("앨리스", .visitSend(to: "보브", uid: 1_000_001))
     let v = try #require(try await team("보브").visits?.guests.first)
     #expect(try await go("보브", .visitEnd(id: v.id)).out.news.contains(.visitDone(owner: "앨리스", dex: v.mon.dex, steps: 0, bp: 0)))
     let old = try await go("앨리스", .steps, app: "3.7")
-    #expect(old.walk?.box.contains { $0.uid == 1_000_001 } == true && !old.out.news.contains { if case .claimReady = $0 { return true }; return false })
+    #expect(old.walk == nil && !old.out.news.contains { if case .mailNew = $0 { return true }; return false })
+    #expect(try await db.monState("앨리스", 1_000_001) == "kept")                                      // in the 우편함: not let go
 }
 
 @Test func viewAllTab() async throws {                                                              // 3.8 (docs/plans/14 §4): VIEW_ALL's 전체
@@ -654,4 +666,100 @@ extension SaveDB { func monState(_ key: String, _ uid: Int) throws -> String? { 
     let s2 = try #require(string(l, "session"))
     let after = try reply(await db.act(ActReq(id: "앨리스", session: s2, seq: 1, act: .battle(cmd: .fight(slot: 0)), app: "3.8.5"), now: base.addingTimeInterval(t + 1)))
     #expect(after.out.cannot == "배틀 중이 아니에요" && after.out.battle == nil)
+}
+
+// MARK: - 3.9 (docs/plans/15): the 우편함, the tower's streak rewards
+extension SaveDB {
+    func rawClaim(_ key: String, _ m: Mon, kind: String) throws {
+        let t = String(decoding: try JSONEncoder().encode(m), as: UTF8.self)
+        try db.rows("INSERT INTO claims (key, kind, from_name, mon, steps, at) VALUES (:k, :kind, '보브', :m, 0, 1)", ["k": .text(key), "kind": .text(kind), "m": .text(t)])
+    }
+    func backdateMail(_ key: String, by s: Int) throws {
+        try db.rows("UPDATE mail SET at = at - :s, read_at = read_at - :s, claimed_at = claimed_at - :s WHERE key = :k", ["s": .int(s), "k": .text(key)])
+    }
+}
+
+@Test func mailBox() async throws {
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스"), z = try await newTrainer(db, "zz123456")
+    var seq = 1, t = 60.0
+    func go(_ x: Act, app: String = "3.9") async throws -> ActReply {
+        t += 1; defer { seq += 1 }
+        return try reply(await db.act(ActReq(id: "앨리스", session: a, seq: seq, act: x, app: app), now: base.addingTimeInterval(t)))
+    }
+    func box(read: [Int]? = nil) async throws -> MailReply {
+        try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: "앨리스", session: a, read: read), now: base.addingTimeInterval(t)).body)
+    }
+    _ = try await go(.steps); _ = await act(db, "zz123456", z, 1, .steps, at: 61)
+    let now = Int(base.timeIntervalSince1970 + t)
+    #expect(try await db.adminMail("--all", title: "공지", body: "안녕", gifts: [], now: now) == "mailed 1 trainer(s): 공지")      // test IDs left out
+    _ = try await db.adminMail("앨리스", title: "선물", body: nil, gifts: [.items(name: "이상한사탕", count: 2), .bp(amount: 5), .watts(amount: 100), .title(name: "개척자"), .deco(kind: "silver")], now: now)
+    _ = try await db.sendMail("앨리스", kind: "tower", from: "배틀 타워", title: "고르기", gifts: Tower.rewards[1].gifts, now: now)
+    var b = try await box()
+    #expect(b.mails.map(\.title) == ["고르기", "선물", "공지"] && b.unread == 3)                         // gifts waiting first
+    b = try await box(read: [b.mails[2].id])
+    #expect(b.unread == 2 && b.mails[2].read)
+    #expect(try await go(.mailClaim(id: b.mails[2].id)).out.cannot == "받을 것이 없는\n우편이에요")
+    let gift = try await go(.mailClaim(id: b.mails[1].id))
+    let w = try #require(gift.walk)
+    #expect(gift.out.cannot == nil && w.bag.filter { $0 == "이상한사탕" }.count == 2 && w.bp == 5 && w.watts >= 100 && w.titles == ["개척자"] && w.deco == "silver")
+    #expect(try await go(.mailClaim(id: b.mails[1].id)).out.cannot == "이미 받았어요")
+    #expect(try await go(.mailClaimAll).out.cannot == "받을 우편이\n없어요")                              // the pick isn't claimed by 모두 받기
+    #expect(try await go(.mailClaim(id: b.mails[0].id)).out.cannot == "하나를 골라 주세요")
+    #expect(try await go(.mailClaim(id: b.mails[0].id, pick: 9)).out.cannot == "하나를 골라 주세요")
+    #expect(try await go(.mailClaim(id: b.mails[0].id, pick: 2)).walk?.bag.contains("구애스카프") == true)
+    #expect(try await box().unread == 0)
+    // kept: claimed and read notices 30 days, a gift never
+    _ = try await db.sendMail("앨리스", kind: "admin", from: "운영자", title: "안 받은 선물", gifts: [.bp(amount: 1)], now: now)
+    try await db.backdateMail("앨리스", by: 31 * 86400)
+    #expect(try await box().mails.map(\.title) == ["안 받은 선물"])
+}
+
+@Test func towerStreakRewards() async throws {
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스")
+    var seq = 1, t = 60.0
+    func go(_ x: Act, app: String = "3.9") async throws -> ActReply {
+        t += 1; defer { seq += 1 }
+        return try reply(await db.act(ActReq(id: "앨리스", session: a, seq: seq, act: x, app: app), now: base.addingTimeInterval(t)))
+    }
+    func box() async throws -> [Mail] {
+        try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: "앨리스", session: a), now: base.addingTimeInterval(t)).body).mails
+    }
+    _ = try await go(.steps)
+    try await setWalk(db, "앨리스") { $0.towerBest = 26 }                                              // the back-pay: past 7, 14, 21
+    let first = try await go(.steps, app: "3.8.6")                                                     // (an old app: the mail waits, unseen)
+    #expect(first.walk?.towerRewards == [7, 14, 21] && !first.out.news.contains { if case .mailNew = $0 { return true }; return false })
+    #expect(try await box().map(\.title) == ["21연승 달성 보상", "14연승 달성 보상", "7연승 달성 보상"])
+    _ = try await go(.steps)
+    #expect(try await box().count == 3)                                                                // once
+    try await setWalk(db, "앨리스") { $0.towerBest = 100 }
+    let all = try await go(.steps)
+    #expect(all.walk?.towerRewards == [7, 14, 21, 28, 35, 50, 70, 100] && all.out.news.filter { if case .mailNew = $0 { return true }; return false }.count == 5)
+    let mails = try await box()
+    for m in mails where !m.picks { _ = try await go(.mailClaim(id: m.id)) }
+    let top = try #require(mails.first { $0.title == "100연승 달성 보상" })
+    let legend = try await go(.mailClaim(id: top.id, pick: Tower.legends.firstIndex(of: 384)!))
+    #expect(legend.out.mon?.dex == 384 && legend.out.mon?.shiny == true && legend.out.mon?.level == 70 && (legend.out.mon?.perfectIVs ?? 0) >= 4)
+    let w = try #require(legend.walk)
+    #expect(w.deco == "gold" && w.titles == ["타워 타이쿤"] && w.bp == 150 && w.bag.filter { $0 == "금색병뚜껑" }.count == 2 && w.bag.contains("은색병뚜껑"))
+    #expect(try await db.monState("앨리스", legend.out.mon?.uid ?? 0) == "kept")
+    let card = try JSONDecoder().decode(TeamReply.self, from: await db.team(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(t)).body).cards.first
+    #expect(card?.title == "타워 타이쿤" && card?.deco == "gold")
+}
+
+@Test func claimsBecomeMail() async throws {                                                         // 3.8's 받기 함, waiting at the update: mail
+    let path = FileManager.default.temporaryDirectory.appendingPathComponent("pokeserver-test-\(UUID().uuidString).db").path
+    defer { try? FileManager.default.removeItem(atPath: path) }
+    var db = try SaveDB(path: path, create: true)
+    let a = try await newTrainer(db, "앨리스")
+    _ = await act(db, "앨리스", a, 1, .steps, at: 60)
+    var m = Mon(dex: 133, level: 10, female: false); m.uid = 1_000_001
+    try await db.rawClaim("앨리스", m, kind: "traded")
+    db = try SaveDB(path: path)                                                                         // the 3.9 server starts
+    let box = try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: "앨리스", session: a), now: base.addingTimeInterval(70)).body)
+    #expect(box.mails.count == 1 && box.mails.first?.kind == "trade" && box.mails.first?.from == "보브")
+    #expect(box.mails.first?.gifts == [.mon(mon: m, steps: 0)])
+    db = try SaveDB(path: path)
+    #expect(try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: "앨리스", session: a), now: base.addingTimeInterval(71)).body).mails.count == 1)   // once
 }

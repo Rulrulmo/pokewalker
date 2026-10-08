@@ -29,6 +29,7 @@ enum Act: Codable, Equatable {
     case visitSend(to: String, uid: Int), visitEnd(id: Int)      // 3.8 (14 §3): 맡겨 키우기 — send one to a friend walking now; end it early (either side)
     case duelParty(uids: [Int])                                  // 3.8 (14 §5.1): the 대전 파티, 3–6 of ours
     case duelQueue, duelQueueCancel, duelPick(id: Int, slots: [Int])   // 3.8 (14 §5.2–3): random matching; the 3 of my 6 for this duel (in order)
+    case mailClaim(id: Int, pick: Int? = nil), mailClaimAll      // 3.9 (docs/plans/15 §2): a mail's gifts (pick: which of a 고르기); every one without a pick
 }
 enum BattleCmd: Codable, Equatable { case fight(slot: Int), ball, item(name: String, on: Int? = nil), swap(to: Int), replace(to: Int), run, forfeit }   // item on: a party slot (nil = the one out; 3.6)
 /// Pokémon by uid (their places move): 함께 걷기, 상자로, 워커로, 놓아주기, 중복 놓아주기, 기술 바꾸기, the waiting move (nil = 배우지 않는다), 통신 진화.
@@ -56,6 +57,7 @@ enum News: Codable, Equatable {
     case claimReady(id: Int, kind: String)                                                  // 3.8 (14 §2.2): something in the 받기 함 (traded · returned · visit)
     case visitCame(id: Int, owner: String, dex: Int, shiny: Bool)                           // 3.8 (14 §3): a friend's Pokémon to raise for 5 hours
     case visitDone(owner: String, dex: Int, steps: Int, bp: Int)                            // 3.8: a guest went home; what it earned us
+    case mailNew(id: Int, title: String)                                                    // 3.9: a mail came (the 우편함's dot)
 }
 struct RadarShown: Codable, Equatable { var bush: Int, window: Double, chain: Int }
 /// result: caught · won · lost · fled (it got away) · ran (we did) · forfeit. chain: a wild fight's (0 = over); streak · bp: the tower's.

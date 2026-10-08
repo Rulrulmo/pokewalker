@@ -10,6 +10,7 @@ struct TeamCard: Codable, Equatable {
     var duelWins = 0, duelLosses = 0                                   // 실시간 대전 (12 §5)
     var course: Int
     var idle: Int                                                      // seconds since its last act (under 60: walking now — the app sends steps every 15 s)
+    var title: String? = nil, deco: String? = nil                      // 3.9 (docs/plans/15 §3.2): the newest 칭호, the card's 장식
 
     init(name: String, walk w: Walk, today: Int, week: Int, idle: Int) {
         self.name = name; companion = w.companion; walker = w.caught
@@ -17,6 +18,7 @@ struct TeamCard: Codable, Equatable {
         self.today = today; self.week = week; total = w.total
         towerBest = w.towerBest ?? 0; bestChain = w.bestChain ?? 0; bp = w.bp ?? 0; course = w.course; self.idle = idle
         duelWins = w.duelWins ?? 0; duelLosses = w.duelLosses ?? 0
+        title = w.titles?.last; deco = w.deco
     }
 }
 struct TeamReq: Codable, Equatable { var id, session: String }              // /v2/team and /v2/trades
@@ -65,6 +67,7 @@ struct DuelView: Codable, Equatable {
     var battle: Battle? = nil; var beats: [Beat] = []; var turn = 0; var need: String? = nil; var deadline: Int? = nil
     var result: DuelResult? = nil; var version = 0
     var parties: DuelParties? = nil                                    // 3.8 (14 §5.3): state picking — my 6, theirs as species only
+    var opponentTitle: String? = nil                                   // 3.9 (docs/plans/15 §3.2): its 칭호, by its name
 }
 struct DuelMon: Codable, Equatable { var dex: Int; var female: Bool; var shiny: Bool }
 struct DuelParties: Codable, Equatable { var mine: [Mon]; var theirs: [DuelMon]; var picked: [Int]?; var theyPicked: Bool }

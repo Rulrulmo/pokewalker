@@ -41,6 +41,8 @@ struct Walk: Codable, Equatable {
     var raidPower: Int? = nil                                          // the co-op raid's power: steps banked, Engine.raidPowerMax at most (3.8: 10,000 = 1칸, 30,000 at most)
     var duelWins: Int? = nil, duelLosses: Int? = nil                   // 실시간 대전 (12 §5): the record
     var duelParty: [Int]? = nil                                        // 3.8 (14 §5.1): the 대전 파티's uids, 3–6 (one let go or traded drops out)
+    var towerRewards: [Int]? = nil                                     // 3.9 (docs/plans/15 §3): the streak rewards mailed (the lobby's strip)
+    var titles: [String]? = nil, deco: String? = nil                   // 3.9: 칭호 earned; 트레이너 카드 장식 "silver" · "gold" (the better kept)
 
     var here: Course { courses[course] }
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.

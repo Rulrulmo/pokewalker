@@ -52,7 +52,8 @@ func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?, release: 
     post(router, "/v2/trades", appKey: appKey, id: { (r: TeamReq) in r.id }) { r in await db.trades(r, now: Date()) }   // plan 12 M2: ServerTrade.swift
     post(router, "/v2/box", appKey: appKey, id: { (r: BoxReq) in r.id }) { r in await db.box(r, now: Date()) }
     post(router, "/v2/raid", appKey: appKey, id: { (r: TeamReq) in r.id }) { r in await db.raidLobby(r, now: Date()) }   // plan 12 M3: ServerRaid.swift
-    post(router, "/v2/market", appKey: appKey, id: { (r: MarketReq) in r.id }) { r in await db.market(r, now: Date()) }    // plan 12 §3.3: ServerMarket.swift
+    post(router, "/v2/market", appKey: appKey, id: { (r: MarketReq) in r.id }) { r in await db.market(r, now: Date()) }
+    post(router, "/v2/mail", appKey: appKey, id: { (r: MailReq) in r.id }) { r in await db.mailList(r, now: Date()) }        // plan 15: ServerMail.swift    // plan 12 §3.3: ServerMarket.swift
     post(router, "/v2/duel", appKey: appKey, id: { (r: DuelReq) in r.id }) { r in                                       // plan 12 §5: ServerDuel.swift
         var reply = await db.duel(r, now: Date())
         guard r.wait == true, let seen = r.version, let key = trainerID(r.id)?.key else { return reply }

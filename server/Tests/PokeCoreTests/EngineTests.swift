@@ -299,3 +299,16 @@ private struct Desk {
     #expect(d.w.companion.evs?[0] == 240 && d.w.companion.evs?[5] == 0)
     #expect(d.act(.use(item: "토망열매", stat: nil)).cannot != nil && d.w.count("토망열매") == 1)
 }
+
+@Test func towerTycoon() {                                                                          // 3.9 (docs/plans/15 §3.3): the 49th and 99th fights
+    var w = Engine.fresh(now: t0, starter: firstUID); var r = Seeded(s: 4)
+    for (streak, boss) in [(47, false), (48, true), (49, false), (98, true)] {
+        w.towerStreak = streak; let f = w.towerFoes(&r)
+        #expect((f.trainer == Tower.tycoon) == boss, "\(streak)")
+        if boss { #expect(f.foes.map(\.dex) == Tower.tycoonTeams[streak + 1]?.map(\.dex) && f.foes.allSatisfy { $0.perfectIVs == 6 && $0.item != nil && $0.level == 50 }) }
+    }
+    #expect(Tower.tycoonTeams[49]?.map(\.dex) == [464, 350, 149] && Tower.tycoonTeams[99]?.map(\.dex) == [149, 350, 376])   // 은 · 금
+    #expect(Tower.tycoonPrint(afterWins: 48) == "은" && Tower.tycoonPrint(afterWins: 98) == "금" && Tower.tycoonPrint(afterWins: 50) == nil)
+    w.towerStreak = 48; let plain = w.towerWin(tycoon: false); w.towerStreak = 48
+    #expect(w.towerWin(tycoon: true) == plain * 2)
+}

@@ -66,7 +66,8 @@ extension SaveDB {
     func endVisit(_ v: VisitRow, now: Int) throws {
         let bp = min(visitBPMax, v.steps / visitStepsPerBP)
         try db.rows("UPDATE visits SET state = 'done', ended_at = :now, bp = :bp WHERE id = :i", ["now": .int(now), "bp": .int(bp), "i": .int(v.id)])
-        try addClaim(v.owner, kind: "visit", from: v.hostName, fromKey: v.host, mon: v.mon, steps: v.steps, now: now)
+        try sendMail(v.owner, kind: "visit", from: v.hostName, fromKey: v.host, title: "맡겼던 포켓몬이 돌아왔어요",
+                     body: josa(v.hostName, "이", "가") + " \(v.steps.formatted())걸음 키워 줬어요", gifts: [.mon(mon: v.mon, steps: v.steps)], now: now)
     }
     /// Every act: the host's steps (taken now) to its guests; visits past their 5 hours end; a host's BP for the ones done comes in.
     func visitTick(_ key: String, steps: Int, walk w: inout Walk, news: inout [News], now: Int) throws {

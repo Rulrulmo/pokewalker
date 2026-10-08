@@ -87,15 +87,16 @@ extension Battle {
         let raw = Double(b * lf) / 5 * pow(Double(2 * lf + 10) / Double(lf + lp + 10), 2.5) + 1
         return max(1, Int(raw * wildExpScale) / max(1, share))
     }
-    /// EXP for ours that faced the one in front, split among them, EVs in full — for a KO, and (Gen VI on) a catch. Wild only: the tower gives neither (BP only, as HGSS's).
-    /// 학습장치 (Gen IV): with one held anywhere in the party, those that faced it split half, the holders the other half. 행복의알: ×1.5.
+    /// EXP for a KO and (Gen VI on) a catch — wild only: the tower gives neither (BP only, as HGSS's). Those that faced the one in front split it
+    /// (each at its own level), EVs in full. 3.9 (the user): every other one of ours still standing gets half of that, Gen VI's Exp. Share way, no EVs;
+    /// one holding 학습장치 a whole share and its EVs. 행복의알: ×1.5.
     mutating func award() {
-        let share = faced.filter { mine[$0].alive }.sorted(), sharers = mine.indices.filter { mine[$0].alive && mine[$0].item == "학습장치" }
+        let share = faced.filter { mine[$0].alive }.sorted()
         guard trainer == nil, !share.isEmpty else { return }
         let foe = f(.it).mon
-        for k in Set(share + sharers).sorted() {
-            func part(_ n: Int) -> Int { Battle.wildExp(base: baseExp[foe.dex], foe: foe.level, mine: mine[k].mon.level, share: n) / (sharers.isEmpty ? 1 : 2) }
-            var e = (share.contains(k) ? part(share.count) : 0) + (sharers.contains(k) ? part(sharers.count) : 0)
+        for k in mine.indices where mine[k].alive {
+            let full = Battle.wildExp(base: baseExp[foe.dex], foe: foe.level, mine: mine[k].mon.level, share: share.count)
+            var e = share.contains(k) || mine[k].item == "학습장치" ? full : full / 2
             if mine[k].item == "행복의알" { e = e * 3 / 2 }
             e = max(1, e)
             var probe = mine[k].mon; let up = probe.gainBattleExp(e)

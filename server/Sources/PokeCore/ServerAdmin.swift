@@ -24,6 +24,9 @@ let usage = """
       prune                              drop old history now (the server does it hourly)
       sample                             a new save's JSON (Walk(), the one-time checks marked done)
       verify-release <dir>               a release folder: manifest.sig checks with the release key, each zip's size and SHA-256 (publish.sh)
+      mail <id|--all> --title <t> [--body <b>] [--item <name> <n>]… [--bp <n>] [--watts <n>] [--title-gift <칭호>] [--deco silver|gold]
+                                         3.9 (docs/plans/15): a mail to one trainer or all (test IDs left out); no gifts = a notice
+      mail-log [<n>]                     the last mails sent, newest first (default 30)
     --db: else $DB_PATH, else /var/lib/pokewalker/pokewalker.db
     """
 
@@ -166,7 +169,7 @@ extension SaveDB {
             try db.rows("UPDATE trainers SET key = :nk, name = :n, session = NULL, device = NULL WHERE key = :k", a.merging(["n": .text(n.name)]) { $1 })
             try db.rows("UPDATE history SET key = :nk WHERE key = :k", a)
             try db.rows("UPDATE OR IGNORE legacy SET key = :nk WHERE key = :k", a)
-            for t in ["pins", "flags", "mons", "chains", "grants", "steps_day", "actions", "raid_hits", "raid_catch"] { try db.rows("UPDATE \(t) SET key = :nk WHERE key = :k", a) }
+            for t in ["pins", "flags", "mons", "chains", "grants", "steps_day", "actions", "raid_hits", "raid_catch", "mail", "tower_rewards"] { try db.rows("UPDATE \(t) SET key = :nk WHERE key = :k", a) }
             for t in ["trust", "pin_fails", "play"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }   // play: the session ends anyway
             for (t, c) in [("inbox", "to_key"), ("inbox", "from_key"), ("trades", "to_key"), ("trades", "from_key"), ("friends", "a"), ("friends", "b"), ("listings", "key"), ("bids", "key"), ("duels", "a"), ("duels", "b"),
                            ("claims", "key"), ("visits", "owner"), ("visits", "host")] {
@@ -195,6 +198,7 @@ extension SaveDB {
             for v in try visitRows("host = :k AND state = 'on'", ["k": .text(k)]) { try endVisit(v, now: now) }
             try db.rows("DELETE FROM visits WHERE owner = :k OR host = :k", ["k": .text(k)])
             try db.rows("DELETE FROM claims WHERE key = :k", ["k": .text(k)])
+            for t in ["mail", "tower_rewards"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
             try db.rows("DELETE FROM bids WHERE key = :k OR listing IN (SELECT id FROM listings WHERE key = :k)", ["k": .text(k)])
             try db.rows("DELETE FROM listings WHERE key = :k", ["k": .text(k)])
             try db.rows("DELETE FROM duels WHERE a = :k OR b = :k", ["k": .text(k)])
@@ -346,6 +350,29 @@ public func run(_ arguments: [String]) async -> Int32 {
         case ("actions", 1), ("actions", 2):
             guard let n = rest.count > 1 ? Int(rest[1]) : 30 else { return fail("actions: <n> is a number") }
             out = try await db.actionsList(rest[0], last: n)
+        case ("mail", _) where rest.count >= 3:
+            var to = rest[0], i = 1, title: String? = nil, body: String? = nil, gifts: [Gift] = []
+            if to == "all" { to = "--all" }
+            while i < rest.count {
+                let o = rest[i], v = i + 1 < rest.count ? rest[i + 1] : nil
+                switch o {
+                case "--title": title = v; i += 2
+                case "--body": body = v; i += 2
+                case "--item":
+                    guard let name = v, i + 2 < rest.count, let n = Int(rest[i + 2]), n > 0 else { return fail("mail: --item <name> <count>") }
+                    gifts.append(.items(name: name, count: n)); i += 3
+                case "--bp": guard let n = v.flatMap({ Int($0) }) else { return fail("mail: --bp <n>") }; gifts.append(.bp(amount: n)); i += 2
+                case "--watts": guard let n = v.flatMap({ Int($0) }) else { return fail("mail: --watts <n>") }; gifts.append(.watts(amount: n)); i += 2
+                case "--title-gift": guard let t = v else { return fail("mail: --title-gift <칭호>") }; gifts.append(.title(name: t)); i += 2
+                case "--deco": guard let d = v, ["silver", "gold"].contains(d) else { return fail("mail: --deco silver|gold") }; gifts.append(.deco(kind: d)); i += 2
+                default: return fail("mail: \(o)? (--title --body --item --bp --watts --title-gift --deco)")
+                }
+            }
+            guard let title, !title.isEmpty else { return fail("mail: --title is needed") }
+            out = try await db.adminMail(to, title: title, body: body, gifts: gifts, now: unixNow())
+        case ("mail-log", 0), ("mail-log", 1):
+            guard let n = rest.count > 0 ? Int(rest[0]) : 30 else { return fail("mail-log: <n> is a number") }
+            out = try await db.mailLog(last: n)
         case ("flags", 1), ("flags", 2):
             guard let n = rest.count > 1 ? Int(rest[1]) : 30 else { return fail("flags: <n> is a number") }
             out = try await db.flags(rest[0], last: n)

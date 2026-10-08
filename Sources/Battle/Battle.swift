@@ -50,7 +50,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
         case .gained(let e, _, let foe, let k):
             let old = mine[k].maxHP
             if mine[k].mon.gainBattleExp(e) { mine[k].hp += mine[k].maxHP - old }                    // a level-up raises current HP too
-            mine[k].mon.gainEVs(from: foe)
+            if faced.contains(k) || mine[k].item == "학습장치" { mine[k].mon.gainEVs(from: foe) }       // (3.9: the walker's half share comes without EVs)
         default: break
         }
     }

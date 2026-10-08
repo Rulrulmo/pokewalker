@@ -121,6 +121,7 @@ actor SaveDB {
             for col in ["min_app TEXT", "walk INTEGER NOT NULL DEFAULT 0"] { try? c.exec("ALTER TABLE inbox ADD COLUMN \(col)") }   // M2's (already there: an error, ignored)
             try? c.exec("ALTER TABLE play ADD COLUMN sent_rev INTEGER")
             try c.exec(claimSchema); try c.exec(visitSchema)                                               // 3.8 (docs/plans/14)
+            try c.exec(mailSchema); try c.exec(SaveDB.claimsToMail)                                        // 3.9 (docs/plans/15): the 받기 함 into mail
             for col in ["note TEXT", "seen INTEGER NOT NULL DEFAULT 0"] { try? c.exec("ALTER TABLE listings ADD COLUMN \(col)") }
             for col in ["party_a TEXT", "party_b TEXT", "pick_a TEXT", "pick_b TEXT", "kind TEXT"] { try? c.exec("ALTER TABLE duels ADD COLUMN \(col)") }
             try? c.exec("ALTER TABLE trainers ADD COLUMN app_seen TEXT")
@@ -352,6 +353,7 @@ actor SaveDB {
             try db.rows("DELETE FROM actions WHERE at < :t", ["t": .int(now - actionsKept)])
             try db.rows("DELETE FROM inbox WHERE at < :t", ["t": .int(now - 7 * 86400)])
             try db.rows("DELETE FROM steps_day WHERE day < :d", ["d": .text(Walk.key(Date(timeIntervalSince1970: Double(now - 8 * 86400))))])
+            try pruneMail(now: now)
             return n
         }
     }

@@ -40,11 +40,12 @@ func actName(_ a: Act) -> String {
     case .duelCancel(let i): "duel cancel #\(i)"; case .duelMove(let i, let c): "duel #\(i) \(c)"
     case .claim(let i): "claim #\(i)"; case .visitSend(let to, let u): "visit send \(u) → \(to)"; case .visitEnd(let i): "visit end #\(i)"
     case .duelParty(let u): "duel party \(u)"; case .duelQueue: "duel queue"; case .duelQueueCancel: "duel queue cancel"; case .duelPick(let i, let sl): "duel #\(i) pick \(sl)"
+    case .mailClaim(let i, let p): "mail claim #\(i)" + (p.map { " pick \($0)" } ?? ""); case .mailClaimAll: "mail claim all"
     }
 }
 /// News kinds an app before 3.8 can't read are kept from it (the inbox's min_app does the same for teammates' mail).
 func appKnows(_ app: String?, _ n: News) -> Bool {
-    switch n { case .claimReady, .visitCame, .visitDone: knows(app, claimApp); default: true }
+    switch n { case .claimReady, .visitCame, .visitDone: knows(app, claimApp); case .mailNew: knows(app, mailApp); default: true }
 }
 func savedText(_ w: Walk) -> String { let e = JSONEncoder(); e.outputFormatting = .sortedKeys; return String(decoding: (try? e.encode(w.shared)) ?? Data(), as: UTF8.self) }
 
@@ -113,10 +114,18 @@ extension SaveDB {
                     case .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove, .duelQueue, .duelQueueCancel, .duelPick:   // 12 §5, 14 §5: ServerDuel.swift
                         let was = w
                         if let why = try duelAct(r.act, key: id.key, name: t.name, app: r.app, walk: &w, out: &out, now: unix) { out.cannot = why; w = was } else if w != was { out.changed = true }
-                    case .claim(let cid):                                                               // 14 §2.2: ServerClaims.swift
+                    case .claim:                                                                        // 3.8's 받기: its Pokémon come as mail now (plan 15)
+                        out.cannot = "우편함에서 받아요\n(3.9로 업데이트)"
+                    case .mailClaim(let mid, let pick):                                                 // plan 15: ServerMail.swift
                         let was = w; var more: [News] = [], got: Mon? = nil
-                        if let why = try claim(cid, key: id.key, walk: &w, news: &more, got: &got, now: unix) { out.cannot = why; w = was }
+                        if !knows(r.app, mailApp) { out.cannot = "우편함은 3.9부터예요" }
+                        else if let why = try claimMail(mid, pick: pick, key: id.key, walk: &w, news: &more, got: &got, now: unix) { out.cannot = why; w = was }
                         else { out.news += more; out.mon = got; out.changed = true }
+                    case .mailClaimAll:
+                        var more: [News] = []
+                        if !knows(r.app, mailApp) { out.cannot = "우편함은 3.9부터예요" }
+                        else if try claimAllMail(key: id.key, walk: &w, news: &more, now: unix) == 0 { out.cannot = "받을 우편이\n없어요" }
+                        else { out.news += more; out.changed = true }
                     case .visitSend, .visitEnd:                                                         // 14 §3: ServerVisit.swift
                         let was = w; var more: [News] = []
                         if let why = try visitAct(r.act, key: id.key, name: t.name, walk: &w, news: &more, now: unix) { out.cannot = why; w = was }
@@ -128,7 +137,7 @@ extension SaveDB {
                     }
                 }
                 try visitTick(id.key, steps: taken, walk: &w, news: &out.news, now: unix)             // 14 §3: guests raised, visits over, a host's BP
-                if !knows(r.app, claimApp) { try claimAll(id.key, walk: &w, news: &out.news, now: unix) }   // 14 §8: before 3.8, the 받기 함 empties itself
+                try towerRewards(id.key, walk: &w, now: unix)                                         // plan 15 §3: streak rewards (and the back-pay), as mail
                 let mail = try delivery(id.key, app: r.app, now: unix)                                 // what teammates sent (only what this app can read)
                 out.news += mail.news
                 out.news = out.news.filter { appKnows(r.app, $0) }

@@ -287,6 +287,12 @@ extension Walk {
     /// The next trainer: 3 fully evolved non-legends at Lv.50, stronger by tier (towerTier).
     func towerFoes<R: RandomNumberGenerator>(_ r: inout R) -> (trainer: String, foes: [Mon]) {
         let tier = Walk.towerTier(towerStreak ?? 0), lv = Walk.towerLevel
+        if let team = Tower.tycoonTeams[(towerStreak ?? 0) + 1] {                                 // 3.9 (docs/plans/15 §3.3): the tycoon — 6V, 252/252, its items
+            return (Tower.tycoon, team.map { t -> Mon in
+                var m = Mon.wild(t.dex, level: lv, perfect: 6, &r); m.nature = t.nature; m.item = t.item
+                var ev = [6, 0, 0, 0, 0, 252]; ev[t.physical ? 1 : 3] = 252; m.evs = ev; m.known = m.towerMoves(); return m
+            })
+        }
         let legends = Set(courses.flatMap(\.legends) + Walk.legendShop.map(\.dex))           // shop legends too: never a tower foe
         let names = ["엘리트 트레이너", "베테랑", "아가씨", "등산가", "연구원", "격투가", "사이킥", "드래곤 조련사", "모범 소년", "레인저"]
         let he = ["민수", "현우", "도윤", "준호", "태양"], she = ["지은", "서연", "하은", "유나", "보라"]      // a one-sex class gets a name to match (its sprite: trainerFrame)
@@ -319,9 +325,9 @@ extension Walk {
         return (who, foes)
     }
     /// A win: streak + 1, BP = 1 (+1 per full 7 already won), +3 on every 7th. Returns the BP.
-    mutating func towerWin() -> Int {
+    mutating func towerWin(tycoon: Bool = false) -> Int {
         let s = (towerStreak ?? 0) + 1; towerStreak = s; towerBest = max(towerBest ?? 0, s)
-        let g = 1 + (s - 1) / 7 + (s % 7 == 0 ? 3 : 0); bp = (bp ?? 0) + g; return g
+        let g = (1 + (s - 1) / 7 + (s % 7 == 0 ? 3 : 0)) * (tycoon ? 2 : 1); bp = (bp ?? 0) + g; return g   // the tycoon: twice (3.9)
     }
     mutating func towerEnd() { towerBest = max(towerBest ?? 0, towerStreak ?? 0); towerStreak = 0 }
 

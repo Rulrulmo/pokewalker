@@ -83,7 +83,8 @@ struct EngineRun<R: RandomNumberGenerator> {
             w.setCourse(i, &r); return nil
         case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
              .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept,
-             .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove, .claim, .visitSend, .visitEnd, .duelQueue, .duelQueueCancel, .duelPick:
+             .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove, .claim, .visitSend, .visitEnd, .duelQueue, .duelQueueCancel, .duelPick,
+             .mailClaim, .mailClaimAll:
             return nil                                                                              // the server's: other trainers' saves, the inbox, the raid, friends, the board, live battles
         case .duelParty(let uids): return duelParty(uids)
         case .raid(let party): return raid(party)
@@ -247,7 +248,7 @@ struct EngineRun<R: RandomNumberGenerator> {
             } else { p.chain = nil; end.chain = 0 }
         } else {                                                                                    // the tower: Lv.50 copies, no EXP to write back
             let h = p.held; p.held = 0; walkNow(h)
-            if last == .won { end.bp = w.towerWin(); end.streak = w.towerStreak }
+            if last == .won { end.bp = w.towerWin(tycoon: b.trainer == Tower.tycoon); end.streak = w.towerStreak }
             else { end.streak = w.towerStreak ?? 0; w.towerEnd(); p.tower = false }
             p.party = nil
         }
@@ -279,7 +280,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         let ours = w.party().map { x -> Mon in var m = x.mon; if m.known == nil { m.known = m.moves }; m.level = Walk.towerLevel; return m }   // all as Lv.50 copies
         let f = w.towerFoes(&r)
         var b = Battle(party: ours, trainer: f.trainer, foes: f.foes); b.seed = r.next()
-        b.aiRandom = Walk.towerAIRandom[Walk.towerTier(w.towerStreak ?? 0)]
+        b.aiRandom = f.trainer == Tower.tycoon ? 0 : Walk.towerAIRandom[Walk.towerTier(w.towerStreak ?? 0)]   // the tycoon never picks at random
         out.beats = b.begin(weather: nil, &r); p.battle = b; out.battle = b
         return nil
     }
@@ -406,7 +407,7 @@ extension Act {
         switch self {
         case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
              .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept, .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove,
-             .claim, .visitSend, .visitEnd, .duelParty, .duelQueue, .duelQueueCancel, .duelPick: true
+             .claim, .visitSend, .visitEnd, .duelParty, .duelQueue, .duelQueueCancel, .duelPick, .mailClaim, .mailClaimAll: true
         default: false
         }
     }

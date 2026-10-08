@@ -127,8 +127,9 @@ private func said(_ b: Battle, _ s: String) -> Bool {
     var y = fight(mon(25, 10), mon(19, 10)); y.theirs[0].hp = 0; y.award()
     func exp(_ b: Battle, _ k: Int) -> Int { b.out.compactMap { if case .gained(let e, _, _, k) = $0 { return e }; return nil }.first ?? 0 }
     #expect(exp(x, 0) == exp(y, 0) * 3 / 2)
-    var z = Battle(wild: mon(19, 10), party: [mon(25, 10), mon(16, 10, item: "학습장치")]); z.theirs[0].hp = 0; z.award()
-    #expect(exp(z, 1) > 0 && exp(z, 0) < exp(y, 0))
+    var z = Battle(wild: mon(19, 10), party: [mon(25, 10), mon(16, 10, item: "학습장치"), mon(129, 10)]); z.theirs[0].hp = 0; z.award()
+    #expect(exp(z, 0) == exp(y, 0) && exp(z, 1) == exp(y, 0) && exp(z, 2) == exp(y, 0) / 2)       // 3.9: the one out keeps all; 학습장치 a whole share; the walker's half
+    #expect(z.mine[0].mon.evs?[5] == 1 && z.mine[1].mon.evs?[5] == 1 && (z.mine[2].mon.evs ?? Array(repeating: 0, count: 6))[5] == 0)
     // EVs: 교정깁스 doubles, a 파워 item adds 4
     var m = mon(25, 10, item: "파워앵클릿"); m.gainEVs(from: 19); let ev = m.evs?[5]; #expect(ev == evYield[19][5] + 4)
     var mb = mon(25, 10, item: "교정깁스"); mb.gainEVs(from: 19); #expect(mb.evs?[5] == evYield[19][5] * 2)
