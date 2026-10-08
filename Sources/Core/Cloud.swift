@@ -1181,12 +1181,13 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     c.append((lostSays && offlineNow && ranOnce == 2 && vs.acts.count == 2 && v.state.count("상처약") == 2 && served(v)?.count("상처약") == 2 && v.cloud!.online,
               "3.0 act: its reply lost → 연결되면 할 수 있어요 (offline); 2 minutes on the same act goes again (the same seq): the server's stored answer, bought once"))
     vs.down = true; v.cloud!.addSteps(30); v.cloud!.saveNow(); v.tick(Date()); v.tick(Date())
-    v.screen = .menu(menuAt("포켓 레이더")); let tiles = v.paneContent(Date()).menu?.rows ?? []; v.press(1)
+    v.screen = menuFor("포켓 레이더"); let tiles = v.paneContent(Date()).menu?.rows ?? []; v.press(1)
     let refused = says(v) == Walker.offlineLines && v.waiting == nil, row = v.cloudMenuTitle
-    let dimmed = tiles.filter(\.off).map(\.name) == ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드", "대전"] && tiles.first { $0.off }?.note == "연결되면 할 수 있어요"
+    v.screen = menuFor("도감"); let inRecord = v.paneContent(Date()).menu?.rows.filter(\.off) ?? []; v.screen = menuFor("배틀 타워"); let inBattle = v.paneContent(Date()).menu?.rows.filter(\.off).count
+    let dimmed = tiles.filter(\.off).map(\.name) == ["포켓 레이더", "배틀", "친구", "상점", "우편함"] && tiles.first { $0.off }?.note == "연결되면 할 수 있어요" && inRecord.isEmpty && inBattle == 3
     vs.down = false; v.tick(Date() + 121); drain(v)
     chk(refused && dimmed && row.hasSuffix("연결 안 됨 · 올릴 걸음 30") && served(v)?.total == 37 && v.cloud!.ahead == 0,
-              "3.0 offline: what needs the server dimmed on the menu (연결되면 할 수 있어요), and says so at once; steps pile up (the right-click: 연결 안 됨 · 올릴 걸음 n); back, they go up", row)
+              "3.0 offline: what needs the server dimmed on the menu (연결되면 할 수 있어요; 3.9: a group only when all of it does — 기록 not, 배틀 and its three), and says so at once; steps pile up (the right-click: 연결 안 됨 · 올릴 걸음 n); back, they go up", row)
     let bs = FakeCloud(); bs.add("zz000099", Walk())
     let bo = Cloud(link: bs, dir: tmp.appendingPathComponent("bo", isDirectory: true)); bo.seat.trainerID = "zz000099"; bo.login(force: true); var bt = Date(); bo.tick(bt); bo.tick(bt)
     var waits2: [TimeInterval] = []; bo.addSteps(5)
@@ -1222,7 +1223,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
               "3.0 home: the server's news one by one, in order (a find, the weather, a level, a course)", "\(seen)")
     let rv = online({ var s = Walk(); s.watts = 200; s.companion = Mon(dex: 25, level: 60, female: false); return s }(), rng: 9)
     let (rs, rk) = server(rv)
-    rv.screen = .menu(menuAt("포켓 레이더")); rv.press(1); drain(rv)
+    rv.openFeature("포켓 레이더"); drain(rv)
     var radarUp = false, fought = false, caughtUID = 0
     if case .radar(let b, _, _, let ch) = rv.screen {
         radarUp = rv.state.watts == 190 && ch == 0
@@ -1238,7 +1239,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     chk(radarUp && fought && caughtUID > 1_000_000 && kept && (!chainHeld || chained) && rs.rows[rk]?.play.radar == nil && rs.rows[rk]?.play.chain == nil && !rv.inBattle,
               "3.0 radar: the server's bush (10 W), its find in a fight (balls until it's in), kept; the chain's next bush asked for once home was done (free, +2 W), a wrong one gives it up",
               "\(radarUp) \(fought) \(caughtUID) \(kept) \(chainHeld) \(chained)")
-    rs.lose = true; rv.screen = .menu(menuAt("포켓 레이더")); rv.press(1); drain(rv, max: 3)
+    rs.lose = true; rv.openFeature("포켓 레이더"); drain(rv, max: 3)
     let gaveUpSays = says(rv) == Walker.offlineLines
     rv.tick(Date() + 121); drain(rv); drain(rv)
     chk(gaveUpSays && rs.acts.suffix(2) == [.radar, .radarPick(bush: -1)] && rs.rows[rk]?.play.radar == nil && !isRadar(rv.screen),

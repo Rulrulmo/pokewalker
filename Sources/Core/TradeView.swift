@@ -189,7 +189,7 @@ extension Walker {
     /// ↩: an offer → the list; making one → the teammate's card; answering → its offer; the list → the menu.
     func tradeBack(_ s: TradeStep) -> Screen {
         switch s {
-        case .list: return .menu(menuAt("친구"))
+        case .list: return menuFor("친구")
         case .offer(let id, _): return .trade(.list(tradeRows.firstIndex { $0.id == id } ?? 0))
         case .pick(let p):
             if let id = p.offer { return .trade(.offer(id: id, act: nil)) }

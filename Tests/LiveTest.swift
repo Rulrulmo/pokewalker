@@ -51,7 +51,7 @@ import Foundation
 
     /// From home: the radar (the server's bush), then ● on it (hit) or on the next one; true = a fight began.
     func radar(hit: Bool) -> Bool {
-        toHome(); w.screen = .menu(menuAt("포켓 레이더")); w.press(1)
+        toHome(); w.openFeature("포켓 레이더")
         guard run(20, until: { if case .radar = w.screen { return true }; return false }), case .radar(let b, _, let since, let chain) = w.screen else { return false }
         w.screen = .radar(bush: b, cursor: hit ? b : (b + 1) % 4, since: since, chain: chain)
         while Date().timeIntervalSince(since) < 1.6 { Thread.sleep(forTimeInterval: 0.05) }   // inside the bush's window (no tick meanwhile: its timeout)
@@ -264,7 +264,7 @@ import Foundation
         }
     }
     check(run(40) { ca.phase == .on && cb.phase == .on && ca.base != nil && cb.base != nil }, "live raid: \(a) and \(b) logged in (\(ca.phase), \(cb.phase); asked \(ha.asked), \(hb.asked))")
-    for (w, c) in [(wa, ca), (wb, cb)] { w.screen = .menu(menuAt("레이드")); w.press(1); run(15) { c.raid != nil && idle(c) } }
+    for (w, c) in [(wa, ca), (wb, cb)] { w.openFeature("레이드"); run(15) { c.raid != nil && idle(c) } }
     let seeded = wa.raidCells >= 1 && wb.raidCells >= 1 && (ca.raid?.hpLeft ?? 0) > 0
     check(seeded, "live /v2/raid: the test raid (\(ca.raid?.week ?? "-"), \(ca.raid.map { monNames[$0.boss.dex] } ?? "-") \(ca.raid?.hpLeft ?? -1)/\(ca.raid?.hpTotal ?? -1)); power A \(wa.raidPower), B \(wb.raidPower)")
     guard seeded else { print("FAIL \(failed)"); return false }
@@ -354,7 +354,7 @@ import Foundation
 
     // 친구 (from scratch: a friendship from an earlier run undone first)
     lists(wa, ca); if wa.teamRows(0).count > 1 { wa.screen = .home; wa.act(.friendRemove(name: b), back: .home); settle(wa, ca) }
-    wa.screen = .menu(menuAt("친구")); wa.press(1); settle(wa, ca); wa.pageTap(6004); ha.texts = [b]; wa.pageTap(6240); settle(wa, ca)
+    wa.openFeature("친구"); settle(wa, ca); wa.pageTap(6004); ha.texts = [b]; wa.pageTap(6240); settle(wa, ca)
     check(says(wa) == [josa(b, "에게", "에게"), "친구 신청을 했다!"], "live friendRequest: A asks B by ID — \(says(wa))")
     let asked = next(wb, cb) { says(wb).first == josa(a, "이", "가") + " 친구 신청을 했다!" }
     wb.press(1); lists(wb, cb); let row = wb.friendReqRows.first
@@ -365,7 +365,7 @@ import Foundation
     check(added && wa.teamRows(0).count == 2 && wb.teamRows(0).count == 2, "live friendAdded: A hears it; each lists the other (\(wa.teamRows(0).count), \(wb.teamRows(0).count))")
 
     // the 게시판: A puts 고우스트 up wishing for 윤겔라; B offers 윤겔라; A picks it
-    wa.screen = .menu(menuAt("교환")); wa.press(1); settle(wa, ca); lists(wa, ca); wa.pageTap(8030)
+    wa.openFeature("교환"); settle(wa, ca); lists(wa, ca); wa.pageTap(8030)
     let giveA = wa.myTradeBox.first { $0.dex == 93 } ?? wa.myTradeBox[0]
     if case .market(.pick(var p)) = wa.screen { p.give = giveA.uid; p.wish = [64]; wa.screen = .market(.pick(p)); wa.pageTap(8190); settle(wa, ca) }
     let posted = says(wa); lists(wa, ca); let post = wa.myPosts.first
@@ -556,7 +556,7 @@ import Foundation
     check(wa.isFriend(b) && wb.isFriend(a), "live: friends (\(wa.teamRows(0).count), \(wb.teamRows(0).count))")
 
     // ① the 게시판: a 한마디, an offer held out of the box, the red dot, seen on opening, accepted → B's 받기
-    wa.screen = .menu(menuAt("교환")); wa.press(1); settle(wa, ca); lists(wa, ca); wa.pageTap(8030)
+    wa.openFeature("교환"); settle(wa, ca); lists(wa, ca); wa.pageTap(8030)
     let ghost = wa.myTradeBox.first { $0.dex == 93 } ?? wa.myTradeBox.first { $0.dex != 133 }!, kadabra = wb.myTradeBox.first { $0.dex == 64 } ?? wb.myTradeBox[0]
     let note = monNames[kadabra.dex] + " 구해요!"
     ha.texts = [note]
@@ -609,7 +609,7 @@ import Foundation
 
     // ③ the 대전 menu: parties, a friend match (pick 3), the queue, the 전적
     for (w, c) in [(wa, ca), (wb, cb)] {
-        w.screen = .menu(menuAt("대전")); w.press(1); settle(w, c); w.pageTap(6330)
+        w.openFeature("대전"); settle(w, c); w.pageTap(6330)
         if case .squad(var q) = w.screen { q.picked = []; w.screen = .squad(q) }                   // (a rerun: picked afresh)
         for k in 0..<3 { pickAt(w, k) }
         w.pageTap(8790); settle(w, c)
@@ -659,7 +659,7 @@ import Foundation
     run(30) { if case .beats = wa.screen { return true }; if case .battle = wa.screen { return true }; return false }
     let (qa, qb) = fightOut()
     check(qb.hasPrefix("이겼다!"), "live: the queue's duel to its end — A \(qa) · B \(qb)")
-    wa.screen = .menu(menuAt("대전")); wa.press(1); run(15) { ca.duelRecord != nil && idle(ca) }; wa.pageTap(6321)
+    wa.openFeature("대전"); run(15) { ca.duelRecord != nil && idle(ca) }; wa.pageTap(6321)
     let recs = wa.paneContent(Date()).duelHub?.recs ?? []
     check(recs.count >= 2 && recs.prefix(2).allSatisfy { !$0.won && $0.line.lowercased() == "vs " + b.lowercased() && $0.mine.count == 3 }, "live 전적: \(recs.prefix(2).map { "\($0.won ? "승" : "패") \($0.line) \($0.sub)" })")
     print(failed == 0 ? "PASS live 3.8" : "FAIL \(failed)")

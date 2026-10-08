@@ -4,7 +4,8 @@ import Foundation
 
 @MainActor final class Walker {
     var state: Walk
-    var screen = Screen.home { didSet { if case .say = oldValue, Walker.startsFights(screen) { calmAt = Date() } } }
+    var screen = Screen.home { didSet { if case .say = oldValue, Walker.startsFights(screen) { calmAt = Date() }; if case .menu(let g?, let s) = screen { menuSlot[g] = s } } }
+    var menuSlot: [Int: Int] = [:]                                                                  // 3.9: each menu group's last tile (its page opens on it again)
     /// 3.8.6: a message gone (a fight's end: n연승! · n 데미지!) onto a page whose ● or button starts a fight — for a moment that start isn't taken:
     /// the ● or click that ended the message (or came just as it timed out) mustn't start the next fight.
     var calmAt = Date.distantPast
@@ -168,7 +169,7 @@ import Foundation
         case .dex: return ("도감", "잡음 \(dexCount) · 봤음 \(seenList.count)")
         case .box(let i, _, _, true) where state.mon(i)?.ot != nil: return ("포켓몬", "어버이: " + (state.mon(i)?.ot ?? ""))   // a traded one: who it came from first
         case .box, .items: return ("포켓몬", "워커 \(state.caught.count) · 상자 \(state.box.count.formatted()) · 도구 \(state.items.count + state.bag.count)")
-        case .menu: return ("메뉴", "")
+        case .menu(let g, _): return ("메뉴", g.map { menuTiles[$0].name } ?? "")
         case .shop(let bp, _, _), .shopConfirm(let bp, _, _): return (bp ? "BP 교환소" : "상점", "")
         case .radar: return ("포켓 레이더", state.here.name)
         case .card: return ("트레이너 카드", "")

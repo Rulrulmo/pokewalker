@@ -24,8 +24,9 @@ struct StatusModel: Equatable {
 }
 /// 메뉴: the LCD's pages as tiles, the one on the LCD picked.
 struct MenuModel: Equatable {
-    struct Row: Equatable { var name, note: String; var off = false; var dot = false }   // off: it needs the server, and it isn't there (dimmed); dot: something waits there (3.8's red dot)
+    struct Row: Equatable { var name, note: String; var off = false; var dot = false; var items = "" }   // off: it needs the server, and it isn't there (dimmed); dot: something waits there (3.8's red dot); items: a group's (▸) features
     var rows: [Row]; var sel: Int
+    var group: String? = nil                                           // 3.9: a group's page (its name), nil = the first page's 8 tiles
 }
 /// The 도감 entry (the LCD shows its number, name and types): base stats, where to meet it, how it evolves.
 struct DexModel: Equatable {

@@ -403,17 +403,37 @@ extension Canvas {
         let buy = r(X0 + 100, by, X1 - X0 - 100, 30); c.pill(buy, Ink.red); c.say("\(s.total) 사기", buy.midX, buy.midY, font(11, .bold), .white, 0.5, maxW: buy.width - x(12)); hits.append((buy, 2005))
     }
 
-    // MARK: 메뉴: 2 x 5 tiles, the one on the LCD red
+    // MARK: 메뉴 (3.9: two steps): the first page's 8 tiles (2 x 4; a group ▸ says what's in it), or a group's features a row each; the pick red
     func drawMenu(_ m: MenuModel) {
-        let rowsN = (m.rows.count + 1) / 2, five = false                                            // up to 12 tiles in six rows of 28 (the page = home's status sheet, PaneContent.home)
-        let rh: CGFloat = rowsN >= 5 ? 28 : 31, gap: CGFloat = 4, cw = (X1 - X0 - 4) / 2
+        func dot(_ rc: CGRect, _ on: Bool) { let d = x(7); c.fill(.oval(CGRect(x: rc.maxX - x(9) - d / 2, y: rc.minY + x(9) - d / 2, width: d, height: d)), on ? .white : Ink.red) }   // 3.8: something waits there
+        if let g = m.group {                                                                      // a group's page: ‹ 메뉴 (↩) over its features
+            let back = r(X0, 200, 50, 20), w = c.say("‹ 메뉴", back.minX + x(2), back.midY, font(10, .semibold), Ink.sub); hits.append((back, 3099))
+            c.say(g, back.minX + x(2) + w + x(6), back.midY, font(11, .bold), Ink.ink)
+            for (i, row) in m.rows.enumerated() {
+                let rc = r(X0, 225 + CGFloat(i) * 56, X1 - X0, 50), on = i == m.sel
+                c.fill(.rounded(rc, 10 * K), on ? Ink.red : Ink.tile)
+                c.say(row.name, rc.minX + x(12), rc.minY + x(17), font(12, .bold), on ? .white : row.off ? Ink.sub : Ink.ink, maxW: rc.width - x(30))
+                c.say(row.note, rc.minX + x(12), rc.minY + x(34), font(9, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(24))
+                if row.dot { dot(rc, on) }
+                hits.append((rc, 3000 + i))
+            }
+            return
+        }
+        let rh: CGFloat = 44, gap: CGFloat = 4, cw = (X1 - X0 - 4) / 2                            // 4 rows of 44 (the page = home's status sheet, PaneContent.home)
         for (i, row) in m.rows.enumerated() {
-            let rc = r(X0 + CGFloat(i % 2) * (cw + 4), 203 + CGFloat(i / 2) * (rh + gap), cw, rh), on = i == m.sel
+            let rc = r(X0 + CGFloat(i % 2) * (cw + 4), 203 + CGFloat(i / 2) * (rh + gap), cw, rh), on = i == m.sel, group = !row.items.isEmpty
             c.fill(.rounded(rc, 9 * K), on ? Ink.red : Ink.tile)
-            let low = rh < 31
-            c.say(row.name, rc.minX + x(9), rc.minY + x(low ? 9.5 : five ? 8.5 : 10.5), font(10, .bold), on ? .white : row.off ? Ink.sub : Ink.ink, maxW: rc.width - x(14))
-            c.say(row.note, rc.minX + x(9), rc.minY + x(low ? 20 : five ? 18.5 : 22), font(8, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(14))
-            if row.dot { let d = x(7); c.fill(.oval(CGRect(x: rc.maxX - x(9) - d / 2, y: rc.minY + x(9) - d / 2, width: d, height: d)), on ? .white : Ink.red) }   // 3.8: something waits there
+            let fg = on ? Color.white : row.off ? Ink.sub : Ink.ink, sub = on ? Ink.onRed : Ink.sub
+            if group {                                                                            // 기록 ▸ / 도감 · 트레이너 카드 / a line of how things are
+                c.say(row.name, rc.minX + x(9), rc.minY + x(11), font(10.5, .bold), fg, maxW: rc.width - x(30))
+                c.say("▸", rc.maxX - x(row.dot ? 20 : 10), rc.minY + x(11), font(9, .bold), sub, 0.5)
+                c.say(row.items, rc.minX + x(9), rc.minY + x(23), font(8, .semibold), sub, maxW: rc.width - x(14))
+                c.say(row.note, rc.minX + x(9), rc.minY + x(34), font(8, .medium), sub, maxW: rc.width - x(14))
+            } else {
+                c.say(row.name, rc.minX + x(9), rc.minY + x(15), font(10.5, .bold), fg, maxW: rc.width - x(20))
+                c.say(row.note, rc.minX + x(9), rc.minY + x(29), font(8, .medium), sub, maxW: rc.width - x(14))
+            }
+            if row.dot { dot(rc, on) }
             hits.append((rc, 3000 + i))
         }
     }

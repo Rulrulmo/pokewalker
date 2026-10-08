@@ -2,12 +2,23 @@ import Foundation
 // Which screen the LCD is on.
 
 // MARK: - screens
-let menuItems = ["포켓 레이더", "코스", "트레이너 카드", "포켓몬", "도감", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드", "대전"]
-/// A tile's place on the menu, by its name (the code never counts tiles).
-func menuAt(_ name: String) -> Int { menuItems.firstIndex(of: name)! }
+/// 3.9: the menu in two steps (docs/plans/15 §6 G) — the first page's 8 tiles (2 x 4), each a feature or a group (▸) of them.
+let menuTiles: [(name: String, items: [String])] = [("포켓 레이더", []), ("코스", []), ("포켓몬", []), ("기록", ["도감", "트레이너 카드"]),
+                                                   ("배틀", ["배틀 타워", "레이드", "대전"]), ("친구", ["친구", "교환"]), ("상점", ["상점", "BP 교환소"]), ("우편함", [])]
+/// Every feature on the menu, in order.
+let menuItems = menuTiles.flatMap { $0.items.isEmpty ? [$0.name] : $0.items }
+/// A menu page's tiles: the first page's (group nil), or a group's features.
+func menuNames(_ group: Int?) -> [String] { group.map { menuTiles[$0].items } ?? menuTiles.map(\.name) }
+/// The menu page on that feature's tile (where ↩ from it lands).
+func onMenu(_ sc: Screen, _ name: String) -> Bool { if case .menu(let g, let i) = sc, case .menu(let g2, let i2) = menuFor(name) { return g == g2 && i == i2 }; return false }
+/// Where a feature sits on the menu, by its name (the code never counts tiles): its group's page on it, or the first page on its tile — where ↩ from it lands.
+func menuFor(_ name: String) -> Screen {
+    if let g = menuTiles.firstIndex(where: { $0.items.contains(name) }) { return .menu(group: g, sel: menuTiles[g].items.firstIndex(of: name)!) }
+    return .menu(group: nil, sel: menuTiles.firstIndex { $0.name == name }!)
+}
 indirect enum Screen {
     case home
-    case menu(Int)
+    case menu(group: Int?, sel: Int)                                   // 3.9: the first page (group nil: menuTiles), or a group's (menuTiles[group].items); sel = the tile picked
     case team(sel: Int, tab: Int, card: Bool)                          // 12 (M1; 친구 since 3.5): the friends' list on a tab (친구 · 걸음 · 도감 · 타워 · 신청), or the picked one's card
     case trade(TradeStep)                                              // 12 (M2): 교환 — the open offers (팀's 교환 tab), one in full, making or answering one
     case traded(gave: Mon, got: Mon, with: String, since: Date)        // a trade gone through (already in the save): this is the show

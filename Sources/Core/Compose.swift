@@ -359,14 +359,7 @@ extension Walker {
         if case .hold(let ref, let sel) = sc { return holdPane(ref, sel) }
         if case .visitPick(let p) = sc { return visitPickPane(p, now) }
         if case .squad(let s) = sc { return squadPane(s, now) }
-        if case .menu(let i) = sc {
-            let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드", "대전"]   // offline: what needs the server, dimmed
-            let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
-            let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "친구": friendRequestsIn > 0 ? "친구 신청 \(friendRequestsIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "친구 · 이번 주 순위", "교환": marketNote,
-                         "레이드": raidNote, "대전": duelNote]
-            let dots: Set<String> = Set([marketDot ? "교환" : nil, friendRequestsIn > 0 ? "친구" : nil].compactMap { $0 })   // 3.8: something waits there
-            return PaneContent(menu: MenuModel(rows: menuItems.map { off && needs.contains($0) ? .init(name: $0, note: "연결되면 할 수 있어요", off: true) : .init(name: $0, note: notes[$0] ?? "", dot: dots.contains($0)) }, sel: i))
-        }
+        if case .menu(let g, let i) = sc { return PaneContent(menu: menuModel(g, i)) }
         switch sc {                                                                               // the rest of the walker's pages: what you press is here, the LCD shows it
         case .radar(let b, let c, let since, let chain):
             let u = Date().timeIntervalSince(since)
@@ -560,13 +553,31 @@ extension Walker {
                                   .init(key: "레이드", value: raidStatus),
                                   .init(key: "친구", value: friendStatus)])
     }
-    /// A click on a 메뉴 tile: open it (as ● on it would).
+    /// A 메뉴 page: the first's 8 tiles (a group's ▸ gathers what's inside: its red dot, dimmed only when all of it needs the server, a line of how things are), or a group's features.
+    func menuModel(_ g: Int?, _ i: Int) -> MenuModel {
+        let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드", "대전", "우편함"]   // offline: what needs the server, dimmed
+        let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
+        let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "친구": friendRequestsIn > 0 ? "친구 신청 \(friendRequestsIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "친구 · 이번 주 순위", "교환": marketNote,
+                     "레이드": raidNote, "대전": duelNote, "우편함": mailNote]
+        let dots: Set<String> = Set([marketDot ? "교환" : nil, friendRequestsIn > 0 ? "친구" : nil, mailDot ? "우편함" : nil].compactMap { $0 })   // 3.8: something waits there
+        func row(_ n: String) -> MenuModel.Row { off && needs.contains(n) ? .init(name: n, note: "연결되면 할 수 있어요", off: true) : .init(name: n, note: notes[n] ?? "", dot: dots.contains(n)) }
+        if let g { return MenuModel(rows: menuTiles[g].items.map(row), sel: i, group: menuTiles[g].name) }
+        let sums = ["기록": "도감 \(dexCount) · 오늘 \(state.today.formatted())걸음", "배틀": "최고 \(state.towerBest ?? 0)연승 · 파워 \(raidCells)칸", "친구": notes["친구"]!, "상점": "\(state.watts.formatted())W · \((state.bp ?? 0).formatted())BP"]
+        return MenuModel(rows: menuTiles.map { t in
+            guard !t.items.isEmpty else { return row(t.name) }
+            let inner = t.items.map(row), lit = inner.first(where: \.dot)
+            return .init(name: t.name, note: inner.allSatisfy(\.off) ? "연결되면 할 수 있어요" : lit?.note ?? sums[t.name] ?? "", off: inner.allSatisfy(\.off), dot: lit != nil, items: t.items.joined(separator: " · "))   // a dot inside: its line
+        }, sel: i)
+    }
+    /// A click on a 메뉴 tile: open it (as ● on it would); 99 = a group page's ‹ 메뉴 (as ↩).
     func menuTap(_ i: Int) {
         guard !frozen, waiting == nil else { return }
         throughSay()
-        guard case .menu = screen, menuItems.indices.contains(i) else { return }
+        guard case .menu(let g, _) = screen else { return }
         lastInput = Date(); host?.redraw(.all)
-        screen = .menu(i); press(1)
+        if i == 99, g != nil { press(3); return }
+        guard menuNames(g).indices.contains(i) else { return }
+        screen = .menu(group: g, sel: i); press(1)
     }
     /// What the side panel shows on a shop screen; nil elsewhere.
     func shopModel() -> ShopModel? {

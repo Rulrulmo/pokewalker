@@ -16,9 +16,9 @@ import AppKit
     }
     let off = online(base()), (srv, _) = server(off)
     srv.down = true; off.cloud!.addSteps(120); off.cloud!.saveNow(); off.tick(Date()); off.tick(Date())   // no answer: offline, 120 steps waiting
-    take("menu_offline", off) { v in v.screen = .menu(0) }
+    take("menu_offline", off) { v in v.screen = .menu(group: nil, sel: 0) }
     let on = online(base())
-    take("menu_online", on) { v in v.screen = .menu(0) }
+    take("menu_online", on) { v in v.screen = .menu(group: nil, sel: 0) }
     take("wait_dots", on) { v in
         v.waiting = Walker.Waiting(act: .radar, back: .home, since: Date().addingTimeInterval(-0.7), quiet: false, then: { _, _ in nil })
         v.screen = .say(["포켓 레이더", "준비 중..."], next: .home, since: .distantFuture)
@@ -50,7 +50,7 @@ import AppKit
         tsrv.add(m.0, w); tsrv.lastAct[m.0] = m.6 ? Date() : Date().addingTimeInterval(Double(-600 * (k + 1)))
     }
     tme.cloud!.teamDue = true; drain(tme)
-    take("menu_team", tme) { v in v.screen = .menu(menuAt("친구")) }
+    take("menu_team", tme) { v in v.screen = menuFor("친구") }
     for t in 0..<4 { take("team_tab\(t)", tme) { v in v.screen = .team(sel: 0, tab: t, card: false) } }
     take("team_page2", tme) { v in v.screen = .team(sel: 7, tab: 0, card: false) }
     take("team_card", tme) { v in v.screen = .team(sel: 1, tab: 0, card: true) }
@@ -67,7 +67,7 @@ import AppKit
                    (TradeOffer(id: 2, from: "지은", to: tme.myName, mon: mon(282, 36, 521, shiny: true), want: nil, at: at - 20 * 3600, state: "open"), "지은", me),
                    (TradeOffer(id: 3, from: tme.myName, to: "도윤", mon: tme.state.box[0], want: mon(448, 50, 522), at: at - 600, state: "open"), me, "도윤")]
     tme.cloud!.tradesDue = true; drain(tme)
-    take("menu_team_trades", tme) { v in v.screen = .menu(menuAt("친구")) }
+    take("menu_team_trades", tme) { v in v.screen = menuFor("친구") }
     take("team_card_trade", tme) { v in v.screen = .team(sel: 0, tab: 0, card: true) }
     take("trade_list", tme) { v in v.screen = .trade(.list(0)) }
     take("trade_offer_in", tme) { v in v.screen = .trade(.offer(id: 1, act: nil)) }
@@ -101,7 +101,7 @@ import AppKit
                        RaidHit(name: "트레이너긴이름", dex: 4, dealt: 2_100, at: ts - 9000), RaidHit(name: "도윤", dex: 448, dealt: 25_000, at: ts - 20000), RaidHit(name: "서연", dex: 133, dealt: 9_990, at: ts - 30000)]
     take("raid_loading", rme) { v in v.screen = .raid(tab: 0) }
     rme.cloud!.raidDue = true; drain(rme); drain(rme)
-    take("menu_raid", rme) { v in v.screen = .menu(menuAt("레이드")) }
+    take("menu_raid", rme) { v in v.screen = menuFor("레이드") }
     take("raid_lobby", rme) { v in v.screen = .raid(tab: 0) }
     take("raid_recent", rme) { v in v.screen = .raid(tab: 1) }
     take("raid_no_power", rme) { v in v.state.raidPower = Engine.raidPowerCost * 64 / 100; v.screen = .raid(tab: 0) }
@@ -115,7 +115,7 @@ import AppKit
     take("raid_throw", rme) { v in v.raidOn = false; v.usedItem = "몬스터볼"; let b = Battle(wild: rsrv.raidBoss, companion: v.state.companion); v.raidThen = .home; v.screen = .beats(b, [.thrown(shakes: 2), .broke], since: Date().addingTimeInterval(-2.4), from: b) }
     rsrv.raidLeft = 0; rme.cloud!.raidDue = true; drain(rme); drain(rme)
     take("raid_cleared", rme) { v in v.raidThen = nil; v.state.raidPower = Engine.raidPowerCost * 234 / 100; v.screen = .raid(tab: 0) }
-    take("menu_raid_cleared", rme) { v in v.screen = .menu(menuAt("레이드")) }
+    take("menu_raid_cleared", rme) { v in v.screen = menuFor("레이드") }
     rsrv.raidBalls[rme.myName.lowercased()] = 2; rme.cloud!.raidDue = true; drain(rme); drain(rme)
     take("raid_balls_left", rme) { v in v.screen = .raid(tab: 0) }
     rsrv.raidCaught.insert(rme.myName.lowercased()); rme.cloud!.raidDue = true; drain(rme); drain(rme)
@@ -133,8 +133,8 @@ import AppKit
     fsrv.friendAsks[fme.myName.lowercased()] = ["현우", "유나"]; fsrv.friendAsks["트레이너긴이름"] = [fme.myName.lowercased()]
     fsrv.add("트레이너긴이름", Walk())
     fme.cloud!.teamDue = true; drain(fme); drain(fme)
-    take("menu_friends", fme) { v in v.screen = .menu(menuAt("친구")) }
-    take("menu_market", fme) { v in v.screen = .menu(menuAt("교환")) }
+    take("menu_friends", fme) { v in v.screen = menuFor("친구") }
+    take("menu_market", fme) { v in v.screen = menuFor("교환") }
     take("friends_list", fme) { v in v.screen = .team(sel: 0, tab: 0, card: false) }
     take("friends_requests", fme) { v in v.screen = .team(sel: 0, tab: 4, card: false) }
     take("friends_card", fme) { v in let i = v.teamRows(0).firstIndex { !v.isMe($0.card) } ?? 0; v.screen = .team(sel: i, tab: 0, card: true) }
@@ -204,7 +204,7 @@ import AppKit
     fme.cloud!.marketDue = true; drain(fme); drain(fme)
     take("market_claims", fme) { v in v.screen = .market(.board(tab: 3, sel: 0)) }
     take("market_claim_lcd", fme) { v in v.screen = .market(.board(tab: 3, sel: 1)) }
-    take("menu_market_dot", fme) { v in v.screen = .menu(menuAt("교환")) }
+    take("menu_market_dot", fme) { v in v.screen = menuFor("교환") }
     take("market_post_note", fme) { v in v.screen = .market(.post(id: 1, sel: nil)) }
     take("market_post_mine_note", fme) { v in v.screen = .market(.post(id: 3, sel: nil)) }
     let ends = tsF + 3 * 3600 + 1200
@@ -216,7 +216,10 @@ import AppKit
     take("visit_pick", fme) { v in v.screen = .visitPick(ItemOn(item: "민수", pick: v.visitRefs[safe: 2], at: 2)) }
     take("home_guests", fme) { v in v.screen = .home }
     take("friends_card_visit", fme) { v in let i = v.teamRows(0).firstIndex { !v.isMe($0.card) && Walker.walkingNow($0.card) } ?? 0; v.screen = .team(sel: i, tab: 0, card: true) }
-    take("menu_twelve", fme) { v in v.screen = .menu(menuAt("대전")) }
+    take("menu_battle", fme) { v in v.screen = menuFor("대전") }
+    take("menu_record", fme) { v in v.screen = menuFor("트레이너 카드") }                       // 3.9: a group's page
+    take("menu_shop", fme) { v in v.screen = menuFor("상점") }
+    take("menu_dot_top", fme) { v in v.screen = .menu(group: nil, sel: 5) }                     // the 친구 group's tile gathers 교환's dot
     take("duel_hub_noparty", fme) { v in v.screen = .duel(.hub(tab: 0, sel: 0)) }
     let uids = fme.state.box.compactMap(\.uid)
     fme.state.duelParty = [fme.state.companion.uid].compactMap { $0 } + Array(uids.prefix(4))

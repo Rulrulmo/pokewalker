@@ -214,7 +214,7 @@ extension Walker {
     /// ↩: a post → its board (the tab it's on); an offer being made → its post; one being put up → 내 글; the board → the menu.
     func marketBack(_ s: MarketStep) -> Screen {
         switch s {
-        case .board: return .menu(menuAt("교환"))
+        case .board: return menuFor("교환")
         case .post(let id, _):
             let tab = listing(id)?.mine == true ? 1 : myBid(on: id) != nil ? 2 : 0
             return .market(.board(tab: tab, sel: boardRows(tab).firstIndex { $0.id == id } ?? 0))

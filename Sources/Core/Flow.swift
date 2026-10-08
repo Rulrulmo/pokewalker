@@ -180,7 +180,7 @@ extension Walker {
         if waiting != nil { return }                             // an act's answer on the way: keys wait
         let now = Date(); lastInput = now; defer { settle(now); host?.redraw(.all) }               // back home: the news go on at once
         if k == 4 {                                           // one key both ways: home opens the menu (on the pane; the LCD stays home), anywhere else it goes home
-            if let open = homeKey() { if !open { growthThen = nil }; screen = open ? .menu(0) : .home }   // home means home: the news still play there, then it stays
+            if let open = homeKey() { if !open { growthThen = nil }; screen = open ? .menu(group: nil, sel: 0) : .home }   // home means home: the news still play there, then it stays
             return
         }
         if k == 3 {                                           // ↩ 뒤로 (HGSS's B): one step up; where an answer is due only the cursor moves to the way out — nothing that can't be undone happens
@@ -188,27 +188,28 @@ extension Walker {
             case .home, .beats, .radar, .evolve, .hatch, .traded: return                           // a turn plays out; the radar ends by itself (the W paid and the chain stay); shows aren't cancellable
             case .party(let b, _) where b.mustReplace: return                                       // someone has to come in
             case .say(_, let next, _): screen = next                                               // like ●
+            case .menu(let g?, _): screen = .menu(group: nil, sel: g)                                    // 3.9: a group's page → the first, on the group (it keeps its last tile: menuSlot)
             case .menu: screen = .home
-            case .card: screen = .menu(menuAt("트레이너 카드"))
-            case .team(let s, let t, let card): screen = card ? .team(sel: s, tab: t, card: false) : .menu(menuAt("친구"))   // the card → the list → the menu
+            case .card: screen = menuFor("트레이너 카드")
+            case .team(let s, let t, let card): screen = card ? .team(sel: s, tab: t, card: false) : menuFor("친구")   // the card → the list → the menu
             case .trade(let s): screen = tradeBack(s)
-            case .raid: screen = .menu(menuAt("레이드"))
+            case .raid: screen = menuFor("레이드")
             case .market(let s): screen = marketBack(s)
             case .itemOn(let p): screen = .items(state.inventory.firstIndex(of: p.item) ?? 0)
             case .duel(.hub(1, _)): screen = .duel(.hub(tab: 0, sel: 0))
-            case .duel(.hub): screen = .menu(menuAt("대전"))
+            case .duel(.hub): screen = menuFor("대전")
             case .duel: screen = .home                                                             // (the invitation stays open: its minute; the queue too)
             case .squad(let s): switch s.kind { case .tower: screen = .tower(pick: nil); case .duelParty: screen = .duel(.hub(tab: 0, sel: 0)); case .raid: screen = .raid(tab: 0); case .duelPick: screen = .home }   // (a duel's pick: its minute runs)
             case .hold(let r, _): screen = .box(r, act: nil, confirm: false, detail: true)
             case .visitPick(let p): screen = teamRows(0).firstIndex { trainerID($0.card.name)?.key == trainerID(p.item)?.key }.map { .team(sel: $0, tab: 0, card: true) } ?? .team(sel: 0, tab: 0, card: false)
             case .items: screen = .box(-1, act: nil, confirm: false)                                  // back to 포켓몬
-            case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : .menu(menuAt("포켓몬"))   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
-            case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : .menu(menuAt("도감"))   // the entry page → the grid → the menu
+            case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : menuFor("포켓몬")   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
+            case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : menuFor("도감")   // the entry page → the grid → the menu
             case .shop(let bp, let sel, .some), .shopConfirm(let bp, let sel, _): screen = .shop(bp: bp, sel: sel, qty: nil)
-            case .shop(let bp, _, nil): screen = .menu(menuAt(bp ? "BP 교환소" : "상점"))
-            case .course: screen = .menu(menuAt("코스"))
+            case .shop(let bp, _, nil): screen = menuFor(bp ? "BP 교환소" : "상점")
+            case .course: screen = menuFor("코스")
             case .train: screen = .items(state.inventory.firstIndex(of: "은색병뚜껑") ?? 0); trainRef = -1
-            case .tower(let p): screen = p != nil ? .tower(pick: nil) : .menu(menuAt("배틀 타워"))                    // the picker → the lobby → the menu; a run stays on: ● in the lobby goes on
+            case .tower(let p): screen = p != nil ? .tower(pick: nil) : menuFor("배틀 타워")                    // the picker → the lobby → the menu; a run stays on: ● in the lobby goes on
             case .learn: screen = .learn(sel: 4)                                                    // onto 배우지 않는다; ● decides
             case .relearn(let r, let s, let at): screen = at != nil ? .relearn(ref: r, slot: s, at: nil) : .box(r, act: nil, confirm: false, detail: true)   // the moves → the slots → its page
             case .moves(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "공격") ?? 0)   // back to where it came from
@@ -220,11 +221,12 @@ extension Walker {
             }
             return
         }
-        let n = menuItems.count
         switch screen {
         case .home: if k == 1 { emote = (1, now.addingTimeInterval(2)); animOn = ("home", state.companion.dex, now) }   // ● pats the companion (♥, its animation); the menu is the 메뉴 key's
-        case .menu(let i):
-            if k == 1 { open(i, now) } else { screen = .menu((i + (k == 0 ? n - 1 : 1)) % n) }       // ◀ ▶ go round the tiles
+        case .menu(let g, let i):
+            let names = menuNames(g)
+            if k != 1 { screen = .menu(group: g, sel: (i + (k == 0 ? names.count - 1 : 1)) % names.count); return }   // ◀ ▶ go round the page's tiles
+            if g == nil, !menuTiles[i].items.isEmpty { screen = .menu(group: i, sel: menuSlot[i] ?? 0) } else { open(names[i], now) }   // a group (▸): its page, on the tile last used there
         case .radar(let b, let c, let since, let chain):
             if k != 1 { screen = .radar(bush: b, cursor: (c + (k == 0 ? 3 : 1)) % 4, since: since, chain: chain); return }
             pickBush(b, cursor: c, since: since, chain: chain, now)
@@ -314,7 +316,7 @@ extension Walker {
         case .tower:
             guard k == 1 else { return }
             towerNext(now)
-        case .card(let p): screen = k == 1 ? .menu(menuAt("트레이너 카드")) : .card((p + (k == 0 ? 2 : 1)) % 3)
+        case .card(let p): screen = k == 1 ? menuFor("트레이너 카드") : .card((p + (k == 0 ? 2 : 1)) % 3)
         case .team(let s, let t, let card):                                                      // ◀ ▶ a teammate (on a card: the next one's card), ● its card / 인사
             if k != 1 { teamStep(k == 0 ? -1 : 1); return }
             if t == 4, !card { if let r = friendReqRows[safe: s], !r.mine { friendReq(r, accept: true, now) } else if friendReqRows.isEmpty { askFriend(now) }; return }   // 신청: ● accepts (none: ID로 신청)
@@ -390,24 +392,28 @@ extension Walker {
         case .beats, .evolve, .hatch, .traded: break
         }
     }
-    func open(_ i: Int, _ now: Date) {
-        switch menuItems[i] {
-        case "포켓 레이더": openRadar(back: .menu(i), now)                                            // the server's find (docs/plans/11 §3.2)
+    /// A feature opened from its menu tile, as ● there (tests and renders: one line).
+    func openFeature(_ name: String) { screen = menuFor(name); press(1) }
+    /// A feature on the menu, by its name (as ● on its tile does; tests open features with it too).
+    func open(_ name: String, _ now: Date = Date()) {
+        switch name {
+        case "포켓 레이더": openRadar(back: menuFor(name), now)                                            // the server's find (docs/plans/11 §3.2)
         case "코스": screen = .course(state.course)
         case "트레이너 카드": screen = .card(0)
         case "포켓몬": screen = .box(-1, act: nil, confirm: false)                                  // the companion first
-        case "상점", "BP 교환소": screen = .shop(bp: menuItems[i] == "BP 교환소", sel: 0, qty: nil)
+        case "상점", "BP 교환소": screen = .shop(bp: name == "BP 교환소", sel: 0, qty: nil)
         case "배틀 타워": screen = .tower(pick: nil)
         case "친구":
-            guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: .menu(i), since: now); return }
+            guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: menuFor(name), since: now); return }
             c.wantTeam(now); screen = .team(sel: 0, tab: 0, card: false)
         case "교환":
-            guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: .menu(i), since: now); return }
+            guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: menuFor(name), since: now); return }
             c.marketDue = true; screen = .market(.board(tab: 0, sel: 0))
         case "레이드":
-            guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: .menu(i), since: now); return }
+            guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: menuFor(name), since: now); return }
             c.raidDue = true; screen = .raid(tab: 0)
         case "대전": openDuelHub(now)
+        case "우편함": openMail(now)
         default: screen = .dex(state.companion.dex, filter: 0, detail: false)
         }
     }

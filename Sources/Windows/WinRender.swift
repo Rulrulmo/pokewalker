@@ -46,7 +46,7 @@ import Foundation
     take("home_night_kraft") { v in paperStyle = 3; v.state.total = 5750 }                       // 0 h
     take("home_size3", size: 3) { _ in }
     take("home_grey_original", lcd: true) { _ in lcdStyle = 1 }
-    take("menu") { v in v.screen = .menu(3) }
+    take("menu") { v in v.screen = .menu(group: nil, sel: 3) }
     take("box_grid_party") { v in v.screen = .box(-1, act: nil, confirm: false) }
     take("page_box") { v in still(v, "box 0", 133); v.screen = .box(0, act: nil, confirm: false, detail: true) }
     take("items") { v in v.screen = .items(2) }
@@ -85,7 +85,7 @@ import Foundation
                      (Listing(id: 8, from: tme.myName, mon: tme.state.box[2], wish: [149], at: now - 900, bids: 0, mine: false), tme.myName.lowercased(), true)]
     tsrv.bids = [(Bid(id: 4, listing: 8, from: "지은", mon: tsrv.walk("민수")!.box[2], at: now - 300, state: "open"), "지은", tme.myName.lowercased())]
     tme.cloud!.teamDue = true; tme.cloud!.marketDue = true; drain(tme); drain(tme)
-    take("menu_11", on: tme) { v in v.screen = .menu(menuAt("교환")) }
+    take("menu_11", on: tme) { v in v.screen = menuFor("교환") }
     take("friends_requests", on: tme) { v in v.screen = .team(sel: 0, tab: 4, card: false) }
     take("market_board", on: tme) { v in v.screen = .market(.board(tab: 0, sel: 0)) }
     take("market_post_mine", on: tme) { v in v.screen = .market(.post(id: 8, sel: 0)) }
@@ -108,7 +108,7 @@ import Foundation
     tsrv.visitList = [FakeCloud.FakeVisit(id: 1, owner: me, ownerName: tme.myName, host: "민수", hostName: "민수", mon: tme.state.box[5], steps: 3120, ends: now + 12_000),
                       FakeCloud.FakeVisit(id: 2, owner: "지은", ownerName: "지은", host: me, hostName: tme.myName, mon: Mon.wild(282, level: 34, shiny: true, &r38), steps: 4380, ends: now + 15_000)]
     tme.cloud!.teamDue = true; tme.cloud!.marketDue = true; drain(tme); drain(tme)
-    take("menu_12", on: tme) { v in v.duelOn = false; v.duelWait = false; v.screen = .menu(menuAt("대전")) }
+    take("menu_12", on: tme) { v in v.duelOn = false; v.duelWait = false; v.screen = menuFor("대전") }
     take("market_claims", on: tme) { v in v.screen = .market(.board(tab: 3, sel: 0)) }
     take("market_post_note", on: tme) { v in v.screen = .market(.post(id: 7, sel: nil)) }
     take("friends_visits", on: tme) { v in v.screen = .team(sel: 0, tab: 5, card: false) }
