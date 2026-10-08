@@ -60,6 +60,24 @@ struct HoldModel: Equatable {
     struct Row: Equatable { var name: String; var count: Int; var note: String; var take: Bool; var use = false; var why: String? = nil }   // take: the 빼기 row; use (3.8.5): one to use on it (why: what it wouldn't do, dimmed)
     var who: String; var now: String?; var rows: [Row]; var sel: Int; var action: String?; var hint: String
 }
+/// 3.9's 우편함 (15 §6 A): a page of mails (the server's order: gifts to take first), 모두 받기.
+struct MailListModel: Equatable {
+    static let perPage = 6
+    enum Icon: Equatable { case gift, letter, gem, medal(gold: Bool), mon(dex: Int, shiny: Bool) }
+    struct Row: Equatable { var icon: Icon; var title, sub: String; var chips: [String]; var unread, done: Bool }   // unread: not opened, or a gift left (its dot); done: taken (dimmed)
+    var rows: [Row]; var sel: Int?; var first, count: Int; var note: String; var all: String?; var empty: String
+}
+/// One mail: its words, its gifts, 받기 (or 고르기).
+struct MailOpenModel: Equatable {
+    struct Gift: Equatable { var icon: MailListModel.Icon; var name, note: String }
+    var title, from, body: String; var gifts: [Gift]; var button: String?; var off: String
+}
+/// A pick (15 §6 D): the held items as rows, or the legends as the 포켓몬 menu's cells; the button, or 받을까요? 아니오 / 예.
+struct MailPickModel: Equatable {
+    static let perPage = 24
+    struct Row: Equatable { var name, note: String }
+    var title, note: String; var rows: [Row]; var cells: [GridModel.Cell]; var sel: Int; var first, count: Int; var go: String?; var ask: Bool?
+}
 /// 포켓몬 레이더: the four bushes as on the LCD, the one rustling marked.
 struct RadarModel: Equatable { var live: Int?; var cursor: Int; var chain: Int; var season = Season.summer }
 /// 트레이너 카드: its three pages as tabs.
@@ -206,6 +224,7 @@ struct PaneContent: Equatable {
     var friendReqs: FriendReqModel? = nil, board: MarketBoardModel? = nil, post: MarketPostModel? = nil
     var duel: DuelModel? = nil, hold: HoldModel? = nil, visits: VisitsModel? = nil
     var squad: SquadModel? = nil, duelHub: DuelHubModel? = nil
+    var mailList: MailListModel? = nil, mailOpen: MailOpenModel? = nil, mailPick: MailPickModel? = nil
 }
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
@@ -213,7 +232,7 @@ extension PaneContent {
     static let home: CGFloat = 406                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size)
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 472 : dex != nil ? 390 : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
-            : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446
+            : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446 : mailList != nil || mailOpen != nil || mailPick != nil ? 466
             : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 444 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
     }
 }

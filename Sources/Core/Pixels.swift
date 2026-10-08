@@ -89,7 +89,7 @@ struct PicRun: Equatable { var key: String; var x, y: Int; var scale = 1.0, alph
 
 /// Other 80x80 frames (tools/gen.py frames.bin): the HGSS egg, then the Battle Tower's trainers. Per frame 15 RGB, then 80x80 at 4 bpp; each stands on row 79.
 let frameNames = ["egg", "acetrainer-gen4", "acetrainerf-gen4", "veteran-gen4", "veteranf", "lady-gen4", "hiker-gen4", "scientist-gen4", "blackbelt-gen4",
-                  "battlegirl-gen4", "psychic-gen4", "psychicf-gen4", "dragontamer", "schoolkid-gen4", "pokemonranger-gen4", "pokemonrangerf-gen4"]
+                  "battlegirl-gen4", "psychic-gen4", "psychicf-gen4", "dragontamer", "schoolkid-gen4", "pokemonranger-gen4", "pokemonrangerf-gen4", "palmer"]
 let frameData: Data = {
     guard let d = resource("frames.bin"), d.count == frameNames.count * 3245 else { return Data(count: frameNames.count * 3245) }
     return d
@@ -107,6 +107,7 @@ func framePic(_ name: String) -> Pic {
 }
 /// A tower trainer's sprite, by class (the name's first words) and, where a class has both, the given name's sex.
 func trainerFrame(_ trainer: String) -> String {
+    if trainer == Tower.tycoon { return "palmer" }                                             // 3.9: the 49th and 99th fights' boss
     let female = ["지은", "서연", "하은", "유나", "보라"].contains { trainer.hasSuffix($0) }
     for (cls, m, f) in [("엘리트 트레이너", "acetrainer-gen4", "acetrainerf-gen4"), ("베테랑", "veteran-gen4", "veteranf"), ("아가씨", "lady-gen4", "lady-gen4"),
                         ("등산가", "hiker-gen4", "hiker-gen4"), ("연구원", "scientist-gen4", "scientist-gen4"), ("격투가", "blackbelt-gen4", "battlegirl-gen4"),
@@ -142,6 +143,13 @@ let ball = art(["__###__", "_#:::#_", "#:::::#", "###.###", "#.....#", "_#...#_"
 let gem = art(["_#_", "#:#", "_#_"])
 let vDiamond = art(["__#__", "_#:#_", "#:::#", "_#:#_", "__#__"])            // 3V and up (a diamond: the sparkle means 이로치)
 let vPal = [rgb(250, 250, 250), rgb(250, 250, 250), rgb(245, 178, 40), rgb(160, 100, 10)]
+let giftArt = art(["_:___:_", "__:_:__", "#######", "#..:..#", "#######", "#..:..#", "#######"])   // 3.9: a mail's gift (우편함)
+let giftPal = [rgb(250, 250, 250), rgb(250, 214, 120), rgb(222, 52, 44), rgb(30, 32, 40)]
+let letterArt = art(["#######", "#:...:#", "#.:.:.#", "#..:..#", "#######"])                       // a notice
+let letterPal = [rgb(250, 250, 250), rgb(250, 250, 250), rgb(150, 150, 160), rgb(30, 32, 40)]
+let medalArt = art(["_:___:_", "__:_:__", "___:___", "__###__", "_#...#_", "_#...#_", "__###__"])   // 15 §3.2: the card's 은 · 금 장식
+let silverPal = [rgb(250, 250, 250), rgb(214, 218, 226), rgb(70, 110, 200), rgb(110, 116, 130)]
+let goldPal = [rgb(250, 250, 250), rgb(248, 200, 60), rgb(222, 52, 44), rgb(170, 110, 20)]
 let caughtMark = art(["_###_", "#:::#", "#####", "#...#", "_###_"])        // a 5-dot Poké Ball: species caught before
 let legendDex = Set(courses.flatMap(\.legends))
 let spark = art(["__#__", "__#__", "##:##", "__#__", "__#__"])

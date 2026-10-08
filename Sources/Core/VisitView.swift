@@ -1,6 +1,6 @@
 import Foundation
 // docs/plans/14 §3 (3.8): 맡겨 키우기 — one of ours (the walker's or the box's) sent to a friend walking now, raised by their steps for 5 hours
-// (a step = 1 EXP), back through 받기; they earn a BP per 2,000 steps (5 at most). The friends' 맡기기 tab lists mine away and the ones I'm
+// (a step = 1 EXP), back through the 우편함 (3.9; 받기 before); they earn a BP per 2,000 steps (5 at most). The friends' 맡기기 tab lists mine away and the ones I'm
 // raising (2 at most since 3.8.1; either side can end it early); on home they sit above the companion; a friend's card sends one.
 
 extension Walker {
@@ -47,7 +47,7 @@ extension Walker {
         act(.visitEnd(id: v.id), back: back, now) { [weak self] _, now in
             guard let self else { return nil }
             cloud?.teamDue = true; cloud?.marketDue = true
-            if mine { return .say([josa(monNames[v.mon.dex], "을", "를") + " 데려왔다", "교환 → 받기에서 받아요"], next: back, since: now) }
+            if mine { return .say([josa(monNames[v.mon.dex], "을", "를") + " 데려왔다", "우편함으로 돌아와요"], next: back, since: now) }
             var bp = 0                                                                              // (its visitDone: said here, not again at home)
             news.removeAll { if case .visitDone(_, let d, _, let b) = $0, d == v.mon.dex { bp = b; return true }; return false }
             return .say([josa(v.owner, "의", "의") + " " + josa(monNames[v.mon.dex], "을", "를"), "돌려보냈다"] + (bp > 0 ? ["+\(bp)BP"] : []), next: back, since: now)
@@ -99,7 +99,7 @@ extension Walker {
         let back = teamRows(0).firstIndex { trainerID($0.card.name)?.key == trainerID(p.item)?.key }.map { Screen.team(sel: $0, tab: 0, card: true) } ?? .team(sel: 0, tab: 0, card: false)
         act(.visitSend(to: p.item, uid: u), back: .visitPick(p), now) { [weak self] _, now in
             self?.cloud?.teamDue = true
-            return .say([p.item + "에게 " + josa(monNames[m.dex], "을", "를"), "맡겼다!", "5시간 뒤 받기로 돌아와요"], next: back, since: now)
+            return .say([p.item + "에게 " + josa(monNames[m.dex], "을", "를"), "맡겼다!", "5시간 뒤 우편함으로 와요"], next: back, since: now)
         }
     }
     func startVisit(_ name: String, _ now: Date = Date()) {

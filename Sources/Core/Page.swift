@@ -83,7 +83,7 @@ extension Canvas {
         else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let l = p.relearn { drawRelearn(l) }
         else if let t = p.team { drawTeam(t) } else if let t = p.teamCard { drawTeamCard(t) }
         else if let t = p.trades { drawTrades(t) } else if let o = p.offer { drawOffer(o) } else if let k = p.pick { drawPick(k) }
-        else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let v = p.visits { drawVisits(v) } else if let s = p.squad { drawSquad(s) } else if let h = p.duelHub { drawDuelHub(h) } else if let r = p.raid { drawRaid(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
+        else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let v = p.visits { drawVisits(v) } else if let s = p.squad { drawSquad(s) } else if let h = p.duelHub { drawDuelHub(h) } else if let m = p.mailList { drawMailList(m) } else if let m = p.mailOpen { drawMailOpen(m) } else if let m = p.mailPick { drawMailPick(m) } else if let r = p.raid { drawRaid(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
         else if let s = p.status { drawStatus(s) }
     }
     let X0: CGFloat = 9, X1: CGFloat = 207                                                         // the content column (card points): the bezel's edges
@@ -948,6 +948,96 @@ extension Page {
         if m.goSel { c.stroke(.rounded(rc.insetBy(dx: -1.5 * K, dy: -1.5 * K), 11 * K), m.go == nil ? Ink.faint : Ink.ink, width: 1.2 * K) }
         c.say(m.go ?? (m.off.isEmpty ? m.hint : m.off), rc.midX, rc.midY, font(m.go == nil && m.off.isEmpty ? 9.5 : 11, .bold), m.go == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10))
         if m.go != nil { hits.append((rc, 8790)) }
+    }
+    // MARK: 3.9's 우편함 (15 §6 A · D): the list, one mail, a pick — all 466 tall (the page doesn't jump between them)
+    /// A mail's icon in a row (28 pt): its Pokémon, a gift box, a letter, a gem, a medal.
+    func mailIcon(_ i: MailListModel.Icon, _ cx: CGFloat, _ cy: CGFloat) {
+        switch i {
+        case .mon(let d, let shiny): monIcon(d, shiny: shiny, CGRect(x: cx - x(14), y: cy - x(14), width: x(28), height: x(28)), side: 28 * K)
+        case .gift: pixelArt(giftArt, giftPal, CGPoint(x: cx, y: cy), 2.4 * K)
+        case .letter: pixelArt(letterArt, letterPal, CGPoint(x: cx, y: cy), 2.4 * K)
+        case .gem: pixelArt(gem, gemPal, CGPoint(x: cx, y: cy), 3 * K)
+        case .medal(let gold): pixelArt(medalArt, gold ? goldPal : silverPal, CGPoint(x: cx, y: cy), 2.4 * K)
+        }
+    }
+    func drawMailList(_ m: MailListModel) {
+        c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
+        if m.rows.isEmpty { c.say(m.empty, x(Layout.w / 2), y(300), font(10, .medium), Ink.sub, 0.5) }
+        for (i, row) in m.rows.enumerated() {
+            let rc = r(X0, 216 + CGFloat(i) * 31, X1 - X0, 28); tile(rc, 9, on: m.first + i == m.sel, row.done ? Ink.board : nil)
+            mailIcon(row.icon, rc.minX + x(19), rc.midY)
+            if row.unread { let d = x(6); c.fill(.oval(CGRect(x: rc.minX + x(4), y: rc.minY + x(4), width: d, height: d)), Ink.red) }
+            var xr = rc.maxX - x(9)
+            for chip in row.chips.reversed() { let col = row.done ? Ink.sub : chip == "고르기" ? Ink.red : Ink.green; xr = pillAt(chip, xr, rc.midY, Ink.tint(col, 0.16), col) }
+            c.say(row.title, rc.minX + x(38), rc.midY - x(5.5), font(9.5, .bold), row.done ? Ink.sub : Ink.ink, maxW: xr - rc.minX - x(38))
+            c.say(row.sub, rc.minX + x(38), rc.midY + x(6), font(8, .medium), Ink.sub, maxW: xr - rc.minX - x(38))
+            hits.append((rc, 8800 + i))
+        }
+        let per = MailListModel.perPage, pages = max(1, (m.count + per - 1) / per)
+        pager("\(m.first / per + 1) / \(pages)", 404, prev: pages > 1, next: pages > 1, codes: (8820, 8821))
+        let rc = r(X0, 428, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.all == nil ? Ink.tile : Ink.red)
+        c.say(m.all ?? "고르기 우편은 하나씩 받아요", rc.midX, rc.midY, font(m.all == nil ? 9.5 : 11, .bold), m.all == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.all != nil { hits.append((rc, 8830)) }
+    }
+    func drawMailOpen(_ m: MailOpenModel) {
+        c.say(m.title, x(X0 + 2), y(207), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 4))
+        c.say(m.from, x(X0 + 2), y(223), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
+        var yy: CGFloat = 238
+        if !m.body.isEmpty {                                                                     // the words, by words (a notice's several lines)
+            let f = font(9.5, .medium), room = x(X1 - X0 - 8), maxLines = m.gifts.isEmpty ? 10 : 5
+            var lines: [String] = []
+            for para in m.body.components(separatedBy: "\n") {
+                var cur = ""
+                for w in para.split(separator: " ") { let t = cur.isEmpty ? String(w) : cur + " " + w; if width(t, f) > room, !cur.isEmpty { lines.append(cur); cur = String(w) } else { cur = t } }
+                lines.append(cur)
+            }
+            let box = r(X0, yy, X1 - X0, CGFloat(min(lines.count, maxLines)) * 15 + 10); c.fill(.rounded(box, 9 * K), Ink.board)
+            for (k, l) in lines.prefix(maxLines).enumerated() { c.say(l, x(X0 + 6), y(yy + 12 + CGFloat(k) * 15), f, Ink.ink, maxW: room) }
+            yy += CGFloat(min(lines.count, maxLines)) * 15 + 18
+        }
+        if !m.gifts.isEmpty { c.say("선물", x(X0 + 2), y(yy + 4), font(9, .semibold), Ink.sub); yy += 12 }
+        for g in m.gifts.prefix(4) {
+            let rc = r(X0, yy, X1 - X0, 30); tile(rc, 9, on: false)
+            mailIcon(g.icon, rc.minX + x(19), rc.midY)
+            c.say(g.name, rc.minX + x(38), rc.midY - (g.note.isEmpty ? 0 : x(5.5)), font(10, .bold), Ink.ink, maxW: rc.width - x(46))
+            if !g.note.isEmpty { c.say(g.note, rc.minX + x(38), rc.midY + x(6.5), font(8, .medium), Ink.sub, maxW: rc.width - x(46)) }
+            yy += 33
+        }
+        let rc = r(X0, 428, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.button == nil ? Ink.tile : Ink.red)
+        c.say(m.button ?? m.off, rc.midX, rc.midY, font(m.button == nil ? 9.5 : 11, .bold), m.button == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.button != nil { hits.append((rc, 8840)) }
+    }
+    func drawMailPick(_ m: MailPickModel) {
+        let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .semibold), Ink.sub, 1)
+        c.say(m.title, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)
+        if m.cells.isEmpty {                                                                      // the held items: a row each (the 도구 주기 rows' look)
+            for (i, row) in m.rows.enumerated() {
+                let rc = r(X0, 216 + CGFloat(i) * 28, X1 - X0, 25); tile(rc, 9, on: i == m.sel)        // (seven: one page, clear of 받을까요?)
+                pixelArt(gem, gemPal, CGPoint(x: rc.minX + x(14), y: rc.midY), 2.5 * K)
+                c.say(row.name, rc.minX + x(28), rc.midY - x(5), font(10, .bold), Ink.ink, maxW: rc.width - x(36))
+                c.say(row.note, rc.minX + x(28), rc.midY + x(6.5), font(8, .medium), Ink.sub, maxW: rc.width - x(36))
+                hits.append((rc, 8850 + i))
+            }
+        } else {                                                                                  // the legends: the 포켓몬 menu's cells, two pages
+            let board = r(X0, 218, X1 - X0, 4 * 33); c.fill(.rounded(board, 11 * K), Ink.board)
+            for (k, e) in m.cells.enumerated() {
+                let cell = r(X0 + CGFloat(k % 6) * 33, 218 + CGFloat(k / 6) * 33, 33, 33); squadCell(e, cell, order: nil, looked: m.first + k == m.sel); hits.append((cell, 8850 + k))
+            }
+            let per = MailPickModel.perPage, pages = max(1, (m.count + per - 1) / per)
+            pager("\(m.first / per + 1) / \(pages)", 356, prev: pages > 1 && m.ask == nil, next: pages > 1 && m.ask == nil, codes: (8880, 8881))
+            if let e = m.cells[safe: m.sel - m.first] {
+                c.say(monNames[e.dex] + " · " + monTypes[e.dex].map { typeKo[$0] ?? $0 }.joined(separator: "·"), x(Layout.w / 2), y(388), font(10, .bold), Ink.ink, 0.5)
+                c.say("이로치 · Lv.\(e.level) · 4V", x(Layout.w / 2), y(404), font(8.5, .medium), Ink.sub, 0.5)
+            }
+        }
+        if let yes = m.ask {                                                                       // 받을까요? 아니오 / 예 (아니오 first)
+            for (k, t) in ["아니오", "예"].enumerated() {
+                let rc = r(X0 + CGFloat(k) * ((X1 - X0 + 4) / 2), 428, (X1 - X0 - 4) / 2, 30), on = (k == 1) == yes
+                c.fill(.rounded(rc, 10 * K), on ? Ink.red : Ink.tile); c.say(t, rc.midX, rc.midY, font(11, .bold), on ? .white : Ink.ink, 0.5); hits.append((rc, 8891 + k))
+            }
+            c.say("받을까요? 한 번 고르면 바꿀 수 없어요", x(Layout.w / 2), y(417), font(8.5, .medium), Ink.sub, 0.5)
+            return
+        }
+        let rc = r(X0, 428, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.go == nil ? Ink.tile : Ink.red)
+        c.say(m.go ?? "하나를 골라 주세요", rc.midX, rc.midY, font(11, .bold), m.go == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.go != nil { hits.append((rc, 8890)) }
     }
     // MARK: 3.8's 대전 menu (14 §5): 대전 (the six, friends walking now, 랜덤 매칭) · 전적
     func drawDuelHub(_ m: DuelHubModel) {

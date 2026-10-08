@@ -151,6 +151,7 @@ extension Walker {
         case .hold(let ref, let sel): holdLCD(&fb, ref, sel, now)
         case .visitPick(let p): visitPickLCD(&fb, p, now)
         case .squad(let s): squadLCD(&fb, s, now)
+        case .mail(let s): mailLCD(&fb, s, now)
         case .raid: raidLCD(&fb, now)
         case .market(let s): marketLCD(&fb, s, now)
         case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
@@ -306,7 +307,7 @@ extension Walker {
     /// A click on a page still up under its own message (산 뒤, 연승!, W가 부족하다 …): the message ends and the click counts.
     func throughSay() {
         guard case .say(_, let next, _) = screen else { return }
-        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade, .raid, .market, .team, .itemOn, .duel, .hold, .visitPick, .squad: screen = next; default: break }
+        switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade, .raid, .market, .team, .itemOn, .duel, .hold, .visitPick, .squad, .mail: screen = next; default: break }
     }
     func gridTap(_ code: Int) {
         guard !frozen, waiting == nil else { return }
@@ -359,6 +360,7 @@ extension Walker {
         if case .hold(let ref, let sel) = sc { return holdPane(ref, sel) }
         if case .visitPick(let p) = sc { return visitPickPane(p, now) }
         if case .squad(let s) = sc { return squadPane(s, now) }
+        if case .mail(let s) = sc { return mailPane(s, now) }
         if case .menu(let g, let i) = sc { return PaneContent(menu: menuModel(g, i)) }
         switch sc {                                                                               // the rest of the walker's pages: what you press is here, the LCD shows it
         case .radar(let b, let c, let since, let chain):
@@ -430,6 +432,7 @@ extension Walker {
         case (.itemOn, 8300...8399): itemOnTap(code, Date())
         case (.duel, 6300...6351): duelTap(code, Date())
         case (.squad, 8700...8799): squadTap(code, Date())
+        case (.mail, 8800...8899): mailTap(code, Date())
         case (.hold, 5980...5999): holdTap(code, Date())
         case (.visitPick, 8500...8599): visitPickTap(code, Date())
         case (.team(let sel, let tab, true), 6032): if let c = teamRows(tab)[safe: sel]?.card, !isMe(c), Walker.walkingNow(c) { challenge(c.name) }   // 대전 신청

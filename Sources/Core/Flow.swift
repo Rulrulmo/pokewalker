@@ -170,8 +170,8 @@ extension Walker {
     func homeKey() -> Bool? {
         switch screen {
         case .home: true
-        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold, .visitPick, .squad: false
-        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold, .visitPick, .squad: false; default: nil }
+        case .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold, .visitPick, .squad, .mail: false
+        case .say(_, let next, _): switch next { case .home, .menu, .card, .items, .box, .dex, .shop, .shopConfirm, .tower, .course, .train, .relearn, .team, .trade, .raid, .market, .itemOn, .duel, .hold, .visitPick, .squad, .mail: false; default: nil }
         default: nil
         }
     }
@@ -195,6 +195,7 @@ extension Walker {
             case .trade(let s): screen = tradeBack(s)
             case .raid: screen = menuFor("레이드")
             case .market(let s): screen = marketBack(s)
+            case .mail(let s): screen = mailBack(s)
             case .itemOn(let p): screen = .items(state.inventory.firstIndex(of: p.item) ?? 0)
             case .duel(.hub(1, _)): screen = .duel(.hub(tab: 0, sel: 0))
             case .duel(.hub): screen = menuFor("대전")
@@ -331,6 +332,7 @@ extension Walker {
         case .hold(let r, let s): holdPress(k, r, s, now)
         case .visitPick(let p): visitPickPress(k, p, now)
         case .squad(let s): squadPress(k, s, now)
+        case .mail(let s): mailPress(k, s, now)
         case .say(_, let next, _): screen = next
         case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
             if k == 1 { if dexList(f).contains(n) { screen = .dex(n, filter: f, detail: !detail) } } else { gridStep(k == 0 ? -1 : 1, wrap: true) }

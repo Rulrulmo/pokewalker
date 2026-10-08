@@ -346,7 +346,7 @@ import Foundation
     func settle(_ w: Walker, _ c: Cloud) { run(15) { w.waiting == nil && idle(c) } }
     /// Its next act (steps): what came for it, the first of it on the LCD.
     func next(_ w: Walker, _ c: Cloud, until: () -> Bool) -> Bool { w.news = []; w.screen = .home; c.addSteps(2); c.saveNow(); return run(25, until: until) }
-    func lists(_ w: Walker, _ c: Cloud) { c.teamDue = true; c.marketDue = true; run(15) { !c.teamDue && !c.marketDue && idle(c) }; run(2) { false } }
+    func lists(_ w: Walker, _ c: Cloud) { c.teamDue = true; c.marketDue = true; c.mailDue = true; run(15) { !c.teamDue && !c.marketDue && !c.mailDue && idle(c) }; run(2) { false } }
     check(run(40) { ca.phase == .on && cb.phase == .on && ca.base != nil && cb.base != nil }, "live social: \(a) and \(b) logged in (\(ha.asked), \(hb.asked))")
     let seeded = wa.state.box.count >= 2 && wb.state.box.count >= 2                             // (first run: A 고우스트 · 꼬렛, B 윤겔라 · 잉어킹; a rerun takes what's there)
     check(seeded, "live social: the boxes as seeded — A \(wa.state.box.map(\.dex)), B \(wb.state.box.map(\.dex))")
@@ -538,7 +538,7 @@ import Foundation
     func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
     func settle(_ w: Walker, _ c: Cloud) { run(15) { w.waiting == nil && idle(c) } }
     func next(_ w: Walker, _ c: Cloud, until: () -> Bool) -> Bool { w.news = []; w.screen = .home; c.addSteps(2); c.saveNow(); return run(25, until: until) }
-    func lists(_ w: Walker, _ c: Cloud) { c.teamDue = true; c.marketDue = true; run(15) { !c.teamDue && !c.marketDue && idle(c) }; run(2) { false } }
+    func lists(_ w: Walker, _ c: Cloud) { c.teamDue = true; c.marketDue = true; c.mailDue = true; run(15) { !c.teamDue && !c.marketDue && !c.mailDue && idle(c) }; run(2) { false } }
     func box(_ w: Walker) -> String { w.state.box.map { monNames[$0.dex] }.joined(separator: " ") }
     check(run(40) { ca.phase == .on && cb.phase == .on && ca.base != nil && cb.base != nil }, "live 3.8: \(a) and \(b) logged in (\(ha.asked), \(hb.asked))")
     let seeded = wa.state.box.count >= 3 && wb.state.box.count >= 2                             // (first run: as seeded; a rerun takes what's there)
@@ -578,11 +578,11 @@ import Foundation
     let show: Bool = { if case .traded(let g, let got, _, _) = wa.screen { return g.dex == ghost.dex && got.dex == kadabra.dex }; return false }()
     run(10) { if case .evolve = wa.screen { return true }; return false }
     check(show && wa.state.box.contains { $0.ot.map { trainerID($0)?.key == trainerID(b)?.key } == true }, "live marketAccept: A's show; \(monNames[kadabra.dex]) comes to A (A \(box(wa)))")
-    _ = next(wb, cb) { cb.marketDue || !wb.claims.isEmpty }; lists(wb, cb)
-    let ki = wb.claims.firstIndex { $0.kind == "traded" && $0.mon.dex == ghost.dex } ?? 0, k = wb.claims[safe: ki]
-    wb.screen = .market(.board(tab: 3, sel: ki)); wb.pageTap(8010 + ki); settle(wb, cb); let took = says(wb); run(10) { if case .evolve = wb.screen { return true }; return false }
-    check(k?.kind == "traded" && took.first == josa(monNames[ghost.dex], "을", "를") + " 받았다!" && wb.state.box.contains { $0.ot.map { trainerID($0)?.key == trainerID(a)?.key } == true },
-          "live 받기: B's 받기 함 has \(monNames[ghost.dex]) (traded); a click takes it — \(took) (B \(box(wb)))")
+    _ = next(wb, cb) { cb.mailDue || wb.mails.contains { $0.kind == "trade" && !$0.claimed } }; lists(wb, cb)
+    let k = wb.mails.first { $0.kind == "trade" && !$0.claimed && giftMon($0)?.dex == ghost.dex }
+    if let k { wb.screen = .mail(.open(id: k.id)); wb.pageTap(8840); settle(wb, cb) }; let took = says(wb); run(10) { if case .evolve = wb.screen { return true }; return false }
+    check(k != nil && took.first == josa(monNames[ghost.dex], "을", "를") + " 받았다!" && wb.state.box.contains { $0.ot.map { trainerID($0)?.key == trainerID(a)?.key } == true },
+          "live 3.9 우편함: B's mail has \(monNames[ghost.dex]) (trade: \(k?.title ?? "-")); 받기 takes it — \(took) (B \(box(wb)))")
 
     // ② 맡겨 키우기: A sends 이브이 to B (walking now), B raises it, sends it back (BP), A takes it home (EXP)
     _ = next(wb, cb) { idle(cb) }; lists(wa, ca)
@@ -600,12 +600,12 @@ import Foundation
     let raised = wb.guests.first?.steps ?? 0, bp0 = wb.state.bp ?? 0
     wb.screen = .team(sel: 0, tab: 5, card: false); wb.pageTap(6400); settle(wb, cb); let back = says(wb)
     check(raised >= 2000 && back.dropFirst().first == "돌려보냈다" && (wb.state.bp ?? 0) == bp0 + raised / 2000, "live visitEnd: \(raised) steps raised; 돌려보내기 → B's BP \(bp0) → \(wb.state.bp ?? 0) — \(back)")
-    _ = next(wa, ca) { !wa.claims.isEmpty || ca.marketDue }; lists(wa, ca)
-    let vk = wa.claims.first { $0.kind == "visit" }
-    wa.screen = .market(.board(tab: 3, sel: wa.claims.firstIndex { $0.kind == "visit" } ?? 0)); wa.pageTap(8010 + (wa.claims.firstIndex { $0.kind == "visit" } ?? 0)); settle(wa, ca)
+    _ = next(wa, ca) { wa.mails.contains { $0.kind == "visit" && !$0.claimed } || ca.mailDue }; lists(wa, ca)
+    let vk = wa.mails.first { $0.kind == "visit" && !$0.claimed && giftMon($0)?.uid == eevee.uid }
+    if let vk { wa.screen = .mail(.open(id: vk.id)); wa.pageTap(8840); settle(wa, ca) }
     run(10) { false }
     let home = wa.state.box.first { $0.uid == eevee.uid }
-    check(vk?.mon.uid == eevee.uid && (home?.level ?? 0) > lv0, "live: A's 받기 (visit) → \(monNames[eevee.dex]) home, Lv.\(lv0) → Lv.\(home?.level ?? 0)")
+    check(vk != nil && (home?.level ?? 0) > lv0, "live 3.9: A's 우편함 (visit) → \(monNames[eevee.dex]) home, Lv.\(lv0) → Lv.\(home?.level ?? 0)")
 
     // ③ the 대전 menu: parties, a friend match (pick 3), the queue, the 전적
     for (w, c) in [(wa, ca), (wb, cb)] {

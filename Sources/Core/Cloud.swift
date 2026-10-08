@@ -48,7 +48,7 @@ final class CloudInbox: @unchecked Sendable {
     /// The PIN the server wants (docs/plans/10 §3): this trainer's (wrong: the last one wasn't), a new one (a 2.0 ID has none yet), or none for a while (too many wrong).
     enum PinAsk: Equatable { case enter(wrong: Bool), set, locked(until: Date) }
     /// A request out, kept to read its reply by: an act carries its seq.
-    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, legacy, setPin, act(Int), team, trades, box(String), raid, market, duel }
+    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, legacy, setPin, act(Int), team, trades, box(String), raid, market, duel, mail }
     /// This PC's, in cloud.json next to the save: the ID as typed, the server's session, a random id made once, whether the 1.x save went up, the
     /// server's trust token for this PC (the PIN goes in once a PC: 10 §3), and steps walked here that haven't gone up yet (a quit while offline).
     struct Seat: Codable, Equatable { var trainerID: String? = nil, session: String? = nil, device: String? = nil, legacyUploaded: Bool? = nil, trust: String? = nil, steps: Int? = nil }
@@ -86,6 +86,8 @@ final class CloudInbox: @unchecked Sendable {
     private(set) var raid: RaidReply? = nil; var raidDue = false
     // 12 §3.3 (3.5): the 교환 게시판 as the server last listed it (a read)
     private(set) var market: MarketReply? = nil; var marketDue = false
+    // 3.9 (15 §2): the 우편함 as the server last listed it (a read); mails opened since, sent as read with the next one
+    private(set) var mail: MailReply? = nil; var mailDue = false, mailRead: Set<Int> = []
     var marketSeen: Int? = nil                                             // 3.8 (14 §2.2): one of my posts just opened — its offers count as seen (sent with the next read)
     // 12 §5 (3.6): a live battle's polls — a lane of their own (a long poll holds up to 25 s; acts and steps don't wait for it)
     var duelPoll: DuelReq? = nil                                           // the next one to send (the walker's: since, wait, version)
@@ -175,11 +177,12 @@ final class CloudInbox: @unchecked Sendable {
         if let a = queued { queued = nil; sendAct(a, now); return }
         if legacy != nil, seat.legacyUploaded != true { send(.legacy); return }
         if unsent > 0 || base == nil, now >= stepsAt { sendAct(.steps, now); return }           // (no save yet: a new trainer's comes with its first act)
-        if base != nil, teamDue || teamAt.map({ now.timeIntervalSince($0) > Cloud.teamEvery }) ?? true { teamDue = false; teamAt = teamAt ?? now; tradesDue = true; raidDue = true; marketDue = true; send(.team); return }   // (every 3 minutes: who's walking now; the offers after it)
+        if base != nil, teamDue || teamAt.map({ now.timeIntervalSince($0) > Cloud.teamEvery }) ?? true { teamDue = false; teamAt = teamAt ?? now; tradesDue = true; raidDue = true; marketDue = true; mailDue = true; send(.team); return }   // (every 3 minutes: who's walking now; the offers after it)
         if base != nil, tradesDue { tradesDue = false; send(.trades); return }
         if base != nil, let b = boxDue { boxDue = nil; send(.box(b)); return }
         if base != nil, raidDue { raidDue = false; send(.raid); return }
-        if base != nil, marketDue { marketDue = false; send(.market) }
+        if base != nil, marketDue { marketDue = false; send(.market); return }
+        if base != nil, mailDue { mailDue = false; send(.mail) }
     }
     /// Quitting: the steps go up (after the act out), waiting at most `timeout`. The reply comes on URLSession's queue, so the main thread can wait.
     func flush(timeout: TimeInterval = 2) {
@@ -222,6 +225,7 @@ final class CloudInbox: @unchecked Sendable {
         case .team: post(a, "v2/team", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .market: post(a, "v2/market", (try? JSONEncoder().encode(MarketReq(id: id, session: seat.session ?? "", seen: marketSeen))) ?? Data()); marketSeen = nil
         case .duel: break                                                                         // (its own lane: tick)
+        case .mail: post(a, "v2/mail", (try? JSONEncoder().encode(MailReq(id: id, session: seat.session ?? "", read: mailRead.isEmpty ? nil : mailRead.sorted()))) ?? Data()); mailRead = []
         case .raid: post(a, "v2/raid", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .trades: post(a, "v2/trades", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .box(let of): post(a, "v2/box", (try? JSONEncoder().encode(BoxReq(id: id, session: seat.session ?? "", of: of))) ?? Data())
@@ -273,9 +277,10 @@ final class CloudInbox: @unchecked Sendable {
                 if let r = try? JSONDecoder().decode(BoxReply.self, from: body) { box = r; tradesNews = true } else { boxGone = of }
             case (.raid, 200): if let r = try? JSONDecoder().decode(RaidReply.self, from: body) { raid = r; tradesNews = true }
             case (.market, 200): if let r = try? JSONDecoder().decode(MarketReply.self, from: body) { market = r; tradesNews = true }
+            case (.mail, 200): if let r = try? JSONDecoder().decode(MailReply.self, from: body) { mail = r; tradesNews = true }
             case (.box(let of), 404): boxGone = of; tradesNews = true                              // theirs isn't there (ours being gone: the next act says so)
-            case (.team, 409), (.trades, 409), (.box, 409), (.raid, 409), (.market, 409): if j["reason"] as? String == "replaced" { drop(); phase = .replaced }
-            case (.team, 403), (.trades, 403), (.box, 403), (.raid, 403), (.market, 403): if j["error"] as? String == "pin_needed" { phase = .pin(.set) }
+            case (.team, 409), (.trades, 409), (.box, 409), (.raid, 409), (.market, 409), (.mail, 409): if j["reason"] as? String == "replaced" { drop(); phase = .replaced }
+            case (.team, 403), (.trades, 403), (.box, 403), (.raid, 403), (.market, 403), (.mail, 403): if j["error"] as? String == "pin_needed" { phase = .pin(.set) }
             case (_, 426): phase = .oldApp; NSLog("pokewalker: cloud: the server wants app %@ (this is %@)", j["need"] as? String ?? "?", appVersion)
             case (.login(_, let resume), 200): loggedIn(j, resume: resume, now)
             case (.create, 200) where j["session"] is String:
@@ -300,7 +305,7 @@ final class CloudInbox: @unchecked Sendable {
                 switch a {
                 case .login, .create: asking = a
                 case .legacy: legacy = nil
-                case .team, .trades, .box, .raid, .market, .duel: break                                             // (again in 3 minutes; a box when asked again)
+                case .team, .trades, .box, .raid, .market, .duel, .mail: break                                             // (again in 3 minutes; a box when asked again)
                 case .act: if let o = out { answers.append((o.act, nil)) }; out = nil; sending = 0   // not one the server will take: dropped
                 case .setPin: pendingPIN = nil; phase = .pin(.set)
                 }
@@ -331,7 +336,7 @@ final class CloudInbox: @unchecked Sendable {
         case .login(_, true): phase = .replaced                                               // 여기서 계속 again, once it's back
         case .login where seat.session != nil && base != nil: phase = .on; asking = a          // played here before: steps pile up, acts wait for the server
         case .login, .create: asking = a
-        case .legacy, .team, .trades, .box, .raid, .market, .duel: break
+        case .legacy, .team, .trades, .box, .raid, .market, .duel, .mail: break
         case .setPin: phase = .pin(.set)                                                        // the button again, once it's back
         case .act: if let o = out { answers.append((o.act, nil)) }; if let q = queued { answers.append((q, nil)); queued = nil }
         }
@@ -554,7 +559,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if let h = html { done(h, Data("<html><body>Bad gateway</body></html>".utf8)); return }          // Cloudflare's own: the server never saw it
         var (s, d): (Int, Data)
         if path == "v2/duel" { duelRead(json, done); return }                                                   // (its long poll may wait: its own answer)
-        if path == "v2/act" { (s, d) = act(json); flushDuelWaiters() } else if path == "v2/team" { (s, d) = team(json) } else if path == "v2/trades" { (s, d) = trades(json) } else if path == "v2/box" { (s, d) = box(json) } else if path == "v2/raid" { (s, d) = raidLobby(json) } else if path == "v2/market" { (s, d) = marketBoard(json) }
+        if path == "v2/act" { (s, d) = act(json); flushDuelWaiters() } else if path == "v2/team" { (s, d) = team(json) } else if path == "v2/trades" { (s, d) = trades(json) } else if path == "v2/box" { (s, d) = box(json) } else if path == "v2/raid" { (s, d) = raidLobby(json) } else if path == "v2/market" { (s, d) = marketBoard(json) } else if path == "v2/mail" { (s, d) = mailBox(json) }
         else { let (st, body) = answer(path, (try? JSONSerialization.jsonObject(with: json)) as? [String: Any] ?? [:]); (s, d) = (st, (try? JSONSerialization.data(withJSONObject: body)) ?? Data()) }
         if lose { lose = false; s = 0; d = Data() }
         let st = s, dd = d
@@ -593,6 +598,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if o.cannot == nil, let why = trade(q.act, id.key, r.name, &w, &o.news) { o.cannot = why } else if case .tradeAccept = q.act, o.cannot == nil { o.changed = true }
         let preVisit = w
         if o.cannot == nil, let why = visitAct(q.act, id.key, r.name, &w, &o.news) { o.cannot = why }
+        if o.cannot == nil, let why = mailAct(q.act, id.key, &w, &o) { o.cannot = why }
         visitTick(id.key, steps: o.cannot == nil ? taken : 0, &w, &o.news)
         if w != preVisit { o.changed = true }
         if let a = q.app, verCmp(a, "3.2").map({ $0 >= 0 }) == true, let mail = inbox.removeValue(forKey: id.key) { o.news += mail }   // (3.2 on: hello)
@@ -871,7 +877,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     }
     // 3.8 (14 §3): 맡겨 키우기 — one away per owner, three guests per host; the host's steps raise it; home through the 받기 함
     struct FakeVisit { var id: Int; var owner, ownerName, host, hostName: String; var mon: Mon; var steps = 0; var on = true; var ends: Int; var bp = 0; var paid = false }
-    var visitList: [FakeVisit] = [], nextVisit = 1, visitSteps: [Int: Int] = [:], viewAll: Set<String> = []
+    var visitList: [FakeVisit] = [], nextVisit = 1, viewAll: Set<String> = []
     func visitAct(_ a: Act, _ key: String, _ name: String, _ w: inout Walk, _ news: inout [News]) -> String? {
         switch a {
         case .visitSend(let raw, let uid):
@@ -896,7 +902,8 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     }
     func endVisit(_ i: Int) {
         visitList[i].on = false; visitList[i].bp = min(5, visitList[i].steps / 2000)
-        giveClaim(visitList[i].owner, "visit", from: visitList[i].hostName, visitList[i].mon); visitSteps[nextClaim - 1] = visitList[i].steps
+        let v = visitList[i]
+        giveMail(v.owner, "visit", from: v.hostName, title: "맡겼던 포켓몬이 돌아왔어요", body: josa(v.hostName, "이", "가") + " \(v.steps.formatted())걸음 키워 줬어요", [.mon(mon: v.mon, steps: v.steps)])
     }
     func visitTick(_ key: String, steps: Int, _ w: inout Walk, _ news: inout [News]) {
         for i in visitList.indices where visitList[i].on && visitList[i].host == key && visitList[i].ends >= clockNow { visitList[i].steps += steps }
@@ -921,11 +928,70 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     func isFriend(_ a: String, _ b: String) -> Bool { friends.contains(FakeCloud.pair(a, b)) }
     // 12 §3.3 (3.5): the 교환 게시판 — posts (the poster's key, open), offers on them (the bidder's key, the poster's)
     var listings: [(l: Listing, key: String, open: Bool)] = [], bids: [(b: Bid, key: String, poster: String)] = [], nextListing = 1, nextBid = 1
-    // 3.8 (14 §2): what waits in each one's 받기 함 (traded · returned · visit), offers seen by the poster
-    var claimBox: [String: [Claim]] = [:], nextClaim = 1, seenBids: Set<Int> = []
-    func giveClaim(_ key: String, _ kind: String, from: String, _ m: Mon, note: String? = nil) {
-        claimBox[key, default: []].append(Claim(id: nextClaim, kind: kind, from: from, mon: m, at: clockNow, note: note)); nextClaim += 1
-        mail[key, default: []].append(.claimReady(id: nextClaim - 1, kind: kind))
+    var seenBids: Set<Int> = []                                                                    // offers seen by the poster (3.8)
+    // 3.9 (15 §2): each one's 우편함 — a trade's Pokémon, one back, a visit's, rewards (`mail` above is the news queue: this is the mail)
+    var postBox: [String: [Mail]] = [:], nextMail = 1
+    func giveMail(_ key: String, _ kind: String, from: String, title: String, body: String? = nil, _ gifts: [Gift]) {
+        postBox[key, default: []].append(Mail(id: nextMail, kind: kind, from: from, title: title, body: body, gifts: gifts, at: clockNow, read: false, claimed: false)); nextMail += 1
+        mail[key, default: []].append(.mailNew(id: nextMail - 1, title: title))
+    }
+    /// mailClaim (as the server's claimMail: a pick out of range gives nothing) and mailClaimAll (every one with gifts and no pick).
+    func mailAct(_ a: Act, _ key: String, _ w: inout Walk, _ o: inout Outcome) -> String? {
+        func claim(_ i: Int, _ pick: Int?) -> String? {
+            let m = postBox[key]![i]
+            guard !m.claimed else { return "이미 받았어요" }
+            guard !m.gifts.isEmpty else { return "받을 것이 없는\n우편이에요" }
+            for g in m.gifts {
+                if case .pickItem(let xs) = g, !xs.indices.contains(pick ?? -1) { return "하나를 골라 주세요" }
+                if case .pickLegend(let ds, _, _) = g, !ds.indices.contains(pick ?? -1) { return "하나를 골라 주세요" }
+            }
+            let learn = (w.learning ?? []).count / 2
+            for g in m.gifts {
+                switch g {
+                case .mon(var x, let steps):
+                    let from = x.level
+                    if m.kind != "returned" && m.kind != "visit" { x.uid = nextUID; nextUID += 1; if m.kind == "trade" { x.ot = x.ot ?? m.from } }   // (ours back: the same uid)
+                    if let s = steps, s > 0 { _ = x.gainBattleExp(s) }
+                    _ = w.keep(x)
+                    if let ref = w.ref(uid: x.uid!) {
+                        w.queueMoves(ref, from: from)
+                        if x.level > from { o.news.append(.level(uid: x.uid!, level: x.level)) }
+                        if m.kind == "trade", let e = Walk.tradeEvolution(of: x, giverBag: x.item.map { [$0] } ?? []) {
+                            w.evolve(Evo(from: e.from, to: e.to, way: e.way, level: e.level, item: nil, female: e.female, time: e.time, place: e.place, party: e.party), ref: ref, shed: false)
+                            o.news.append(.evolve(uid: x.uid!, from: e.from, to: e.to, shed: nil))
+                        }
+                    }
+                    o.mon = w.ref(uid: x.uid!).flatMap(w.mon)
+                case .pickItem(let xs): w.bag.append(xs[pick!])
+                case .pickLegend(let ds, let lv, let shiny):
+                    var x = Mon.wild(ds[pick!], level: lv, shiny: shiny ? true : nil, perfect: 4, &rng); x.uid = nextUID; nextUID += 1; _ = w.keep(x); o.mon = x
+                default: w.receive(g)
+                }
+            }
+            o.news += w.settleLearning(announceFrom: learn).map(\.news)
+            postBox[key]![i].claimed = true; postBox[key]![i].read = true; o.changed = true
+            return nil
+        }
+        switch a {
+        case .mailClaim(let id, let pick):
+            guard let i = postBox[key]?.firstIndex(where: { $0.id == id }) else { return "받을 수 없는\n우편이에요" }
+            return claim(i, pick)
+        case .mailClaimAll:
+            let all = (postBox[key] ?? []).indices.filter { !postBox[key]![$0].claimed && !postBox[key]![$0].gifts.isEmpty && !postBox[key]![$0].picks }
+            guard !all.isEmpty else { return "받을 우편이\n없어요" }
+            for i in all { _ = claim(i, nil) }
+        default: break
+        }
+        return nil
+    }
+    /// POST /v2/mail: gifts waiting first, then the newest; read = the ones just opened.
+    func mailBox(_ d: Data) -> (Int, Data) {
+        guard let q = try? JSONDecoder().decode(MailReq.self, from: d), let id = trainerID(q.id), let r = rows[id.key] else { return err(404, ["error": "no_trainer"]) }
+        guard q.session == r.session else { return err(409, ["error": "conflict", "reason": "replaced"]) }
+        for k in q.read ?? [] { if let i = postBox[id.key]?.firstIndex(where: { $0.id == k }) { postBox[id.key]![i].read = true } }
+        let all = (postBox[id.key] ?? []).reversed(), waits = { (m: Mail) in !m.claimed && !m.gifts.isEmpty }
+        let ms = all.filter(waits) + all.filter { !waits($0) }
+        return (200, (try? JSONEncoder().encode(MailReply(mails: ms, unread: ms.filter { !$0.read || waits($0) }.count))) ?? Data())
     }
     /// The one held out of the box (a post's, an offer's): straight back into it (its own act).
     func backToBox(_ m: Mon, _ w: inout Walk) { _ = w.keep(m) }
@@ -960,7 +1026,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             guard let i = listings.firstIndex(where: { $0.l.id == id && $0.open && $0.key == key }) else { return "그 글은 이제\n없어요" }
             listings[i].open = false; backToBox(listings[i].l.mon, &w)
             for b in bids.indices where bids[b].b.listing == id && bids[b].b.state == "open" {
-                bids[b].b.state = "declined"; mail[bids[b].key, default: []].append(.tradeClosed(id: id, with: name, why: "상대가 글을 내렸어요")); giveClaim(bids[b].key, "returned", from: name, bids[b].b.mon)
+                bids[b].b.state = "declined"; mail[bids[b].key, default: []].append(.tradeClosed(id: id, with: name, why: "상대가 글을 내렸어요")); giveMail(bids[b].key, "returned", from: name, title: "돌아온 포켓몬", body: josa(monNames[bids[b].b.mon.dex], "이", "가") + " 돌아왔어요 · 상대가 글을 내렸어요", [.mon(mon: bids[b].b.mon)])
             }
         case .marketBid(let id, let give):
             guard let i = listings.firstIndex(where: { $0.l.id == id && $0.open }) else { return "그 글은 이제\n없어요" }
@@ -980,7 +1046,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             let post = listings[i], bid = bids[b]
             listings[i].open = false; bids[b].b.state = "done"
             for k in bids.indices where bids[k].b.listing == post.l.id && bids[k].b.state == "open" {
-                bids[k].b.state = "declined"; mail[bids[k].key, default: []].append(.tradeClosed(id: post.l.id, with: name, why: "다른 제안이 선택됐어요")); giveClaim(bids[k].key, "returned", from: name, bids[k].b.mon)
+                bids[k].b.state = "declined"; mail[bids[k].key, default: []].append(.tradeClosed(id: post.l.id, with: name, why: "다른 제안이 선택됐어요")); giveMail(bids[k].key, "returned", from: name, title: "돌아온 포켓몬", body: josa(monNames[bids[k].b.mon.dex], "이", "가") + " 돌아왔어요 · 다른 제안이 선택됐어요", [.mon(mon: bids[k].b.mon)])
             }
             var got = bid.b.mon; got.uid = nextUID; nextUID += 1; got.ot = got.ot ?? bid.b.from; _ = w.keep(got)          // 3.8: the poster's comes now (its act) …
             if let e = Walk.tradeEvolution(of: got, giverBag: got.item.map { [$0] } ?? []), let ref = w.ref(uid: got.uid!) {   // (a trade evolution: by the held item only, if it needs one)
@@ -989,19 +1055,9 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
                 news.append(.evolve(uid: got.uid!, from: e.from, to: e.to, shed: nil))
             }
             news.append(.traded(id: post.l.id, with: bid.b.from, gave: post.l.mon, got: w.mon(w.ref(uid: got.uid!) ?? 0) ?? got))
-            giveClaim(bid.key, "traded", from: name, post.l.mon)                                          // … the bidder's waits in its 받기 함
+            giveMail(bid.key, "trade", from: name, title: "교환으로 받은 포켓몬", body: josa(name, "과", "와") + " 교환했어요 · " + monNames[bid.b.mon.dex] + " ↔ " + monNames[post.l.mon.dex], [.mon(mon: post.l.mon)])   // … the bidder's by mail (3.9)
             mail[bid.key, default: []].append(.traded(id: post.l.id, with: name, gave: bid.b.mon, got: post.l.mon))
-        case .claim(let id):
-            guard let i = claimBox[key]?.firstIndex(where: { $0.id == id }), let k = claimBox[key]?.remove(at: i) else { return "이미 받았어요" }
-            var m = k.mon; let from = m.level
-            if k.kind == "traded" { m.uid = nextUID; nextUID += 1; m.ot = m.ot ?? k.from }                 // (its own, back: the same uid)
-            if k.kind == "visit", let s = visitSteps.removeValue(forKey: k.id), s > 0 { _ = m.gainBattleExp(s) }
-            _ = w.keep(m)
-            if m.level > from, let ref = w.ref(uid: m.uid!) { w.queueMoves(ref, from: from); news.append(.level(uid: m.uid!, level: m.level)) }
-            if k.kind == "traded", let e = Walk.tradeEvolution(of: m, giverBag: m.item.map { [$0] } ?? []), let ref = w.ref(uid: m.uid!) {
-                w.evolve(Evo(from: e.from, to: e.to, way: e.way, level: e.level, item: nil, female: e.female, time: e.time, place: e.place, party: e.party), ref: ref, shed: false)
-                news.append(.evolve(uid: m.uid!, from: e.from, to: e.to, shed: nil))
-            }
+        case .claim: return "우편함에서 받아요\n(3.9로 업데이트)"                                     // 3.9: the 받기 함 is gone (15 §4)
         default: break
         }
         return nil
@@ -1014,7 +1070,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if let s = q.seen { for b in open where b.b.listing == s && b.poster == k { seenBids.insert(b.b.id) } }   // 3.8: that post opened — its offers seen
         let ls = listings.filter(\.open).reversed().map { p -> Listing in var l = p.l; l.mine = p.key == k; l.bids = open.filter { $0.b.listing == p.l.id }.count; return l }
         let reply = MarketReply(listings: Array(ls), offers: open.filter { $0.poster == k }.map(\.b), myBids: open.filter { $0.key == k }.map(\.b),
-                                claims: claimBox[k] ?? [], unseen: open.filter { $0.poster == k && !seenBids.contains($0.b.id) }.count)
+                                claims: [], unseen: open.filter { $0.poster == k && !seenBids.contains($0.b.id) }.count)
         return (200, (try? JSONEncoder().encode(reply)) ?? Data())
     }
     /// 12 §4: a raid fight's end counted (its damage up to what's left; the team's clear told to every fighter — this one in its reply) and a ball.

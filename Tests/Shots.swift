@@ -199,11 +199,26 @@ import AppKit
     // 3.8 (docs/plans/14): 받기 · a post's 한마디 · the 교환 tile's dot, 맡겨 키우기, the 대전 menu, picks in order, 12 tiles
     fsrv.listings[0].l.note = "이브이랑 바꿔요!"; fsrv.listings[2].l.note = "레벨 높은 걸로 부탁해요"
     var r38 = Seeded(s: 91)
-    fsrv.claimBox[meK] = [Claim(id: 1, kind: "traded", from: "민수", mon: Mon.wild(94, level: 31, &r38), at: tsF - 400),
-                          Claim(id: 2, kind: "returned", from: "서연", mon: fme.state.box[9], at: tsF - 4000), Claim(id: 3, kind: "visit", from: "현우", mon: Mon.wild(4, level: 22, &r38), at: tsF - 90_000)]
-    fme.cloud!.marketDue = true; drain(fme); drain(fme)
-    take("market_claims", fme) { v in v.screen = .market(.board(tab: 3, sel: 0)) }
-    take("market_claim_lcd", fme) { v in v.screen = .market(.board(tab: 3, sel: 1)) }
+    // 3.9 (15 §6 A · D): the 우편함 — a trade's, one back, a visit's, rewards, a notice; one open; the picks
+    fsrv.giveMail(meK, "notice", from: "운영자", title: "3.9 업데이트 안내", body: "우편함이 생겼어요. 교환으로 받은 포켓몬, 돌아온 포켓몬, 배틀 타워 연승 보상이 여기로 와요.\n선물은 받을 때까지 사라지지 않아요.", [])
+    fsrv.giveMail(meK, "visit", from: "현우", title: "맡겼던 포켓몬이 돌아왔어요", body: "현우가 2,160걸음 키워 줬어요", [.mon(mon: Mon.wild(4, level: 22, &r38), steps: 2160)])
+    fsrv.giveMail(meK, "returned", from: "서연", title: "돌아온 포켓몬", body: "이브이가 돌아왔어요 · 다른 제안이 선택됐어요", [.mon(mon: fme.state.box[9])])
+    fsrv.giveMail(meK, "trade", from: "민수", title: "교환으로 받은 포켓몬", body: "민수와 교환했어요 · 이브이 ↔ 고우스트", [.mon(mon: Mon.wild(94, level: 31, &r38))])
+    for r in Tower.rewards.prefix(3) { fsrv.giveMail(meK, "tower", from: "배틀 타워", title: "\(r.wins)연승 달성 보상", body: "배틀 타워에서 처음으로 \(r.wins)연승에 닿았어요.", r.gifts) }
+    fsrv.giveMail(meK, "tower", from: "배틀 타워", title: "100연승 달성 보상", body: "배틀 타워에서 처음으로 100연승에 닿았어요.", Tower.rewards.last!.gifts)
+    if let i = fsrv.postBox[meK]?.indices { for k in i { fsrv.postBox[meK]![k].at = tsF - [86_400 * 3, 90_000, 4000, 400, 7200, 3600, 1800, 600][k % 8] } }
+    fme.cloud!.mailDue = true; drain(fme); drain(fme)
+    let mails38 = fme.mails, pick14 = mails38.first { $0.title == "14연승 달성 보상" }?.id ?? 0, pick100 = mails38.first { $0.title == "100연승 달성 보상" }?.id ?? 0
+    take("mail_list", fme) { v in v.screen = .mail(.list(sel: 0)) }
+    take("menu_mail_dot", fme) { v in v.screen = .menu(group: nil, sel: 7) }
+    take("mail_open_trade", fme) { v in v.screen = .mail(.open(id: mails38.first { $0.kind == "trade" }?.id ?? 0)) }
+    take("mail_open_tower", fme) { v in v.screen = .mail(.open(id: pick100)) }
+    take("mail_open_notice", fme) { v in v.screen = .mail(.open(id: mails38.first { $0.kind == "notice" }?.id ?? 0)) }
+    take("mail_pick_item", fme) { v in v.screen = .mail(.pick(id: pick14, at: 2, ask: nil)) }
+    take("mail_pick_item_ask", fme) { v in v.screen = .mail(.pick(id: pick14, at: 2, ask: true)) }
+    take("mail_pick_legend", fme) { v in v.screen = .mail(.pick(id: pick100, at: 3, ask: nil)) }
+    take("mail_pick_legend_p2", fme) { v in v.screen = .mail(.pick(id: pick100, at: 27, ask: false)) }
+    take("market_board_39", fme) { v in v.screen = .market(.board(tab: 1, sel: 0)) }
     take("menu_market_dot", fme) { v in v.screen = menuFor("교환") }
     take("market_post_note", fme) { v in v.screen = .market(.post(id: 1, sel: nil)) }
     take("market_post_mine_note", fme) { v in v.screen = .market(.post(id: 3, sel: nil)) }

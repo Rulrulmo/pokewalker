@@ -84,7 +84,7 @@ import Foundation
     tsrv.listings = [(Listing(id: 7, from: "민수", mon: tsrv.walk("민수")!.box[1], wish: [25, 133], at: now - 5000, bids: 0, mine: false), "민수", true),
                      (Listing(id: 8, from: tme.myName, mon: tme.state.box[2], wish: [149], at: now - 900, bids: 0, mine: false), tme.myName.lowercased(), true)]
     tsrv.bids = [(Bid(id: 4, listing: 8, from: "지은", mon: tsrv.walk("민수")!.box[2], at: now - 300, state: "open"), "지은", tme.myName.lowercased())]
-    tme.cloud!.teamDue = true; tme.cloud!.marketDue = true; drain(tme); drain(tme)
+    tme.cloud!.teamDue = true; tme.cloud!.marketDue = true; tme.cloud!.mailDue = true; drain(tme); drain(tme)
     take("menu_11", on: tme) { v in v.screen = menuFor("교환") }
     take("friends_requests", on: tme) { v in v.screen = .team(sel: 0, tab: 4, card: false) }
     take("market_board", on: tme) { v in v.screen = .market(.board(tab: 0, sel: 0)) }
@@ -104,12 +104,16 @@ import Foundation
     take("mon_held", on: tme) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
     take("shop_held", on: tme) { v in v.screen = .shop(bp: false, sel: v.shopRows(false, v.shopTabs(false).firstIndex(of: "지닌 도구") ?? 0).first ?? 0, qty: nil) }
     tsrv.listings[0].l.note = "이브이랑 바꿔요!"; var r38 = Seeded(s: 91)                               // 3.8 (docs/plans/14): 받기, 한마디, 맡겨 키우기, the 대전 menu, picks
-    tsrv.claimBox[me] = [Claim(id: 1, kind: "traded", from: "민수", mon: Mon.wild(94, level: 31, &r38), at: now - 400), Claim(id: 2, kind: "visit", from: "지은", mon: Mon.wild(4, level: 22, &r38), at: now - 9000)]
+    tsrv.giveMail(me, "trade", from: "민수", title: "교환으로 받은 포켓몬", body: "민수와 교환했어요", [.mon(mon: Mon.wild(94, level: 31, &r38))])   // 3.9: the 우편함 (15 §6 A)
+    tsrv.giveMail(me, "visit", from: "지은", title: "맡겼던 포켓몬이 돌아왔어요", body: "지은이 2,160걸음 키워 줬어요", [.mon(mon: Mon.wild(4, level: 22, &r38), steps: 2160)])
+    tsrv.giveMail(me, "tower", from: "배틀 타워", title: "14연승 달성 보상", Tower.rewards[1].gifts)
     tsrv.visitList = [FakeCloud.FakeVisit(id: 1, owner: me, ownerName: tme.myName, host: "민수", hostName: "민수", mon: tme.state.box[5], steps: 3120, ends: now + 12_000),
                       FakeCloud.FakeVisit(id: 2, owner: "지은", ownerName: "지은", host: me, hostName: tme.myName, mon: Mon.wild(282, level: 34, shiny: true, &r38), steps: 4380, ends: now + 15_000)]
-    tme.cloud!.teamDue = true; tme.cloud!.marketDue = true; drain(tme); drain(tme)
+    tme.cloud!.teamDue = true; tme.cloud!.marketDue = true; tme.cloud!.mailDue = true; drain(tme); drain(tme)
     take("menu_12", on: tme) { v in v.duelOn = false; v.duelWait = false; v.screen = menuFor("대전") }
-    take("market_claims", on: tme) { v in v.screen = .market(.board(tab: 3, sel: 0)) }
+    take("mail_list", on: tme) { v in v.screen = .mail(.list(sel: 0)) }
+    take("mail_open", on: tme) { v in v.screen = .mail(.open(id: v.mails.first { $0.kind == "trade" }?.id ?? 0)) }
+    take("mail_pick", on: tme) { v in v.screen = .mail(.pick(id: v.mails.first { $0.kind == "tower" }?.id ?? 0, at: 2, ask: false)) }
     take("market_post_note", on: tme) { v in v.screen = .market(.post(id: 7, sel: nil)) }
     take("friends_visits", on: tme) { v in v.screen = .team(sel: 0, tab: 5, card: false) }
     take("home_guests", on: tme) { v in v.screen = .home }

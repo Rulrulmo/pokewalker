@@ -5,7 +5,8 @@ import Foundation
 @MainActor final class Walker {
     var state: Walk
     var screen = Screen.home { didSet { if case .say = oldValue, Walker.startsFights(screen) { calmAt = Date() }; if case .menu(let g?, let s) = screen { menuSlot[g] = s } } }
-    var menuSlot: [Int: Int] = [:]                                                                  // 3.9: each menu group's last tile (its page opens on it again)
+    var menuSlot: [Int: Int] = [:]
+    var mailOpened: Set<Int> = []                                                                   // 3.9: mails opened since the server's last list (read now, for the red dot)                                                                  // 3.9: each menu group's last tile (its page opens on it again)
     /// 3.8.6: a message gone (a fight's end: n연승! · n 데미지!) onto a page whose ● or button starts a fight — for a moment that start isn't taken:
     /// the ● or click that ended the message (or came just as it timed out) mustn't start the next fight.
     var calmAt = Date.distantPast
@@ -98,7 +99,7 @@ import Foundation
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
         case .traded(_, _, _, let since) where now.timeIntervalSince(since) > 6: screen = .home
         case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid, .itemOn, .hold, .visitPick: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
-        case .trade, .market: if now.timeIntervalSince(lastInput) > 60 { screen = .home }       // (a trade is weighed up: longer)
+        case .trade, .market, .mail: if now.timeIntervalSince(lastInput) > 60 { screen = .home }       // (a trade is weighed up: longer)
         default: break
         }
         cloudTick(now)                                                                             // the server's answers (their screens, the save) …
@@ -130,7 +131,8 @@ import Foundation
             if k == .tab { let n = teamTabCount; screen = .team(sel: 0, tab: (t + (shift ? n - 1 : 1)) % n, card: false); _ = s; host?.redraw(.all); return true }
         }
         if case .trade = screen, tradeKey(k, shift: shift) { return true }
-        if case .market = screen, marketKey(k, shift: shift) { return true }                    // 교환 게시판: its rows, tabs, the pick's grid
+        if case .market = screen, marketKey(k, shift: shift) { return true }
+        if case .mail = screen, mailKey(k) { return true }                                      // 3.9 우편함: rows, pages, the legends' grid                    // 교환 게시판: its rows, tabs, the pick's grid
         if case .raid(let t) = screen, k == .tab { screen = .raid(tab: 1 - t); host?.redraw(.all); return true }   // 레이드: its two tabs                       // 교환: its lists' rows and pages, tab (the other box; 팀's tabs)
         switch screen { case .dex(_, _, false), .box(_, .none, _, false): if let d = [Key.up: -6, .down: 6, .pageUp: -30, .pageDown: 30][k] { gridStep(d, ends: abs(d) == 30); return true }; default: break }   // the grids: ↑ ↓ a row, page up / down a page
         if k == .tab {
@@ -142,7 +144,7 @@ import Foundation
             }
             return true
         }
-        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn, .learn, .menu, .box, .trade, .team, .raid, .market, .itemOn, .duel, .hold, .visitPick, .squad: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, pick a bush too early, go on from 포켓몬 to a page and its 진화 / 함께, or pick and send a trade
+        switch screen { case .shop, .shopConfirm, .tower, .radar, .items, .train, .relearn, .learn, .menu, .box, .trade, .team, .raid, .market, .itemOn, .duel, .hold, .visitPick, .squad, .mail: if held, k == .enter { return true }; default: break }   // a held return / space doesn't keep buying, pay into the tower after a pick, pick a bush too early, go on from 포켓몬 to a page and its 진화 / 함께, or pick and send a trade
         guard let i = [Key.left: 0, .enter: 1, .right: 2, .back: 3, .menu: 4][k] else { return false }
         press(i); return true
     }
@@ -176,7 +178,6 @@ import Foundation
         case .team(_, let t, let card): return ("친구", card ? "" : t == 0 ? "지금 걷는 중이 위" : t == 4 ? "친구 신청" : t == 5 ? "맡겨 키우기 · 5시간" : t == 6 ? "모든 트레이너" : "이번 주 순위 · \(Walker.teamTabs[t])")
         case .visitPick: return ("맡겨 키우기", "5시간 · 키운 걸음만큼 경험치")
         case .trade(.list): return ("교환", "받은 신청")
-        case .market(.board(3, _)): return ("교환 게시판", "받기 함")
         case .market(.board): return ("교환 게시판", "모두의 글 · 3일 동안")
         case .market(.post(let id, _)): return ("교환 게시판", listing(id).map { $0.mine ? "내 글 · 제안 \($0.bids)개" : "제안은 하나만" } ?? "")
         case .market(.pick(let p)): return ("교환 게시판", p.listing == nil ? "원하는 종은 3개까지" : "내 상자에서 골라 주세요")
@@ -192,6 +193,8 @@ import Foundation
         case .duel: return ("실시간 대전", duelLeft().map { "\($0)초 남음" } ?? "")
         case .squad(let s): switch s.kind { case .tower: return ("배틀 타워", "파티 고르기 · Lv.50"); case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return ("레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")) }
         case .hold(let r, _): return ("도구 주기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
+        case .mail(.pick): return ("우편함", "하나를 골라 주세요")
+        case .mail: return ("우편함", "선물은 받을 때까지 보관")
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
         case .raid: return ("레이드", cloud?.raid.map { "다음 주 " + monNames[$0.next] } ?? "")
         default: return (state.here.name, cloudNote ?? (gate.held ? "자동 입력 감지 · 걸음 멈춤" : when))                                                 // screens without a page of their own: the status sheet

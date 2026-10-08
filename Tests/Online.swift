@@ -19,6 +19,8 @@ import AppKit
     v.startCloud(c); drain(v)
     return v
 }
+/// A mail's first gift, if it's a Pokémon.
+func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { return x }; return nil }
 /// Ticks until the walker's act (and the server's answer, and what the answer showed at home) is in.
 @MainActor func drain(_ v: Walker, max: Int = 40) {
     var n = 0
@@ -462,16 +464,17 @@ import AppKit
     fa.tick(Date() + 7)
     check(boxOnly && bidNews && toPost && seenNow && mp?.offers.count == 2 && picked == 0 && ha.asked.last == "교환할까요?" && show && fa.state.box.contains { $0.dex == 65 && $0.ot?.lowercased() == bName.lowercased() },
           "offers come quietly: the 교환 tile's red dot (2 unseen; on the first page the 친구 group's tile too); the post opened, seen; one picked (asked first) → the trade's show, 윤겔라 evolves at the poster (후딘, 어버이)", "\(boxOnly) \(bidNews) \(toPost) \(seenNow) \(afterAccept) \(show)")
-    act(fb); fb.cloud!.marketDue = true; drain(fb); drain(fb)
-    let kb = fb.claims.first { $0.kind == "traded" }, held = !fb.state.box.contains { $0.dex == 64 }
-    fb.screen = .market(.board(tab: 3, sel: 0)); let claimRows = fb.paneContent(Date()).board?.rows; fb.pageTap(8010); drain(fb)
+    act(fb); fb.cloud!.mailDue = true; drain(fb); drain(fb)
+    let kb = fb.mails.first { $0.kind == "trade" }, held = !fb.state.box.contains { $0.dex == 64 }, dotB = fb.mailDot
+    fb.openFeature("우편함"); drain(fb); let mailRow = fb.paneContent(Date()).mailList?.rows.first; fb.pageTap(8800); fb.pageTap(8840); drain(fb)
     let gotSaid = { if case .say(let l, _, _) = fb.screen { return l.first == "고우스트를 받았다!" }; return false }()
-    fb.screen = .home; fb.tick(Date()); fb.tick(Date() + 7)
-    act(fc); fc.cloud!.marketDue = true; drain(fc); drain(fc)
-    check(held && kb?.mon.dex == 93 && claimRows?.first?.pill == "받기" && gotSaid && fb.state.box.contains { $0.dex == 94 && $0.ot?.lowercased() == aName.lowercased() }
-          && fc.claims.first?.kind == "returned" && fc.claims.first?.mon.dex == 133 && !fc.state.box.contains { $0.dex == 133 } && sv.listings.allSatisfy { !$0.open },
-          "3.8's 받기: the bidder's offer was out of its box; 고우스트 waits in its 받기 함 — a click takes it (팬텀 now, 어버이 A); the other bidder's comes back as returned",
-          "\(held) \(String(describing: kb)) \(gotSaid) \(fb.state.box.map(\.dex)) \(fc.claims)")
+    fb.screen = .home; fb.tick(Date()); fb.tick(Date() + 7); fb.cloud!.mailDue = true; drain(fb)
+    act(fc); fc.cloud!.mailDue = true; drain(fc); drain(fc)
+    check(held && giftMon(kb)?.dex == 93 && dotB && mailRow?.title == "교환으로 받은 포켓몬" && mailRow?.unread == true && gotSaid && !fb.mailDot && fb.mails.first?.claimed == true
+          && fb.state.box.contains { $0.dex == 94 && $0.ot?.lowercased() == aName.lowercased() }
+          && fc.mails.first?.kind == "returned" && giftMon(fc.mails.first)?.dex == 133 && !fc.state.box.contains { $0.dex == 133 } && sv.listings.allSatisfy { !$0.open },
+          "3.9: the bidder's offer was out of its box; 고우스트 comes by mail (the 우편함's dot) — opened, 받기 takes it (팬텀 now, 어버이 A), the dot gone; the other bidder's comes back by mail (returned)",
+          "\(held) \(String(describing: kb)) \(gotSaid) \(fb.state.box.map(\.dex)) \(fc.mails)")
     // 거두기 and 내리기
     fa.screen = .home; fa.act(.marketList(give: fa.state.box.first { $0.dex == 19 }?.uid ?? -1, wish: []), back: .home); drain(fa)
     let p2 = sv.listings.last?.l.id ?? -1; fb.cloud!.marketDue = true; drain(fb)
@@ -678,7 +681,7 @@ import AppKit
     let pick = va.paneContent(Date()).pick
     va.press(1); va.press(1); drain(va); let sent = says(va); va.press(1); team(va)
     va.screen = .team(sel: 0, tab: 5, card: false); let mine = va.paneContent(Date()).visits
-    check(card?.visit == "맡기기" && pick?.title == josa(bName, "에게", "에게") + " 맡기기" && pick?.count == 2 && sent == [bName + "에게 이브이를", "맡겼다!", "5시간 뒤 받기로 돌아와요"]
+    check(card?.visit == "맡기기" && pick?.title == josa(bName, "에게", "에게") + " 맡기기" && pick?.count == 2 && sent == [bName + "에게 이브이를", "맡겼다!", "5시간 뒤 우편함으로 와요"]
           && !va.state.box.contains { $0.dex == 133 } && mine?.rows.first?.button == "데려오기" && mine?.rows.first?.mine == true && va.teamTabLabels[5] == "맡기기 1",
           "a friend walking now: 맡기기 → pick one (the walker's · box's) → it goes (out of my box); my 맡기기 tab has it (데려오기)",
           "\(String(describing: card?.visit)) \(String(describing: pick?.title)) \(sent) \(String(describing: mine))")
@@ -701,12 +704,12 @@ import AppKit
     vb.screen = .team(sel: 0, tab: 5, card: false); vb.pageTap(6400); drain(vb); let back = says(vb); vb.press(1); vb.screen = .home; vb.tick(Date()); let again = says(vb)
     check(back == [josa(aName, "의", "의") + " 이브이를", "돌려보냈다", "+2BP"] && again.isEmpty && (vb.state.bp ?? 0) == bp0 + 2,
           "돌려보내기 (early): settled with the steps so far — the host's +2BP (a 2,000 steps)", "\(back) \(again) \(String(describing: vb.state.bp))")
-    act(va); va.cloud!.marketDue = true; drain(va); drain(va)
-    let k = va.claims.first, dot = va.marketDot
-    va.screen = .market(.board(tab: 3, sel: 0)); let row = va.paneContent(Date()).board?.rows.first; va.pageTap(8010); drain(va)
+    act(va); va.cloud!.mailDue = true; drain(va); drain(va)
+    let k = va.mails.first, dot = va.mailDot
+    va.openFeature("우편함"); drain(va); va.pageTap(8800); let row = va.paneContent(Date()).mailOpen; va.pageTap(8840); drain(va)
     let home = va.state.box.first { $0.dex == 133 }; team(va)
-    check(k?.kind == "visit" && dot && row?.pill == "받기" && (home?.level ?? 0) > 10 && va.visitsOut.map(\.mon.dex) == [143],
-          "home through the owner's 받기 함 (the red dot): taken, it has the EXP of the steps raised", "\(String(describing: k)) \(dot) \(String(describing: row)) \(String(describing: home?.level))")
+    check(k?.kind == "visit" && dot && row?.gifts.first?.note.contains("키운 걸음") == true && row?.button == "받기" && (home?.level ?? 0) > 10 && va.visitsOut.map(\.mon.dex) == [143],
+          "3.9: home by mail (the 우편함's dot): its page says the steps raised; taken, it has their EXP", "\(String(describing: k)) \(dot) \(String(describing: row)) \(String(describing: home?.level))")
     // 전체 (VIEW_ALL): every trainer — only for its accounts
     sv.viewAll.insert(aName.lowercased()); team(va); team(vb)
     let labels = va.teamTabLabels, all = va.teamRows(6).map { $0.card.name.lowercased() }
@@ -784,5 +787,51 @@ import AppKit
     cw.dropPlay(); cw.screen = .home; cw.settle(Date())
     let after: Bool = { if case .say(let l, _, _) = cw.screen { return l.first == "지은이 대전을 신청했다!" }; return false }()   // (3.8: the offer is quiet — the red dot)
     check(after, "… and show once the chain's over", "\(cw.screen)")
+    return c
+}
+
+/// 3.9 (docs/plans/15 §2, §6 A · D): the 우편함 on the fake server — the list's order and dot, a mail's page, 받기, 모두 받기, the picks (a held item, a legend).
+@MainActor func mailChecks() -> [(Bool, String)] {
+    var c: [(Bool, String)] = []
+    func check(_ ok: Bool, _ name: String, _ why: @autoclosure () -> String = "") { c.append((ok, ok ? name : name + " — " + why())) }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    let w = online({ var s = Walk(); s.towerBest = 15; return s }())
+    let (sv, key) = server(w)
+    sv.giveMail(key, "notice", from: "운영자", title: "3.9 업데이트 안내", body: "우편함이 생겼어요.\n선물은 받을 때까지 사라지지 않아요.", [])
+    sv.giveMail(key, "tower", from: "배틀 타워", title: "7연승 달성 보상", [.items(name: "이상한사탕", count: 3)])
+    sv.giveMail(key, "tower", from: "배틀 타워", title: "14연승 달성 보상", Tower.rewards[1].gifts)
+    sv.giveMail(key, "admin", from: "운영자", title: "장식 선물", [.deco(kind: "silver"), .bp(amount: 30), .title(name: "타워 타이쿤")])
+    sv.giveMail(key, "tower", from: "배틀 타워", title: "100연승 달성 보상", Tower.rewards.last!.gifts)
+    w.screen = .home; w.tick(Date()); drain(w); let heard = w.cloud!.mail != nil
+    w.openFeature("우편함"); drain(w)
+    let list = w.paneContent(Date()).mailList, tile = { () -> MenuModel.Row? in let s0 = w.screen; w.screen = .menu(group: nil, sel: 0); defer { w.screen = s0 }; return w.paneContent(Date()).menu?.rows.last }()
+    check(list?.rows.map(\.title) == ["100연승 달성 보상", "장식 선물", "14연승 달성 보상", "7연승 달성 보상", "3.9 업데이트 안내"] && list?.all == "모두 받기 · 2통" && list?.rows[0].chips == ["칭호", "고르기"]
+          && list?.rows.allSatisfy(\.unread) == true && tile?.dot == true && tile?.note == "받을 우편 4통" && heard,
+          "우편함: mailNew (an act's news) reads the list; gifts waiting first, then the newest (the server's order); unread dots, chips; 모두 받기 counts the ones without a pick; the 우편함 tile's dot and line", "\(String(describing: list)) \(String(describing: tile))")
+    w.screen = .mail(.list(sel: 4)); w.press(1); let notice = w.paneContent(Date()).mailOpen; w.press(3); w.cloud!.mailDue = true; drain(w)
+    check(notice?.button == nil && notice?.body.hasPrefix("우편함이 생겼어요.") == true && notice?.off.hasPrefix("공지") == true && w.mails.last?.read == true && w.paneContent(Date()).mailList?.rows.last?.done == true,
+          "a notice: its words, no button; opened, the server hears it's read (the next list: dimmed)", "\(String(describing: notice))")
+    let bag0 = w.state.count("이상한사탕"); w.pageTap(8830); drain(w); let allSaid = says(w); w.press(1); w.cloud!.mailDue = true; drain(w)
+    check(allSaid == ["우편 2통을", "모두 받았다!"] && w.state.count("이상한사탕") == bag0 + 3 && w.state.deco == "silver" && w.state.titles == ["타워 타이쿤"] && (w.state.bp ?? 0) == 30
+          && w.mails.filter { !$0.claimed && !$0.gifts.isEmpty }.count == 2 && w.paneContent(Date()).mailList?.all == nil,
+          "모두 받기: every mail without a pick (사탕 ×3, 은장식, 칭호, BP); the picks stay", "\(allSaid) \(String(describing: w.state.deco)) \(String(describing: w.state.titles))")
+    let pickMail = w.mails.first { $0.title == "14연승 달성 보상" }!
+    w.screen = .mail(.open(id: pickMail.id)); let pickPage = w.paneContent(Date()).mailOpen; w.press(1)
+    let rows = w.paneContent(Date()).mailPick; w.pageTap(8852); let looked = w.paneContent(Date()).mailPick; w.pageTap(8852); let asked = w.paneContent(Date()).mailPick
+    w.press(1); let no = w.screen; w.pageTap(8852); w.press(2); w.press(1); drain(w); let gotItem = says(w)
+    check(pickPage?.button == "고르기" && rows?.rows.count == 7 && rows?.sel == 0 && rows?.rows[2].note == "스피드 1.5배 · 처음 고른 기술만" && looked?.sel == 2 && looked?.ask == nil && asked?.ask == false
+          && { if case .mail(.pick(_, 2, nil)) = no { return true }; return false }() && gotItem == ["구애스카프를 받았다!"] && w.state.bag.contains("구애스카프"),
+          "14연승's pick: seven held items on one page; a first click looks (the LCD says what it does), a click on it asks (아니오 first: ● keeps it), ▶ 예 · ● takes it", "\(String(describing: rows)) \(gotItem)")
+    w.press(1); let legendMail = w.mails.first { $0.title == "100연승 달성 보상" }!
+    serve(w) { $0.owned = ($0.owned ?? []) + [150] }
+    w.screen = .mail(.open(id: legendMail.id)); w.press(1); let grid = w.paneContent(Date()).mailPick
+    w.pageTap(8881); let page2 = w.paneContent(Date()).mailPick; w.pageTap(8850 + 3); w.pageTap(8850 + 3); w.pageTap(8892); drain(w); let gotLegend = says(w)
+    let legend = w.state.box.last
+    check(grid?.cells.count == 24 && grid?.count == Tower.legends.count && grid?.cells[3].dex == 150 && grid?.cells[3].look == 2 && grid?.cells.allSatisfy(\.shiny) == true && page2?.first == 24
+          && gotLegend == ["칭호 「타워 타이쿤」을 받았다!", josa(monNames[Tower.legends[27]], "을", "를") + " 받았다!"] && legend?.dex == Tower.legends[27] && legend?.shiny == true && legend?.level == 70 && (legend?.perfectIVs ?? 0) >= 4,
+          "100연승's pick: the legends on the 포켓몬 menu's cells, two pages (owned ones not dimmed: 15 ④); one picked and confirmed comes 이로치 Lv.70 4V", "\(String(describing: grid?.cells.map(\.dex))) \(gotLegend)")
+    w.press(1); w.cloud!.mailDue = true; drain(w); let again = w.mails.first { $0.id == legendMail.id }
+    w.screen = .mail(.open(id: legendMail.id)); let done = w.paneContent(Date()).mailOpen
+    check(again?.claimed == true && done?.button == nil && done?.off == "받았어요" && !w.mailDot, "taken: 받았어요, and no dot left", "\(String(describing: done))")
     return c
 }
