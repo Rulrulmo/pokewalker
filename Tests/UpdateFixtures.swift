@@ -84,6 +84,22 @@ final class FakeUpdates: CloudLink, @unchecked Sendable {
     c.append((a1 == .updated(appVersion) && !fm.fileExists(atPath: l1.path) && a2 == .none && Update.ready(l2) == nil && a3 == .none && Update.ready(l3) != nil,
               "update at launch: the version just installed is announced (the folder cleared); an older staged one is dropped; a dev build installs nothing"))
 
+    // 3.9.1 (Jyo's, 2026-10-08): an install tried for a version, and the app still the old one at the next launch → that version failed, never again,
+    // and the app starts as it is (a launch never only hands off to an install that can't happen); an older one staged (a zip's from before) is cleared
+    let g1 = readyIn("g1", "99.0"); try? Data("99.0".utf8).write(to: g1.appendingPathComponent("attempt"))
+    try? Data().write(to: g1.appendingPathComponent("PokeWalker-setup.exe"))
+    let ga = Update.atLaunch(dir: g1, app: shipped), gaAgain = Update.atLaunch(dir: g1, app: shipped)
+    let g2 = readyIn("g2", "0.1"); try? fm.createDirectory(at: g2.appendingPathComponent("staging"), withIntermediateDirectories: true); _ = Update.atLaunch(dir: g2, app: shipped)
+    c.append((ga == .none && gaAgain == .none && Update.ready(g1) == nil && Update.failed(g1) == ["99.0"] && Update.attempted(g1) == nil && !fm.fileExists(atPath: g1.appendingPathComponent("PokeWalker-setup.exe").path)
+              && !fm.fileExists(atPath: g2.appendingPathComponent("staging").path) && Update.ready(g2) == nil,
+              "3.9.1 update at launch: an install already tried for 99.0 and this still the old app → 99.0 failed (never again), what was staged cleared, the app starts; an older staged one is cleared"))
+    let sEntry = Update.Entry(version: "9.9", sha256: hex(sha256(Array("setup".utf8))), size: 5), sd = tmp.appendingPathComponent("s1")
+    let setupPath = Update.prepare(Data("setup".utf8), sEntry, dir: sd, setup: true), badSetup = Update.prepare(Data("setuq".utf8), sEntry, dir: tmp.appendingPathComponent("s2"), setup: true)
+    c.append((setupPath?.hasSuffix("PokeWalker-setup.exe") == true && Update.ready(sd) == Update.Ready(version: "9.9", staged: setupPath ?? "") && (try? Data(contentsOf: URL(fileURLWithPath: setupPath ?? ""))) == Data("setup".utf8)
+              && badSetup == nil && Update.downloadPath("windowsSetup") == "v1/download/windows-setup" && Update.downloadPath("mac") == "v1/download/mac"
+              && Update.canWrite(tmp) && !Update.canWrite(tmp.appendingPathComponent("no-such-folder")),
+              "3.9.1 Windows: the installer staged as it came (its size and SHA-256 the signed manifest's windowsSetup), from /v1/download/windows-setup; a folder's writable by writing in it"))
+
     let srv = FakeCloud(); srv.old = "9.0"                                                          // the save server answers 426
     let uw = Walker(state: Walk()); uw.persist = false
     let uc = Cloud(link: srv, dir: tmp.appendingPathComponent("c")); uc.seat.trainerID = "zz000009"; uw.startCloud(uc)

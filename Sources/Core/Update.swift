@@ -1,4 +1,9 @@
 import Foundation
+#if os(Windows)
+import WinSDK
+#elseif canImport(AppKit)
+import AppKit
+#endif
 #if canImport(FoundationNetworking)
 import FoundationNetworking                                                                       // URLSession on Windows (swift-corelibs)
 #endif
@@ -8,6 +13,10 @@ import FoundationNetworking                                                     
 // unpacked, the staged app's version checked) and goes in at the next quit or launch: a detached helper waits for this app to exit and swaps the new
 // one in — the old one kept until it's in place, put back on failure, and that version noted as failed (no retry). Never in the self-test or a dev
 // build (beside build.sh, App Translocation), nor where the app can't be replaced; until 2.0, only with the `cloud` setting, as the save server.
+// 3.9.1: Windows takes its installer instead (the manifest's windowsSetup, tools/win-installer): run quietly over this app's own folder, it waits for
+// the app to exit, writes the files in place and starts it again — no PowerShell: on a plain Windows its helper never got going (reproduced
+// 2026-10-08 on a runner: the app quit for it, no helper, no log, ready.json left — every launch after only quit again: Jyo's "실행이 안 돼요").
+// Either platform: an install tried once for a version and the app still the old one, that version is noted failed and the app starts as it is.
 
 /// What doesn't need the main thread: the manifest's verdict, the download's checks and staging, the helper, the launch's step.
 enum Update {
@@ -18,6 +27,11 @@ enum Update {
     enum Launch: Equatable { case none, installing, updated(String) }
 
     static var dir: URL { Store.dir.appendingPathComponent("update", isDirectory: true) }
+    /// The signed manifest's line this app takes (3.9.1: Windows', its installer) and where the server hands it out.
+    static let entryKey = appPlatform == "windows" ? "windowsSetup" : appPlatform
+    static func downloadPath(_ key: String) -> String { key == "windowsSetup" ? "v1/download/windows-setup" : "v1/download/\(key)" }
+    /// The download page (a reinstall where the app can't update itself).
+    static let page = "https://pokewalker.rulrulmo.work/"
     /// What a swap replaces: the Mac's .app, Windows' folder with PokeWalker.exe in it.
     static var appURL: URL? {
         #if os(Windows)
@@ -53,9 +67,17 @@ enum Update {
         (((try? JSONSerialization.jsonObject(with: Data(manifest.utf8))) as? [String: Any])?["version"] as? String).map { verCmp($0, app) == 1 } ?? false
     }
     static func ready(_ dir: URL) -> Ready? { (try? Data(contentsOf: dir.appendingPathComponent("ready.json"))).flatMap { try? JSONDecoder().decode(Ready.self, from: $0) } }
-    /// A downloaded zip: thrown away unless its size and SHA-256 are the signed manifest's, then staged. The staged app's path, or nil. (Off the main thread.)
-    static func prepare(_ bytes: Data, _ e: Entry, dir: URL) -> String? {
+    /// A download: thrown away unless its size and SHA-256 are the signed manifest's, then staged — a zip unpacked; 3.9.1's Windows installer kept
+    /// as it is (setup.exe). The staged app's (or installer's) path, or nil. (Off the main thread.)
+    static func prepare(_ bytes: Data, _ e: Entry, dir: URL, setup: Bool = entryKey == "windowsSetup") -> String? {
         guard bytes.count == e.size, hex(sha256(Array(bytes))) == e.sha256 else { return nil }
+        if setup {
+            let fm = FileManager.default, exe = dir.appendingPathComponent("PokeWalker-setup.exe")
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true); try? fm.removeItem(at: dir.appendingPathComponent("staging"))
+            guard (try? bytes.write(to: exe, options: .atomic)) != nil, let d = try? JSONEncoder().encode(Ready(version: e.version, staged: exe.path)),
+                  (try? d.write(to: dir.appendingPathComponent("ready.json"), options: .atomic)) != nil else { try? fm.removeItem(at: exe); return nil }
+            return exe.path
+        }
         let zip = dir.appendingPathComponent("download.zip")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: zip) }
@@ -81,7 +103,16 @@ enum Update {
         return p["CFBundleShortVersionString"] as? String ?? ""
         #endif
     }
-    static func native(_ u: URL) -> String { u.withUnsafeFileSystemRepresentation { $0.map { String(cString: $0) } } ?? u.path }
+    /// A path as the system's own tools take it — Windows': C:\like\this (3.9.1: spelled out, never a \\?\ form a child process may not take).
+    static func native(_ u: URL) -> String {
+        #if os(Windows)
+        var p = u.path
+        if p.hasPrefix("/"), p.count > 2, Array(p)[2] == ":" { p.removeFirst() }                      // "/C:/Users/…" → "C:/Users/…"
+        return p.replacingOccurrences(of: "/", with: "\\")
+        #else
+        return u.withUnsafeFileSystemRepresentation { $0.map { String(cString: $0) } } ?? u.path
+        #endif
+    }
     static func unpack(_ zip: URL, to dest: URL) -> Bool {
         let p = Process()
         #if os(Windows)
@@ -103,8 +134,19 @@ enum Update {
         let fm = FileManager.default, parent = app.deletingLastPathComponent()
         if app.path.contains("/AppTranslocation/") { return "앱을 응용 프로그램 폴더로 옮겨 주세요" }
         if Store.devBuild(app) { return "개발 빌드" }
-        guard fm.isWritableFile(atPath: parent.path), fm.isWritableFile(atPath: app.path) else { return appPlatform == "windows" ? "쓸 수 있는 폴더에 두어 주세요" : "쓸 수 있는 폴더로 옮겨 주세요" }
+        #if os(Windows)
+        guard canWrite(app) else { return "설치 프로그램으로 다시 설치해 주세요" }                     // 3.9.1: the installer writes over the folder in place: only it must be writable
+        #else
+        guard fm.isWritableFile(atPath: parent.path), fm.isWritableFile(atPath: app.path) else { return "쓸 수 있는 폴더로 옮겨 주세요" }
+        #endif
         return nil
+    }
+    /// A folder this app can write in, found by writing (Windows' ReadOnly attribute on 다운로드 · 문서 · 바탕 화면 only marks a special folder,
+    /// yet Foundation's isWritableFile there says no: the cause of most Windows PCs never updating, 2026-10-08).
+    static func canWrite(_ dir: URL) -> Bool {
+        let probe = dir.appendingPathComponent(".pokewalker-write-test-\(ProcessInfo.processInfo.processIdentifier)")
+        guard FileManager.default.createFile(atPath: probe.path, contents: Data()) else { return false }
+        try? FileManager.default.removeItem(at: probe); return true
     }
 
     /// Launch, before any UI: a staged newer version goes in (the helper starts it again once this one exits: the caller exits), or the one just
@@ -112,10 +154,24 @@ enum Update {
     static func atLaunch(dir: URL = Update.dir, app: URL? = Update.appURL) -> Launch {
         guard let r = ready(dir), let app, allowed(app) else { return .none }
         switch verCmp(r.version, appVersion) {
-        case 1?: return install(dir: dir, app: app, relaunch: true) ? .installing : .none
+        case 1?:
+            if attempted(dir) == r.version { giveUp(r.version, dir); return .none }               // tried, and this is still the old app: noted failed, it starts as it is
+            return install(dir: dir, app: app, relaunch: true) ? .installing : .none
         case 0?: try? FileManager.default.removeItem(at: dir); return .updated(r.version)
-        default: try? FileManager.default.removeItem(at: dir.appendingPathComponent("ready.json")); return .none   // older than this app: gone by
+        default: clearStaged(dir); return .none                                                   // older than this app (a zip's from before the installer …): gone by
         }
+    }
+    /// The version an install was last started for (written as the installer or the helper starts).
+    static func attempted(_ dir: URL) -> String? { (try? String(contentsOf: dir.appendingPathComponent("attempt"), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) }
+    /// An install that didn't take: that version is never tried again; what was staged goes.
+    static func giveUp(_ v: String, _ dir: URL) {
+        let f = dir.appendingPathComponent("failed")
+        if !failed(dir).contains(v) { try? (((try? String(contentsOf: f, encoding: .utf8)) ?? "") + v + "\n").write(to: f, atomically: true, encoding: .utf8) }
+        clearStaged(dir)
+        NSLog("pokewalker: update %@ didn't go in: noted, not tried again", v)
+    }
+    static func clearStaged(_ dir: URL) {
+        for n in ["ready.json", "attempt", "staging", "PokeWalker-setup.exe", "install.ps1", "install.sh"] { try? FileManager.default.removeItem(at: dir.appendingPathComponent(n)) }
     }
     /// The detached helper for a staged newer version: it waits for this process to exit, then swaps. relaunch: start the new app after (at launch;
     /// not at quit — the user quit). false = nothing staged, or it couldn't start.
@@ -124,17 +180,18 @@ enum Update {
         let pid = String(ProcessInfo.processInfo.processIdentifier), p = Process()
         p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
         #if os(Windows)
-        let script = dir.appendingPathComponent("install.ps1")
-        guard (try? Data(windowsHelper.utf8).write(to: script, options: .atomic)) != nil else { return false }
-        p.executableURL = URL(fileURLWithPath: (ProcessInfo.processInfo.environment["SystemRoot"] ?? "C:\\Windows") + "\\System32\\WindowsPowerShell\\v1.0\\powershell.exe")
-        p.arguments = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", native(script), "-ProcessId", pid, "-App", native(app),
-                       "-New", native(URL(fileURLWithPath: r.staged)), "-Dir", native(dir), "-Version", r.version, "-Again", relaunch ? "1" : "0"]
+        p.executableURL = URL(fileURLWithPath: r.staged)                                          // the installer (tools/win-installer/PokeWalker.nsi), quietly
+        p.arguments = ["/S", "/UPDATE"] + (relaunch ? ["/RELAUNCH"] : [])
+        var env = ProcessInfo.processInfo.environment
+        env["PW_TARGET"] = native(app); env["PW_PID"] = pid; env["PW_LOG"] = native(dir.appendingPathComponent("install.log"))
+        p.environment = env; p.currentDirectoryURL = dir                                          // (not the app's own folder)
         #else
         let script = dir.appendingPathComponent("install.sh")
         guard (try? Data(macHelper.utf8).write(to: script, options: .atomic)) != nil else { return false }
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
         p.arguments = [script.path, pid, app.path, r.staged, dir.path, r.version, relaunch ? "1" : "0"]
         #endif
+        try? Data(r.version.utf8).write(to: dir.appendingPathComponent("attempt"), options: .atomic)   // once a version: atLaunch gives up on it if this doesn't take
         return (try? p.run()) != nil
     }
     /// --stage-update <zip>: a local build's zip (./build.sh dist) staged as if it had come down — no network, no signature (it's this Mac's own) —
@@ -160,30 +217,16 @@ enum Update {
         [ "$again" = 1 ] && open "$app"
         exit 0
         """#
-    static let windowsHelper = #"""
-        param([int]$ProcessId, [string]$App, [string]$New, [string]$Dir, [string]$Version, [int]$Again)
-        # PokeWalker's installer (Core/Update.swift): once the app has exited, $New takes $App's place; the old one is kept until it has, and put back
-        # on failure (the version noted as failed: no retry). -Again 1: start the new one after.
-        Start-Transcript -Path (Join-Path $Dir 'install.log') -Force | Out-Null
-        Wait-Process -Id $ProcessId -ErrorAction SilentlyContinue
-        $old = "$App.old-update"; $ok = $false
-        Remove-Item -LiteralPath $old -Recurse -Force -ErrorAction SilentlyContinue
-        for ($i = 0; $i -lt 20 -and -not (Test-Path -LiteralPath $old); $i++) {
-            try { Rename-Item -LiteralPath $App -NewName (Split-Path $old -Leaf) -ErrorAction Stop } catch { Start-Sleep -Milliseconds 500 }
-        }
-        if (Test-Path -LiteralPath $old) {
-            try { Copy-Item -LiteralPath $New -Destination $App -Recurse -ErrorAction Stop; $ok = Test-Path -LiteralPath (Join-Path $App 'PokeWalker.exe') } catch { }
-        }
-        if ($ok) { Remove-Item -LiteralPath $old -Recurse -Force -ErrorAction SilentlyContinue; Remove-Item -LiteralPath $New -Recurse -Force -ErrorAction SilentlyContinue; "installed $Version" }
-        else {
-            if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $App -Recurse -Force -ErrorAction SilentlyContinue; Rename-Item -LiteralPath $old -NewName (Split-Path $App -Leaf) }
-            Add-Content -LiteralPath (Join-Path $Dir 'failed') -Value $Version
-            Remove-Item -LiteralPath (Join-Path $Dir 'ready.json') -ErrorAction SilentlyContinue
-            "failed $Version: the old app is back"
-        }
-        Stop-Transcript | Out-Null
-        if ($Again -eq 1) { Start-Process -FilePath (Join-Path $App 'PokeWalker.exe') }
-        """#
+
+}
+
+/// The download page in the browser: a reinstall where the app can't update itself (3.9.1: Windows' installer).
+@MainActor func openDownloadPage() {
+    #if os(Windows)
+    _ = Update.page.withCString(encodedAs: UTF16.self) { u in "open".withCString(encodedAs: UTF16.self) { v in ShellExecuteW(nil, v, u, nil, nil, SW_SHOWNORMAL) } }
+    #elseif canImport(AppKit)
+    if let u = URL(string: Update.page) { NSWorkspace.shared.open(u) }
+    #endif
 }
 
 /// Replies as they come (URLSession's queue), taken on the main thread.
@@ -209,7 +252,7 @@ final class UpdateInbox: @unchecked Sendable {
     var heard: Heard? = nil                                                // the last check's, for 업데이트 확인 (the walker clears it)
     private(set) var fetching: String? = nil                               // the version downloading
 
-    init(link: any CloudLink, dir: URL, app: URL, platform: String = appPlatform, now: Date = Date(), blocked: String? = nil) {
+    init(link: any CloudLink, dir: URL, app: URL, platform: String = Update.entryKey, now: Date = Date(), blocked: String? = nil) {   // platform: the manifest's line
         self.link = link; self.dir = dir; self.app = app; self.platform = platform; self.blocked = blocked; nextCheck = now.addingTimeInterval(Updater.first)
     }
     /// The app's: never with persist == false (the self-test, renders) or a dev build; an app it can't replace still asks (3.8.5: blocked, so the
@@ -222,7 +265,7 @@ final class UpdateInbox: @unchecked Sendable {
         for r in inbox.take() { take(r) }
         guard !busy, now >= nextCheck else { return }
         nextCheck = now.addingTimeInterval(Updater.period); busy = true; heard = nil
-        let body = (try? JSONSerialization.data(withJSONObject: ["app": appVersion, "platform": platform])) ?? Data()
+        let body = (try? JSONSerialization.data(withJSONObject: ["app": appVersion, "platform": appPlatform])) ?? Data()
         link.post("v1/update", body) { [inbox] s, d in inbox.put(.answer(s, d)) }
     }
     /// 426 from the save server: a newer app is out — ask now.
@@ -240,7 +283,8 @@ final class UpdateInbox: @unchecked Sendable {
             guard Update.ready(dir)?.version != e.version else { busy = false; return }           // staged already
             fetching = e.version
             let (dir, inbox) = (self.dir, self.inbox)
-            link.get("v1/download/\(platform)") { s, d in inbox.put(.staged(e.version, s == 200 ? Update.prepare(d, e, dir: dir) : nil)) }   // the SHA-256 and the unpacking here, off the main thread
+            let setup = platform == "windowsSetup"
+            link.get(Update.downloadPath(platform)) { s, d in inbox.put(.staged(e.version, s == 200 ? Update.prepare(d, e, dir: dir, setup: setup) : nil)) }   // the SHA-256 and the unpacking here, off the main thread
         case .staged(let v, let path):
             busy = false; fetching = nil; if path != nil { staged = v } else { heard = .failed }
             NSLog(path != nil ? "pokewalker: update %@ is ready: it goes in at the next quit or launch" : "pokewalker: update %@ didn't check out: again next round", v)
@@ -263,7 +307,8 @@ extension Walker {
     func updateRows(_ u: Updater) -> [MenuItem] {
         guard let why = u.blocked else { return [updateRow(u)] }
         let info = u.available.map { "\($0) 버전이 나왔어요 · " + why } ?? "자동 업데이트 안 됨 · " + why
-        return [MenuItem(info, enabled: false), u.busy || installWhenStaged ? MenuItem("업데이트 확인 중…", enabled: false) : MenuItem("업데이트 확인", action: { self.checkAndInstall() })]
+        let check = u.busy || installWhenStaged ? MenuItem("업데이트 확인 중…", enabled: false) : MenuItem("업데이트 확인", action: { self.checkAndInstall() })
+        return [MenuItem(info, enabled: false)] + (appPlatform == "windows" ? [MenuItem("설치 프로그램 받기 (다운로드 페이지)…", action: { openDownloadPage() })] : []) + [check]   // 3.9.1
     }
     /// The menu's row (no question asked: the click is the consent): a staged one installs; else one click checks, downloads and installs
     /// (installWhenStaged); greyed while a check or a download is on, or with a fight or a show on.
