@@ -66,7 +66,7 @@
 | `POST /v2/duel` | 실시간 대전 상태(최대 25초 기다리는 롱폴), `record: true`면 전적 |
 | `POST /v2/box` | 친구 상자 보기 |
 | `POST /v2/trades` | 옛 1:1 교환 (3.5 이전 앱) |
-| `POST /v1/update` · `GET /v1/download/mac` · `/v1/download/windows` | 자동 업데이트: 서명된 `manifest.json` + 서명, zip |
+| `POST /v1/update` · `GET /v1/download/mac` · `/v1/download/windows` · `/v1/download/windows-setup` | 자동 업데이트: 서명된 `manifest.json` + 서명, zip(설치 프로그램 릴리스부터는 Windows 설치 프로그램도) |
 | `GET /` · `POST /login` · `GET /download/:kind` · `/shot/:name` · `/robots.txt` | 다운로드 페이지 |
 | `POST /v1/save` · `/v1/legacy` · `/v1/radar` · `/v1/radar/result` · `/v1/hatch` · `/v1/buy` · `/v1/evolve` | 2.x 시절 경로. `MIN_APP=3.0`이라 2.x 앱은 426 |
 
@@ -109,7 +109,7 @@ server/build.sh install             # 빌드 → /usr/local/bin에 설치 → �
 
 | 순서 | 어디서 | 무엇 |
 |---|---|---|
-| 1 | 릴리스 Mac | `./build.sh publish`: Mac zip과 그 커밋의 Windows 워크플로 결과물로 `manifest.json`(버전 · 빌드 · 커밋 · zip 크기 · SHA-256)을 만들고 릴리스 키로 서명(`manifest.sig`). GitHub release `v<버전>`에 네 파일을 올린다. 비밀 키는 그 Mac에만 있다 |
+| 1 | 릴리스 Mac | `./build.sh publish`: Mac zip과 그 커밋의 Windows 워크플로 결과물(zip, 설치 프로그램 `PokeWalker-windows-setup.exe`)로 `manifest.json`(버전 · 빌드 · 커밋 · 파일마다 크기 · SHA-256, 설치 프로그램은 `windowsSetup`)을 만들고 릴리스 키로 서명(`manifest.sig`). GitHub release `v<버전>`에 올린다. 비밀 키는 그 Mac에만 있다 |
 | 2 | 이 PC | 게임 규칙(엔진)이나 서버가 바뀐 릴리스면 **서버를 먼저** `server/build.sh install` |
 | 3 | 이 PC | `server/publish.sh v<버전>`: 네 파일을 받아 `pokeserver verify-release`로 서명 · 크기 · SHA-256을 확인하고, 통과해야만 페이지와 업데이트를 한 번에 바꾼다. 화면 사진은 그 커밋의 Windows 렌더를 WebP로 바꿔 쓴다 |
 | 4 | 확인 | `POST /v1/update`가 새 버전을 답하는지 |
@@ -120,7 +120,8 @@ server/build.sh install             # 빌드 → /usr/local/bin에 설치 → �
 
 ### 다운로드 페이지
 
-- `https://pokewalker.rulrulmo.work/`: 게임 소개(실제 화면), 최신 Mac · Windows zip, 시작하기, 패치 내역(`docs/patch-notes.txt`).
+- `https://pokewalker.rulrulmo.work/`: 게임 소개(실제 화면), 최신 Mac zip과 Windows 설치 프로그램(없는 릴리스는 zip), 시작하기, 패치 내역(`docs/patch-notes.txt`).
+- Windows는 설치 프로그램으로 내 사용자 폴더에 설치해서(관리자 권한 없음) 자동 업데이트가 된다. zip은 예전 앱의 자동 업데이트를 위해 릴리스에 남긴다.
 - 팀 비밀번호 하나로 연다(쿠키 30일). 비밀번호를 바꾸면 서비스를 재시작하고 모두 다시 입력한다.
 - 앱 그림이 닌텐도 저작물이라 **공개하지 않는다**. 검색 엔진도 막는다(`robots.txt`, `noindex`).
 - 페이지가 보여 주는 것은 `RELEASE_DIR`의 파일뿐이고, 채우는 것은 `publish.sh`뿐이다.

@@ -318,6 +318,35 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     #expect(throws: (any Error).self) { try ReleaseFiles.verify(dir) }                             // well formed, sizes right, but not signed by the release key
     #expect(ReleaseFiles.parse(manifest)?.mac?.size == 3 && ReleaseFiles.parse(manifest)?.windows == nil)
     #expect(ReleaseFiles(dir: dir).signature == String(repeating: "0", count: 128))                // trimmed
+    // the Windows installer (windowsSetup): checked like the zips, served as an .exe by its own kind
+    let exe = Data("MZ setup".utf8)
+    try exe.write(to: dir.appendingPathComponent("PokeWalker-windows-setup.exe"))
+    let withSetup = "{\"build\":\"40\",\"commit\":\"\(String(repeating: "b", count: 40))\",\"mac\":{\"file\":\"PokeWalker-mac.zip\",\"sha256\":\"\(hex(sha256(Array(zip))))\",\"size\":3},"
+        + "\"windowsSetup\":{\"file\":\"PokeWalker-windows-setup.exe\",\"sha256\":\"\(hex(sha256(Array(exe))))\",\"size\":\(exe.count)},\"version\":\"3.9.1\"}"
+    let m = try #require(ReleaseFiles.parse(withSetup))
+    #expect(m.entry("windows-setup")?.size == exe.count && m.entry("windows") == nil && m.entries.map(\.kind) == ["mac", "windows-setup"])
+    try ReleaseFiles.checkFiles(m, in: dir)
+    let bad = try #require(ReleaseFiles.parse(withSetup.replacingOccurrences(of: "\"size\":\(exe.count)", with: "\"size\":99")))
+    #expect(throws: (any Error).self) { try ReleaseFiles.checkFiles(bad, in: dir) }
+}
+
+@Test func downloadPageInstaller() throws {                                                         // the Windows button: the installer when the release has one
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pokeserver-page-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let site = DownloadSite(dir: dir, password: "pw")
+    func release(_ setup: Bool) throws {
+        let b = "{\"file\":\"f\",\"size\":1048576,\"sha256\":\"\(String(repeating: "c", count: 64))\"}"
+        try Data("{\"version\":\"3.9.1\",\"build\":\"40\",\"commit\":\"x\",\"published\":1800000000,\"mac\":\(b),\"windows\":\(b)\(setup ? ",\"windowsSetup\":\(b)" : "")}".utf8)
+            .write(to: dir.appendingPathComponent("release.json"))
+    }
+    try release(false)
+    var page = site.page()
+    #expect(page.contains("href=\"/download/windows\"") && !page.contains("/download/windows-setup") && page.contains("쓰기 권한이 있는"))
+    try release(true)
+    page = site.page()
+    #expect(page.contains("data-os=\"windows\" href=\"/download/windows-setup\"") && page.contains("추가 정보 → 실행") && page.contains("설치 프로그램"))
+    #expect(!page.contains("내 문서") && !page.contains("Program Files에 두면") && site.release?.build("windows-setup") != nil)
 }
 
 @Test func saveChecks() async throws {

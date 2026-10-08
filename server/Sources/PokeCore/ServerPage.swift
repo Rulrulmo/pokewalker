@@ -9,6 +9,8 @@ struct Release: Codable, Sendable {
     struct Build: Codable, Sendable { let file: String; let size: Int; let sha256: String }
     let version: String, build: String, commit: String, published: Int
     let mac: Build?, windows: Build?
+    var windowsSetup: Build? = nil                                     // the Windows installer (when the release has one: its button, the zip kept for updates)
+    func build(_ kind: String) -> Build? { kind == "mac" ? mac : kind == "windows" ? windows : kind == "windows-setup" ? windowsSetup : nil }
 }
 
 struct DownloadSite: Sendable {
@@ -71,11 +73,12 @@ func addDownloadPage(_ router: Router<BasicRequestContext>, _ site: DownloadSite
     router.get("/download/:kind") { request, context -> Response in
         guard site.authorized(request) else { var h = HTTPFields(); h[.location] = "/"; return Response(status: .seeOther, headers: h) }
         let kind = context.parameters.get("kind") ?? ""
-        guard let r = site.release, let b = kind == "mac" ? r.mac : kind == "windows" ? r.windows : nil else { return html(notFoundPage(), status: .notFound) }
+        guard let r = site.release, let b = r.build(kind) else { return html(notFoundPage(), status: .notFound) }
+        let setup = kind == "windows-setup"
         var headers = HTTPFields()
-        headers[.contentType] = "application/zip"
+        headers[.contentType] = setup ? "application/vnd.microsoft.portable-executable" : "application/zip"
         headers[.contentLength] = String(b.size)
-        headers[.contentDisposition] = "attachment; filename=\"PokeWalker-\(r.version)-\(kind).zip\""
+        headers[.contentDisposition] = setup ? "attachment; filename=\"PokeWalker-\(r.version)-setup.exe\"" : "attachment; filename=\"PokeWalker-\(r.version)-\(kind).zip\""
         headers[.cacheControl] = "no-store"
         context.logger.info("download \(kind) \(r.version)")
         return Response(status: .ok, headers: headers, body: try await FileIO().loadFile(path: site.dir.appendingPathComponent(b.file).path, context: context))
@@ -322,11 +325,14 @@ extension DownloadSite {
                 + "<main class=\"wrap\" style=\"padding-top: 60px\">" + notesSection() + "</main>")
         }
         let when = Date(timeIntervalSince1970: TimeInterval(r.published)).formatted(.dateTime.year().month(.twoDigits).day(.twoDigits).locale(Locale(identifier: "ko_KR")))
-        func button(_ kind: String, _ label: String, _ what: String, _ b: Release.Build?) -> String {
-            guard let b else { return "<span class=\"btn off\" data-os=\"\(kind)\">\(label)<small>\(what) · 준비 중</small></span>" }
-            return "<a class=\"btn\" data-os=\"\(kind)\" href=\"/download/\(kind)\">\(label)<small>\(what) · \(String(format: "%.1f", Double(b.size) / 1_048_576)) MB</small></a>"
+        func button(_ os: String, _ kind: String, _ label: String, _ what: String, _ b: Release.Build?) -> String {
+            guard let b else { return "<span class=\"btn off\" data-os=\"\(os)\">\(label)<small>\(what) · 준비 중</small></span>" }
+            return "<a class=\"btn\" data-os=\"\(os)\" href=\"/download/\(kind)\">\(label)<small>\(what) · \(String(format: "%.1f", Double(b.size) / 1_048_576)) MB</small></a>"
         }
-        let buttons = button("mac", "Mac용 받기", "Apple Silicon · Intel, macOS 13+", r.mac) + button("windows", "Windows용 받기", "Windows 10 · 11, x64", r.windows)
+        let setup = r.windowsSetup != nil                                                            // the installer release on: its button and its steps
+        let buttons = button("mac", "mac", "Mac용 받기", "Apple Silicon · Intel, macOS 13+", r.mac)
+            + (setup ? button("windows", "windows-setup", "Windows용 받기", "Windows 10 · 11, x64 · 설치 프로그램", r.windowsSetup)
+                     : button("windows", "windows", "Windows용 받기", "Windows 10 · 11, x64", r.windows))
         let front = shot("home", "홈 화면: 몬스터볼 카드 속 스티커 수첩과 피카츄", r.build, cls: "front", lazy: false)
         let back = shot("battle_menu", "야생 배틀: 피카츄와 리자몽", r.build, cls: "back", lazy: false)
         let shots = front.isEmpty ? "" : "<div class=\"shots\">\(back)\(front)</div>"
@@ -334,7 +340,8 @@ extension DownloadSite {
             let img = shot(f.shot, f.alt, r.build)
             return "<article class=\"feat\">\(img.isEmpty ? "" : "<div class=\"pic\">\(img)</div>")<div class=\"txt\"><h3>\(f.title)</h3><p>\(f.text)</p></div></article>"
         }.joined()
-        let sums = [("Mac", r.mac), ("Windows", r.windows)].compactMap { n, b in b.map { "\(n) \($0.sha256)" } }.joined(separator: "<br>")
+        let sums = [("Mac", r.mac), ("Windows 설치 프로그램", r.windowsSetup), ("Windows zip", setup ? r.windows : nil), ("Windows", setup ? nil : r.windows)]
+            .compactMap { n, b in b.map { "\(n) \($0.sha256)" } }.joined(separator: "<br>")
         let hero = """
             <header class="hero"><div class="wrap hero-in"><div>\(brandHTML)
             <h1>일하는 동안,<br>포켓몬과 함께 걸어요</h1>
@@ -356,10 +363,14 @@ extension DownloadSite {
             </div></section>
             """
         let start = """
-            <section><p class="eyebrow pixel">START</p><h2>시작하기</h2><p class="sub">설치 프로그램 없이 압축만 풀면 돼요. 서명되지 않은 앱이라 처음 한 번만 열어 주는 과정이 있어요.</p>
+            <section><p class="eyebrow pixel">START</p><h2>시작하기</h2><p class="sub">\(setup ? "Mac은 압축을 풀어 옮기고, Windows는 설치 프로그램을 실행해요." : "설치 프로그램 없이 압축만 풀면 돼요.") 서명되지 않은 앱이라 처음 한 번만 열어 주는 과정이 있어요.</p>
             <div class="steps">
-            <div class="step"><div class="n pixel">1</div><h3>받기</h3><p>맨 위에서 내 컴퓨터에 맞는 zip을 받아요.</p><p><b>Mac</b> 압축을 풀고 PokeWalker.app을 <b>응용 프로그램</b> 폴더로 옮겨요.</p><p><b>Windows</b> PokeWalker 폴더째 <b>내 문서</b> 같은 곳에 둬요.</p></div>
-            <div class="step"><div class="n pixel">2</div><h3>처음 열기</h3><p><b>Mac</b> 우클릭 → 열기 → 열기. 그래도 막히면 시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기.</p><p><b>Windows</b> PokeWalker.exe를 실행하고, SmartScreen이 막으면 추가 정보 → 실행.</p></div>
+            <div class="step"><div class="n pixel">1</div><h3>받기</h3><p>맨 위에서 내 컴퓨터에 맞는 파일을 받아요.</p><p><b>Mac</b> 압축을 풀고 PokeWalker.app을 <b>응용 프로그램</b> 폴더로 옮겨요.</p>\(setup
+                ? "<p><b>Windows</b> 받은 설치 프로그램을 실행해요. 설치 위치는 바꾸지 않아도 돼요.</p>"
+                : "<p><b>Windows</b> 압축을 풀고 PokeWalker 폴더를 쓰기 권한이 있는 곳에 둬요.</p>")</div>
+            <div class="step"><div class="n pixel">2</div><h3>처음 열기</h3><p><b>Mac</b> 우클릭 → 열기 → 열기. 그래도 막히면 시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기.</p>\(setup
+                ? "<p><b>Windows</b> 'Windows의 PC 보호' 창이 뜨면 <b>추가 정보 → 실행</b>. 설치가 끝나면 시작 메뉴의 PokeWalker로 켜요.</p>"
+                : "<p><b>Windows</b> PokeWalker.exe를 실행하고, SmartScreen이 막으면 추가 정보 → 실행.</p>")</div>
             <div class="step"><div class="n pixel">3</div><h3>트레이너 ID와 PIN</h3><p>처음 켜면 트레이너 ID(2~12자)와 숫자 4자리 PIN을 정해요. 다른 PC에서도 같은 ID와 PIN으로 들어오면 이어서 해요.</p></div>
             </div>
             <details class="more"><summary>자세한 설치 방법</summary><div class="cols">
@@ -367,7 +378,9 @@ extension DownloadSite {
             <li>Apple 개발자 서명이 없어서 더블클릭하면 막혀요. 처음 한 번만 우클릭 → 열기.</li>
             <li>터미널이 편하면 <code>xattr -dr com.apple.quarantine /Applications/PokeWalker.app</code></li>
             <li>알림 허용을 물으면 허용해요. 메뉴 막대의 몬스터볼을 누르면 카드를 숨기거나 보여요.</li></ol></div>
-            <div><h4>Windows</h4><ol><li>Program Files에 두면 <b>자동 업데이트가 안 돼요</b>. 쓰기 권한이 있는 폴더에 둬요.</li>
+            <div><h4>Windows</h4><ol>\(setup
+                ? "<li>설치 프로그램은 내 사용자 폴더에 설치해서 관리자 권한이 필요 없고, 자동 업데이트도 돼요.</li><li>예전에 zip으로 받아 쓰던 분은 그 폴더를 지우고 설치 프로그램으로 다시 설치하면 돼요. 세이브는 서버에 있어요.</li><li>지울 때는 설정 → 앱에서 PokeWalker를 제거해요.</li>"
+                : "<li>Program Files에 두면 <b>자동 업데이트가 안 돼요</b>. 쓰기 권한이 있는 폴더에 둬요.</li>")
             <li>로그인할 때 자동으로 켜려면 <kbd>Win+R</kbd> → <code>shell:startup</code> 폴더에 바로 가기를 넣어요.</li>
             <li>Windows는 앱이 켜져 있는 동안의 입력만 걸음으로 세요.</li>
             <li>알림 영역의 몬스터볼을 클릭하면 숨기기 / 보이기, 우클릭하면 메뉴예요.</li></ol></div>
