@@ -367,6 +367,11 @@ import AppKit                                                                   
     var sb: [Beat] = []; while !sb.contains(.fainted(.it)), !split.over { sb = split.turn(.fight(split.mine[1].moves.first { !moveTable[$0]!.isStatus }!), &r) }
     let half = Battle.wildExp(base: baseExp[16], foe: 10, mine: 50, share: 2)
     check(sb.contains(.gained(exp: half, level: nil, foe: 16, to: 0)) && sb.contains(.gained(exp: half, level: nil, foe: 16, to: 1)), "EXP split between the two that faced it", "\(sb)")
+    let four = Battle(wild: Mon(dex: 16, level: 5, female: false), party: [25, 19, 16, 10].map { Mon(dex: $0, level: 5, female: false) })
+    let run: [Beat] = [.fainted(.it), .gained(exp: 9, level: nil, foe: 16, to: 0), .gained(exp: 4, level: nil, foe: 16, to: 1), .gained(exp: 4, level: 6, foe: 16, to: 2), .gained(exp: 4, level: nil, foe: 16, to: 3), .won]
+    let expRun = Walker.shown(run, from: four), fv = Walker(state: Walk())
+    check(expRun == [run[0], run[1], run[3], run[2], run[5]] && fv.beatLine(run[2], 0, four) == "다른 포켓몬도 경험치를 받았다!" && fv.beatLine(run[1], 0, four) == "피카츄는 경험치 9 획득" && fv.beatLine(run[3], 0, four) == "구구 Lv.6!",
+          "3.9: the walker's sharing a wild KO's EXP — the one out and a level-up keep their lines, the rest one line (다른 포켓몬도 경험치를 받았다!)", "\(expRun)")
     var swaps = 0, stays = 0
     for _ in 0..<40 {
         var sw = Battle(party: [Mon(dex: 9, level: 40, female: false)], trainer: "x", foes: [Mon(dex: 5, level: 40, female: false), Mon(dex: 1, level: 40, female: false)]); sw.mine[0].moves = [55]; sw.mine[0].pp = [25]

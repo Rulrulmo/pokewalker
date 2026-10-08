@@ -156,6 +156,17 @@ extension Walker {
         hpBar(&fb, 59, 9, 36, hp.mine[b.me].hp, b.mine[b.me].maxHP)
         fb.fill(0, 50, 96, 1, 2)
     }
+    /// 3.9: a wild KO's EXP for the ones not out (the walker's share it) as one line: in each run of EXP beats, the one out and any level-up keep
+    /// their own lines, the rest fold into the first of them (다른 포켓몬도 …) — the end's state is the server's, so the HUD loses nothing.
+    static func shown(_ beats: [Beat], from: Battle) -> [Beat] {
+        var st = from, out: [Beat] = [], run: (own: [Beat], rest: [Beat]) = ([], [])
+        func flush() { out += run.own + run.rest.prefix(1); run = ([], []) }
+        for bt in beats {
+            if case .gained(_, let l, _, let k) = bt { if l == nil && k != st.me { run.rest.append(bt) } else { run.own.append(bt) } } else { flush(); out.append(bt) }
+            st.apply(bt)
+        }
+        flush(); return out
+    }
     /// A beat's line; a raid's boss isn't 야생 (the engine's own lines name it so).
     func message(_ beat: Beat, _ u: Double, _ b: Battle) -> String {
         let m = beatLine(beat, u, b)
@@ -185,6 +196,7 @@ extension Walker {
         case .thrown(let n): return u < 1.8 ? "가랏, " + usedItem + "!" : String(repeating: ".", count: min(n, 1 + Int((u - 1.8) / 0.75)))   // a dot a rock
         case .broke: return "앗! 나와버렸다!"
         case .caught: return "딸깍! " + josa(it, "을", "를") + " 잡았다!"
+        case .gained(_, nil, _, let k) where k != b.me: return "다른 포켓몬도 경험치를 받았다!"                 // 3.9: the ones not out, folded (shown)
         case .gained(let e, let l, _, let k): let who = monNames[b.mine[k].mon.dex]; return l.map { who + " Lv.\($0)!" } ?? josa(who, "은", "는") + " 경험치 \(e) 획득"
         case .fled: return raidOn ? "레이드가 끝났다" : josa(b.nm(.it), "은", "는") + " 도망쳤다..."
         case .ran: return raidOn ? "후퇴했다!" : "무사히 도망쳤다!"

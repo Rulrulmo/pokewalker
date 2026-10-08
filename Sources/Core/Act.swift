@@ -48,7 +48,7 @@ extension Walker {
         if let b = o.battle, inBattle, !duelOn, let cur = fight {            // 3.8.6: a turn's answer after the walker gave up on it, the fight still up: it plays
             if case .beats = screen { return }                                                     // (one playing already: its own)
             fight = o.end == nil ? b : nil; fightEnd = o.end                                        // its end too — never a fight the server has over left on screen
-            screen = (o.beats ?? []).isEmpty ? (o.end != nil ? endOfFight(b, now) : .battle(b, sel: 0)) : .beats(b, o.beats!, since: now, from: cur)
+            screen = (o.beats ?? []).isEmpty ? (o.end != nil ? endOfFight(b, now) : .battle(b, sel: 0)) : .beats(b, Walker.shown(o.beats!, from: cur), since: now, from: cur)
             return
         }
         if let b = o.battle, o.end == nil, !inBattle { fight = b; freshFight(); screen = (o.beats ?? []).isEmpty ? .battle(b, sel: 0) : .beats(b, o.beats!, since: now, from: b) }
@@ -174,7 +174,7 @@ extension Walker {
         if let ball = o.ball { usedItem = ball }
         fight = o.end == nil ? nb : nil; fightEnd = o.end
         guard let beats = o.beats, !beats.isEmpty else { return o.end != nil ? endOfFight(nb, now) : .battle(nb, sel: 0) }
-        return .beats(nb, beats, since: now, from: b)
+        return .beats(nb, Walker.shown(beats, from: b), since: now, from: b)
     }
     /// The beats are over: the fight goes on (its menu, or who comes in next), or it ended (the server's end).
     func beatsDone(_ b: Battle, _ last: Beat, _ now: Date) -> Screen {
