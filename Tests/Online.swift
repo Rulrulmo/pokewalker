@@ -97,6 +97,25 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     tc.calmAt = .distantPast; tc.pageTap(5400); drain(tc)
     check(clickedThrough && tc.inBattle, "3.8.6: a click on 다음 상대 under 연승! ends the message, not the next fight from it; a click after starts it", "\(clickedThrough) \(tc.inBattle)")
 
+    // 3.9 (15 §6 E): the streak rewards on the lobby; a win reaching 7 mails its reward (said with the win); the tycoon at the 49th (은), BP twice
+    let rw = online({ var s = Walk(); s.watts = 100; s.companion = strong; s.towerStreak = 6; s.towerBest = 6; return s }(), rng: 6)
+    rw.towerRun = true; rw.screen = .tower(pick: nil); let strip0 = rw.paneContent(Date()).tower
+    var r7 = Battle(party: [rw.state.companion], trainer: "엘리트 x", foes: [Mon(dex: 10, level: 2, female: false)]); r7.theirs[0].hp = 1
+    fightOn(rw, r7, tower: true); rw.screen = .moves(r7, sel: 0); rw.press(1); drain(rw); playOut(rw)
+    let said7 = says(rw); rw.press(1); let strip7 = rw.paneContent(Date()).tower, lcd7 = rw.compose(Date()).runs.map(\.s)
+    check(strip0?.rewards.map(\.wins) == [7, 14, 21, 28, 35, 50, 70, 100] && strip0?.rewards.allSatisfy { !$0.got } == true && strip0?.next == "다음 보상 7연승 · 이상한사탕 ×3"
+          && said7 == ["7연승!", "+\({ var x = Walk(); x.towerStreak = 6; return x.towerWin() }()) BP", "우편함에 보상이 왔다"] && strip7?.rewards.first?.got == true && strip7?.next == "다음 보상 14연승 · 지닌 도구 1개 고르기"
+          && { drain(rw); return rw.mails.contains { $0.title == "7연승 달성 보상" } }() && lcd7.contains("다음 보상 14연승") && rw.state.towerRewards == [7],
+          "3.9 tower: the lobby's strip (7 … 100) and the next reward; a win reaching 7 → 7연승! +4 BP / 우편함에 보상이 왔다 (its mail, read next), ticked; the LCD says the next", "\(said7) \(String(describing: strip7?.next)) \(lcd7)")
+    serve(rw) { $0.towerStreak = 48; $0.towerBest = 48 }; rw.screen = .tower(pick: nil); let lobby48 = rw.paneContent(Date()).tower
+    rw.calmAt = .distantPast; rw.press(1); drain(rw)
+    let tycoonFight = rw.fight?.trainer == Tower.tycoon, tycoonTitle = rw.title()
+    var r49 = Battle(party: [rw.state.companion], trainer: Tower.tycoon, foes: [Mon(dex: 10, level: 2, female: false)]); r49.theirs[0].hp = 1
+    fightOn(rw, r49, tower: true); rw.screen = .moves(r49, sel: 0); rw.press(1); drain(rw); playOut(rw)
+    check(lobby48?.tycoon == "은" && tycoonFight && tycoonTitle.title == "타워 타이쿤 (은)" && tycoonTitle.meta.hasPrefix("타이쿤전 · 남은")
+          && says(rw).first == "타워 타이쿤을 이겼다!" && says(rw).dropFirst().first == "49연승! +\({ var x = Walk(); x.towerStreak = 48; return x.towerWin(tycoon: true) }()) BP" && trainerFrame(Tower.tycoon) == "palmer" && frameNames.last == "palmer" && frameData.count == frameNames.count * 3245,
+          "3.9 the tycoon: after 48 wins the lobby's gold 타워 타이쿤에게 도전; its fight (타워 타이쿤 (은) · 타이쿤전, palmer); beaten → 타워 타이쿤을 이겼다! and BP twice", "\(String(describing: lobby48?.tycoon)) \(tycoonTitle) \(says(rw))")
+
     // the bag: a candy that levels into an evolution, a vitamin, a 진화의 돌, 전부 팔기; 중복 놓아주기
     var rat = Mon(dex: 19, level: 19, female: false); rat.exp = expTable[growthRate[19]][19]
     let bv = online({ var s = Walk(); s.companion = rat; s.bag = ["이상한사탕", "타우린", "금구슬", "진주"]; return s }(), rng: 5)
@@ -795,7 +814,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     var c: [(Bool, String)] = []
     func check(_ ok: Bool, _ name: String, _ why: @autoclosure () -> String = "") { c.append((ok, ok ? name : name + " — " + why())) }
     func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
-    let w = online({ var s = Walk(); s.towerBest = 15; return s }())
+    let w = online(Walk())
     let (sv, key) = server(w)
     sv.giveMail(key, "notice", from: "운영자", title: "3.9 업데이트 안내", body: "우편함이 생겼어요.\n선물은 받을 때까지 사라지지 않아요.", [])
     sv.giveMail(key, "tower", from: "배틀 타워", title: "7연승 달성 보상", [.items(name: "이상한사탕", count: 3)])
@@ -833,5 +852,16 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     w.press(1); w.cloud!.mailDue = true; drain(w); let again = w.mails.first { $0.id == legendMail.id }
     w.screen = .mail(.open(id: legendMail.id)); let done = w.paneContent(Date()).mailOpen
     check(again?.claimed == true && done?.button == nil && done?.off == "받았어요" && !w.mailDot, "taken: 받았어요, and no dot left", "\(String(describing: done))")
+    // 15 §6 C: the 장식 and 칭호 just taken — my card (the pane's pill and medal, the LCD's frame), the friends' list, a duel's foe
+    w.screen = .card(0); w.refreshPane(Date(), force: true); let card = w.paneContent(Date()).card, fb = w.compose(Date())
+    let framed = [(0, 63), (95, 0), (0, 10), (95, 40)].allSatisfy { fb.px[$0.1 * 96 + $0.0] != 0 }
+    w.cloud!.teamDue = true; drain(w); let meRow = w.teamRows(0).first { w.isMe($0.card) }?.card
+    w.screen = .team(sel: 0, tab: 0, card: false); let row0 = w.paneContent(Date()).team?.rows.first { $0.me }
+    var dv = DuelView(id: 1, state: "active", opponent: "민수", challenger: true); dv.opponentTitle = "타워 타이쿤"
+    w.duel = dv; w.duelOn = true; let wb = Battle(party: [w.state.companion], trainer: "민수", foes: [Mon(dex: 10, level: 5, female: false)]); w.screen = .battle(wb, sel: 0)
+    let duelMeta = w.title().meta; w.duelOn = false; w.duel = nil; w.screen = .home
+    check(card?.title == "타워 타이쿤" && card?.deco == "silver" && w.cardH == 254 && framed && meRow?.deco == "silver" && meRow?.title == "타워 타이쿤" && row0?.deco == "silver" && row0?.title == "타워 타이쿤"
+          && duelMeta.hasPrefix("vs 민수 「타워 타이쿤」"),
+          "3.9 장식 · 칭호: my card's pane (the 칭호 pill, 은장식; 254) and the LCD's 은 frame; my row on the friends' list (TeamCard.deco · title); a duel's foe with its 칭호", "\(String(describing: card)) \(w.cardH) \(framed) \(String(describing: row0)) \(duelMeta)")
     return c
 }

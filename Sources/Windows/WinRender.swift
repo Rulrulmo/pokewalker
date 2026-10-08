@@ -151,6 +151,8 @@ import Foundation
     take("tower_intro_2.5") { v in let f = towerFight(v); v.screen = .beats(f.b, f.beats, since: T - 2.5, from: f.from) }
     take("learn") { v in v.state.learning = [v.state.id(-1)!, 87]; v.screen = .learn(sel: 1) }
     take("card_0") { v in v.screen = .card(0) }
+    take("card_deco") { v in v.state.deco = "gold"; v.state.titles = ["타워 타이쿤"]; v.screen = .card(0) }                       // 3.9 (15 §6 C · E)
+    take("tower_strip") { v in v.state.towerBest = 26; v.state.towerRewards = [7, 14, 21]; v.towerRun = true; v.state.towerStreak = 48; v.screen = .tower(pick: nil) }
     take("battle_size3", size: 3) { v in let f = wildFight(v); still(v, "foe 0", 6); v.screen = .battle(f.b, sel: 0) }
     return n
 }

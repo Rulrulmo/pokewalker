@@ -160,10 +160,11 @@ import Foundation
         let fight: Battle? = switch sc { case .battle(let b, _), .moves(let b, _), .party(let b, _), .bagBattle(let b, _), .forfeit(let b, _), .beats(let b, _, _, _): b; default: nil }
         if let b = fight {
             if raidThen != nil { return ("레이드", "볼 던지기") }
-            if duelOn { return ("실시간 대전", "vs \(duel?.opponent ?? "")" + (duelLeft().map { " · \($0)초" } ?? "")) }                                       // a raid ball's throw on the battle stage
+            if duelOn { return ("실시간 대전", "vs \(duel?.opponent ?? "")" + (duel?.opponentTitle.map { " 「\($0)」" } ?? "") + (duelLeft().map { " · \($0)초" } ?? "")) }   // 3.9: its 칭호 by its name                                       // a raid ball's throw on the battle stage
             if raidOn { return ("레이드 배틀", "남은 줄 \(b.theirs.filter(\.alive).count) / \(b.theirs.count) · " + (Engine.raidTurns > 0 ? "\(min(b.turnNo + 1, Engine.raidTurns))/\(Engine.raidTurns)턴" : "\(b.turnNo + 1)턴")) }   // (3.8.4: no limit — 0)
             guard let tr = b.trainer else { return ("야생 배틀", state.here.name) }
             let left = { (fs: [Fighter]) in fs.filter(\.alive).count }
+            if tr == Tower.tycoon { return (tr + ((state.towerStreak ?? 0) >= 98 ? " (금)" : " (은)"), "타이쿤전 · 남은 \(left(b.theirs)) : \(left(b.mine))") }   // 3.9
             return (tr, "배틀 타워 · 남은 \(left(b.theirs)) : \(left(b.mine))")
         }
         let when = "\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · \((state.weather ?? .sunny).name)"

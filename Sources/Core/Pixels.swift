@@ -184,6 +184,12 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
     var over = [Bool](repeating: false, count: 96 * 64)                  // dots set after a sprite: drawn on top of it (a HUD plate, a ball, rain)
     mutating func set(_ x: Int, _ y: Int, _ s: UInt8, _ c: UInt32 = 0) { if (0..<96).contains(x), (0..<64).contains(y) { px[y * 96 + x] = s; col[y * 96 + x] = c; if !sprites.isEmpty { over[y * 96 + x] = true } } }
     mutating func fill(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ s: UInt8) { for yy in y..<y + h { for xx in x..<x + w { set(xx, yy, s) } } }
+    /// 3.9 (15 §6 C): the trainer card's 장식 — a 1-dot frame round the LCD, 은 or 금, in a two-dot pattern (shades on a plain LCD).
+    mutating func decoFrame(gold: Bool) {
+        let a: (UInt8, UInt32) = gold ? (3, rgb(232, 176, 40)) : (2, rgb(150, 156, 170)), b: (UInt8, UInt32) = gold ? (2, rgb(150, 96, 16)) : (1, rgb(205, 210, 220))
+        for k in 0..<96 { let p = k / 2 % 2 == 0 ? a : b; set(k, 63, p.0, p.1); set(95 - k, 0, p.0, p.1) }
+        for k in 0..<64 { let p = k / 2 % 2 == 0 ? a : b; set(0, k, p.0, p.1); set(95, 63 - k, p.0, p.1) }
+    }
     mutating func draw(_ a: [[UInt8?]], _ x: Int, _ y: Int, _ pal: [UInt32]? = nil, scale k: Int = 1) {
         for (dy, r) in a.enumerated() { for (dx, s) in r.enumerated() { if let s { for i in 0..<k * k { set(x + dx * k + i % k, y + dy * k + i / k, s, pal?[Int(s)] ?? 0) } } } }
     }

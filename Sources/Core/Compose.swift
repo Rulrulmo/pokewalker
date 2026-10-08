@@ -30,6 +30,7 @@ extension Walker {
             stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), hud: false, pending: s.pending, beat: (s.beat, s.u))
             if case .hit(_, _, _, _, true) = s.beat, s.u < 0.15 { fb.invert(0, 0, 96, 64) }
             if s.beat == .appear, legendDex.contains(s.from.wild.dex), s.u < 0.5, Int(s.u * 10) % 2 == 0 { fb.invert(0, 0, 96, 64) }
+            if s.names.trainer == Tower.tycoon, isIntro(s.beat, s.names), s.u < 0.6, Int(s.u * 10) % 2 == 0 { fb.invert(0, 0, 96, 64) }   // 3.9: the tycoon comes in with flashes
         case .forfeit(let b, let yes):
             stage(&fb, b, now, .idle)
             fb.text("기권할까?", 2, 52, 3, small: true)
@@ -138,7 +139,9 @@ extension Walker {
             if case .hit(_, _, _, _, true) = s.beat, s.u < 0.15 { fb.invert(0, 0, 96, 64) }           // critical: the whole screen flashes
             if s.beat == .appear, legendDex.contains(s.from.wild.dex), s.u < 0.5, Int(s.u * 10) % 2 == 0 { fb.invert(0, 0, 96, 64) }   // a legend: two flashes first
         case .tower:
-            fb.text("배틀 타워", 2, 0); fb.text("\(state.bp ?? 0)BP", 94, 1, 2, right: true, small: true); fb.fill(0, 12, 96, 1, 2)
+            let nextLine = towerNextReward.map { textWidth("다음 보상 \($0.wins)연승", small: true) < 50 ? "다음 보상 \($0.wins)연승" : "다음 \($0.wins)연승" } ?? "\(state.bp ?? 0)BP"   // 3.9: the next streak reward (BP is on the title row)
+            fb.text("배틀 타워", 2, 0); fb.text(nextLine, 94, 1, 2, right: true, small: true); fb.fill(0, 12, 96, 1, 2)
+            if towerRun, let p = Tower.tycoonPrint(afterWins: state.towerStreak ?? 0) { fb.decoFrame(gold: p == "금") }   // the tycoon's fight next: its frame
             fb.text(towerRun ? "\(state.towerStreak ?? 0)연승 중 · 최고 \(state.towerBest ?? 0)" : "최고 \(state.towerBest ?? 0)연승", 2, 14, 2, small: true)
             if sideOn { fb.towerHall(state.party().map(\.mon.dex), t); break }                        // the pane has the list and the buttons: the LCD shows the hall
             for (k, p) in state.party().enumerated() { fb.text((p.mon.shiny == true ? "★" : "") + monNames[p.mon.dex] +  " Lv.\(p.mon.level)" + (p.mon.level != Walk.towerLevel ? "→\(Walk.towerLevel)" : ""), 2, 24 + 9 * k, 3, small: true) }
@@ -156,13 +159,15 @@ extension Walker {
         case .market(let s): marketLCD(&fb, s, now)
         case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
         case .card(let p):
-            header(p == 0 ? cardTitle : ["트레이너 카드", "최근 7일", "알"][p])
+            if p == 0, state.deco != nil || state.titles?.last != nil { fb.text(cardTitle, 2, 0); fb.fill(0, 12, 96, 1, 2) } else { header(p == 0 ? cardTitle : ["트레이너 카드", "최근 7일", "알"][p]) }   // (a 칭호 or 장식: there, not the W)
             if p == 2 {
                 if let e = state.egg {
                     fb.cardEgg(close: e.left < 500, t: t)
                     fb.text(e.left > 0 ? "앞으로 \(e.left)걸음" : "곧 태어난다!", 0, 52, 3, center: true)
                 } else { fb.text("갖고 있지 않다", 0, 30, 2, center: true) }
             } else if p == 0 {
+                if let d = state.deco { fb.decoFrame(gold: d == "gold"); fb.draw(medalArt, min(80, textWidth(cardTitle) + 5), 2, d == "gold" ? goldPal : silverPal) }   // 3.9 (15 §6 C): 은 · 금 장식 — the frame, a medal by the name
+                if let t = state.titles?.last { fb.text(t, 94, 1, 3, right: true, small: true) }                                              // … and the 칭호
                 fb.text(state.here.name, 2, 14)
                 if state.corrected == true { fb.text("기록 보정됨", 94, 15, 1, right: true, small: true) }   // 1.7 took back a macro's gains
                 fb.text("오늘  \(state.today)걸음", 2, 26)
@@ -366,7 +371,7 @@ extension Walker {
         case .radar(let b, let c, let since, let chain):
             let u = Date().timeIntervalSince(since)
             return PaneContent(radar: RadarModel(live: (1.5...(1.5 + radarWindow(chain))).contains(u) ? b : nil, cursor: c, chain: chain, season: state.season))
-        case .card(let p): return PaneContent(card: CardModel(page: p))
+        case .card(let p): return PaneContent(card: CardModel(page: p, title: state.titles?.last, deco: state.deco))
         case .learn(let sel):
             var st = state
             guard let (ref, id) = st.nextToLearn(), let m = state.mon(ref), let new = moveTable[id] else { break }
@@ -400,7 +405,9 @@ extension Walker {
             _ = p
             let party = state.party()
             return PaneContent(tower: TowerModel(run: towerRun, streak: state.towerStreak ?? 0, best: state.towerBest ?? 0, bp: state.bp ?? 0, fee: Walk.towerFee,
-                                                 party: party.map { .init(dex: $0.mon.dex, name: monNames[$0.mon.dex], level: $0.mon.level, shiny: $0.mon.shiny == true) }, custom: state.towerPick != nil))
+                                                 party: party.map { .init(dex: $0.mon.dex, name: monNames[$0.mon.dex], level: $0.mon.level, shiny: $0.mon.shiny == true) }, custom: state.towerPick != nil,
+                                                 rewards: Tower.rewards.map { .init(wins: $0.wins, short: Walker.rewardShort($0.gifts), got: towerGot($0.wins)) }, next: towerNextReward.map { "다음 보상 \($0.wins)연승 · " + $0.gifts.map(giftName).joined(separator: " + ") } ?? "연승 보상을 모두 받았어요",
+                                                 tycoon: towerRun ? Tower.tycoonPrint(afterWins: state.towerStreak ?? 0) : nil))
         default: break
         }
         return statusOpen ? PaneContent(status: statusModel()) : PaneContent()

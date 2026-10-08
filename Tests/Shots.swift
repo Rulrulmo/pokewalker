@@ -305,6 +305,26 @@ import AppKit
         var r = Seeded(s: 5), b = Battle(wild: Mon.wild(6, level: 30, &r), companion: v.state.companion, chain: 0); _ = b.begin(weather: nil, &r)
         v.animOn = ("foe 0", 6, Date().addingTimeInterval(-60)); v.fight = b; v.screen = .battle(b, sel: 1)
     }
+    // 3.9 (15 §6 C · E): 장식 · 칭호 (my card, the friends' list, a friend's card), the tower's strip, the tycoon (its lobby, intro, fight in 은 and 금, the win)
+    let dsrv = FakeCloud(), dme = online({ var s = base(); s.deco = "gold"; s.titles = ["타워 타이쿤"]; s.towerBest = 26; s.towerStreak = 48; return s }(), server: dsrv)
+    for (k, f) in [("민수", "gold", "타워 타이쿤"), ("지은", "silver", ""), ("도윤", "", "")].enumerated() {
+        var w = Walk(), r = Seeded(s: UInt64(k + 70)); w.companion = Mon.wild([6, 282, 448][k], level: 50, &r); w.deco = f.1.isEmpty ? nil : f.1; w.titles = f.2.isEmpty ? nil : [f.2]
+        w.towerBest = [100, 50, 12][k]; w.today = [8_200, 5_100, 900][k]
+        dsrv.add(f.0, w); dsrv.lastAct[f.0] = Date(); dsrv.befriend(dme.myName, f.0)
+    }
+    dme.cloud!.teamDue = true; drain(dme); drain(dme)
+    take("card_deco_gold", dme) { v in v.screen = .card(0) }
+    take("friends_deco", dme) { v in v.screen = .team(sel: 0, tab: 0, card: false) }
+    take("friends_card_title", dme) { v in let i = v.teamRows(0).firstIndex { $0.card.name == "민수" } ?? 0; v.screen = .team(sel: i, tab: 0, card: true) }
+    take("tower_tycoon_lobby", dme) { v in v.state.towerRewards = [7, 14, 21]; v.towerRun = true; v.screen = .tower(pick: nil) }
+    let sme = online({ var s = base(); s.deco = "silver"; s.towerBest = 8; return s }())
+    take("card_deco_silver", sme) { v in v.screen = .card(0) }
+    take("tower_strip", sme) { v in v.state.towerRewards = [7]; v.towerRun = false; v.screen = .tower(pick: nil) }
+    let tyb = Battle(party: dme.state.party().map(\.mon), trainer: Tower.tycoon, foes: [Mon(dex: 464, level: 50, female: false), Mon(dex: 350, level: 50, female: true), Mon(dex: 149, level: 50, female: false)])
+    take("tycoon_intro", dme) { v in v.sideOn = true; v.towerRun = true; v.fight = tyb; v.screen = .beats(tyb, [.sendOut(.it, 0)], since: Date().addingTimeInterval(-0.45), from: tyb) }
+    take("tycoon_fight", dme) { v in v.sideOn = true; v.fight = tyb; v.screen = .battle(tyb, sel: 0) }
+    take("tycoon_won", dme) { v in v.screen = .say(["타워 타이쿤을 이겼다!", "49연승! +20 BP", "우편함에 보상이 왔다"], next: .tower(pick: nil), since: Date()) }
+    take("tycoon_fight_gold", dme) { v in v.state.towerStreak = 98; v.sideOn = true; v.fight = tyb; v.screen = .battle(tyb, sel: 0) }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
     return n

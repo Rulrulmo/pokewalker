@@ -79,7 +79,7 @@ extension Canvas {
         let p = content
         if let l = p.login { drawLogin(l) } else if let d = p.dex { drawDex(d) } else if let g = p.grid { drawGrid(g) } else if let m = p.mon { drawMon(m) } else if let s = p.shop { drawShop(s) }
         else if let m = p.menu { drawMenu(m) } else if let m = p.battle { drawBattle(m) } else if let i = p.items { drawItems(i) } else if let r = p.radar { drawRadar(r) }
-        else if let k = p.card { tabs(["트레이너 카드", "최근 7일", "알"], k.page, 198, code: 5200) } else if let l = p.learn { drawLearn(l) }
+        else if let k = p.card { drawCard(k) } else if let l = p.learn { drawLearn(l) }
         else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let l = p.relearn { drawRelearn(l) }
         else if let t = p.team { drawTeam(t) } else if let t = p.teamCard { drawTeamCard(t) }
         else if let t = p.trades { drawTrades(t) } else if let o = p.offer { drawOffer(o) } else if let k = p.pick { drawPick(k) }
@@ -583,8 +583,17 @@ extension Page {
             hits.append((rc, 5410 + i))
         }
         let go = r(X0, 307, X1 - X0 - 64, 36), out = r(X1 - 59, 307, 59, 36)
-        c.fill(.rounded(go, 12 * K), Ink.red); c.say(m.run ? "다음 상대" : "도전 · \(m.fee)W", go.midX, go.midY, font(13, .bold), .white, 0.5); hits.append((go, 5400))
+        c.fill(.rounded(go, 12 * K), m.tycoon != nil ? Ink.gold : Ink.red); c.say(m.tycoon != nil ? "타워 타이쿤에게 도전" : m.run ? "다음 상대" : "도전 · \(m.fee)W", go.midX, go.midY, font(m.tycoon != nil ? 11.5 : 13, .bold), .white, 0.5, maxW: go.width - x(8)); hits.append((go, 5400))   // 3.9: the 49th / 99th fight's, in gold
         c.fill(.rounded(out, 12 * K), Ink.tile); c.say("나가기", out.midX, out.midY, font(11, .bold), Ink.ink, 0.5); hits.append((out, 5401))
+        guard !m.rewards.isEmpty else { return }                                                   // 3.9 (15 §6 E): the streak rewards — got ticked green, the next ringed red
+        c.say(m.next, x(X0 + 2), y(356), font(9, .semibold), Ink.sub, maxW: x(X1 - X0 - 4))
+        let n = CGFloat(m.rewards.count), gap: CGFloat = 2, cw = (X1 - X0 - gap * (n - 1)) / n, nextAt = m.rewards.firstIndex { !$0.got }
+        for (i, rw) in m.rewards.enumerated() {
+            let rc = r(X0 + CGFloat(i) * (cw + gap), 364, cw, 30), p = Path.rounded(rc, 7 * K)
+            c.fill(p, rw.got ? Ink.tint(Ink.green, 0.16) : Ink.tile); if i == nextAt { c.stroke(p, Ink.red, width: 1.3 * K) }
+            c.say((rw.got ? "✓" : "") + "\(rw.wins)", rc.midX, rc.minY + x(10), font(9, .bold), rw.got ? Ink.green : i == nextAt ? Ink.red : Ink.ink, 0.5)
+            c.say(rw.short, rc.midX, rc.minY + x(22), font(6.5, .semibold), rw.got ? Ink.green : Ink.sub, 0.5, maxW: rc.width - x(2))
+        }
     }
     /// The tower's picker: who could go in the slot, by level, a page of five (the party's marked with where they are; picking one of them swaps the two).
     /// 코스: a page of five (open ones dark, locked ones faint with what opens them, the one walked marked), the pager, and 가기.
@@ -632,7 +641,10 @@ extension Page {
             var xr = rc.maxX - x(9) - c.say(row.value, rc.maxX - x(9), rc.midY, font(9, .semibold), Ink.ink, 1) - x(6)
             if row.walking { xr = pillAt("걷는 중", xr, rc.midY, Ink.tint(Ink.green, 0.18), Ink.green) }
             if row.me { xr = pillAt("나", xr, rc.midY, Ink.tint(Ink.blue, 0.16), Ink.blue) }
-            c.say((row.shiny ? "★ " : "") + row.name, xl, rc.midY, font(10, .bold), Ink.ink, maxW: xr - xl)
+            let nw = c.say((row.shiny ? "★ " : "") + row.name, xl, rc.midY, font(10, .bold), Ink.ink, maxW: xr - xl)
+            var xm = xl + nw + x(4)
+            if let d = row.deco, xm + x(10) < xr { pixelArt(medalArt, d == "gold" ? goldPal : silverPal, CGPoint(x: xm + x(4), y: rc.midY), 1.6 * K); xm += x(12) }   // 3.9: its medal, its 칭호 where there's room
+            if let t = row.title, xm + width(t, font(7.5, .bold)) + x(10) < xr { titlePill(t, xm, rc.midY, size: 7.5) }
             hits.append((rc, 6010 + i))
         }
         let per = TeamModel.perPage, pages = max(1, (m.count + per - 1) / per)
@@ -642,7 +654,8 @@ extension Page {
         var xr = x(X1 - 2)
         if m.walking { xr = pillAt("걷는 중", xr, y(206), Ink.tint(Ink.green, 0.18), Ink.green) } else { xr -= c.say(m.when, xr, y(206), font(9, .medium), Ink.sub, 1) + x(6) }
         if m.me { xr = pillAt("나", xr, y(206), Ink.tint(Ink.blue, 0.16), Ink.blue) }
-        c.say(m.name + "의 트레이너 카드", x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: xr - x(X0 + 2))
+        let tw = c.say(m.name + "의 트레이너 카드", x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: xr - x(X0 + 2) - (m.deco == nil ? 0 : x(14)))
+        if let d = m.deco { pixelArt(medalArt, d == "gold" ? goldPal : silverPal, CGPoint(x: x(X0 + 2) + tw + x(9), y: y(206)), 2 * K) }   // 3.9: its medal by the name
         let cw = (X1 - X0 - 2 * 4) / 3
         for i in 0..<3 {                                                                            // the walker's three
             let rc = r(X0 + CGFloat(i) * (cw + 4), 216, cw, 42); tile(rc, 10, on: false)
@@ -652,8 +665,12 @@ extension Page {
                 if e.shiny { c.say("★", rc.maxX - x(5), rc.minY + x(6), font(7, .bold), Ink.gold, 1) }
             } else { c.say("비어 있음", rc.midX, rc.midY, font(7.5, .medium), Ink.faint, 0.5) }
         }
-        var yy: CGFloat = 272
-        for l in m.lines { c.say(l.key, x(X0 + 2), y(yy), font(9, .medium), Ink.sub); c.say(l.value, x(X0 + 48), y(yy), font(10, .semibold), Ink.ink, maxW: x(X1 - X0 - 50)); yy += 17 }
+        var yy: CGFloat = 272; let step: CGFloat = m.lines.count > 6 ? 15 : 17                        // (a 칭호's line: seven, closer)
+        for l in m.lines {
+            c.say(l.key, x(X0 + 2), y(yy), font(9, .medium), Ink.sub)
+            if l.gold { titlePill(l.value, x(X0 + 48), y(yy)) } else { c.say(l.value, x(X0 + 48), y(yy), font(10, .semibold), Ink.ink, maxW: x(X1 - X0 - 50)) }
+            yy += step
+        }
         var buttons: [(String, Int, Color, Color, Bool)] = []                                       // (3.8.1: no 인사)
         if let d = m.duel { let on = d == "대전 신청"; buttons.append((on ? d : "걸을 때 대전", 6032, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 3.6: a live battle
         if let v = m.visit { let on = v == "맡기기"; buttons.append((on || v == "이미 맡겼어요" ? v : "걸을 때 맡기기", 6034, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 3.8: 맡겨 키우기
@@ -948,6 +965,19 @@ extension Page {
         if m.goSel { c.stroke(.rounded(rc.insetBy(dx: -1.5 * K, dy: -1.5 * K), 11 * K), m.go == nil ? Ink.faint : Ink.ink, width: 1.2 * K) }
         c.say(m.go ?? (m.off.isEmpty ? m.hint : m.off), rc.midX, rc.midY, font(m.go == nil && m.off.isEmpty ? 9.5 : 11, .bold), m.go == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10))
         if m.go != nil { hits.append((rc, 8790)) }
+    }
+    // MARK: 트레이너 카드: its tabs; 3.9 (15 §6 C): the 칭호 (a gold pill) and the 장식 (its medal and name) over them
+    func drawCard(_ m: CardModel) {
+        guard m.title != nil || m.deco != nil else { tabs(["트레이너 카드", "최근 7일", "알"], m.page, 198, code: 5200); return }
+        var xl = x(X0 + 2)
+        if let d = m.deco { pixelArt(medalArt, d == "gold" ? goldPal : silverPal, CGPoint(x: xl + x(8), y: y(208)), 2.2 * K); xl += x(20); xl += c.say(d == "gold" ? "금장식" : "은장식", xl, y(208), font(10, .bold), d == "gold" ? Ink.gold : Ink.sub) + x(8) }
+        if let t = m.title { titlePill(t, xl, y(208)) }
+        tabs(["트레이너 카드", "최근 7일", "알"], m.page, 222, code: 5200)
+    }
+    /// A 칭호 as a gold pill starting at xl; returns its width.
+    @discardableResult func titlePill(_ t: String, _ xl: CGFloat, _ midY: CGFloat, size: CGFloat = 9) -> CGFloat {
+        let f = font(size, .bold), w = width(t, f) + x(12)
+        c.pill(CGRect(x: xl, y: midY - x(size * 0.75 + 2), width: w, height: x(size * 1.5 + 4)), Ink.tint(Ink.gold, 0.22)); c.say(t, xl + w / 2, midY, f, Ink.c(150, 96, 16), 0.5); return w
     }
     // MARK: 3.9's 우편함 (15 §6 A · D): the list, one mail, a pick — all 466 tall (the page doesn't jump between them)
     /// A mail's icon in a row (28 pt): its Pokémon, a gift box, a letter, a gem, a medal.

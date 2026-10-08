@@ -193,8 +193,11 @@ extension Walker {
         if raidOn { return raidEnded(e, now) }                                                     // 12 §4: its damage, then the lobby
         if b.trainer != nil {
             if e.result == "won" {
+                var mailed = false                                                                 // 3.9 (15 §6 E): a streak reward mailed with this win (the news in its reply) — said, and quiet
+                news.removeAll { if case .mailNew(_, let t) = $0 { mailed = mailed || t.hasSuffix("연승 달성 보상"); mailNews(t); return true }; return false }
                 if !news.isEmpty { growthThen = .tower(pick: nil) }
-                return .say(["\(e.streak ?? 0)연승!", "+\(e.bp ?? 0) BP"], next: news.isEmpty ? .tower(pick: nil) : .home, since: now)
+                let won = b.trainer == Tower.tycoon ? ["타워 타이쿤을 이겼다!", "\(e.streak ?? 0)연승! +\(e.bp ?? 0) BP"] : ["\(e.streak ?? 0)연승!", "+\(e.bp ?? 0) BP"]
+                return .say(won + (mailed ? ["우편함에 보상이 왔다"] : []), next: news.isEmpty ? .tower(pick: nil) : .home, since: now)
             }
             towerRun = false
             return .say(["\(e.streak ?? 0)연승에서 끝났다", "BP \(state.bp ?? 0)"], next: .home, since: now)

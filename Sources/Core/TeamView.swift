@@ -53,9 +53,9 @@ extension Walker {
                 .init(key: "누적", value: "\(c.total.formatted())걸음"),
                 visitTo(c.name).map { v in .init(key: "맡김", value: monLine(v.mon) + " · " + visitLeft(v)) }   // 3.8.5: one of mine with this friend (its place: 코스)
                     ?? .init(key: "코스", value: courses[safe: c.course]?.name ?? "-"),
-            ]
+            ].reduce(into: c.title.map { [TeamCardModel.Line(key: "칭호", value: $0, gold: true)] } ?? []) { $0.append($1) }   // 3.9: its 칭호 first
             let friend = isFriend(c.name) && !isMe(c), asked = (cloud?.team?.sent ?? []).contains { trainerID($0)?.key == trainerID(c.name)?.key }
-            return PaneContent(teamCard: TeamCardModel(name: c.name, me: isMe(c), walking: Walker.walkingNow(c) && !isMe(c), when: isMe(c) ? "" : ago(c.idle), walker: c.walker.prefix(3).map(mini), lines: lines,
+            return PaneContent(teamCard: TeamCardModel(name: c.name, me: isMe(c), walking: Walker.walkingNow(c) && !isMe(c), when: isMe(c) ? "" : ago(c.idle), walker: c.walker.prefix(3).map(mini), lines: lines, deco: c.deco,
                                                        remove: friend,
                                                        duel: friend ? (Walker.walkingNow(c) ? "대전 신청" : "걷는 중일 때 대전") : nil,
                                                        visit: friend ? (visitTo(c.name) != nil ? "이미 맡겼어요" : Walker.walkingNow(c) ? "맡기기" : "걷는 중일 때 맡기기") : nil,
@@ -63,7 +63,7 @@ extension Walker {
         }
         let per = TeamModel.perPage, first = s / per * per
         let page = rows[first..<min(rows.count, first + per)].map { r in
-            TeamModel.Row(rank: r.rank, name: r.card.name, dex: r.card.companion.dex, shiny: r.card.companion.shiny == true, value: teamValue(r.card, tab), walking: Walker.walkingNow(r.card) && !isMe(r.card), me: isMe(r.card))
+            TeamModel.Row(rank: r.rank, name: r.card.name, dex: r.card.companion.dex, shiny: r.card.companion.shiny == true, value: teamValue(r.card, tab), walking: Walker.walkingNow(r.card) && !isMe(r.card), me: isMe(r.card), deco: r.card.deco, title: r.card.title)
         }
         return PaneContent(team: TeamModel(tabs: teamTabLabels, tab: tab, rows: page, sel: s, first: first, count: rows.count, note: note, week: cloud?.team?.week ?? "",
                                            hint: cloud?.team != nil && friends == 0 ? "신청 탭에서 친구의 ID로 신청해 보세요" : nil))
@@ -81,7 +81,8 @@ extension Walker {
         let rows = teamRows(tab)
         guard let r = rows[safe: min(sel, max(0, rows.count - 1))] else { fb.text("팀", 2, 0); fb.fill(0, 12, 96, 1, 2); fb.text(cloud?.team == nil ? "불러오는 중..." : "아직 아무도 없다", 0, 30, 2, center: true); return }
         let c = r.card, half = Int(now.timeIntervalSinceReferenceDate * 2) % 2
-        fb.text(c.name, 2, 0); fb.fill(0, 12, 96, 1, 2)
+        let nw = fb.text(c.name, 2, 0); fb.fill(0, 12, 96, 1, 2)
+        if let d = c.deco { fb.draw(medalArt, min(88, nw + 5), 2, d == "gold" ? goldPal : silverPal) }                         // 3.9: its medal
         fb.mon(c.companion, half, 0, 2, anim: animT("team", c.companion.dex, now))
         fb.text("Lv.\(c.companion.level)", 94, 16, 2, right: true, small: true)
         if isMe(c) { fb.text("나", 94, 30, 2, right: true, small: true) } else { fb.text(Walker.walkingNow(c) ? "걷는 중" : ago(c.idle), 94, 30, Walker.walkingNow(c) ? 3 : 2, right: true, small: true) }

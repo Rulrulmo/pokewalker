@@ -141,6 +141,7 @@ extension Walker {
         if let (bt, u) = beat { moveFX(&fb, bt, u, b, at) }                                         // a move's effect over the fighters
         if let s = shot { fb.ballFX(s, at) }                                                        // the ball, its light, a trainer
         if let (bt, u) = beat, bt == .appear, !legendDex.contains(b.wild.dex) { fb.entryFlash(u) }   // a wild one: two quick flashes first (a legend's screen flips instead)
+        if b.trainer == Tower.tycoon { fb.decoFrame(gold: (state.towerStreak ?? 0) >= 98) }       // 3.9 (15 §6 E): the tycoon's fight in 은 or 금
         guard hud else { return }
         // HUD: theirs top-left (name, Lv, bar; a trainer's remaining balls), ours top-right; each on its own plate so the sprite's head can't muddle it
         let ft = monNames[foe.dex] + " \(foe.level)" + (b.theirs[b.it].status.map { " " + $0.badge } ?? ""), mt = "\(monNames[mine.dex]) \(mine.level)" + (b.mine[b.me].status.map { " " + $0.badge } ?? "")

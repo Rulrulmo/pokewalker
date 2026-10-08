@@ -58,6 +58,20 @@ extension Walker {
         case .pickItem, .pickLegend: return "고르기"
         }
     }
+    /// 3.9 (15 §6 E): a streak reward under its number on the lobby's strip.
+    static func rewardShort(_ gs: [Gift]) -> String {
+        switch gs.first {
+        case .items(let n, let k)?: return n == "이상한사탕" ? "사탕×\(k)" : n == "은색병뚜껑" ? "은뚜껑" : n == "금색병뚜껑" ? "금뚜껑" : n
+        case .pickItem?: return "도구"
+        case .bp(let n)?: return "\(n)BP"
+        case .deco(let k)?: return k == "gold" ? "금장식" : "은장식"
+        case .title?: return "전설"
+        default: return ""
+        }
+    }
+    /// A streak reward mailed already (the save's towerRewards; a server before 3.9: whatever the best streak passed).
+    func towerGot(_ wins: Int) -> Bool { state.towerRewards.map { $0.contains(wins) } ?? false }
+    var towerNextReward: (wins: Int, gifts: [Gift])? { Tower.rewards.first { !towerGot($0.wins) } }
     static func decoName(_ k: String) -> String { k == "gold" ? "트레이너 카드 금장식" : "트레이너 카드 은장식" }
     /// What a gift's 받기 says.
     func giftLine(_ g: Gift) -> String {

@@ -72,7 +72,7 @@ extension Walker {
             if range.contains(picked.count) { m.go = "이 \(picked.count)마리로 도전" }
         case .duelPick:
             let p = duel?.parties
-            m.title = "vs " + (duel?.opponent ?? ""); m.note = duelLeft(now).map { "\($0)초 남음" } ?? ""; m.tabs = nil
+            m.title = "vs " + (duel?.opponent ?? "") + (duel?.opponentTitle.map { " 「\($0)」" } ?? ""); m.note = duelLeft(now).map { "\($0)초 남음" } ?? ""; m.tabs = nil
             m.theirs = (p?.theirs ?? []).map { GridModel.Cell(dex: $0.dex, look: 2, shiny: $0.shiny, v3: false, level: Walk.towerLevel, held: false) }
             m.boxTitle = "내 대전 파티 · 나갈 3마리를 순서대로"
             m.hint = sent ? (p?.theyPicked == true ? "곧 시작해요…" : "상대가 고르는 중…") : "시간이 지나면 앞의 3마리가 나가요"

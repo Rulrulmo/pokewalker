@@ -599,6 +599,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         let preVisit = w
         if o.cannot == nil, let why = visitAct(q.act, id.key, r.name, &w, &o.news) { o.cannot = why }
         if o.cannot == nil, let why = mailAct(q.act, id.key, &w, &o) { o.cannot = why }
+        let preTower = w; towerRewards(id.key, &w); if w != preTower { o.changed = true }                 // 3.9: every act, as the server's
         visitTick(id.key, steps: o.cannot == nil ? taken : 0, &w, &o.news)
         if w != preVisit { o.changed = true }
         if let a = q.app, verCmp(a, "3.2").map({ $0 >= 0 }) == true, let mail = inbox.removeValue(forKey: id.key) { o.news += mail }   // (3.2 on: hello)
@@ -983,6 +984,15 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         default: break
         }
         return nil
+    }
+    /// 15 §3: each streak reached (towerBest) and not yet rewarded gets its mail, once; the save keeps which (the lobby's strip).
+    var towerPaid: [String: Set<Int>] = [:]
+    func towerRewards(_ key: String, _ w: inout Walk) {
+        for r in Tower.rewards where r.wins <= (w.towerBest ?? 0) && !(towerPaid[key] ?? []).contains(r.wins) {
+            towerPaid[key, default: []].insert(r.wins)
+            giveMail(key, "tower", from: "배틀 타워", title: "\(r.wins)연승 달성 보상", body: "배틀 타워에서 처음으로 \(r.wins)연승에 닿았어요.", r.gifts)
+        }
+        if let paid = towerPaid[key], Set(w.towerRewards ?? []) != paid { w.towerRewards = paid.sorted() }
     }
     /// POST /v2/mail: gifts waiting first, then the newest; read = the ones just opened.
     func mailBox(_ d: Data) -> (Int, Data) {

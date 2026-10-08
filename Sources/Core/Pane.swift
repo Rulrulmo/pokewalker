@@ -80,8 +80,8 @@ struct MailPickModel: Equatable {
 }
 /// 포켓몬 레이더: the four bushes as on the LCD, the one rustling marked.
 struct RadarModel: Equatable { var live: Int?; var cursor: Int; var chain: Int; var season = Season.summer }
-/// 트레이너 카드: its three pages as tabs.
-struct CardModel: Equatable { var page: Int }
+/// 트레이너 카드: its three pages as tabs; 3.9: the 칭호 and 장식 over them (15 §6 C).
+struct CardModel: Equatable { var page: Int; var title: String? = nil; var deco: String? = nil }
 /// A new move to learn: it, then the four known ones and 배우지 않는다.
 struct LearnModel: Equatable {
     struct Move: Equatable { var name, type: String; var power, pp: Int; var about = ""; var text: String? = nil }   // about: 물리 · 명중 100; text: what it does (3.8.2)
@@ -98,6 +98,8 @@ struct RelearnModel: Equatable {
 struct TowerModel: Equatable {
     struct Member: Equatable { var dex: Int; var name: String; var level: Int; var shiny = false }
     var run: Bool; var streak, best, bp, fee: Int; var party: [Member]; var custom = false   // custom = the player's party, not the recommended one (3.8.3: picked on the 포켓몬 menu's grid)
+    struct Reward: Equatable { var wins: Int; var short: String; var got: Bool }                // 3.9 (15 §6 E): the streak rewards — got = mailed (Walk.towerRewards)
+    var rewards: [Reward] = []; var next = ""; var tycoon: String? = nil                       // next: the next reward in words; tycoon: 은 / 금 when the next fight is the tycoon's
 }
 /// 코스: every course, a page of five (the pick's picture is on the LCD). note = what opens a locked one; go = the button (nil: locked, or walking it now).
 struct CourseModel: Equatable {
@@ -119,7 +121,7 @@ struct ItemsModel: Equatable {
 }
 /// 팀 (docs/plans/12 §2): the tabs, a page of teammates (rank on the rank tabs, the companion, walking now, the tab's number), the pager, a note.
 struct TeamModel: Equatable {
-    struct Row: Equatable { var rank: Int?; var name: String; var dex: Int; var shiny: Bool; var value: String; var walking: Bool; var me: Bool }
+    struct Row: Equatable { var rank: Int?; var name: String; var dex: Int; var shiny: Bool; var value: String; var walking: Bool; var me: Bool; var deco: String? = nil; var title: String? = nil }   // 3.9: the medal, the 칭호
     static let perPage = 6
     var tabs: [String]; var tab: Int; var rows: [Row]; var sel, first, count: Int; var note: String; var week: String
     var hint: String? = nil                                            // under the rows (no friends yet: how to add one)
@@ -127,8 +129,9 @@ struct TeamModel: Equatable {
 /// A friend's card: the walker's three, a few lines, its buttons (대전 · 맡기기 · 친구 끊기; 친구 신청 on someone else's; none on mine).
 struct TeamCardModel: Equatable {
     struct Mini: Equatable { var dex, level: Int; var shiny: Bool }
-    struct Line: Equatable { var key, value: String }
+    struct Line: Equatable { var key, value: String; var gold = false }
     var name: String; var me, walking: Bool; var when: String; var walker: [Mini]; var lines: [Line]
+    var deco: String? = nil                                            // 3.9 (15 §6 C): the medal by the name (a 칭호 is a gold line)
     var remove = false                                                 // 친구 끊기 (a friend's card)
     var duel: String? = nil                                            // 3.6: 대전 신청 (a friend walking now), or why not; nil: none (my own card)
     var visit: String? = nil                                           // 3.8: 맡기기 (a friend walking now, none of mine away), or why not
@@ -233,6 +236,6 @@ extension PaneContent {
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 472 : dex != nil ? 390 : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
             : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446 : mailList != nil || mailOpen != nil || mailPick != nil ? 466
-            : radar != nil ? 327 : card != nil ? 230 : learn != nil ? 444 : tower != nil ? 353 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
+            : radar != nil ? 327 : card != nil ? (card!.title != nil || card!.deco != nil ? 254 : 230) : learn != nil ? 444 : tower != nil ? 400 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
     }
 }
