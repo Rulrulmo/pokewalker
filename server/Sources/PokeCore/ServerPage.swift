@@ -379,7 +379,7 @@ extension DownloadSite {
             <li>터미널이 편하면 <code>xattr -dr com.apple.quarantine /Applications/PokeWalker.app</code></li>
             <li>알림 허용을 물으면 허용해요. 메뉴 막대의 몬스터볼을 누르면 카드를 숨기거나 보여요.</li></ol></div>
             <div><h4>Windows</h4><ol>\(setup
-                ? "<li>설치 프로그램은 내 사용자 폴더에 설치해서 관리자 권한이 필요 없고, 자동 업데이트도 돼요.</li><li>예전에 zip으로 받아 쓰던 분은 그 폴더를 지우고 설치 프로그램으로 다시 설치하면 돼요. 세이브는 서버에 있어요.</li><li>지울 때는 설정 → 앱에서 PokeWalker를 제거해요.</li>"
+                ? "<li>설치 프로그램은 내 사용자 폴더에 설치해서 관리자 권한이 필요 없고, 자동 업데이트도 돼요.</li><li>예전에 zip으로 받아 쓰던 분은 설치 프로그램으로 다시 설치하고, <b>예전 zip 폴더는 지워도 돼요</b>. 설정과 접속 정보는 <code>%APPDATA%\\PokeWalker</code>에 따로 있고, 세이브는 서버에 있어요.</li><li>지울 때는 설정 → 앱에서 PokeWalker를 제거해요.</li>"
                 : "<li>Program Files에 두면 <b>자동 업데이트가 안 돼요</b>. 쓰기 권한이 있는 폴더에 둬요.</li>")
             <li>로그인할 때 자동으로 켜려면 <kbd>Win+R</kbd> → <code>shell:startup</code> 폴더에 바로 가기를 넣어요.</li>
             <li>Windows는 앱이 켜져 있는 동안의 입력만 걸음으로 세요.</li>

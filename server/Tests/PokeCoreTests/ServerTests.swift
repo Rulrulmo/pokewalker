@@ -347,6 +347,7 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     page = site.page()
     #expect(page.contains("data-os=\"windows\" href=\"/download/windows-setup\"") && page.contains("추가 정보 → 실행") && page.contains("설치 프로그램"))
     #expect(!page.contains("내 문서") && !page.contains("Program Files에 두면") && site.release?.build("windows-setup") != nil)
+    #expect(page.contains("예전 zip 폴더는 지워도 돼요") && page.contains("%APPDATA%\\PokeWalker"))
 }
 
 @Test func saveChecks() async throws {
