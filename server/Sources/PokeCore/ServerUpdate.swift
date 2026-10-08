@@ -47,16 +47,37 @@ struct ReleaseFiles: Sendable {
     }
 }
 
+/// Windows apps up to 3.9 update by a zip and a PowerShell swap that never works on Windows (3.9.1's finding: the app quits for the swap, the swap
+/// dies, nothing starts again — at every launch). They're told there's nothing new, and their zip isn't served: 3.9.1's installer is installed by
+/// hand (the download page), and updates itself from then on (windowsSetup).
+let windowsZipLast = "3.9"
+func brokenWindowsUpdater(app: String?, platform: String?) -> Bool {
+    platform?.lowercased() == "windows" && (app.flatMap { verCmp($0, windowsZipLast) }.map { $0 <= 0 } ?? true)
+}
+/// The app's User-Agent: "PokeWalker/<version> (<platform>)".
+func userAgentApp(_ r: Request) -> (app: String, platform: String)? {
+    guard let ua = r.headers.first(where: { $0.name.canonicalName == "user-agent" })?.value, ua.hasPrefix("PokeWalker/") else { return nil }
+    let rest = ua.dropFirst("PokeWalker/".count), parts = rest.split(separator: " ", maxSplits: 1)
+    guard let v = parts.first else { return nil }
+    let p = parts.count > 1 ? parts[1].trimmingCharacters(in: CharacterSet(charactersIn: "()")) : ""
+    return (String(v), p)
+}
+
 func hasAppKey(_ r: Request, _ appKey: String) -> Bool { r.headers.first(where: { $0.name.canonicalName == "x-app-key" })?.value == appKey }
 
 func addUpdates(_ router: Router<BasicRequestContext>, _ files: ReleaseFiles, appKey: String) {
-    post(router, "/v1/update", appKey: appKey, id: { (_: UpdateReq) in "" }) { _ in
+    post(router, "/v1/update", appKey: appKey, id: { (_: UpdateReq) in "" }) { r in
+        if brokenWindowsUpdater(app: r.app, platform: r.platform) { return Reply(200, ["manifest": .null, "sig": .null]) }   // (see brokenWindowsUpdater)
         guard let m = files.manifestText, let s = files.signature else { return Reply(200, ["manifest": .null, "sig": .null]) }   // nothing signed yet
         return Reply(200, ["manifest": .s(m), "sig": .s(s)])
     }
     router.get("/v1/download/:kind") { request, context -> Response in
         guard hasAppKey(request, appKey) else { return respond(.error(401, "app_key")) }
         let kind = context.parameters.get("kind") ?? ""
+        if kind == "windows", userAgentApp(request).map({ brokenWindowsUpdater(app: $0.app, platform: "windows") }) ?? true {   // no zip for a broken updater
+            context.logger.info("update download windows refused (\(userAgentApp(request)?.app ?? "no user agent"))")
+            return respond(.error(404, "no_release"))
+        }
         guard let m = files.manifestText.flatMap(ReleaseFiles.parse), let e = m.entry(kind) else { return respond(.error(404, "no_release")) }
         var headers = HTTPFields()
         headers[.contentType] = kind == "windows-setup" ? "application/vnd.microsoft.portable-executable" : "application/zip"

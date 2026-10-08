@@ -547,3 +547,8 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     #expect(try JSONDecoder().decode(Battle.self, from: try JSONEncoder().encode(t)) == t)
     print("battle JSON: \(d.count) bytes")
 }
+
+@Test func windowsZipUpdatesStopped() {                                                             // 3.9.1: Windows apps up to 3.9 are told nothing's new
+    #expect(brokenWindowsUpdater(app: "3.8.5", platform: "windows") && brokenWindowsUpdater(app: "3.9", platform: "windows") && brokenWindowsUpdater(app: nil, platform: "windows"))
+    #expect(!brokenWindowsUpdater(app: "3.9.1", platform: "windows") && !brokenWindowsUpdater(app: "3.8.5", platform: "mac") && !brokenWindowsUpdater(app: "3.9", platform: nil))
+}
