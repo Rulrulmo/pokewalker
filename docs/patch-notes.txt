@@ -5,7 +5,7 @@ PokeWalker 패치 내역
 ■ 3.9.1 · 2026-10-08
 
 [바뀐 점] Windows는 설치 프로그램으로
-- Windows용 PokeWalker를 설치 프로그램(PokeWalker-setup.exe)으로 받아요. 관리자 권한 없이 이 사용자에게만 설치돼요(%LOCALAPPDATA%\Programs\PokeWalker).
+- Windows용 PokeWalker를 설치 프로그램(PokeWalker-<버전>-setup.exe, 예: PokeWalker-3.9.1-setup.exe)으로 받아요. 관리자 권한 없이 이 사용자에게만 설치돼요(%LOCALAPPDATA%\Programs\PokeWalker).
 - 시작 메뉴에 PokeWalker가 생기고, 설정 → 앱에서 지울 수 있어요. 바탕 화면 바로 가기와 "로그인할 때 자동 실행"을 고를 수 있어요.
 - 예전 zip 폴더는 설치 뒤 지워도 돼요. 설정 · 접속 정보는 %APPDATA%\PokeWalker에, 세이브는 서버에 있어서 그대로 이어져요.
 
