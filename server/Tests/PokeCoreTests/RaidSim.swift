@@ -25,7 +25,7 @@ private func simPick(_ b: Battle) -> Int {
 
 /// One raid fight: (won, bars down, turns).
 private func simFight(_ party: [Mon], boss: Mon, bars: Int, _ r: inout SimRNG) -> (Bool, Int, Int) {
-    var b = Battle(wild: boss, party: party); b.seed = r.next()
+    var b = Battle(wild: boss, party: party); b.seed = r.next(); b.raidTier = 1                  // a run's rules (날려버리기 can't end it)
     b.theirs += Array(repeating: Fighter(boss), count: bars - 1)
     _ = b.begin(weather: nil, &r)
     while !b.over, b.turnNo < 400 {

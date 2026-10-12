@@ -923,3 +923,24 @@ extension SaveDB {
                     ["w": .text(week), "k": .text(key), "b": .text(boss)])
     }
 }
+
+@Test func raidRunNoBlowAway() {                                                                 // a Lv.20 루기아 knows 날려버리기: in a run it can't end the fight
+    var r = Seeded(s: 11)
+    for seed in 1...40 {
+        var a = Mon(dex: 248, level: 40, female: false); a.known = [18, 46, 100, 33]; a.uid = 1    // ours: 날려버리기 · 울부짖기 · 순간이동 · 몸통박치기
+        var b2 = Mon(dex: 16, level: 30, female: false); b2.uid = 2
+        let boss = Mon.wild(249, level: 20, perfect: 3, &r)
+        #expect(boss.moves.contains(18))
+        var b = Battle(wild: boss, party: [a, b2]); b.seed = UInt64(seed); b.raidTier = 1
+        b.theirs += Array(repeating: Fighter(boss), count: RaidRules.bars - 1)
+        _ = b.begin(weather: nil, &r)
+        var turns = 0
+        while !b.over, turns < 12 {
+            if b.mustReplace, let n = b.mine.indices.first(where: { b.mine[$0].alive }) { _ = b.replace(n); continue }
+            let mine = b.mine[b.me].moves, id = mine[turns % min(3, mine.count)]
+            for bt in b.turn(.fight(b.forced ?? id), &r) { #expect(bt != .fled && bt != .ran) }     // no one blown away, no one teleported out
+            turns += 1
+        }
+    }
+}
+

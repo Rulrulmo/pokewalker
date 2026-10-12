@@ -93,12 +93,13 @@ extension Battle {
             let c = f(s).maxHP / 4; hurt(s, c, josa(n, "의", "의") + " 대타가 나타났다!"); mod(s) { $0.sub = c }
         case 18, 46:
             if dAb(t, 21, by: s) || f(t).ingrain { say(t, josa(tn, "은", "는") + " 꿈쩍도 하지 않는다!"); return }
-            if trainer == nil { say(t, josa(tn, "은", "는") + " 멀리 날아갔다!"); out.append(s == .me ? .fled : .ran); over = true; return }
+            if trainer == nil, raidTier == nil { say(t, josa(tn, "은", "는") + " 멀리 날아갔다!"); out.append(s == .me ? .fled : .ran); over = true; return }
+            if raidTier != nil, t == .it { fail(); return }                                        // a raid run (16): the boss stands; ours is sent back as a trainer's would be
             let others = (t == .me ? mine : theirs).indices.filter { $0 != (t == .me ? me : it) && (t == .me ? mine : theirs)[$0].alive }
             guard !others.isEmpty else { fail(); return }
             say(t, josa(tn, "은", "는") + " 멀리 날아갔다!"); switchIn(t, others[roll(others.count)])
         case 100:
-            guard trainer == nil, !f(s).trapped else { fail(); return }
+            guard trainer == nil, raidTier == nil, !f(s).trapped else { fail(); return }             // (a raid run: no one leaves by it)
             say(s, josa(n, "은", "는") + " 순간이동했다!"); out.append(s == .me ? .ran : .fled); over = true
         case 144:
             guard f(t).form == nil else { fail(); return }

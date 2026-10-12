@@ -10,9 +10,9 @@ enum RaidRules {
     static let shinyOdds = 32                                           // the user: 1 in 32 (the radar's 1 in 64)
     static let newOdds = 0.30, ownedOdds = 0.10                         // a ball: a species not caught yet (a shiny boss: not caught as shiny yet); one owned
     static let expShare = 5                                             // a bar's EXP: a wild KO's 1/5 (10 bars = 2); EVs on the first bar only
-    static let tiers: [RaidTier] = [                                    // the user (10-12): Lv.40 · 60 · 80 · 100 · 120 (★5 fights above 100)
-        RaidTier(tier: 1, level: 40, perfect: 3, bp: 1), RaidTier(tier: 2, level: 60, perfect: 3, bp: 1), RaidTier(tier: 3, level: 80, perfect: 4, bp: 2),
-        RaidTier(tier: 4, level: 100, perfect: 4, bp: 2), RaidTier(tier: 5, level: 120, perfect: 5, bp: 3),
+    static let tiers: [RaidTier] = [                                    // the user (10-12): Lv.20 · 40 · 60 · 90 · 120 (★5 fights above 100)
+        RaidTier(tier: 1, level: 20, perfect: 3, bp: 1), RaidTier(tier: 2, level: 40, perfect: 3, bp: 1), RaidTier(tier: 3, level: 60, perfect: 4, bp: 2),
+        RaidTier(tier: 4, level: 90, perfect: 4, bp: 2), RaidTier(tier: 5, level: 120, perfect: 5, bp: 3),
     ]
     static let caughtMax = 100                                          // a boss caught above it comes in at Lv.100 (its EXP that level's least)
     static func tier(_ n: Int?) -> RaidTier? { tiers.first { $0.tier == n } }
