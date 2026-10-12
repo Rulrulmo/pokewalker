@@ -70,14 +70,16 @@ import Foundation
     take("trade_list", on: tme) { v in v.screen = .trade(.list(0)) }
     take("trade_offer", on: tme) { v in v.screen = .trade(.offer(id: 1, act: nil)) }
     take("trade_pick", on: tme) { v in v.screen = .trade(.pick(TradePick(to: "민수", give: v.myTradeBox[4].uid, want: 502, side: 0, at: 4))) }
-    tsrv.raidOpen(4_200_000); tsrv.raidLeft = 2_730_000                                            // 3.4: 레이드
-    for (k, n) in ["민수", "지은", "도윤"].enumerated() { tsrv.raidDealt[n] = [412_000, 388_000, 201_500][k]; tsrv.raidFights[n] = 9 - k }
-    tsrv.raidRecent = [RaidHit(name: "민수", dex: 6, dealt: 21_340, at: now - 120), RaidHit(name: "지은", dex: 282, dealt: 30_115, at: now - 4000)]
+    let lugia = Mon(dex: 249, level: RaidRules.tiers[2].level, female: false)                         // 4.0 (16 §8): 레이드 — runs
+    tsrv.raidRuns[me] = [.init(tier: 3, boss: lugia, day: Walk.key(T), at: now - 3000, bars: 10, balls: 0, won: true, caught: true, ended: true),
+                         .init(tier: 4, boss: lugia, day: Walk.key(T), at: now - 900, bars: 6, balls: 0, won: false, caught: false, ended: true)]
     serve(tme) { w in w.raidPower = Engine.raidPowerCost * 234 / 100 }
     tme.cloud!.raidDue = true; drain(tme); drain(tme)
-    take("raid_lobby", on: tme) { v in v.screen = .raid(tab: 0) }
+    take("raid_lobby", on: tme) { v in v.screen = .raid(.lobby(tab: 1)) }
+    take("raid_tier", on: tme) { v in v.screen = .raid(.tier(sel: 2)) }
+    take("raid_balls", on: tme) { v in var m = lugia; m.shiny = true; v.raidStage = RaidPending(boss: m, tier: 3, bars: 10, won: true, balls: 4); v.screen = .raid(.balls) }
     take("raid_battle", on: tme) { v in
-        v.raidOn = true; var b = Battle(wild: tsrv.raidBoss, party: v.state.party().map(\.mon)); b.theirs += [Fighter(tsrv.raidBoss), Fighter(tsrv.raidBoss)]
+        v.raidStage = nil; v.raidOn = true; var b = Battle(wild: lugia, party: v.state.party().map(\.mon)); b.theirs += Array(repeating: Fighter(lugia), count: RaidRules.bars - 1)
         b.theirs[0].hp = 0; b.it = 1; v.fight = b; v.screen = .battle(b, sel: 0)
     }
     for n in ["민수", "지은", "도윤"] { tsrv.befriend(tme.myName, n) }; tsrv.friendAsks[tme.myName.lowercased()] = ["서연"]   // 3.5: 친구, the 게시판
@@ -86,7 +88,7 @@ import Foundation
     tsrv.bids = [(Bid(id: 4, listing: 8, from: "지은", mon: tsrv.walk("민수")!.box[2], at: now - 300, state: "open"), "지은", tme.myName.lowercased())]
     tme.cloud!.teamDue = true; tme.cloud!.marketDue = true; tme.cloud!.mailDue = true; drain(tme); drain(tme)
     take("menu_11", on: tme) { v in v.screen = menuFor("교환") }
-    take("friends_requests", on: tme) { v in v.screen = .team(sel: 0, tab: 4, card: false) }
+    take("friends_requests", on: tme) { v in v.screen = .team(sel: 0, tab: TeamTab.requests, card: false) }
     take("market_board", on: tme) { v in v.screen = .market(.board(tab: 0, sel: 0)) }
     take("market_post_mine", on: tme) { v in v.screen = .market(.post(id: 8, sel: 0)) }
     take("market_pick_wish", on: tme) { v in v.screen = .market(.pick(MarketPick(give: v.myTradeBox[3].uid, wish: [25, 133], side: 1, at: 24))) }
@@ -115,7 +117,7 @@ import Foundation
     take("mail_open", on: tme) { v in v.screen = .mail(.open(id: v.mails.first { $0.kind == "trade" }?.id ?? 0)) }
     take("mail_pick", on: tme) { v in v.screen = .mail(.pick(id: v.mails.first { $0.kind == "tower" }?.id ?? 0, at: 2, ask: false)) }
     take("market_post_note", on: tme) { v in v.screen = .market(.post(id: 7, sel: nil)) }
-    take("friends_visits", on: tme) { v in v.screen = .team(sel: 0, tab: 5, card: false) }
+    take("friends_visits", on: tme) { v in v.screen = .team(sel: 0, tab: TeamTab.visits, card: false) }
     take("home_guests", on: tme) { v in v.screen = .home }
     take("visit_pick", on: tme) { v in v.screen = .visitPick(ItemOn(item: "민수", pick: v.visitRefs[safe: 2], at: 2)) }
     let wu = tme.state.box.compactMap(\.uid); tme.state.duelParty = Array(wu.prefix(5))

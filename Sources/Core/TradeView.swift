@@ -29,7 +29,7 @@ extension Walker {
     /// The 팀 tabs as shown: 교환's with how many wait for me.
     var teamTabLabels: [String] {
         let n = visitsOut.count + guests.count
-        return Array(Walker.teamTabs.prefix(4)) + [friendRequestsIn > 0 ? "신청 \(friendRequestsIn)" : "신청", n > 0 ? "맡기기 \(n)" : "맡기기"] + (teamTabCount > 6 ? ["전체"] : [])
+        return Array(Walker.teamTabs.prefix(TeamTab.requests)) + [friendRequestsIn > 0 ? "신청 \(friendRequestsIn)" : "신청", n > 0 ? "맡기기 \(n)" : "맡기기"] + (teamTabCount > TeamTab.all ? ["전체"] : [])
     }
     static func isTrade(_ a: Act) -> Bool { switch a { case .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel: true; default: false } }
     func monLine(_ m: Mon) -> String { (m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)" }
@@ -202,7 +202,7 @@ extension Walker {
     func tradeTap(_ code: Int, _ now: Date) {
         guard case .trade(let s) = screen else { return }
         switch (s, code) {
-        case (.list, 6000...6003): screen = .team(sel: 0, tab: code - 6000, card: false)
+        case (.list, 6000...6004): screen = .team(sel: 0, tab: code - 6000, card: false)
         case (.list(let sel), 6110..<6120):
             let at = sel / TradeListModel.perPage * TradeListModel.perPage + code - 6110
             guard let o = tradeRows[safe: at] else { return }

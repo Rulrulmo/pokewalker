@@ -180,6 +180,7 @@ extension Walker {
         if waiting != nil { return }                             // an act's answer on the way: keys wait
         let now = Date(); lastInput = now; defer { settle(now); host?.redraw(.all) }               // back home: the news go on at once
         if k == 4 {                                           // one key both ways: home opens the menu (on the pane; the LCD stays home), anywhere else it goes home
+            if case .raid(.balls) = screen { raidLeave(home: true, now); return }                 // 4.0: the ball stage given up first (asked)
             if let open = homeKey() { if !open { growthThen = nil }; screen = open ? .menu(group: nil, sel: 0) : .home }   // home means home: the news still play there, then it stays
             return
         }
@@ -193,14 +194,14 @@ extension Walker {
             case .card: screen = menuFor("트레이너 카드")
             case .team(let s, let t, let card): screen = card ? .team(sel: s, tab: t, card: false) : menuFor("친구")   // the card → the list → the menu
             case .trade(let s): screen = tradeBack(s)
-            case .raid: screen = menuFor("레이드")
+            case .raid(let s): raidBack(s, now)
             case .market(let s): screen = marketBack(s)
             case .mail(let s): screen = mailBack(s)
             case .itemOn(let p): screen = .items(state.inventory.firstIndex(of: p.item) ?? 0)
             case .duel(.hub(1, _)): screen = .duel(.hub(tab: 0, sel: 0))
             case .duel(.hub): screen = menuFor("대전")
             case .duel: screen = .home                                                             // (the invitation stays open: its minute; the queue too)
-            case .squad(let s): switch s.kind { case .tower: screen = .tower(pick: nil); case .duelParty: screen = .duel(.hub(tab: 0, sel: 0)); case .raid: screen = .raid(tab: 0); case .duelPick: screen = .home }   // (a duel's pick: its minute runs)
+            case .squad(let s): switch s.kind { case .tower: screen = .tower(pick: nil); case .duelParty: screen = .duel(.hub(tab: 0, sel: 0)); case .raid: screen = .raid(.tier(sel: raidTierIndex)); case .duelPick: screen = .home }   // (a duel's pick: its minute runs)
             case .hold(let r, _): screen = .box(r, act: nil, confirm: false, detail: true)
             case .visitPick(let p): screen = teamRows(0).firstIndex { trainerID($0.card.name)?.key == trainerID(p.item)?.key }.map { .team(sel: $0, tab: 0, card: true) } ?? .team(sel: 0, tab: 0, card: false)
             case .items: screen = .box(-1, act: nil, confirm: false)                                  // back to 포켓몬
@@ -320,12 +321,12 @@ extension Walker {
         case .card(let p): screen = k == 1 ? menuFor("트레이너 카드") : .card((p + (k == 0 ? 2 : 1)) % 3)
         case .team(let s, let t, let card):                                                      // ◀ ▶ a teammate (on a card: the next one's card), ● its card / 인사
             if k != 1 { teamStep(k == 0 ? -1 : 1); return }
-            if t == 4, !card { if let r = friendReqRows[safe: s], !r.mine { friendReq(r, accept: true, now) } else if friendReqRows.isEmpty { askFriend(now) }; return }   // 신청: ● accepts (none: ID로 신청)
-            if t == 5, !card { visitEnd(s, now); return }                                            // 맡기기: ● ends the pick's (데려오기 / 돌려보내기)
+            if t == TeamTab.requests, !card { if let r = friendReqRows[safe: s], !r.mine { friendReq(r, accept: true, now) } else if friendReqRows.isEmpty { askFriend(now) }; return }   // 신청: ● accepts (none: ID로 신청)
+            if t == TeamTab.visits, !card { visitEnd(s, now); return }                                            // 맡기기: ● ends the pick's (데려오기 / 돌려보내기)
             guard let c = teamRows(t)[safe: s]?.card else { return }
             if !card { screen = .team(sel: s, tab: t, card: true) }                                 // (3.8.1: no 인사 — the card's buttons are clicks)
         case .trade(let s): tradePress(k, s, now)
-        case .raid(let t): raidPress(k, t, now)
+        case .raid(let s): raidPress(k, s, now)
         case .market(let s): marketPress(k, s, now)
         case .itemOn(let p): itemOnPress(k, p, now)
         case .duel(let s): duelPress(k, s, now)
@@ -413,7 +414,7 @@ extension Walker {
             c.marketDue = true; screen = .market(.board(tab: 0, sel: 0))
         case "레이드":
             guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: menuFor(name), since: now); return }
-            c.raidDue = true; screen = .raid(tab: 0)
+            c.raidDue = true; screen = raidStage != nil ? .raid(.balls) : .raid(.lobby(tab: 0))
         case "대전": openDuelHub(now)
         case "우편함": openMail(now)
         default: screen = .dex(state.companion.dex, filter: 0, detail: false)

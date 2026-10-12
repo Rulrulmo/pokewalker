@@ -56,11 +56,13 @@ extension Walker {
     /// 3.8.6: a fight the server no longer has (a new session ends it; it said 배틀 중이 아니에요): off the screen, said once.
     func fightGone(_ now: Date) {
         guard inBattle, !duelOn, raidThen == nil else { return }
+        let raid = raidOn
         fight = nil; fightEnd = nil; raidOn = false
-        screen = .say(["배틀이 끝났다", "(연결이 다시 이어짐)"], next: towerRun ? .tower(pick: nil) : .home, since: now)
+        if raid { cloud?.raidDue = true }                                                          // 4.0: a run cut off is over as fought — its balls wait (the lobby goes to them)
+        screen = .say(["배틀이 끝났다", "(연결이 다시 이어짐)"], next: towerRun ? .tower(pick: nil) : raid ? .raid(.lobby(tab: 0)) : .home, since: now)
     }
     /// What was going on stops here (a lock, another trainer): the server ends it with the session.
-    func dropPlay() { waiting = nil; fight = nil; fightEnd = nil; chainNext = nil; growthThen = nil; towerRun = false; raidOn = false; raidThen = nil }
+    func dropPlay() { waiting = nil; fight = nil; fightEnd = nil; chainNext = nil; growthThen = nil; towerRun = false; raidOn = false; raidThen = nil; raidStage = nil }
 
     // MARK: home: the server's news, one at a time
     /// Home: the news in order (a level, an evolution, a move, a find …); once none is left, where a fight was going on to: the chain's next
@@ -126,7 +128,7 @@ extension Walker {
         case .hello: break                                                                          // 3.8.1 (14 §9): 인사 is gone — an older app's still comes, unshown
         case .tradeOffer: tradeNews(n, now)                                                         // a 1:1 offer (from a 3.3–3.4 app: Core/TradeView.swift)
         case .traded(let id, _, _, _), .tradeClosed(let id, _, _): cloud?.forgetOffer(id); cloud?.tradesDue = true; cloud?.marketDue = true   // 3.8 (14 ①): quiet — the 교환 tile's red dot
-        case .raidCleared(let dex): raidNews(dex, now)                                            // the co-op raid (12 §4.3): the team beat the boss (Core/RaidView.swift)
+        case .raidCleared: cloud?.raidDue = true                                                   // (the team raid's, before 4.0: no longer said — 16 §8-8)
         case .friendRequest, .friendAdded: friendNews(n, now)                                     // 친구 (12 §2.4): someone asked; it's mutual now (Core/TeamView.swift)
         case .marketBid(let id, let from, let m): marketNews(id, from, m, now)                    // the 게시판 (12 §3.3): an offer on my post (Core/MarketView.swift)
         case .duelInvite(let id, let from): duelInvited(id, from, now)                            // 실시간 대전 (12 §5): a friend asked (Core/DuelScreen.swift)
@@ -190,7 +192,7 @@ extension Walker {
     func endOfFight(_ b: Battle, _ now: Date) -> Screen {
         let e = fightEnd; fightEnd = nil; fight = nil
         guard let e else { return .home }
-        if raidOn { return raidEnded(e, now) }                                                     // 12 §4: its damage, then the lobby
+        if raidOn { return raidEnded(b, e, now) }                                                  // 4.0 (16 §8-4): its bars and balls, then its ball stage
         if b.trainer != nil {
             if e.result == "won" {
                 var mailed = false                                                                 // 3.9 (15 §6 E): a streak reward mailed with this win (the news in its reply) — said, and quiet

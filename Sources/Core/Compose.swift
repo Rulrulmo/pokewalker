@@ -155,7 +155,7 @@ extension Walker {
         case .visitPick(let p): visitPickLCD(&fb, p, now)
         case .squad(let s): squadLCD(&fb, s, now)
         case .mail(let s): mailLCD(&fb, s, now)
-        case .raid: raidLCD(&fb, now)
+        case .raid(let s): raidLCD(&fb, s, now)
         case .market(let s): marketLCD(&fb, s, now)
         case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
         case .card(let p):
@@ -358,7 +358,7 @@ extension Walker {
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }                       // a menu page's message (W가 부족하다 …): the list stays
         if case .team(let sel, let tab, let card) = sc { return teamPane(sel, tab, card) }
         if case .trade(let s) = sc { return tradePane(s, now) }
-        if case .raid(let tab) = sc { return raidPane(tab, now) }
+        if case .raid(let s) = sc { return raidPane(s, now) }
         if case .market(let s) = sc { return marketPane(s, now) }
         if case .itemOn(let p) = sc { return itemOnPane(p, now) }
         if case .duel(let s) = sc { return duelPane(s, now) }
@@ -423,18 +423,18 @@ extension Walker {
         switch (screen, code) {
         case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
         case (.card, 5200...5202): screen = .card(code - 5200)
-        case (.team(let sel, _, _), 6000...6006): if code - 6000 < teamTabCount { screen = .team(sel: code - 6000 == 0 ? sel : 0, tab: code - 6000, card: false) }   // a tab (a rank tab from its top; 4 신청, 5 맡기기, 6 전체)
-        case (.team(_, 5, false), 6400...6439): visitEnd(code - 6400, Date())                    // 3.8: 데려오기 / 돌려보내기 (the row's own place)
-        case (.team(_, 5, false), 6440...6479): screen = .team(sel: code - 6440, tab: 5, card: false)   // 3.8.5: a row: picked (the LCD shows it)
+        case (.team(let sel, _, _), 6000...6007): if code - 6000 < teamTabCount { screen = .team(sel: code - 6000 == 0 ? sel : 0, tab: code - 6000, card: false) }   // a tab (a rank tab from its top; TeamTab)
+        case (.team(_, TeamTab.visits, false), 6400...6439): visitEnd(code - 6400, Date())                    // 3.8: 데려오기 / 돌려보내기 (the row's own place)
+        case (.team(_, TeamTab.visits, false), 6440...6479): screen = .team(sel: code - 6440, tab: TeamTab.visits, card: false)   // 3.8.5: a row: picked (the LCD shows it)
         case (.team(let sel, let tab, true), 6034): if let c = teamRows(tab)[safe: sel]?.card, isFriend(c.name), Walker.walkingNow(c), visitTo(c.name) == nil { startVisit(c.name) }   // 맡기기 (3.8.5: one a friend)
         case (.team(let sel, let tab, true), 6033): if let c = teamRows(tab)[safe: sel]?.card { friendAct(.friendRequest(to: c.name), back: screen, Date()) { _ in [josa(c.name, "에게", "에게"), "친구 신청을 했다!"] } }
         case (.team(let sel, let tab, true), 6031): if let c = teamRows(tab)[safe: sel]?.card, !isMe(c) { unfriend(c.name) }   // 친구 끊기
-        case (.team(let sel, 4, false), 6200..<6216):                                             // 신청: 수락 (or 거두기, mine) · 거절
+        case (.team(let sel, TeamTab.requests, false), 6200..<6216):                                             // 신청: 수락 (or 거두기, mine) · 거절
             if let r = friendReqRows[safe: sel / FriendReqModel.perPage * FriendReqModel.perPage + (code - 6200) % 10] { friendReq(r, accept: code < 6210, Date()) }
-        case (.team(let sel, 4, false), 6230...6231):
+        case (.team(let sel, TeamTab.requests, false), 6230...6231):
             let per = FriendReqModel.perPage, n = friendReqRows.count, pages = max(1, (n + per - 1) / per)
-            screen = .team(sel: min(max(0, n - 1), ((sel / per + (code == 6230 ? pages - 1 : 1)) % pages) * per), tab: 4, card: false)
-        case (.team(_, 4, false), 6240): askFriend()
+            screen = .team(sel: min(max(0, n - 1), ((sel / per + (code == 6230 ? pages - 1 : 1)) % pages) * per), tab: TeamTab.requests, card: false)
+        case (.team(_, TeamTab.requests, false), 6240): askFriend()
         case (.market, 8000...8199): marketTap(code, Date())
         case (.itemOn, 8300...8399): itemOnTap(code, Date())
         case (.duel, 6300...6351): duelTap(code, Date())
@@ -444,7 +444,7 @@ extension Walker {
         case (.visitPick, 8500...8599): visitPickTap(code, Date())
         case (.team(let sel, let tab, true), 6032): if let c = teamRows(tab)[safe: sel]?.card, !isMe(c), Walker.walkingNow(c) { challenge(c.name) }   // 대전 신청
         case (.trade, 6000...6199): tradeTap(code, Date())
-        case (.raid, 7000...7010): raidTap(code, Date())
+        case (.raid, 7000...7049): raidTap(code, Date())
         case (.team(let sel, let tab, _), 6010...6015):                                          // a row: the first click picks it, a click on the pick opens its card
             let at = sel / TeamModel.perPage * TeamModel.perPage + code - 6010
             guard at < teamRows(tab).count else { return }
@@ -552,7 +552,7 @@ extension Walker {
     func statusModel() -> StatusModel {
         var m = state.companion
         if case .evolve(let from, _, let since) = screen, from.uid == m.uid, Date().timeIntervalSince(since) < 4.4 { m = from }   // no spoiler before the LCD's reveal (the companion's own)
-        let t = expTable[growthRate[m.dex]], lo = t[m.level], hi = t[min(100, m.level + 1)]
+        let t = expTable[growthRate[m.dex]], lv = max(1, min(100, m.level)), lo = t[lv], hi = t[min(100, lv + 1)]   // (4.0: a raid boss fights above 100)
         let exp: CGFloat = m.level >= 100 || hi <= lo ? 1 : CGFloat(m.points - lo) / CGFloat(hi - lo)
         return StatusModel(dex: m.dex, name: (m.shiny == true ? "★ " : "") + monNames[m.dex], sex: sexMark(m).trimmingCharacters(in: .whitespaces), level: "Lv.\(m.level)",
                            toNext: m.level >= 100 ? "최고 레벨" : "\((hi - m.points).formatted()) EXP", nature: "\(m.natureName) · \(m.abilityName)", female: m.female, v: m.perfectIVs, exp: exp,
@@ -569,7 +569,7 @@ extension Walker {
         let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
         let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "친구": friendRequestsIn > 0 ? "친구 신청 \(friendRequestsIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "친구 · 이번 주 순위", "교환": marketNote,
                      "레이드": raidNote, "대전": duelNote, "우편함": mailNote]
-        let dots: Set<String> = Set([marketDot ? "교환" : nil, friendRequestsIn > 0 ? "친구" : nil, mailDot ? "우편함" : nil].compactMap { $0 })   // 3.8: something waits there
+        let dots: Set<String> = Set([marketDot ? "교환" : nil, friendRequestsIn > 0 ? "친구" : nil, mailDot ? "우편함" : nil, raidDot ? "레이드" : nil].compactMap { $0 })   // 3.8: something waits there (4.0: a raid's ball stage)
         func row(_ n: String) -> MenuModel.Row { off && needs.contains(n) ? .init(name: n, note: "연결되면 할 수 있어요", off: true) : .init(name: n, note: notes[n] ?? "", dot: dots.contains(n)) }
         if let g { return MenuModel(rows: menuTiles[g].items.map(row), sel: i, group: menuTiles[g].name) }
         let sums = ["기록": "도감 \(dexCount) · 오늘 \(state.today.formatted())걸음", "배틀": "최고 \(state.towerBest ?? 0)연승 · 파워 \(raidCells)칸", "친구": notes["친구"]!, "상점": "\(state.watts.formatted())W · \((state.bp ?? 0).formatted())BP"]

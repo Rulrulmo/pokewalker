@@ -224,9 +224,11 @@ import Foundation
     return failed == 0
 }
 
-/// `PokeWalker --live-raid <idA> <idB> <pin>` (a dev build only): docs/plans/12's M3 against the real server (test IDs: the test raid). Two zz
-/// IDs the server's admin seeded with power (3칸) and a strong party, the test raid's HP set low: B goes in and 후퇴s at once (it fought); A's
-/// fight clears it (said at its end); B's next act brings raidCleared; A throws until it's caught or out of balls (the first with the reward).
+/// `PokeWalker --live-raid <idA> <idB> <pin>` (a dev build only): docs/plans/16's raid runs (4.0) against the real server (test IDs: runs always
+/// on, their own "-test" week). Two zz IDs, friends, the server's admin seeded: A with power and a strong party, B with power. A: 도전 → ★1 →
+/// its three strongest → won (10 bars; BP; 5 balls; the week's first win mailed) → throws until caught or out; then a second run retreated, its
+/// ball stage cut off here (the app closed) — the lobby goes back to it, 홈 gives it up (asked). B: one alone, 후퇴 at once (3 balls), 그만두기
+/// (asked) → 놓침. Then each other's weeks: the lobby's 친구 이번 주, the friends' 레이드 tab.
 @MainActor func liveRaidTest(_ a: String, _ b: String, _ pin: String) -> Bool {
     var failed = 0
     func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
@@ -247,8 +249,10 @@ import Foundation
     }
     func idle(_ c: Cloud) -> Bool { c.inFlight == nil && c.queued == nil && c.out == nil }
     func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
-    /// A fight (or a throw) played out in real time: beats wait out their length; 공격 with a move that has PP (or 후퇴); a message goes on.
-    func play(_ w: Walker, _ c: Cloud, retreat: Bool = false, secs: Double = 120) {
+    func step(_ w: Walker) -> RaidStep? { if case .raid(let s) = w.screen { return s }; if case .say(_, .raid(let s), _) = w.screen { return s }; return nil }
+    func lobby(_ w: Walker, _ c: Cloud) { w.openFeature("레이드"); c.raidDue = true; run(15) { !c.raidDue && idle(c) && w.waiting == nil } }
+    /// A fight played out in real time: beats wait out their length; 공격 with a move that has PP (or 후퇴); a message goes on; stops at its end's lines.
+    func play(_ w: Walker, _ c: Cloud, retreat: Bool = false, secs: Double = 240) {
         let end = Date().addingTimeInterval(secs)
         while Date() < end {
             run(0.3) { false }
@@ -263,58 +267,70 @@ import Foundation
             }
         }
     }
-    check(run(40) { ca.phase == .on && cb.phase == .on && ca.base != nil && cb.base != nil }, "live raid: \(a) and \(b) logged in (\(ca.phase), \(cb.phase); asked \(ha.asked), \(hb.asked))")
-    for (w, c) in [(wa, ca), (wb, cb)] { w.openFeature("레이드"); run(15) { c.raid != nil && idle(c) } }
-    let seeded = wa.raidCells >= 1 && wb.raidCells >= 1 && (ca.raid?.hpLeft ?? 0) > 0
-    check(seeded, "live /v2/raid: the test raid (\(ca.raid?.week ?? "-"), \(ca.raid.map { monNames[$0.boss.dex] } ?? "-") \(ca.raid?.hpLeft ?? -1)/\(ca.raid?.hpTotal ?? -1)); power A \(wa.raidPower), B \(wb.raidPower)")
-    guard seeded else { print("FAIL \(failed)"); return false }
-
-    let bPower = wb.raidPower
-    wb.pageTap(7010); let offered = wb.paneContent(Date()).squad                                   // 3.8: who goes — the last pick or the tower's three; one kept
-    while case .squad(let q) = wb.screen, q.picked.count > 1 { wb.pageTap(8740 + q.picked.count - 1) }
-    let lead = { if case .squad(let q) = wb.screen { return q.picked.first.flatMap { wb.state.ref(uid: $0) }.flatMap { wb.state.mon($0)?.dex } }; return nil }()
-    wb.pageTap(8790); run(15) { wb.waiting == nil && idle(cb) }
-    let alone = (wb.fight?.mine.count ?? 0) == 1 && wb.fight?.mine.first?.mon.dex == lead
-    let menu: [String] = { if case .battle(let bt, _) = wb.screen { return wb.battleMenu(bt) }; if case .beats(let bt, _, _, _) = wb.screen { return wb.battleMenu(bt) }; return [] }()
-    play(wb, cb, retreat: true)
-    check((offered?.strip.compactMap { $0 }.count ?? 0) >= 1 && alone, "live raid party (3.8): offered \(offered?.strip.compactMap { $0?.dex } ?? []), one kept → it fights alone (\(wb.fight?.mine.map(\.mon.dex) ?? []))")
-    check(menu == ["공격", "도구", "후퇴"] && says(wb).first == "0 데미지!" && wb.raidPower == bPower - Engine.raidPowerCost, "live raid fight: in for 1칸 (\(bPower) → \(wb.raidPower)), alone (no 교체), 후퇴 at once — \(menu) \(says(wb))")
-    run(15) { (cb.raid?.mine.fights ?? 0) >= 1 }
-    check((cb.raid?.mine.fights ?? 0) >= 1, "live: B's lobby counts the fight (\(cb.raid?.mine.fights ?? -1))")
-
-    var cleared = false, tries = 0, sent: [Int] = []
-    while !cleared, tries < 3, wa.raidCells > 0, (ca.raid?.hpLeft ?? 0) > 0 {                       // A's three strongest (picked), until it's down
-        tries += 1
-        wa.screen = .raid(tab: 0); wa.calmAt = .distantPast; wa.pageTap(7010)
-        if case .squad(var q) = wa.screen {
-            let best = wa.squadKeys(q).sorted { (wa.squadMon(q, $0)?.level ?? 0) > (wa.squadMon(q, $1)?.level ?? 0) }
-            q.picked = Array(best.prefix(3)); wa.screen = .squad(q); sent = q.picked.compactMap { wa.squadMon(q, $0)?.dex }
+    /// 도전 → ★1 → who goes (the strongest `n`), in.
+    func start(_ w: Walker, _ c: Cloud, strongest n: Int) {
+        w.calmAt = .distantPast; w.pageTap(7010); w.pageTap(7020); w.pageTap(7020)
+        if case .squad(var q) = w.screen {
+            q.picked = Array(w.squadKeys(q).sorted { (w.squadMon(q, $0)?.level ?? 0) > (w.squadMon(q, $1)?.level ?? 0) }.prefix(n)); w.screen = .squad(q)
         }
-        wa.pageTap(8790); run(15) { wa.waiting == nil && idle(ca) }; play(wa, ca)
-        cleared = says(wa).contains("보스를 쓰러뜨렸다!")
-        print("     fight \(tries): \(String(describing: wa.screen).prefix(160)) — news \(wa.news.count)")
-        if !cleared { wa.screen = .raid(tab: 0); ca.raidDue = true; run(15) { !ca.raidDue && idle(ca) }; print("     HP \(ca.raid?.hpLeft ?? -1) · A \(wa.raidPower)") }
+        w.pageTap(8790); run(15) { w.waiting == nil && idle(c) }
     }
-    print("     (A sent \(sent.map { monNames[$0] }), \(tries) fight(s))")
-    check(cleared, "live: A's fight clears it — \(says(wa))")
-    wb.screen = .home; cb.addSteps(2); cb.saveNow(); run(25) { says(wb).first?.hasPrefix("팀이") == true }
-    check(says(wb).first?.hasPrefix("팀이") == true, "live raidCleared: B's next act brings it — \(says(wb))")
+    check(run(40) { ca.phase == .on && cb.phase == .on && ca.base != nil && cb.base != nil }, "live raid: \(a) and \(b) logged in (\(ca.phase), \(cb.phase); asked \(ha.asked), \(hb.asked))")
+    lobby(wa, ca); lobby(wb, cb)
+    let open = ca.raid.map { $0.opens == nil && $0.today.max == RaidRules.perDay } ?? false
+    check(open && wa.raidCells >= 2 && wb.raidCells >= 1, "live /v2/raid (4.0): \(ca.raid?.week ?? "-") \(ca.raid.map { monNames[$0.boss.dex] } ?? "-"), today \(ca.raid?.today.used ?? -1)/\(ca.raid?.today.max ?? -1); power A \(wa.raidPower), B \(wb.raidPower)")
+    guard open else { print("FAIL \(failed)"); return false }
 
-    wa.screen = .raid(tab: 0); ca.raidDue = true; run(15) { ca.raid?.hpLeft == 0 && idle(ca) }
-    let bp0 = wa.state.bp ?? 0
-    var tossed = 0, caught = false, rewarded = false
-    while tossed < 6, !caught {
-        guard let r = ca.raid, r.mine.canCatch, (r.mine.balls ?? 1) > 0 else { break }
-        wa.screen = .raid(tab: 0); wa.calmAt = .distantPast; wa.pageTap(7010); run(15) { wa.waiting == nil && idle(ca) }
+    // A: ★1, won
+    let bp0 = wa.state.bp ?? 0, mails0 = ca.mail?.mails.count ?? 0
+    start(wa, ca, strongest: 3)
+    let bars = wa.fight?.theirs.count ?? 0, tier = wa.fight?.raidTier, shiny = wa.fight?.wild.shiny == true
+    play(wa, ca)
+    let won = says(wa)
+    check(bars == RaidRules.bars && tier == 1 && won.first == "\(RaidRules.bars)줄을 모두 깼다!" && won.dropFirst().first?.hasSuffix("볼 \(RaidRules.balls + RaidRules.winBalls)개!") == true && (wa.state.bp ?? 0) > bp0,
+          "live run ★1 (\(shiny ? "이로치!" : "보통")): 10 bars, won — \(won), BP \(bp0) → \(wa.state.bp ?? 0)")
+    wa.press(1); run(3) { false }
+    check(step(wa) == .balls && wa.raidStage?.balls == RaidRules.balls + RaidRules.winBalls, "live: its ball stage (\(wa.raidStage?.balls ?? -1) balls)")
+    var tossed = 0, caught = false
+    while tossed < 6, !caught, step(wa) == .balls {
+        wa.calmAt = .distantPast; wa.pageTap(7040); run(15) { wa.waiting == nil && idle(ca) }
         guard case .beats = wa.screen else { break }
-        tossed += 1; run(8) { if case .beats = wa.screen { return false }; return true }
+        tossed += 1; run(10) { if case .beats = wa.screen { return false }; return true }
         caught = says(wa).first?.hasSuffix("잡았다!") == true
-        if tossed == 1 { wa.press(1); rewarded = says(wa).first == "클리어 보상!" }
-        ca.raidDue = true; run(15) { idle(ca) && ca.raidDue == false }
+        print("     throw \(tossed): \(says(wa))")
+        wa.press(1); run(2) { false }
     }
-    check(tossed > 0 && rewarded && (wa.state.bp ?? 0) >= bp0 + 25, "live raidBall: \(tossed) throw(s), the first with the reward (BP \(bp0) → \(wa.state.bp ?? 0)); \(caught ? "caught (\(wa.state.box.last.map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "-"))" : "not caught")")
-    let lobby = wa.paneContent(Date()).raid
-    check(lobby?.go == nil && (lobby?.hint == josa(monNames[ca.raid?.boss.dex ?? 0], "을", "를") + " 잡았어요!" || lobby?.hint == "볼을 모두 던졌어요"), "live: the lobby after — \(lobby?.hint ?? "-")")
+    ca.raidDue = true; ca.mailDue = true; run(15) { idle(ca) && !ca.raidDue }
+    let rec = ca.raid?.runs.first
+    check(tossed > 0 && step(wa) == .lobby(tab: 1) && rec?.won == true && rec?.tier == 1 && rec?.caught == caught && (ca.mail?.mails.count ?? 0) >= mails0,
+          "live raidBall: \(tossed) throw(s), \(caught ? "caught (\(wa.state.box.last.map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "-"))" : "out of balls"); the lobby's 내 판 has it (\(String(describing: rec)))")
+
+    // A: a second run, retreated; its ball stage cut off (the app closed) — the lobby goes back to it; 홈 gives it up
+    start(wa, ca, strongest: 1); play(wa, ca, retreat: true); wa.press(1); run(2) { false }
+    let held = step(wa) == .balls && wa.raidStage?.balls == RaidRules.balls
+    wa.raidStage = nil; wa.screen = .home
+    lobby(wa, ca); run(5) { step(wa) == .balls || says(wa).first == "잡을 기회가" }
+    let back = says(wa); wa.press(1)
+    ha.answer = true; wa.press(4); run(15) { wa.waiting == nil && idle(ca) }
+    ca.raidDue = true; run(15) { idle(ca) && !ca.raidDue }
+    check(held && back == ["잡을 기회가", "남았어요!"] && ha.asked.last == "그만둘까요?" && ca.raid?.pending == nil && ca.raid?.runs.first?.caught == false,
+          "live cut off: the stage waits on the server; the lobby goes back to it (\(back)); 홈 → 그만둘까요? → raidQuit (pending \(ca.raid?.pending == nil ? "gone" : "still there"))")
+
+    // B: alone, 후퇴 at once — 3 balls; 그만두기 (asked)
+    start(wb, cb, strongest: 1); play(wb, cb, retreat: true)
+    let lost = says(wb); wb.press(1); run(2) { false }
+    let three = wb.raidStage?.balls
+    hb.answer = true; wb.pageTap(7041); run(15) { wb.waiting == nil && idle(cb) }
+    cb.raidDue = true; run(15) { idle(cb) && !cb.raidDue }
+    check(lost == ["줄을 깨지 못했다", "볼 \(RaidRules.balls)개"] && three == RaidRules.balls && hb.asked.last == "그만둘까요?" && step(wb) == .lobby(tab: 1) && cb.raid?.runs.first?.caught == false,
+          "live B: 후퇴 at once → \(lost), \(three ?? -1) balls; 그만두기 (asked) → the lobby, 놓침")
+
+    // each other's weeks
+    let mates = cb.raid?.friends ?? []
+    let aWeek = mates.first { trainerID($0.name)?.key == trainerID(a)?.key }
+    wb.openFeature("친구"); cb.teamDue = true; run(15) { idle(cb) && cb.team != nil && !cb.teamDue }
+    let card = cb.team?.cards.first { trainerID($0.name)?.key == trainerID(a)?.key }?.raid
+    check(aWeek?.runs ?? 0 >= 2 && (aWeek?.wins ?? 0) >= 1 && card?.wins == aWeek?.wins, "live friends: B sees A's week in the lobby (\(String(describing: aWeek))) and on A's card (\(String(describing: card)))")
     print(failed == 0 ? "PASS live raid" : "FAIL \(failed)")
     return failed == 0
 }
@@ -354,11 +370,11 @@ import Foundation
 
     // 친구 (from scratch: a friendship from an earlier run undone first)
     lists(wa, ca); if wa.teamRows(0).count > 1 { wa.screen = .home; wa.act(.friendRemove(name: b), back: .home); settle(wa, ca) }
-    wa.openFeature("친구"); settle(wa, ca); wa.pageTap(6004); ha.texts = [b]; wa.pageTap(6240); settle(wa, ca)
+    wa.openFeature("친구"); settle(wa, ca); wa.pageTap(6000 + TeamTab.requests); ha.texts = [b]; wa.pageTap(6240); settle(wa, ca)
     check(says(wa) == [josa(b, "에게", "에게"), "친구 신청을 했다!"], "live friendRequest: A asks B by ID — \(says(wa))")
     let asked = next(wb, cb) { says(wb).first == josa(a, "이", "가") + " 친구 신청을 했다!" }
     wb.press(1); lists(wb, cb); let row = wb.friendReqRows.first
-    wb.screen = .team(sel: 0, tab: 4, card: false); wb.pageTap(6200); settle(wb, cb)
+    wb.screen = .team(sel: 0, tab: TeamTab.requests, card: false); wb.pageTap(6200); settle(wb, cb)
     check(asked && row?.name.lowercased() == a.lowercased() && row?.mine == false, "live: B's next act brings the request; its 신청 tab has it; 수락")
     let added = next(wa, ca) { says(wa).first == josa(b, "과", "와") + " 친구가 되었다!" }
     lists(wa, ca); lists(wb, cb)
@@ -604,7 +620,7 @@ import Foundation
     let walkEnd = Date().addingTimeInterval(150)                                                    // (the server takes at most 15 steps a second)
     while Date() < walkEnd, (wb.guests.first?.steps ?? 0) < 2000 { wb.screen = .home; cb.addSteps(240); cb.saveNow(); run(15) { false }; cb.teamDue = true; run(5) { !cb.teamDue && idle(cb) } }
     let raised = wb.guests.first?.steps ?? 0, bp0 = wb.state.bp ?? 0
-    wb.screen = .team(sel: 0, tab: 5, card: false); wb.pageTap(6400); settle(wb, cb); let back = says(wb)
+    wb.screen = .team(sel: 0, tab: TeamTab.visits, card: false); wb.pageTap(6400); settle(wb, cb); let back = says(wb)
     check(raised >= 2000 && back.dropFirst().first == "돌려보냈다" && (wb.state.bp ?? 0) == bp0 + raised / 2000, "live visitEnd: \(raised) steps raised; 돌려보내기 → B's BP \(bp0) → \(wb.state.bp ?? 0) — \(back)")
     _ = next(wa, ca) { wa.mails.contains { $0.kind == "visit" && !$0.claimed } || ca.mailDue }; lists(wa, ca)
     let vk = wa.mails.first { $0.kind == "visit" && !$0.claimed && giftMon($0)?.uid == eevee.uid }

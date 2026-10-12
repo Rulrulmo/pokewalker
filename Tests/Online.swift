@@ -330,86 +330,121 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     return c
 }
 
-/// 12 §4 (M3): the co-op raid on one fake server — the menu's tile and the lobby (/v2/raid), a fight on the battle screens (후퇴, no ball,
-/// the boss's bars on the HUD), its damage said; the clearing hit (its reply says so), the other fighter's raidCleared, the balls (the first
-/// with the week's reward), and what's refused.
+/// 4.0 (docs/plans/16): raid runs on one fake server — the lobby (today, power, my week, 친구 이번 주 / 내 판), 도전 → the tier → who goes →
+/// a run (10 bars; a shiny boss's line), its end (bars, BP, balls; the week's first win mailed and said), the ball stage (a miss, a catch;
+/// 그만두기 asked — no, then yes), a stage cut off going back from the lobby (홈 gives it up, asked), 3 a day, not open yet, friends' weeks.
 @MainActor func raidChecks() -> [(Bool, String)] {
     var c: [(Bool, String)] = []
     func check(_ ok: Bool, _ name: String, _ why: @autoclosure () -> String = "") { c.append((ok, ok ? name : name + " — " + why())) }
     func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
     func lobby(_ w: Walker) { w.openFeature("레이드"); drain(w); drain(w) }
-    /// The fight played to its end: 공격 with the first move each turn — 3.8.4: no turn limit, so after `attacks` of them 후퇴 (at once: the
-    /// damage so far counts); 후퇴 at once if asked. The beats run out.
-    func fightOut(_ w: Walker, retreat: Bool = false, attacks: Int = 3) {
+    func step(_ w: Walker) -> RaidStep? { if case .raid(let s) = w.screen { return s }; if case .say(_, .raid(let s), _) = w.screen { return s }; return nil }
+    /// The run played to its end: 공격 with the first move each turn (no turn limit) — after `attacks` of them, or at once, 후퇴. The beats run out.
+    func fightOut(_ w: Walker, retreat: Bool = false, attacks: Int = 60) {
         var n = 0, hits = 0
-        while n < 80, w.inBattle || { if case .beats = w.screen { return true }; return false }() {
+        while n < 200, w.inBattle || { if case .beats = w.screen { return true }; return false }() {
             n += 1
             switch w.screen {
             case .beats: playOut(w)
             case .battle(let b, _): let out = retreat || hits >= attacks; if !out { hits += 1 }; w.screen = .battle(b, sel: out ? w.battleMenu(b).count - 1 : 0); w.press(1); drain(w)
-            case .moves(let b, _): w.screen = .moves(b, sel: b.mine[b.me].pp.firstIndex { $0 > 0 } ?? 0); w.press(1); drain(w)   // (루기아's 프레셔: 2 PP a use)
+            case .moves(let b, _):                                                                    // its strongest move with PP (루기아's 프레셔: 2 PP a use)
+                let f = b.mine[b.me], best = f.moves.indices.filter { f.pp[$0] > 0 }.max { (moveTable[f.moves[$0]]?.power ?? 0) < (moveTable[f.moves[$1]]?.power ?? 0) }
+                w.screen = .moves(b, sel: best ?? 0); w.press(1); drain(w)
             case .party(let b, _): w.screen = .party(b, sel: b.mine.indices.first { b.mine[$0].alive } ?? 0); w.press(1); drain(w)
             case .say: w.press(1)
-            default: n = 60
+            default: print("     raid fightOut stopped at \(String(describing: w.screen).prefix(200))"); n = 999
             }
         }
     }
-    let sv = FakeCloud(); sv.raidOpen(1_000_000)
-    func strong() -> Walk { var s = Walk(); s.companion = Mon(dex: 150, level: 100, female: false); s.caught = [Mon(dex: 149, level: 100, female: false), Mon(dex: 248, level: 100, female: false)]; return s }
-    let cost = Engine.raidPowerCost, per = "(\(cost.formatted())걸음마다 1칸)"                     // (3.8: 10,000 a 칸)
-    let ra = online({ var s = strong(); s.raidPower = 2 * cost + cost / 2; return s }(), server: sv)
-    let rb = online({ var s = strong(); s.raidPower = cost + cost / 2; return s }(), server: sv)
+    /// 도전 → the tier (this row) → who goes (the offered ones) → in, its opening played.
+    func start(_ w: Walker, tier row: Int) { w.calmAt = .distantPast; w.pageTap(7010); w.pageTap(7020 + row); w.pageTap(7020 + row); w.pageTap(8790); drain(w) }
+    let sv = FakeCloud()
+    func strong() -> Walk {                                                                        // (moves that hit 루기아 hard, PP for ten bars under 프레셔)
+        var s = Walk(); s.companion = Mon(dex: 150, level: 100, female: false); s.companion.known = [85, 58, 247, 94]
+        s.caught = [Mon(dex: 149, level: 100, female: false), Mon(dex: 248, level: 100, female: false)]; return s
+    }
+    let cost = Engine.raidPowerCost, per = "(\(cost.formatted())걸음마다 1칸)"
+    let ha = TestHost(), hb = TestHost()                                                               // (the walker holds its host weakly)
+    let ra = online({ var s = strong(); s.raidPower = 2 * cost + cost / 2; return s }(), server: sv, host: ha)
+    let rb = online({ var s = strong(); s.raidPower = cost + cost / 2; return s }(), server: sv, host: hb)
     let rc = online({ var s = Walk(); s.raidPower = cost * 2 / 5; return s }(), server: sv)
+    let (_, ka) = server(ra), (_, kb) = server(rb)
+    sv.befriend(ka, kb)
     lobby(ra); let pane = ra.paneContent(Date()).raid
-    let opened: Bool = { if case .raid(0) = ra.screen { return true }; return false }()
-    check(opened && pane?.boss == "루기아 Lv.70" && pane?.go == "도전 · 파워 1칸" && pane?.powerText == "다음 칸까지 \((cost / 2).formatted())걸음" && pane?.hpText.hasPrefix("100% · 줄") == true && ra.raidNote == "파워 2칸 · 루기아",
-          "레이드 (the menu's tile) → the lobby from the server: the boss, the team's HP, my power in 칸, 도전", "\(String(describing: pane))")
+    check(step(ra) == .lobby(tab: 0) && pane?.boss == "루기아" && pane?.go == "도전 · 파워 1칸" && pane?.todayText == "3판 남음" && pane?.week == ["0판", "0승", "잡음 0", "이로치 0"]
+          && pane?.powerText == "다음 칸까지 \((cost / 2).formatted())걸음" && pane?.rows.map(\.value) == ["-", "-"] && ra.raidNote == "오늘 3판 · 파워 2칸",
+          "레이드 → the lobby (RaidLobby): this week's species, today 3 of 3, power in 칸, my week, 친구 이번 주 (none fought: -), 도전", "\(String(describing: pane)) \(ra.raidNote)")
     lobby(rc); let weak = rc.paneContent(Date()).raid; rc.press(1)
     check(weak?.go == nil && weak?.hint == "파워가 부족해요 " + per && says(rc) == ["파워가 부족하다", per], "under 1칸 of power: no 도전, and ● says why", "\(String(describing: weak?.hint)) \(says(rc))")
 
-    // rb: who goes (3.8: the tower's three offered, one dropped), in, and 후퇴 at once (it still fought this week)
-    lobby(rb); rb.pageTap(7010); let offered = rb.paneContent(Date()).squad; rb.pageTap(8742); let two = rb.paneContent(Date()).squad
-    let fewer = rb.state.party().count
-    rb.pageTap(8790); drain(rb)
-    let fought2 = (rb.fight?.mine.count ?? 0) == 2
-    check(offered?.title == "레이드 출전" && offered?.strip.count == 3 && offered?.strip.compactMap { $0?.level } == ["Lv.100", "Lv.100", "Lv.100"] && offered?.go == "이 3마리로 도전" && two?.go == "이 2마리로 도전" && fewer == 3 && fought2,
-          "3.8: 도전 → who goes (1–3, the tower's three offered at their own levels); one dropped → those two fight", "\(String(describing: offered)) \(String(describing: two?.go)) \(fought2)")
-    var menu: [String] = [], title = ("", "")
-    while case .beats = rb.screen { playOut(rb) }
-    if case .battle(let b, _) = rb.screen { menu = rb.battleMenu(b); title = rb.title() }
-    let hud = rb.raidOn && served(rb)?.raidPower == cost / 2
-    fightOut(rb, retreat: true)
-    let retreated = says(rb).first == "0 데미지!"; let back: Bool = { if case .say(_, .raid(0), _) = rb.screen { return true }; return false }()
-    check(menu == ["공격", "도구", "교체", "후퇴"] && title.0 == "레이드 배틀" && title.1 == "남은 줄 3 / 3 · 1턴" && hud && retreated && back && !rb.raidOn && sv.raidFights.count == 1,
-          "도전 → the raid on the battle screens (1칸 spent; 공격 · 도구 · 교체 · 후퇴, no ball; 레이드 배틀 · 남은 줄); 후퇴 → 0 데미지, back to the lobby", "\(menu) \(title) \(hud) \(says(rb))")
-
-    // ra: the hit that clears it (its own reply says so)
-    sv.raidLeft = 40
-    ra.screen = .raid(tab: 0); ra.pageTap(7010); ra.pageTap(8790); drain(ra); fightOut(ra)
-    let clearedSaid = says(ra) == ["40 데미지!" + (ra.state.bp ?? 0 > 0 ? " +\(ra.state.bp ?? 0)BP" : ""), "보스를 쓰러뜨렸다!", "볼을 던질 수 있다"] || (says(ra).first?.hasPrefix("40 데미지!") == true && says(ra).dropFirst().first == "보스를 쓰러뜨렸다!")
-    check(clearedSaid && sv.raidLeft == 0 && sv.raidDealt.values.contains(40) && !ra.news.contains { if case .raidCleared = $0 { return true }; return false },
-          "the clearing fight: its damage (up to what was left) and 보스를 쓰러뜨렸다! said at its end, not again at home", "\(says(ra)) \(sv.raidLeft)")
-    rb.screen = .home; rb.cloud!.addSteps(1); rb.cloud!.saveNow(); drain(rb)
-    let toLobby: Bool = { if case .say(_, .raid(0), _) = rb.screen { return true }; return false }()
-    check(says(rb) == ["팀이 루기아를", "쓰러뜨렸다!", "볼을 던질 수 있다"] && toLobby, "the other fighter's next act brings raidCleared: said, then the lobby", "\(says(rb))")
-
-    // the balls: the first misses (with the week's reward), the next catches it
-    lobby(ra); let ballGo = ra.paneContent(Date()).raid?.go; let bp0 = ra.state.bp ?? 0, candy0 = ra.state.count("이상한사탕")
-    sv.raidOdds = [false, true]; ra.pageTap(7010); drain(ra)
+    // ra: 도전 → the tier (the highest at or under our strongest's level offered) → ★1 → who goes → a shiny boss's run, won
+    lobby(ra); ra.pageTap(7010); let offered = step(ra), tiers = ra.paneContent(Date()).raidTier
+    let want = RaidRules.tiers.lastIndex { $0.level <= 100 } ?? 0
+    ra.pageTap(7020); let picked = step(ra); ra.pageTap(7020); let squad = ra.paneContent(Date()).squad
+    sv.raidShinies = [true]; ra.pageTap(8790); drain(ra)
+    var reveal = false, title = ("", ""), bars = 0
+    if case .beats(let b, let bs, _, _) = ra.screen { reveal = bs.contains { Walker.isShinyReveal($0) }; bars = b.theirs.count; title = ra.title() }
+    check(offered == .tier(sel: want) && tiers?.rows.count == RaidRules.tiers.count && tiers?.sel == want && picked == .tier(sel: 0)
+          && squad?.note == "★1 Lv.\(RaidRules.tiers[0].level) · 오늘 3판 남음" && reveal && bars == RaidRules.bars && title.1.hasPrefix("★이로치 · 줄 \(RaidRules.bars)/\(RaidRules.bars)"),
+          "도전 → 난이도 (the strongest's tier offered; a row picks, again goes on) → 출전 (★1 · 오늘 3판) → a shiny boss: its line after it appears, 10 bars, ★이로치 in the title",
+          "\(String(describing: offered)) \(String(describing: tiers?.sel)) \(String(describing: picked)) \(String(describing: squad?.note)) \(reveal) \(bars) \(title)")
+    let bp0 = ra.state.bp ?? 0
+    fightOut(ra)
+    let won = says(ra), bp = RaidRules.tiers[0].bp
+    check(won == ["\(RaidRules.bars)줄을 모두 깼다!", "\(bp)BP · 볼 \(RaidRules.balls + RaidRules.winBalls)개!", "우편함에 이번 주 보상이 왔다"] && (ra.state.bp ?? 0) == bp0 + bp
+          && sv.postBox[ka]?.contains { $0.kind == "raid" && $0.title == "레이드 이번 주 1승 보상" && $0.gifts == [.bp(amount: 25)] } == true,
+          "a won run: 10줄을 모두 깼다, its BP and 5 balls; the week's first win mailed (25BP) and said", "\(won) \(ra.state.bp ?? 0)")
+    ra.press(1); let stage = ra.paneContent(Date()).raidBalls
+    check(step(ra) == .balls && stage?.balls == 5 && stage?.of == 5 && stage?.won == true && stage?.shiny == true && stage?.name == "루기아 Lv.\(RaidRules.tiers[0].level)" && ra.title().1 == "잡을 기회 · 볼 5개",
+          "then its ball stage: that boss (이로치), 5 balls", "\(String(describing: stage))")
+    sv.raidOdds = [false, true]; ra.pageTap(7040); drain(ra)
     let thrown: Bool = { if case .beats(_, let bs, _, _) = ra.screen { return bs.last == .broke }; return false }()
-    playOut(ra); let missed = says(ra); ra.press(1); let reward = says(ra)
-    check(ballGo == "볼 던지기" && thrown && missed.first == "놓쳤다..." && reward.first == "클리어 보상!" && (ra.state.bp ?? 0) == bp0 + 25 && ra.state.count("이상한사탕") == candy0 + 5 && ra.state.count("은색병뚜껑") == 1,
-          "볼 던지기: the throw on the battle stage; missed — then the week's reward (25BP · 이상한사탕 ×5 · 은색병뚜껑)", "\(String(describing: ballGo)) \(thrown) \(missed) \(reward)")
-    lobby(ra); let left = ra.paneContent(Date()).raid?.go; ra.pageTap(7010); drain(ra); playOut(ra)
-    let caught = says(ra) == ["루기아를 잡았다!", "상자로 보냈다"] && ra.state.box.contains { $0.dex == 249 && $0.level == 70 }
-    lobby(ra); let done = ra.paneContent(Date()).raid
-    check(left?.hasPrefix("볼 던지기 · 남은") == true && caught && done?.go == nil && done?.hint == "루기아를 잡았어요!" && ra.raidNote == "이번 주 보스 쓰러뜨림",
-          "the next ball catches it (into the box); then the lobby says so and offers nothing", "\(String(describing: left)) \(says(ra)) \(String(describing: done?.hint))")
-    lobby(rc); let notFought = rc.paneContent(Date()).raid?.hint; rc.press(3)
-    let menuBack = onMenu(rc.screen, "레이드")
-    check(notFought == "이번 주에 싸워야 잡을 수 있어요" && menuBack, "one who didn't fight this week can't throw; ↩ → the menu", "\(String(describing: notFought))")
-    ra.screen = .raid(tab: 1); let recent = ra.paneContent(Date()).raid?.rows ?? []
-    check(recent.count == 2 && recent.first?.value.hasPrefix("40 ·") == true && recent.allSatisfy { $0.dex != nil }, "최근 공격: the last fights (their lead, damage, when)", "\(recent)")
+    playOut(ra); let missed = says(ra); ra.press(1); let four = ra.paneContent(Date()).raidBalls?.balls
+    ra.pageTap(7040); drain(ra); playOut(ra); let caught = says(ra); ra.press(1); drain(ra); drain(ra)
+    let box = ra.state.box.contains { $0.dex == 249 && $0.shiny == true }, after = ra.paneContent(Date()).raid
+    check(thrown && missed == ["놓쳤다...", "남은 볼 4개"] && four == 4 && caught == ["루기아를 잡았다!", "상자로 보냈다"] && box && step(ra) == .lobby(tab: 1)
+          && after?.rows.first?.name == "Lv.\(RaidRules.tiers[0].level) · \(RaidRules.bars)/\(RaidRules.bars)줄 · 승" && after?.rows.first?.pill == "잡음" && after?.rows.first?.shiny == true
+          && after?.week == ["1판", "1승", "잡음 1", "이로치 1"] && after?.todayText == "2판 남음",
+          "던지기: missed (4 left, the stage again), then caught — the shiny boss into the box; the lobby's 내 판 records it (Lv.n · 10/10줄 · 승, 잡음)",
+          "\(thrown) \(missed) \(String(describing: four)) \(caught) \(box) \(String(describing: step(ra))) \(String(describing: after?.rows.first)) \(String(describing: after?.week))")
+
+    // rb: a run retreated at once (3 balls still), then 그만두기 — asked: no stays, yes gives it up
+    lobby(rb); start(rb, tier: 0); fightOut(rb, retreat: true)
+    let lost = says(rb); rb.press(1); let three = rb.paneContent(Date()).raidBalls
+    hb.answer = false; rb.press(3); let stayed = step(rb) == .balls && hb.asked.last == "그만둘까요?"
+    hb.answer = true; rb.pageTap(7041); drain(rb); drain(rb); drain(rb)
+    let rbRow = rb.paneContent(Date()).raid?.rows.first
+    check(lost == ["줄을 깨지 못했다", "볼 \(RaidRules.balls)개"] && three?.balls == 3 && three?.of == 3 && three?.won == false && stayed && step(rb) == .lobby(tab: 1)
+          && sv.raidRuns[kb]?.last?.balls == 0 && rbRow?.pill == "놓침" && rbRow?.name == "Lv.\(RaidRules.tiers[0].level) · 0/\(RaidRules.bars)줄",
+          "후퇴 at once: still 3 balls; 그만두기 asks (그만둘까요?) — no: the stage stays; yes: raidQuit, the run 놓침",
+          "\(lost) \(String(describing: three)) \(stayed) \(String(describing: step(rb))) \(String(describing: rbRow))")
+
+    // ra: a second run (retreated), its ball stage cut off (the app closed) — the lobby goes back to it; 홈 gives it up (asked)
+    lobby(ra); start(ra, tier: 0); fightOut(ra, retreat: true); ra.press(1)
+    ra.raidStage = nil; ra.screen = .home                                                          // (closed and opened again: nothing here, the server's waits)
+    lobby(ra); let back = says(ra), note = ra.raidNote, dot = ra.raidDot; ra.press(1); let resumed = ra.paneContent(Date()).raidBalls?.balls
+    ha.answer = true; ra.press(4); drain(ra); drain(ra)
+    let home: Bool = { if case .home = ra.screen { return true }; return false }()
+    check(back == ["잡을 기회가", "남았어요!"] && note == "잡을 기회가 남았어요!" && dot && resumed == 3 && ha.asked.last == "그만둘까요?" && home && sv.raidPending(ka) == nil,
+          "a ball stage cut off: the lobby goes back to it (잡을 기회가 남았어요, the menu's dot); 홈 there gives it up (asked)", "\(back) \(note) \(dot) \(String(describing: resumed)) \(home)")
+
+    // 3 a day; not open yet
+    sv.raidRuns[ka, default: []].append(.init(tier: 1, boss: Mon(dex: 249, level: 20, female: false), day: Walk.key(sv.now ?? Date()), at: sv.clockNow, ended: true))
+    serve(ra) { $0.raidPower = cost }
+    lobby(ra); let full = ra.paneContent(Date()).raid; ra.press(1)
+    check(full?.go == nil && full?.hint == "오늘은 3판을 다 했어요 · 내일 0시에 다시" && full?.todayText == "내일 다시" && ra.raidNote == "오늘 끝 · 내일 다시" && says(ra) == ["오늘은 3판을", "다 했어요"],
+          "3 a day: the lobby says so (내일 0시에 다시), ● too", "\(String(describing: full?.hint)) \(ra.raidNote) \(says(ra))")
+    sv.raidOpens = 2_000_000_000; lobby(rb); let shut = rb.paneContent(Date()).raid; rb.press(1); let shutSaid = says(rb); sv.raidOpens = nil
+    check(shut?.hint == "새 레이드는 곧 열려요" && shutSaid == ["새 레이드는", "곧 열려요"], "not open yet (opens): 곧 열려요", "\(String(describing: shut?.hint)) \(shutSaid)")
+
+    // friends: 친구 이번 주 (승 → 잡음 → 이로치), the 친구 page's 레이드 tab and a card's line
+    lobby(rb); let mates = rb.paneContent(Date()).raid?.rows ?? []
+    rb.openFeature("친구"); rb.cloud!.teamDue = true; drain(rb); drain(rb); rb.screen = .team(sel: 0, tab: TeamTab.raid, card: false); let tab = rb.paneContent(Date()).team?.rows ?? []
+    rb.screen = .team(sel: 0, tab: TeamTab.raid, card: true); let card = rb.paneContent(Date()).teamCard?.lines.first { $0.key == "레이드" }?.value
+    let aName = ra.myName
+    check(mates.map(\.name) == [aName, rb.myName] && mates.first?.rank == 1 && mates.first?.value == "1승 · 잡음 1 · ★1" && mates.last?.value == "0승 · 잡음 0"
+          && tab.first?.name == aName && tab.first?.value == "1승 · 잡음 1 · ★1" && card == "3판 1승 · 잡음 1 · 이로치 1",
+          "친구 이번 주 and the 친구 page's 레이드 tab (승 → 잡음 → 이로치), a friend's card: its week's line", "\(mates) \(tab.map(\.value)) \(String(describing: card))")
     return c
 }
 
@@ -430,22 +465,22 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     let fc = online(Walk(), server: sv)
     let aName = fa.myName, bName = fb.myName, cName = fc.myName
     list(fa); fa.screen = .team(sel: 0, tab: 0, card: false); let alone = fa.teamRows(0).count, note = fa.paneContent(Date()).team?.note
-    fa.openFeature("친구"); drain(fa); fa.pageTap(6004); ha.texts = [bName]; fa.pageTap(6240); drain(fa)
+    fa.openFeature("친구"); drain(fa); fa.pageTap(6000 + TeamTab.requests); ha.texts = [bName]; fa.pageTap(6240); drain(fa)
     check(alone == 1 && note == "아직 친구가 없어요" && says(fa) == [josa(bName, "에게", "에게"), "친구 신청을 했다!"] && sv.friendAsks[bName.lowercased()]?.contains(aName.lowercased()) == true,
           "친구: only me at first; 신청 → ID로 친구 신청 (the box) → the server's request", "\(alone) \(String(describing: note)) \(says(fa))")
     list(fa); let sent = fa.paneContent(Date()).friendReqs?.rows
     act(fb); let heard = says(fb) == [josa(aName, "이", "가") + " 친구 신청을 했다!"]
-    let toTab: Bool = { if case .say(_, .team(_, 4, false), _) = fb.screen { return true }; return false }()
+    let toTab: Bool = { if case .say(_, .team(_, TeamTab.requests, false), _) = fb.screen { return true }; return false }()
     fb.press(1); list(fb); let req = fb.paneContent(Date()).friendReqs; fb.pageTap(6200); drain(fb)
-    check(sent == [.init(name: bName, mine: true)] && heard && toTab && req?.rows == [.init(name: aName, mine: false)] && req?.tabs[safe: 4] == "신청 1" && sv.isFriend(aName.lowercased(), bName.lowercased()),
+    check(sent == [.init(name: bName, mine: true)] && heard && toTab && req?.rows == [.init(name: aName, mine: false)] && req?.tabs[safe: TeamTab.requests] == "신청 1" && sv.isFriend(aName.lowercased(), bName.lowercased()),
           "the request's news on the other side (→ 신청, which says 신청 1); 수락 → friends", "\(String(describing: sent)) \(says(fb)) \(String(describing: req))")
     act(fa); let added = says(fa) == [josa(bName, "과", "와") + " 친구가 되었다!"]; list(fa); list(fb)
     check(added && fa.teamRows(0).count == 2 && fb.teamRows(0).count == 2 && fa.paneContent(Date()).menu == nil,
           "friendAdded on the asker's next act; each now lists the other", "\(says(fa)) \(fa.teamRows(0).count)")
-    ha.texts = [cName]; fa.screen = .team(sel: 0, tab: 4, card: false); fa.askFriend(); drain(fa); list(fa)
-    let mine = fa.friendReqRows.first { $0.mine }; fa.screen = .team(sel: 0, tab: 4, card: false); fa.pageTap(6200); drain(fa); list(fa)
+    ha.texts = [cName]; fa.screen = .team(sel: 0, tab: TeamTab.requests, card: false); fa.askFriend(); drain(fa); list(fa)
+    let mine = fa.friendReqRows.first { $0.mine }; fa.screen = .team(sel: 0, tab: TeamTab.requests, card: false); fa.pageTap(6200); drain(fa); list(fa)
     check(mine?.name == cName && says(fa) == [cName + "에게 보낸", "신청을 거뒀다"] && fa.friendReqRows.isEmpty, "a request of mine taken back (거두기)", "\(says(fa)) \(fa.friendReqRows)")
-    fc.screen = .home; fc.act(.friendRequest(to: aName), back: .home); drain(fc); list(fa); fa.screen = .team(sel: 0, tab: 4, card: false); fa.pageTap(6210); drain(fa); list(fa)
+    fc.screen = .home; fc.act(.friendRequest(to: aName), back: .home); drain(fc); list(fa); fa.screen = .team(sel: 0, tab: TeamTab.requests, card: false); fa.pageTap(6210); drain(fa); list(fa)
     check(says(fa) == [josa(cName, "의", "의") + " 신청을", "거절했다"] && fa.friendReqRows.isEmpty && !sv.isFriend(aName.lowercased(), cName.lowercased()), "거절: gone, and no friend", "\(says(fa))")
     let bi = fa.teamRows(0).firstIndex { !fa.isMe($0.card) } ?? 0; fa.screen = .team(sel: bi, tab: 0, card: true); fa.pageTap(6031); drain(fa); list(fa)
     check(ha.asked.last == "친구를 끊을까요?" && says(fa) == [josa(bName, "과", "와") + " 친구를", "끊었다"] && fa.teamRows(0).count == 1, "친구 끊기 (asked first) → off the list", "\(says(fa))")
@@ -699,9 +734,9 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     va.screen = .team(sel: bi, tab: 0, card: true); let card = va.paneContent(Date()).teamCard; va.pageTap(6034)
     let pick = va.paneContent(Date()).pick
     va.press(1); va.press(1); drain(va); let sent = says(va); va.press(1); team(va)
-    va.screen = .team(sel: 0, tab: 5, card: false); let mine = va.paneContent(Date()).visits
+    va.screen = .team(sel: 0, tab: TeamTab.visits, card: false); let mine = va.paneContent(Date()).visits
     check(card?.visit == "맡기기" && pick?.title == josa(bName, "에게", "에게") + " 맡기기" && pick?.count == 2 && sent == [bName + "에게 이브이를", "맡겼다!", "5시간 뒤 우편함으로 와요"]
-          && !va.state.box.contains { $0.dex == 133 } && mine?.rows.first?.button == "데려오기" && mine?.rows.first?.mine == true && va.teamTabLabels[5] == "맡기기 1",
+          && !va.state.box.contains { $0.dex == 133 } && mine?.rows.first?.button == "데려오기" && mine?.rows.first?.mine == true && va.teamTabLabels[TeamTab.visits] == "맡기기 1",
           "a friend walking now: 맡기기 → pick one (the walker's · box's) → it goes (out of my box); my 맡기기 tab has it (데려오기)",
           "\(String(describing: card?.visit)) \(String(describing: pick?.title)) \(sent) \(String(describing: mine))")
     // 3.8.5: one a friend at a time — this one's card says so (its line: what's with it); another friend can have one too
@@ -712,15 +747,15 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     let cj = va.teamRows(0).firstIndex { $0.card.name.lowercased() == vc.myName.lowercased() } ?? 0
     va.screen = .team(sel: cj, tab: 0, card: true); va.pageTap(6034); va.press(1); va.press(1); drain(va); let sent2 = says(va); va.press(1); team(va)
     check(cardB?.visit == "이미 맡겼어요" && cardB?.lines.contains { $0.key == "맡김" && $0.value.hasPrefix("이브이") } == true && stays && sent2.dropFirst().first == "맡겼다!"
-          && va.visitsOut.count == 2 && va.visitTo(vc.myName)?.mon.dex == 143 && va.teamTabLabels[5] == "맡기기 2",
+          && va.visitsOut.count == 2 && va.visitTo(vc.myName)?.mon.dex == 143 && va.teamTabLabels[TeamTab.visits] == "맡기기 2",
           "3.8.5: one of mine a friend at a time — that friend's card says so (맡김 · its time left); another friend gets one too", "\(String(describing: cardB?.visit)) \(sent2) \(va.visitsOut.map(\.mon.dex))")
     act(vb); let came = says(vb); vb.press(1); team(vb)
-    vb.screen = .team(sel: 0, tab: 5, card: false); let guestRow = vb.paneContent(Date()).visits?.rows.first
+    vb.screen = .team(sel: 0, tab: TeamTab.visits, card: false); let guestRow = vb.paneContent(Date()).visits?.rows.first
     act(vb, 4500); team(vb); let raised = vb.guests.first?.steps ?? 0
     check(came == [josa(aName, "의", "의") + " 이브이를", "맡았다!", "5시간 같이 걸어요"] && guestRow?.button == "돌려보내기" && vb.guests.count == 1 && raised >= 4500,
           "the host hears it (맡았다!) and walks with it: its steps go to it", "\(came) \(String(describing: guestRow)) \(raised)")
     let bp0 = vb.state.bp ?? 0
-    vb.screen = .team(sel: 0, tab: 5, card: false); vb.pageTap(6400); drain(vb); let back = says(vb); vb.press(1); vb.screen = .home; vb.tick(Date()); let again = says(vb)
+    vb.screen = .team(sel: 0, tab: TeamTab.visits, card: false); vb.pageTap(6400); drain(vb); let back = says(vb); vb.press(1); vb.screen = .home; vb.tick(Date()); let again = says(vb)
     check(back == [josa(aName, "의", "의") + " 이브이를", "돌려보냈다", "+2BP"] && again.isEmpty && (vb.state.bp ?? 0) == bp0 + 2,
           "돌려보내기 (early): settled with the steps so far — the host's +2BP (a 2,000 steps)", "\(back) \(again) \(String(describing: vb.state.bp))")
     act(va); va.cloud!.mailDue = true; drain(va); drain(va)
@@ -731,9 +766,9 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
           "3.9: home by mail (the 우편함's dot): its page says the steps raised; taken, it has their EXP", "\(String(describing: k)) \(dot) \(String(describing: row)) \(String(describing: home?.level))")
     // 전체 (VIEW_ALL): every trainer — only for its accounts
     sv.viewAll.insert(aName.lowercased()); team(va); team(vb)
-    let labels = va.teamTabLabels, all = va.teamRows(6).map { $0.card.name.lowercased() }
-    va.screen = .team(sel: all.firstIndex(of: other.myName.lowercased()) ?? 0, tab: 6, card: true); let stranger = va.paneContent(Date()).teamCard
-    check(labels.last == "전체" && va.teamTabCount == 7 && vb.teamTabCount == 6 && all.contains(other.myName.lowercased()) && stranger?.duel == nil && stranger?.request == "친구 신청",
+    let labels = va.teamTabLabels, all = va.teamRows(TeamTab.all).map { $0.card.name.lowercased() }
+    va.screen = .team(sel: all.firstIndex(of: other.myName.lowercased()) ?? 0, tab: TeamTab.all, card: true); let stranger = va.paneContent(Date()).teamCard
+    check(labels.last == "전체" && va.teamTabCount == 8 && vb.teamTabCount == 7 && all.contains(other.myName.lowercased()) && stranger?.duel == nil && stranger?.request == "친구 신청",
           "전체 (VIEW_ALL's): every trainer, a tab of its own only there; a stranger's card: 친구 신청, no 대전", "\(labels) \(all) \(String(describing: stranger))")
     return c
 }

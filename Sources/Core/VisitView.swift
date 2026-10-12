@@ -27,7 +27,7 @@ extension Walker {
         }
         let note = cloud?.team == nil ? "불러오는 중…" : "보낸 포켓몬 \(visitsOut.count) · 맡은 포켓몬 \(guests.count)/\(Walker.guestsMax)"
         let s = min(sel, max(0, rows.count - 1)), first = max(0, min(s - 2, rows.count - VisitsModel.shown))
-        return PaneContent(visits: VisitsModel(tabs: teamTabLabels, tab: 5, rows: rows, note: note,
+        return PaneContent(visits: VisitsModel(tabs: teamTabLabels, tab: TeamTab.visits, rows: rows, note: note,
                                                hint: "지금 걷는 친구의 카드에서 맡기기 · 친구마다 1마리 · 5시간 · 키운 걸음만큼 경험치 · 맡은 쪽은 2,000걸음마다 1BP (최대 5)", first: first, sel: s))
     }
     func visitsLCD(_ fb: inout FB, _ sel: Int, _ now: Date) {
@@ -43,7 +43,7 @@ extension Walker {
         let all = visitsOut + guests
         guard let v = all[safe: row] else { return }
         let mine = trainerID(v.owner)?.key == trainerID(myName)?.key
-        let back = Screen.team(sel: row, tab: 5, card: false)
+        let back = Screen.team(sel: row, tab: TeamTab.visits, card: false)
         act(.visitEnd(id: v.id), back: back, now) { [weak self] _, now in
             guard let self else { return nil }
             cloud?.teamDue = true; cloud?.marketDue = true
@@ -124,7 +124,7 @@ extension Walker {
     /// A tap on a guest: the 맡기기 tab (3.8.1: no 인사).
     func guestTouched(_ x: Int, _ y: Int) -> Bool {
         for p in guestPlaces(Date()) where (p.x / 2..<p.x / 2 + 17).contains(x) && (p.y / 2..<p.y / 2 + 17).contains(y) {
-            cloud?.teamDue = true; screen = .team(sel: 0, tab: 5, card: false); return true
+            cloud?.teamDue = true; screen = .team(sel: 0, tab: TeamTab.visits, card: false); return true
         }
         return false
     }

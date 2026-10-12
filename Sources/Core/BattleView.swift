@@ -7,7 +7,7 @@ extension Walker {
     func beatState(_ now: Date) -> (hp: Battle, names: Battle, beat: Beat, u: Double, from: Battle, pending: Set<Side>)? {
         guard case .beats(let end, let beats, let since, let from) = screen else { return nil }
         var u = now.timeIntervalSince(since) * battleSpeed, i = 0                                  // 배틀 속도 runs the whole show faster
-        while i < beats.count - 1, u >= beats[i].length { u -= beats[i].length; i += 1 }
+        while i < beats.count - 1, u >= shownLength(beats[i]) { u -= shownLength(beats[i]); i += 1 }
         var hp = from; hp.turnNo = end.turnNo; hp.sky = end.sky; hp.skyTurns = end.skyTurns   // the weather on the stage: the battle's, from its first beat                                                    // the turn these beats belong to (the opening's is 0: only its send-out is the trainer's intro)
         for (k, bt) in beats.enumerated() where k < i { hp.apply(bt) }
         let names = hp                                                                           // names before this beat lands
@@ -46,7 +46,9 @@ extension Walker {
         if let said { msg = said; mode = .none }
         let foe = b.theirs[b.it], mine = b.mine[b.me]
         var theirs = card(foe, out: true); theirs.types = foe.typeList; theirs.owned = (state.owned ?? []).contains(foe.mon.dex)
-        return SideModel(foe: theirs, mine: card(mine, out: true), message: msg, mode: mode)
+        var m = SideModel(foe: theirs, mine: card(mine, out: true), message: msg, mode: mode)
+        if raidOn, case .menu = mode { m.bars = .init(broken: b.theirs.filter { !$0.alive }.count, total: b.theirs.count, cur: CGFloat(foe.hp) / CGFloat(max(1, foe.maxHP))) }
+        return m
     }
     func card(_ f: Fighter, out: Bool) -> SideModel.Card { .init(name: monNames[f.mon.dex], level: f.mon.level, hp: f.hp, max: f.maxHP, out: out, status: f.status?.badge, item: f.item) }
     func sidePick(_ k: Int) {                                                                   // a click on the side panel = selecting that row, then ●
@@ -97,6 +99,8 @@ extension Walker {
         case .status(let s, _, _): return .show(s, dx: 0, dy: 0, flash: u < 0.4 && blink, visible: true)
         case .note(let s, _), .retype(let s, _): return .show(s, dx: 0, dy: 0, flash: false, visible: true)
         case .fainted(let s): return u < 0.35 ? .show(s, dx: 0, dy: 0, flash: false, visible: blink) : .show(s, dx: 0, dy: Int(34 * min(1, (u - 0.35) / 0.6)), flash: false, visible: true)   // sinks behind its pad
+        case .sendOut(.it, let k) where raidOn && k > 0:                                           // 4.0 (16 §8-3): a raid's next bar — it gets up again where it stood (no ball), quickly
+            return .show(.it, dx: 0, dy: Int(14 * pow(1 - min(1, u / 0.35), 2)), flash: u < 0.35 && blink, visible: true)
         case .sendOut, .thrown, .caught, .broke: return .ball(b, u)                                // thrown, swallowing, rocking, clicking or bursting; sending out (BallFX.swift)
         case .fled: return .show(.it, dx: Int(70 * min(1, u / 0.6)), dy: 0, flash: false, visible: true)
         case .ran: return .show(.me, dx: Int(-70 * min(1, u / 0.6)), dy: 0, flash: false, visible: true)
@@ -139,12 +143,16 @@ extension Walker {
             for (k, (sx, sy)) in [(-2, 2), (26, h / 4), (12, -3), (28, h * 3 / 4)].enumerated() where (Int(t * 4) + k) % 3 == 0 { fb.draw(spark, at[.it]!.x + sx, max(0, top + sy), sparkPal) }
         }
         if let (bt, u) = beat { moveFX(&fb, bt, u, b, at) }                                         // a move's effect over the fighters
+        if raidOn, let (bt, u) = beat, Walker.isShinyReveal(bt) {                                  // 4.0 (16 §8-2): a shiny boss — light bursting from it, stars wheeling round
+            var s = BallShot(); s.burst = (0, -30, u * 0.8); s.shine = u * 0.55; shot = s
+        }
         if let s = shot { fb.ballFX(s, at) }                                                        // the ball, its light, a trainer
         if let (bt, u) = beat, bt == .appear, !legendDex.contains(b.wild.dex) { fb.entryFlash(u) }   // a wild one: two quick flashes first (a legend's screen flips instead)
         if b.trainer == Tower.tycoon { fb.decoFrame(gold: (state.towerStreak ?? 0) >= 98) }       // 3.9 (15 §6 E): the tycoon's fight in 은 or 금
+        if raidOn, let (bt, u) = beat, Walker.isShinyReveal(bt), u < 0.8, Int(u * 5) % 2 == 0 { fb.decoFrame(gold: true) }   // ... and the gold frame, twice
         guard hud else { return }
         // HUD: theirs top-left (name, Lv, bar; a trainer's remaining balls), ours top-right; each on its own plate so the sprite's head can't muddle it
-        let ft = monNames[foe.dex] + " \(foe.level)" + (b.theirs[b.it].status.map { " " + $0.badge } ?? ""), mt = "\(monNames[mine.dex]) \(mine.level)" + (b.mine[b.me].status.map { " " + $0.badge } ?? "")
+        let ft = (raidOn && foe.shiny == true ? "★" : "") + monNames[foe.dex] + " \(foe.level)" + (b.theirs[b.it].status.map { " " + $0.badge } ?? ""), mt = "\(monNames[mine.dex]) \(mine.level)" + (b.mine[b.me].status.map { " " + $0.badge } ?? "")
         let owned = (state.owned ?? []).contains(foe.dex), lw = max(38, textWidth(ft, small: true) + 2 + (owned ? 7 : 0)) + (b.trainer != nil ? 13 : 0)
         let rw = max(38, textWidth(mt, small: true) + 2)
         for (x0, w) in [(0, lw), (96 - rw, rw)] { for y in 0..<14 { for x in x0..<min(96, x0 + w) { fb.set(x, y, 0) } } }
@@ -152,7 +160,8 @@ extension Walker {
         if owned { fb.draw(caughtMark, textWidth(ft, small: true) + 3, 2, ballPal) }                 // caught before: the HGSS ball mark
         let hp = beat == nil ? b : beatState(now).map { drained($0.hp, $0.names, $0.beat, $0.u) } ?? b   // the bars drain (MoveFX.swift)
         hpBar(&fb, 1, 9, 36, hp.theirs[b.it].hp, b.theirs[b.it].maxHP)
-        if b.trainer != nil || raidOn { for (k, x) in b.theirs.enumerated() { fb.draw(gem, 39 + 4 * k, 9, x.alive ? ballPal : [ballPal[3], ballPal[3], ballPal[3], ballPal[3]]) } }
+        if raidOn { fb.text("×\(b.theirs.filter(\.alive).count)", 39, 6, 3, small: true) }            // 4.0 (16 §8-3): its bars left, this one counted (ten don't fit as gems)
+        else if b.trainer != nil { for (k, x) in b.theirs.enumerated() { fb.draw(gem, 39 + 4 * k, 9, x.alive ? ballPal : [ballPal[3], ballPal[3], ballPal[3], ballPal[3]]) } }
         fb.text(mt, 95, 0, 3, right: true, small: true)
         hpBar(&fb, 59, 9, 36, hp.mine[b.me].hp, b.mine[b.me].maxHP)
         fb.fill(0, 50, 96, 1, 2)
@@ -168,6 +177,19 @@ extension Walker {
         }
         flush(); return out
     }
+    /// How long a beat stays on screen here: the engine's length, but a raid's next bar (nine a fight in 4.0) gets up quickly.
+    func shownLength(_ bt: Beat) -> Double {
+        if raidOn, case .sendOut(.it, let k) = bt, k > 0 { return 0.8 }
+        return bt.length
+    }
+    /// 4.0 (16 §8-2): the line a shiny raid boss gets after it appears (raidShown puts it in; the stage bursts and frames it in gold).
+    static let shinyRevealMark = "✦ 색이 다른 "
+    static func isShinyReveal(_ bt: Beat) -> Bool { if case .note(.it, let t) = bt { return t.hasPrefix(shinyRevealMark) }; return false }
+    /// A raid fight's opening as shown: a shiny boss's line after it appears (✦ 색이 다른 루기아다! ✦).
+    static func raidShown(_ beats: [Beat], from: Battle) -> [Beat] {
+        guard from.wild.shiny == true, let i = beats.firstIndex(of: .appear) else { return beats }
+        var out = beats; out.insert(.note(.it, text: shinyRevealMark + monNames[from.wild.dex] + "다! ✦"), at: i + 1); return out
+    }
     /// A beat's line; a raid's boss isn't 야생 (the engine's own lines name it so).
     func message(_ beat: Beat, _ u: Double, _ b: Battle) -> String {
         let m = beatLine(beat, u, b)
@@ -179,7 +201,7 @@ extension Walker {
         case .appear:
             if b.wild.shiny == true && u < 0.9 { return "✦ 반짝! ✦" }
             return raidOn ? "레이드 보스 " + it + " 등장!" : legendDex.contains(b.wild.dex) ? "전설의 " + it + " 등장!" : "야생 " + josa(it, "이", "가") + " 나타났다!"
-        case .sendOut(.it, _) where b.trainer == nil: return josa(it, "이", "가") + " 다시 일어섰다!"   // a raid: its next bar
+        case .sendOut(.it, let k) where b.trainer == nil: return josa(it, "이", "가") + " 다시 일어섰다! (남은 줄 \(b.theirs.count - k))"   // a raid: its next bar
         case .sendOut(.it, let i):
             let t = b.trainer ?? "상대"                                                                // the intro's challenge, then who it sends
             return isIntro(beat, b) && u < 1.7 ? josa(t, "이", "가") + " 승부를 걸어왔다!" : josa(t, "은", "는") + " " + josa(monNames[b.theirs[i].mon.dex], "을", "를") + " 내보냈다!"
@@ -201,7 +223,7 @@ extension Walker {
         case .gained(let e, let l, _, let k): let who = monNames[b.mine[k].mon.dex]; return l.map { who + " Lv.\($0)!" } ?? josa(who, "은", "는") + " 경험치 \(e) 획득"
         case .fled: return raidOn ? "레이드가 끝났다" : josa(b.nm(.it), "은", "는") + " 도망쳤다..."
         case .ran: return raidOn ? "후퇴했다!" : "무사히 도망쳤다!"
-        case .won: return raidOn ? "보스의 줄을 모두 깼다!" : b.trainer.map { josa($0, "과", "와") + "의 승부에서 이겼다!" } ?? "승리!"
+        case .won: return raidOn ? "\(b.theirs.count)줄을 모두 깼다! 볼 +\(RaidRules.winBalls)" : b.trainer.map { josa($0, "과", "와") + "의 승부에서 이겼다!" } ?? "승리!"
         case .lost: return "눈앞이 캄캄해졌다..."
         }
     }

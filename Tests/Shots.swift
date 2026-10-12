@@ -9,6 +9,7 @@ import AppKit
     func base() -> Walk { var s = Walk(), r = Seeded(s: 3); s.companion = Mon.wild(25, level: 30, &r); s.caught = [Mon.wild(16, level: 8, &r)]; s.watts = 1234; s.bp = 40; return s }
     func take(_ name: String, _ v: Walker, _ set: (Walker) -> Void) {
         let view = WalkerView(walker: v); set(v)
+        if let only = ProcessInfo.processInfo.environment["SHOTS"], !only.split(separator: ",").contains(where: { name.hasPrefix($0) }) { return }   // SHOTS=raid,friends: just those (the rest still set up)
         v.refreshPane(Date(), force: true); view.fitWindow(); view.shown = v.compose(Date()); view.page.needsDisplay = true
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
@@ -91,35 +92,62 @@ import AppKit
     take("trade_pick_mine_empty", fresh) { v in v.screen = .trade(.pick(TradePick(to: "민수", side: 0))) }
     let onix = online({ var s = base(); s.companion = Mon(dex: 95, level: 30, female: false); s.bag = ["금속코트"]; return s }())
     take("mon_trade_evo", onix) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
-    // 3.4 (12 M3): 레이드
-    let rsrv = FakeCloud(); rsrv.raidOpen(4_200_000); rsrv.raidLeft = 2_730_000
+    // 4.0 (docs/plans/16 §8): 레이드 — runs
+    let rsrv = FakeCloud()
     let rme = online({ var s = base(); s.raidPower = Engine.raidPowerCost * 234 / 100; s.caught = [Mon(dex: 149, level: 61, female: false), Mon(dex: 6, level: 55, female: false)]; return s }(), server: rsrv)
-    for (k, m) in mates.prefix(7).enumerated() { rsrv.add(m.0, Walk()); rsrv.raidDealt[m.0.lowercased()] = [412_000, 388_000, 201_500, 150_000, 99_000, 61_000, 12_000][k]; rsrv.raidFights[m.0.lowercased()] = 9 - k }
-    rsrv.raidDealt[rme.myName.lowercased()] = 46_500; rsrv.raidFights[rme.myName.lowercased()] = 3
-    let ts = Int(Date().timeIntervalSince1970)
-    rsrv.raidRecent = [RaidHit(name: "민수", dex: 6, dealt: 21_340, at: ts - 120), RaidHit(name: rme.myName, dex: 25, dealt: 18_002, at: ts - 900), RaidHit(name: "지은", dex: 282, dealt: 30_115, at: ts - 4000),
-                       RaidHit(name: "트레이너긴이름", dex: 4, dealt: 2_100, at: ts - 9000), RaidHit(name: "도윤", dex: 448, dealt: 25_000, at: ts - 20000), RaidHit(name: "서연", dex: 133, dealt: 9_990, at: ts - 30000)]
-    take("raid_loading", rme) { v in v.screen = .raid(tab: 0) }
+    let ts = Int(Date().timeIntervalSince1970), today = Walk.key(Date()), lugia = Mon(dex: 249, level: RaidRules.tiers[2].level, female: false)
+    var shinyLugia = lugia; shinyLugia.shiny = true
+    func run(_ tier: Int, _ bars: Int, _ caught: Bool, shiny: Bool = false, ago: Int, day: String = today) -> FakeCloud.RaidRun {
+        var b = lugia; b.level = RaidRules.tier(tier)?.level ?? 50; if shiny { b.shiny = true }
+        return .init(tier: tier, boss: b, day: day, at: ts - ago, bars: bars, balls: 0, won: bars == RaidRules.bars, caught: caught, ended: true)
+    }
+    for (k, m) in mates.prefix(6).enumerated() {
+        rsrv.add(m.0, { var w = Walk(); w.companion = Mon(dex: m.1, level: m.2, female: false); return w }()); rsrv.befriend(rme.myName, m.0)
+        let weeks: [[FakeCloud.RaidRun]] = [[run(5, 10, true, ago: 3600), run(4, 10, true, ago: 9000), run(4, 10, false, ago: 20000), run(3, 6, false, ago: 40000)],
+                                            [run(3, 10, true, shiny: true, ago: 5000), run(3, 10, false, ago: 7000)], [run(4, 10, true, ago: 600), run(5, 4, false, ago: 800)],
+                                            [run(2, 10, false, ago: 9000)], [], [run(1, 3, false, ago: 100)]]
+        rsrv.raidRuns[m.0.lowercased()] = weeks[k]
+    }
+    rsrv.raidRuns[rme.myName.lowercased()] = [run(3, 10, true, shiny: true, ago: 90000, day: "2026-10-11"), run(4, 7, false, ago: 86000, day: "2026-10-11"), run(3, 10, false, ago: 3000), run(3, 10, true, ago: 1200)]
+    take("raid_loading", rme) { v in v.screen = .raid(.lobby(tab: 0)) }
     rme.cloud!.raidDue = true; drain(rme); drain(rme)
     take("menu_raid", rme) { v in v.screen = menuFor("레이드") }
-    take("raid_lobby", rme) { v in v.screen = .raid(tab: 0) }
-    take("raid_recent", rme) { v in v.screen = .raid(tab: 1) }
-    take("raid_no_power", rme) { v in v.state.raidPower = Engine.raidPowerCost * 64 / 100; v.screen = .raid(tab: 0) }
-    take("raid_full_power", rme) { v in v.state.raidPower = Engine.raidPowerMax; v.screen = .raid(tab: 0) }
-    var rr = Seeded(s: 5); let rb = { () -> Battle in var b = Battle(wild: rsrv.raidBoss, party: [rme.state.companion] + rme.state.caught); b.theirs += [Fighter(rsrv.raidBoss), Fighter(rsrv.raidBoss)]; return b }()
+    take("raid_lobby", rme) { v in v.screen = .raid(.lobby(tab: 0)) }
+    take("raid_runs", rme) { v in v.screen = .raid(.lobby(tab: 1)) }
+    take("raid_no_power", rme) { v in v.state.raidPower = Engine.raidPowerCost * 64 / 100; v.screen = .raid(.lobby(tab: 0)) }
+    take("raid_full_power", rme) { v in v.state.raidPower = Engine.raidPowerMax; v.screen = .raid(.lobby(tab: 0)) }
+    take("raid_tier", rme) { v in v.state.raidPower = Engine.raidPowerCost * 234 / 100; v.screen = .raid(.tier(sel: 2)) }
+    take("raid_tier_top", rme) { v in v.screen = .raid(.tier(sel: RaidRules.tiers.count - 1)) }
+    take("raid_squad", rme) { v in v.raidTier = 3; v.screen = .squad(Squad(kind: .raid, picked: [v.state.caught[0].uid ?? 0], at: 0)) }
+    var rr = Seeded(s: 5); let rb = { () -> Battle in var b = Battle(wild: lugia, party: [rme.state.companion] + rme.state.caught); b.theirs += Array(repeating: Fighter(lugia), count: 9); return b }()   // 4.0: ten bars
     let rbeats = { () -> (Battle, [Beat]) in var b = rb; let bs = b.begin(weather: nil, &rr); return (b, bs) }()
     take("raid_appear", rme) { v in v.raidOn = true; v.screen = .beats(rbeats.0, rbeats.1, since: Date().addingTimeInterval(-1.2), from: rb) }
-    take("raid_menu", rme) { v in v.raidOn = true; var b = rbeats.0; b.theirs[0].hp = 0; b.it = 1; b.theirs[1].hp = b.theirs[1].maxHP / 3; v.fight = b; v.screen = .battle(b, sel: 3) }
-    take("raid_standup", rme) { v in v.raidOn = true; var b = rbeats.0; b.theirs[0].hp = 0; v.screen = .beats(b, [.sendOut(.it, 1)], since: Date().addingTimeInterval(-0.8), from: b) }
-    take("raid_done", rme) { v in v.raidOn = false; v.screen = .say(["38,214 데미지! +1BP", "보스를 쓰러뜨렸다!", "볼을 던질 수 있다"], next: .raid(tab: 0), since: Date()) }
-    take("raid_throw", rme) { v in v.raidOn = false; v.usedItem = "몬스터볼"; let b = Battle(wild: rsrv.raidBoss, companion: v.state.companion); v.raidThen = .home; v.screen = .beats(b, [.thrown(shakes: 2), .broke], since: Date().addingTimeInterval(-2.4), from: b) }
-    rsrv.raidLeft = 0; rme.cloud!.raidDue = true; drain(rme); drain(rme)
-    take("raid_cleared", rme) { v in v.raidThen = nil; v.state.raidPower = Engine.raidPowerCost * 234 / 100; v.screen = .raid(tab: 0) }
-    take("menu_raid_cleared", rme) { v in v.screen = menuFor("레이드") }
-    rsrv.raidBalls[rme.myName.lowercased()] = 2; rme.cloud!.raidDue = true; drain(rme); drain(rme)
-    take("raid_balls_left", rme) { v in v.screen = .raid(tab: 0) }
-    rsrv.raidCaught.insert(rme.myName.lowercased()); rme.cloud!.raidDue = true; drain(rme); drain(rme)
-    take("raid_caught", rme) { v in v.screen = .raid(tab: 0) }
+    take("raid_menu", rme) { v in v.raidOn = true; var b = rbeats.0; for k in 0..<3 { b.theirs[k].hp = 0 }; b.it = 3; b.theirs[3].hp = b.theirs[3].maxHP / 3; b.turnNo = 6; v.fight = b; v.screen = .battle(b, sel: 3) }
+    take("raid_standup", rme) { v in v.raidOn = true; var b = rbeats.0; for k in 0..<3 { b.theirs[k].hp = 0 }; b.it = 2; v.screen = .beats(b, [.sendOut(.it, 3)], since: Date().addingTimeInterval(-0.2), from: b) }
+    do {                                                                                            // 4.0 (16 §8-2): a shiny boss — ✦ 반짝, then its line with the burst and the gold frame
+        let boss = { () -> Mon in var m = Mon(dex: 487, level: RaidRules.tiers.last!.level, female: false); m.shiny = true; return m }()
+        var sb = Battle(wild: boss, party: [rme.state.companion] + rme.state.caught); sb.theirs += Array(repeating: Fighter(boss), count: 9)
+        var r2 = Seeded(s: 7); let from = sb; let bs = Walker.raidShown(sb.begin(weather: nil, &r2), from: from)
+        take("raid_shiny_spark", rme) { v in v.raidOn = true; v.screen = .beats(sb, bs, since: Date().addingTimeInterval(-0.75 / v.battleSpeed), from: from) }
+        take("raid_shiny_reveal", rme) { v in v.raidOn = true; v.screen = .beats(sb, bs, since: Date().addingTimeInterval(-1.5 / v.battleSpeed), from: from) }
+        take("raid_shiny_menu", rme) { v in v.raidOn = true; var b = sb; b.theirs[0].hp = b.theirs[0].maxHP * 2 / 3; v.fight = b; v.screen = .battle(b, sel: 0) }
+    }
+    take("raid_won", rme) { v in v.raidOn = false; v.screen = .say(["10줄을 모두 깼다!", "2BP · 볼 5개!", "우편함에 이번 주 보상이 왔다"], next: .raid(.balls), since: Date()) }
+    take("raid_balls", rme) { v in v.raidStage = RaidPending(boss: shinyLugia, tier: 3, bars: 10, won: true, balls: 5); v.screen = .raid(.balls) }
+    take("raid_balls_lost", rme) { v in v.raidStage = RaidPending(boss: lugia, tier: 3, bars: 6, won: false, balls: 2); v.screen = .raid(.balls) }
+    take("raid_balls_top", rme) { v in var m = lugia; m.level = RaidRules.tiers.last!.level; v.raidStage = RaidPending(boss: m, tier: RaidRules.tiers.last!.tier, bars: 3, won: false, balls: 3); v.screen = .raid(.balls) }
+    take("raid_throw", rme) { v in v.usedItem = "몬스터볼"; let b = Battle(wild: lugia, companion: v.state.companion); v.raidThen = .raid(.balls); v.screen = .beats(b, [.thrown(shakes: 2), .broke], since: Date().addingTimeInterval(-2.4), from: b) }
+    take("raid_resume", rme) { v in v.raidThen = nil; v.raidStage = nil; v.screen = .say(["잡을 기회가", "남았어요!"], next: .raid(.balls), since: Date()) }
+    rsrv.raidRuns[rme.myName.lowercased()]!.append(.init(tier: 3, boss: shinyLugia, day: today, at: ts - 60, bars: 8, balls: 2, won: false, caught: false, ended: true))
+    rme.cloud!.raidDue = true; drain(rme); drain(rme)
+    take("menu_raid_waiting", rme) { v in v.screen = menuFor("레이드") }
+    take("menu_battle_raid_waiting", rme) { v in v.screen = .menu(group: nil, sel: 2) }
+    rsrv.raidRuns[rme.myName.lowercased()]!.removeLast(); rsrv.raidRuns[rme.myName.lowercased()]!.append(run(3, 2, false, ago: 30))
+    rme.cloud!.raidDue = true; drain(rme); drain(rme)
+    take("raid_done_today", rme) { v in v.raidStage = nil; v.screen = .raid(.lobby(tab: 1)) }
+    rme.cloud!.teamDue = true; drain(rme); drain(rme)
+    take("friends_raid", rme) { v in v.screen = .team(sel: 0, tab: TeamTab.raid, card: false) }
+    take("friends_card_raid", rme) { v in v.screen = .team(sel: 0, tab: TeamTab.raid, card: true) }
     // 3.5 (12 §2.4 · 3.3): 친구, the 교환 게시판
     let fsrv = FakeCloud(), fme = online({ var s = base(); s.seen = Array(1...151); s.owned = Array(1...60)
         var r = Seeded(s: 61); s.box = (0..<20).map { k in Mon.wild([19, 41, 133, 147, 4, 1, 95, 129, 16, 25][k % 10], level: 5 + k, shiny: k == 3 ? true : nil, &r) }; return s }(), server: fsrv)
@@ -136,7 +164,7 @@ import AppKit
     take("menu_friends", fme) { v in v.screen = menuFor("친구") }
     take("menu_market", fme) { v in v.screen = menuFor("교환") }
     take("friends_list", fme) { v in v.screen = .team(sel: 0, tab: 0, card: false) }
-    take("friends_requests", fme) { v in v.screen = .team(sel: 0, tab: 4, card: false) }
+    take("friends_requests", fme) { v in v.screen = .team(sel: 0, tab: TeamTab.requests, card: false) }
     take("friends_card", fme) { v in let i = v.teamRows(0).firstIndex { !v.isMe($0.card) } ?? 0; v.screen = .team(sel: i, tab: 0, card: true) }
     let tsF = Int(Date().timeIntervalSince1970), meK = fme.myName.lowercased()
     func lst(_ id: Int, _ who: String, _ m: Mon, _ wish: [Int], _ ago: Int) -> (l: Listing, key: String, open: Bool) { (Listing(id: id, from: who, mon: m, wish: wish, at: tsF - ago, bids: 0, mine: false), who.lowercased(), true) }
@@ -227,7 +255,7 @@ import AppKit
                       FakeCloud.FakeVisit(id: 2, owner: "지은", ownerName: "지은", host: meK, hostName: fme.myName, mon: Mon.wild(282, level: 34, shiny: true, &r38), steps: 4380, ends: ends + 3000),
                       FakeCloud.FakeVisit(id: 3, owner: "현우", ownerName: "현우", host: meK, hostName: fme.myName, mon: Mon.wild(149, level: 55, &r38), steps: 870, ends: ends - 9000)]
     fme.cloud!.teamDue = true; drain(fme); drain(fme)
-    take("friends_visits", fme) { v in v.screen = .team(sel: 0, tab: 5, card: false) }
+    take("friends_visits", fme) { v in v.screen = .team(sel: 0, tab: TeamTab.visits, card: false) }
     take("visit_pick", fme) { v in v.screen = .visitPick(ItemOn(item: "민수", pick: v.visitRefs[safe: 2], at: 2)) }
     take("home_guests", fme) { v in v.screen = .home }
     take("friends_card_visit", fme) { v in let i = v.teamRows(0).firstIndex { !v.isMe($0.card) && Walker.walkingNow($0.card) } ?? 0; v.screen = .team(sel: i, tab: 0, card: true) }
@@ -288,7 +316,7 @@ import AppKit
     for k in 1...5 { fsrv.add("신청자\(k)", Walk()) }
     fsrv.friendAsks[meK] = Set(["현우", "유나"] + (1...5).map { "신청자\($0)" })
     fme.cloud!.teamDue = true; drain(fme); drain(fme)
-    take("friends_requests_full", fme) { v in v.screen = .team(sel: 0, tab: 4, card: false) }
+    take("friends_requests_full", fme) { v in v.screen = .team(sel: 0, tab: TeamTab.requests, card: false) }
     // the README's picture (tools/hero/): the download page's two — home and a wild battle — set up as WinRender's home and battle_menu
     func heroBase() -> Walk {
         var s = Walk(), r = Seeded(s: 3)

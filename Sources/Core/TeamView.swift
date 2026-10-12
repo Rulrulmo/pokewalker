@@ -3,9 +3,12 @@ import Foundation
 // teammate's companion dropping by now and then (a tap = 인사), a 인사 come in with its sender's companion. The list is the server's
 // (Cloud.team, /v2/team); the walker only sorts and shows it.
 
+/// The 친구 page's tabs by number (Walker.teamTabs): the rank tabs 1–4, then 신청 · 맡기기 · 전체 (VIEW_ALL only).
+enum TeamTab { static let friends = 0, steps = 1, dex = 2, tower = 3, raid = 4, requests = 5, visits = 6, all = 7 }
+
 extension Walker {
-    static let teamTabs = ["친구", "걸음", "도감", "타워", "신청", "맡기기", "전체"]              // 3.5: friends, 신청 = requests; 3.8: 맡기기 (14 §3), 전체 (VIEW_ALL only)
-    var teamTabCount: Int { cloud?.team?.all != nil ? 7 : 6 }
+    static let teamTabs = ["친구", "걸음", "도감", "타워", "레이드", "신청", "맡기기", "전체"]    // 3.5: friends, 신청 = requests; 3.8: 맡기기 (14 §3), 전체 (VIEW_ALL only); 4.0: 레이드 (16 §8-6)
+    var teamTabCount: Int { cloud?.team?.all != nil ? 8 : 7 }
     func isFriend(_ name: String) -> Bool { (cloud?.team?.cards ?? []).contains { trainerID($0.name)?.key == trainerID(name)?.key } }
     /// A teammate is walking now: an act within the last minute (the app sends steps every 15 s).
     static func walkingNow(_ c: TeamCard) -> Bool { c.idle < 60 }
@@ -14,11 +17,14 @@ extension Walker {
     /// The cards as a tab orders them: 팀 = walking now first, then today's steps; 걸음 · 도감 · 타워 = this week's ranks, the top 10 and me
     /// (ties share a rank). rank: nil on 팀.
     func teamRows(_ tab: Int) -> [(rank: Int?, card: TeamCard)] {
-        let cards = tab == 6 ? cloud?.team?.all ?? [] : cloud?.team?.cards ?? []                   // 전체: every trainer (VIEW_ALL), sorted as 친구
-        guard tab > 0, tab != 6 else {
+        let cards = tab == TeamTab.all ? cloud?.team?.all ?? [] : cloud?.team?.cards ?? []         // 전체: every trainer (VIEW_ALL), sorted as 친구
+        guard tab > 0, tab != TeamTab.all else {
             return cards.sorted { a, b in Walker.walkingNow(a) != Walker.walkingNow(b) ? Walker.walkingNow(a) : a.today != b.today ? a.today > b.today : a.name < b.name }.map { (nil, $0) }
         }
-        func key(_ c: TeamCard) -> Int { tab == 1 ? c.week : tab == 2 ? c.owned : c.towerBest }
+        func key(_ c: TeamCard) -> Int {
+            if tab == TeamTab.raid { let r = c.raid ?? RaidWeek(); return r.wins * 1_000_000 + r.caught * 1_000 + r.shiny }   // 4.0: 승 → 잡음 → 이로치 (each under 1,000 a week)
+            return tab == 1 ? c.week : tab == 2 ? c.owned : c.towerBest
+        }
         let sorted = cards.sorted { key($0) != key($1) ? key($0) > key($1) : $0.name < $1.name }
         var ranked: [(rank: Int?, card: TeamCard)] = [], rank = 0
         for (i, c) in sorted.enumerated() { if i == 0 || key(sorted[i - 1]) != key(c) { rank = i + 1 }; ranked.append((rank, c)) }
@@ -30,6 +36,7 @@ extension Walker {
         case 1: "\(c.week.formatted())걸음"
         case 2: "도감 \(c.owned)"
         case 3: "\(c.towerBest)연승"
+        case TeamTab.raid: raidLine(c.raid)
         default: Walker.walkingNow(c) || isMe(c) ? "오늘 \(c.today.formatted())걸음" : ago(c.idle)
         }
     }
@@ -39,21 +46,22 @@ extension Walker {
     func teamPane(_ sel: Int, _ tab: Int, _ card: Bool) -> PaneContent {
         let rows = teamRows(tab), s = min(sel, max(0, rows.count - 1))
         let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
-        if tab == 4 && !card { return friendReqPane(sel) }
-        if tab == 5 && !card { return visitsPane(sel, Date()) }
+        if tab == TeamTab.requests && !card { return friendReqPane(sel) }
+        if tab == TeamTab.visits && !card { return visitsPane(sel, Date()) }
         let friends = max(0, (cloud?.team?.cards.count ?? 1) - 1)
         let note = cloud?.team == nil ? (cloud?.online == false ? "연결되면 볼 수 있어요" : "불러오는 중…") : friends == 0 ? "아직 친구가 없어요" : "친구 \(friends)명 · 지금 걷는 중 \(walking)명"
         if card, let c = rows[safe: s]?.card {
             func mini(_ m: Mon) -> TeamCardModel.Mini { .init(dex: m.dex, level: m.level, shiny: m.shiny == true) }
-            let lines: [TeamCardModel.Line] = [
+            let lines: [TeamCardModel.Line] = ([
                 .init(key: "도감", value: "잡음 \(c.owned) · 봤음 \(c.seen)" + (c.shinies > 0 ? " · 이로치 \(c.shinies)" : "")),
                 .init(key: "타워", value: "최고 \(c.towerBest)연승 · BP \(c.bp.formatted())"),
+                c.raid.map { r in .init(key: "레이드", value: "\(r.runs)판 \(r.wins)승 · 잡음 \(r.caught)" + (r.shiny > 0 ? " · 이로치 \(r.shiny)" : "")) },   // 4.0: its week (none: no line)
                 .init(key: "레이더", value: "최고 연쇄 \(c.bestChain)" + (c.duelWins + c.duelLosses > 0 ? " · 대전 \(c.duelWins)승 \(c.duelLosses)패" : "")),
                 .init(key: "걸음", value: "오늘 \(c.today.formatted()) · 이번 주 \(c.week.formatted())"),
                 .init(key: "누적", value: "\(c.total.formatted())걸음"),
                 visitTo(c.name).map { v in .init(key: "맡김", value: monLine(v.mon) + " · " + visitLeft(v)) }   // 3.8.5: one of mine with this friend (its place: 코스)
                     ?? .init(key: "코스", value: courses[safe: c.course]?.name ?? "-"),
-            ].reduce(into: c.title.map { [TeamCardModel.Line(key: "칭호", value: $0, gold: true)] } ?? []) { $0.append($1) }   // 3.9: its 칭호 first
+            ] as [TeamCardModel.Line?]).compactMap { $0 }.reduce(into: c.title.map { [TeamCardModel.Line(key: "칭호", value: $0, gold: true)] } ?? []) { $0.append($1) }   // 3.9: its 칭호 first
             let friend = isFriend(c.name) && !isMe(c), asked = (cloud?.team?.sent ?? []).contains { trainerID($0)?.key == trainerID(c.name)?.key }
             return PaneContent(teamCard: TeamCardModel(name: c.name, me: isMe(c), walking: Walker.walkingNow(c) && !isMe(c), when: isMe(c) ? "" : ago(c.idle), walker: c.walker.prefix(3).map(mini), lines: lines, deco: c.deco,
                                                        remove: friend,
@@ -70,8 +78,8 @@ extension Walker {
     }
     /// The LCD on the friends' pages: the picked friend's companion, its name, level, and whether it's walking now (신청: the request picked).
     func teamLCD(_ fb: inout FB, _ sel: Int, _ tab: Int, _ now: Date) {
-        if tab == 5 { visitsLCD(&fb, sel, now); return }
-        if tab == 4 {
+        if tab == TeamTab.visits { visitsLCD(&fb, sel, now); return }
+        if tab == TeamTab.requests {
             let reqs = friendReqRows
             fb.text("친구 신청", 2, 0); fb.fill(0, 12, 96, 1, 2)
             guard let r = reqs[safe: min(sel, max(0, reqs.count - 1))] else { fb.text("신청이 없다", 0, 24, 2, center: true); fb.text("● ID로 신청", 0, 40, 3, center: true); return }
@@ -92,7 +100,7 @@ extension Walker {
     /// ◀ ▶ (and the wheel, ↑ ↓): a row (on a card: the next teammate's card), round.
     func teamStep(_ d: Int, wrap: Bool = true) {
         guard case .team(let sel, let tab, let card) = screen else { return }
-        let n = tab == 4 ? friendReqRows.count : tab == 5 ? visitsOut.count + guests.count : teamRows(tab).count; guard n > 0 else { return }
+        let n = tab == TeamTab.requests ? friendReqRows.count : tab == TeamTab.visits ? visitsOut.count + guests.count : teamRows(tab).count; guard n > 0 else { return }
         lastInput = Date(); host?.redraw(.all)
         screen = .team(sel: wrap ? ((sel + d) % n + n) % n : max(0, min(n - 1, sel + d)), tab: tab, card: card)
     }
@@ -116,7 +124,7 @@ extension Walker {
     /// 친구 신청 by ID (the text box): the server tells them (it's mutual at once if they'd asked me).
     func askFriend(_ now: Date = Date()) {
         guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: screen, since: now); return }
-        let back = Screen.team(sel: 0, tab: 4, card: false)
+        let back = Screen.team(sel: 0, tab: TeamTab.requests, card: false)
         guard let raw = host?.askText(title: "친구 신청", message: "친구의 트레이너 ID를 입력해 주세요"), !raw.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         guard let id = trainerID(raw.trimmingCharacters(in: .whitespaces)) else { screen = .say(["트레이너 ID가", "아니에요"], next: back, since: now); return }
         guard id.key != trainerID(myName)?.key else { screen = .say(["나에게는", "신청할 수 없어요"], next: back, since: now); return }
@@ -132,7 +140,7 @@ extension Walker {
     }
     /// The 신청 tab's buttons: 수락 / 거절 (to me), 거두기 (mine).
     func friendReq(_ r: FriendReqModel.Row, accept: Bool?, _ now: Date) {
-        let back = Screen.team(sel: 0, tab: 4, card: false)
+        let back = Screen.team(sel: 0, tab: TeamTab.requests, card: false)
         if r.mine { friendAct(.friendRemove(name: r.name), back: back, now) { _ in [r.name + "에게 보낸", "신청을 거뒀다"] }; return }
         if accept == true { friendAct(.friendAccept(from: r.name), back: back, now) { _ in nil } }
         else { friendAct(.friendDecline(from: r.name), back: back, now) { _ in [josa(r.name, "의", "의") + " 신청을", "거절했다"] } }
@@ -147,7 +155,7 @@ extension Walker {
         cloud?.teamDue = true
         switch n {
         case .friendRequest(let from):
-            screen = .say([josa(from, "이", "가") + " 친구 신청을 했다!"], next: .team(sel: 0, tab: 4, card: false), since: now)
+            screen = .say([josa(from, "이", "가") + " 친구 신청을 했다!"], next: .team(sel: 0, tab: TeamTab.requests, card: false), since: now)
             notify("pet", josa(from, "이", "가") + " 친구 신청을 했어요", "메뉴 → 친구 → 신청에서 수락할 수 있어요")
         case .friendAdded(let name):
             screen = .say([josa(name, "과", "와") + " 친구가 되었다!"], next: .home, since: now)

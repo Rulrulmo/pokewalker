@@ -1,122 +1,255 @@
 import Foundation
-// docs/plans/12 §4 (M3): the co-op raid — a boss a week the whole team wears down. The lobby (the boss, the team's HP, my power, 기여 순위 /
-// 최근 공격) is the server's (Cloud.raid, /v2/raid); a fight is the server's too (1칸 of power: the tower's three at their own levels against
-// three of the boss's bars, 6 turns) and plays on the battle screens; once the team beat it, the balls (a throw on the battle stage).
+// docs/plans/16 (4.0): the raid as runs. The lobby (this week's species, today's runs and power, my week, 친구 이번 주 / 내 판) is the server's
+// (Cloud.raid: RaidLobby, /v2/raid); a run is 1칸 of power at a tier picked here (★1–★5), against a boss of its own (the server's, its shiny
+// shown as it comes in), 10 bars on the battle screens; then its ball stage — that boss only, 3 balls (5 for a win), thrown one at a time, or
+// given up (raidQuit, asked first). A stage cut off (the app closed, asleep, offline) waits on the server: opening the lobby goes back to it.
+
+/// The raid's pages: the lobby (its two tabs), the tier to fight at, a run's ball stage (RaidPending: Walker.raidStage).
+enum RaidStep: Equatable { case lobby(tab: Int), tier(sel: Int), balls }
 
 extension Walker {
-    static let raidTabs = ["기여 순위", "최근 공격"]
+    static let raidTabs = ["친구 이번 주", "내 판"]
     var raidPower: Int { state.raidPower ?? 0 }
     var raidCells: Int { raidPower / Engine.raidPowerCost }
+    var raidLobby: RaidLobby? { cloud?.raid }
     func isMe(_ name: String) -> Bool { trainerID(name)?.key == trainerID(myName)?.key }
-    /// 홈's status row: power and the boss (a ball waiting, the week's over).
+    /// Runs left today (nil: no lobby yet); 0 before runs open.
+    var raidLeftToday: Int? { raidLobby.map { max(0, $0.today.max - $0.today.used) } }
+    /// A ball stage to go back to: the one on screen, else the server's (cut off).
+    var raidWaiting: RaidPending? { raidStage ?? raidLobby?.pending }
+    func bossName(_ m: Mon) -> String { (m.shiny == true ? "★" : "") + monNames[m.dex] }
+    /// 홈's status row: a ball stage waiting, today's runs and power, the boss.
     var raidStatus: String {
-        guard let r = cloud?.raid else { return "파워 \(raidCells)칸" }
-        if r.hpLeft == 0 { return r.mine.canCatch && (r.mine.balls ?? 1) > 0 ? "잡을 기회! · " + monNames[r.boss.dex] : "이번 주 보스 쓰러뜨림" }
-        return "파워 \(raidCells)칸 · " + monNames[r.boss.dex]
+        guard let r = raidLobby else { return "파워 \(raidCells)칸" }
+        if let p = raidWaiting { return "잡을 기회가 남았어요! · " + bossName(p.boss) }
+        if r.opens != nil { return "새 레이드 곧 열려요" }
+        if raidLeftToday == 0 { return "오늘 끝 · 내일 다시 · " + monNames[r.boss.dex] }
+        return "오늘 \(raidLeftToday ?? 0)판 · 파워 \(raidCells)칸 · " + monNames[r.boss.dex]
     }
-    /// The menu tile's line: a ball waiting, the week over, or power and the boss.
+    /// The menu tile's line.
     var raidNote: String {
-        guard let r = cloud?.raid else { return "파워 \(raidCells)칸 · 팀 보스" }
-        if r.hpLeft == 0 { return r.mine.canCatch && (r.mine.balls ?? 1) > 0 ? "잡을 기회!" : "이번 주 보스 쓰러뜨림" }
-        return "파워 \(raidCells)칸 · " + monNames[r.boss.dex]
+        guard raidLobby != nil else { return "파워 \(raidCells)칸 · 하루 \(RaidRules.perDay)판" }
+        if raidWaiting != nil { return "잡을 기회가 남았어요!" }
+        if raidLobby?.opens != nil { return "곧 열려요" }
+        if raidLeftToday == 0 { return "오늘 끝 · 내일 다시" }
+        return "오늘 \(raidLeftToday ?? 0)판 · 파워 \(raidCells)칸"
     }
+    /// The menu's red dot: a ball stage waiting.
+    var raidDot: Bool { raidWaiting != nil }
     /// What's left of the week: days, or hours on its last day.
-    func raidLeft(_ r: RaidReply, _ now: Date = Date()) -> String {
-        let s = max(0, r.ends - Int(now.timeIntervalSince1970))
+    func raidLeft(_ ends: Int, _ now: Date = Date()) -> String {
+        let s = max(0, ends - Int(now.timeIntervalSince1970))
         return s >= 86400 ? "\(s / 86400 + (s % 86400 > 0 ? 1 : 0))일 남음" : s >= 3600 ? "\(s / 3600)시간 남음" : "곧 끝"
     }
+    /// A week's runs in a row's few characters: 3승 · 잡음 2 · ★1 (★: caught shiny, as a shiny's ★ everywhere; none fought: -).
+    func raidLine(_ w: RaidWeek?) -> String {
+        guard let w, w.runs > 0 else { return "-" }
+        return "\(w.wins)승 · 잡음 \(w.caught)" + (w.shiny > 0 ? " · ★\(w.shiny)" : "")
+    }
+    /// 친구 이번 주 (me among them): 승 → 잡음 → 이로치 → 이름; equal weeks share a rank; none fought at the bottom.
+    func raidFriendRows(_ r: RaidLobby) -> [(rank: Int, f: RaidFriend)] {
+        func key(_ f: RaidFriend) -> [Int] { [f.wins, f.caught, f.shiny] }
+        let sorted = r.friends.sorted { a, b in key(a) != key(b) ? key(a).lexicographicallyPrecedes(key(b)) == false : a.name < b.name }
+        var out: [(rank: Int, f: RaidFriend)] = [], rank = 0
+        for (i, f) in sorted.enumerated() { if i == 0 || key(sorted[i - 1]) != key(f) { rank = i + 1 }; out.append((rank, f)) }
+        return out
+    }
 
-    // MARK: the pane
-    func raidPane(_ tab: Int, _ now: Date) -> PaneContent {
-        let power = raidPower, cells = raidCells, toNext = Engine.raidPowerCost - power % Engine.raidPowerCost
-        let powerText = power >= Engine.raidPowerMax ? "가득 찼어요" : "다음 칸까지 \(toNext.formatted())걸음"
-        guard let r = cloud?.raid else {
-            let note = cloud?.online == false ? "연결되면 볼 수 있어요" : "불러오는 중…"
-            return PaneContent(raid: RaidModel(boss: "레이드", left: "", hp: 0, hpText: note, cleared: false, power: power, powerText: powerText, tabs: Walker.raidTabs, tab: tab, rows: [], empty: note, go: nil, hint: note))
+    // MARK: the lobby
+    func raidPane(_ step: RaidStep, _ now: Date) -> PaneContent {
+        switch step {
+        case .lobby(let tab): return raidLobbyPane(tab, now)
+        case .tier(let sel): return raidTierPane(sel)
+        case .balls: return raidBallsPane()
         }
-        let done = max(1, r.hpTotal - r.hpLeft), pct = r.hpTotal > 0 ? Int((Double(r.hpLeft) / Double(r.hpTotal) * 100).rounded(.up)) : 0
-        let bars = r.barHP > 0 ? (r.hpLeft + r.barHP - 1) / r.barHP : 0, total = r.barHP > 0 ? (r.hpTotal + r.barHP - 1) / r.barHP : 0
+    }
+    func raidLobbyPane(_ tab: Int, _ now: Date) -> PaneContent {
+        let power = raidPower, toNext = Engine.raidPowerCost - power % Engine.raidPowerCost
+        let powerText = power >= Engine.raidPowerMax ? "가득 찼어요" : "다음 칸까지 \(toNext.formatted())걸음"
+        guard let r = raidLobby else {
+            let note = cloud?.online == false ? "연결되면 볼 수 있어요" : "불러오는 중…"
+            return PaneContent(raid: RaidModel(boss: "레이드", left: "", todayUsed: 0, todayMax: RaidRules.perDay, todayText: note, power: power, powerText: powerText,
+                                               week: [], tabs: Walker.raidTabs, tab: tab, rows: [], empty: note, go: nil, hint: note))
+        }
         var rows: [RaidModel.Row] = []
         if tab == 0 {
-            let ranked = r.fighters.enumerated().map { (k, f) in RaidModel.Row(rank: k + 1, dex: nil, name: f.name, value: "\(f.dealt.formatted()) · \(f.dealt * 100 / done)%", me: isMe(f.name)) }
+            let ranked = raidFriendRows(r).map { x in
+                RaidModel.Row(rank: x.f.runs > 0 ? x.rank : nil, dex: x.f.dex, shiny: false, name: x.f.name, value: raidLine(RaidWeek(runs: x.f.runs, wins: x.f.wins, caught: x.f.caught, shiny: x.f.shiny)),
+                              pill: nil, me: isMe(x.f.name))
+            }
             rows = Array(ranked.prefix(5))
             if let me = ranked.first(where: \.me), !rows.contains(where: \.me) { rows[rows.count - 1] = me }   // me in place of the 5th
         } else {
-            rows = r.recent.prefix(5).map { h in .init(rank: nil, dex: h.dex, name: h.name, value: "\(h.dealt.formatted()) · " + ago(max(60, Int(now.timeIntervalSince1970) - h.at)), me: isMe(h.name)) }
+            rows = r.runs.prefix(5).map { run in
+                .init(rank: nil, dex: run.dex, shiny: run.shiny, name: (r.tiers.first { $0.tier == run.tier }.map { "Lv.\($0.level) · " } ?? "") + "\(run.bars)/\(RaidRules.bars)줄" + (run.won ? " · 승" : ""),   // (the tier by its boss's level: ★ is a shiny's mark here)
+                      value: ago(max(60, Int(now.timeIntervalSince1970) - run.at)), pill: run.caught ? "잡음" : "놓침", me: false)
+            }
         }
-        let name = monNames[r.boss.dex], m = r.mine
+        let left = max(0, r.today.max - r.today.used), m = r.mine
         var go: String? = nil, hint = ""
-        if r.hpLeft > 0 { if cells > 0 { go = "도전 · 파워 1칸" } else { hint = "파워가 부족해요 (\(Engine.raidPowerCost.formatted())걸음마다 1칸)" } }
-        else if m.caught { hint = josa(name, "을", "를") + " 잡았어요!" }
-        else if !m.canCatch { hint = "이번 주에 싸워야 잡을 수 있어요" }
-        else if let b = m.balls, b == 0 { hint = "볼을 모두 던졌어요" }
-        else { go = "볼 던지기" + (m.balls.map { " · 남은 \($0)개" } ?? "") }
-        return PaneContent(raid: RaidModel(boss: (r.boss.shiny == true ? "★" : "") + name + " Lv.\(r.boss.level)", left: raidLeft(r, now), hp: r.hpTotal > 0 ? CGFloat(r.hpLeft) / CGFloat(r.hpTotal) : 0,
-                                           hpText: r.hpLeft == 0 ? "쓰러뜨렸다!" : "\(pct)% · 줄 \(bars.formatted()) / \(total.formatted())", cleared: r.hpLeft == 0,
-                                           power: power, powerText: powerText, tabs: Walker.raidTabs, tab: tab, rows: rows,
-                                           empty: tab == 0 ? "아직 아무도 싸우지 않았어요" : "아직 공격이 없어요", go: go, hint: hint))
+        if let p = raidWaiting { go = "잡을 기회 · 볼 \(p.balls)개" }
+        else if r.opens != nil { hint = "새 레이드는 곧 열려요" }
+        else if left == 0 { hint = "오늘은 \(r.today.max)판을 다 했어요 · 내일 0시에 다시" }
+        else if raidCells == 0 { hint = "파워가 부족해요 (\(Engine.raidPowerCost.formatted())걸음마다 1칸)" }
+        else { go = "도전 · 파워 1칸" }
+        return PaneContent(raid: RaidModel(boss: monNames[r.boss.dex], left: raidLeft(r.ends, now), todayUsed: r.today.used, todayMax: r.today.max,
+                                           todayText: r.opens != nil ? "곧 열려요" : left == 0 ? "내일 다시" : "\(left)판 남음", power: power, powerText: powerText,
+                                           week: ["\(m.runs)판", "\(m.wins)승", "잡음 \(m.caught)", "이로치 \(m.shiny)"],
+                                           tabs: Walker.raidTabs, tab: tab, rows: rows,
+                                           empty: tab == 0 ? "아직 친구가 없어요" : "이번 주에 한 판이 없어요", go: go, hint: hint))
+    }
+
+    /// The tier to fight at: the lobby's tiers (the server's), the pick, its button.
+    func raidTierPane(_ sel: Int) -> PaneContent {
+        let tiers = raidLobby?.tiers ?? RaidRules.tiers, t = tiers[safe: sel] ?? tiers.first
+        return PaneContent(raidTier: RaidTierModel(boss: raidLobby.map { monNames[$0.boss.dex] } ?? "", note: raidLeftToday.map { "오늘 \($0)판 남음" } ?? "",
+                                                   rows: tiers.map { .init(tier: $0.tier, level: $0.level, perfect: $0.perfect, bp: $0.bp) }, sel: sel,
+                                                   note2: t.map { $0.level > 100 ? "★\($0.tier)" + ([1, 3].contains($0.tier) ? "은" : "는") + " Lv.\($0.level)으로 싸우고, 잡히면 Lv.100이에요" : "10줄을 다 깨면 승리 · 볼 3개, 이기면 5개" } ?? "",
+                                                   go: "★\(t?.tier ?? 1) · 출전 고르기"))
     }
 
     // MARK: the LCD
-    func raidLCD(_ fb: inout FB, _ now: Date) {
+    func raidLCD(_ fb: inout FB, _ step: RaidStep, _ now: Date) {
         let half = Int(now.timeIntervalSinceReferenceDate * 2) % 2
-        guard let r = cloud?.raid else { fb.text("레이드", 2, 0); fb.fill(0, 12, 96, 1, 2); fb.text(cloud?.online == false ? "연결되면 볼 수 있다" : "불러오는 중...", 0, 30, 2, center: true); return }
-        fb.text((r.boss.shiny == true ? "★" : "") + monNames[r.boss.dex] + " Lv.\(r.boss.level)", 2, 0); fb.fill(0, 12, 96, 1, 2)
+        switch step {
+        case .balls: raidBallsLCD(&fb, now); return
+        case .tier(let sel):
+            guard let r = raidLobby, let t = r.tiers[safe: sel] else { break }
+            let boss = Mon(dex: r.boss.dex, level: t.level, female: false)
+            fb.text(monNames[boss.dex] + " Lv.\(t.level)", 2, 0); fb.fill(0, 12, 96, 1, 2)
+            fb.mon(boss, half, 0, 2, anim: animT("raid tier", boss.dex, now))
+            fb.text(String(repeating: "★", count: t.tier), 94, 15, 3, right: true, small: true)
+            fb.text("\(t.perfect)V", 94, 28, 2, right: true, small: true)
+            if t.level > 100 { fb.text("잡히면 Lv.100", 94, 40, 2, right: true, small: true) }      // (a boss above 100 is caught at 100)
+            fb.text("이기면 BP \(t.bp)", 94, 52, 2, right: true, small: true)
+            return
+        case .lobby: break
+        }
+        guard let r = raidLobby else { fb.text("레이드", 2, 0); fb.fill(0, 12, 96, 1, 2); fb.text(cloud?.online == false ? "연결되면 볼 수 있다" : "불러오는 중...", 0, 30, 2, center: true); return }
+        fb.text(monNames[r.boss.dex], 2, 0); fb.fill(0, 12, 96, 1, 2)
         fb.mon(r.boss, half, 0, 2, anim: animT("raid", r.boss.dex, now))
+        let left = raidLeftToday ?? 0
         fb.text("레이드", 94, 15, 2, right: true, small: true)
-        fb.text(raidLeft(r, now), 94, 26, 2, right: true, small: true)
-        fb.text("파워 \(raidCells)칸", 94, 37, raidCells > 0 ? 3 : 1, right: true, small: true)
-        if r.hpLeft == 0 { fb.text("쓰러졌다!", 94, 52, 3, right: true, small: true) } else { hpBar(&fb, 50, 55, 44, r.hpLeft, max(1, r.hpTotal)) }
+        fb.text(raidLeft(r.ends, now), 94, 26, 2, right: true, small: true)
+        fb.text(r.opens != nil ? "곧 열림" : left == 0 ? "내일 다시" : "오늘 \(left)판", 94, 37, left > 0 && r.opens == nil ? 3 : 1, right: true, small: true)
+        fb.text("파워 \(raidCells)칸", 94, 52, raidCells > 0 ? 3 : 1, right: true, small: true)
     }
 
     // MARK: what you press
-    /// ● (and the pane's button): a fight (1칸), or once the team beat it a ball. ◀ ▶: the tabs.
-    func raidPress(_ k: Int, _ tab: Int, _ now: Date) {
-        if k != 1 { screen = .raid(tab: 1 - tab); return }
-        guard let r = cloud?.raid, calm else { return }                                           // (3.8.6: not the ● that ended n 데미지!)
-        if r.hpLeft > 0 {
-            guard raidCells > 0 else { screen = .say(["파워가 부족하다", "(\(Engine.raidPowerCost.formatted())걸음마다 1칸)"], next: .raid(tab: tab), since: now); return }
-            raidPick(now)                                                                           // 3.8: who goes first (1–3)
-        } else if r.mine.canCatch, (r.mine.balls ?? 1) > 0 { raidBall(tab, now) }
+    /// The lobby's ● (and its button): back to a ball stage waiting, else a run — its tier first. ◀ ▶: the tabs.
+    func raidPress(_ k: Int, _ step: RaidStep, _ now: Date) {
+        switch step {
+        case .lobby(let tab):
+            if k != 1 { screen = .raid(.lobby(tab: 1 - tab)); return }
+            guard calm else { return }                                                             // (3.8.6: not the ● that ended the fight's last line)
+            if let p = raidWaiting { raidStage = p; screen = .raid(.balls); return }
+            guard let r = raidLobby else { return }
+            if r.opens != nil { screen = .say(["새 레이드는", "곧 열려요"], next: .raid(.lobby(tab: tab)), since: now); return }
+            if (raidLeftToday ?? 0) == 0 { screen = .say(["오늘은 \(r.today.max)판을", "다 했어요"], next: .raid(.lobby(tab: tab)), since: now); return }
+            guard raidCells > 0 else { screen = .say(["파워가 부족하다", "(\(Engine.raidPowerCost.formatted())걸음마다 1칸)"], next: .raid(.lobby(tab: tab)), since: now); return }
+            screen = .raid(.tier(sel: raidTierIndex))
+        case .tier(let sel):
+            let n = raidLobby?.tiers.count ?? 0
+            if k != 1 { if n > 0 { screen = .raid(.tier(sel: (sel + (k == 0 ? n - 1 : 1)) % n)) }; return }
+            guard let t = raidLobby?.tiers[safe: sel] else { return }
+            raidTier = t.tier; if persist { settings.set("raidTier", t.tier) }; raidPick(now)
+        case .balls:
+            if k == 1 { raidBall(now) }
+        }
+    }
+    /// The tier last fought at (else the highest whose boss isn't above our strongest), as a row of the lobby's tiers.
+    var raidTierIndex: Int {
+        let tiers = raidLobby?.tiers ?? RaidRules.tiers, saved = raidTier > 0 ? raidTier : persist ? settings.int("raidTier", 0) : 0
+        if let i = tiers.firstIndex(where: { $0.tier == saved }) { return i }
+        let best = ([state.companion] + state.caught + state.box).map(\.level).max() ?? 1
+        return tiers.lastIndex { $0.level <= best } ?? 0
     }
     func raidTap(_ code: Int, _ now: Date) {
-        guard case .raid(let tab) = screen else { return }
-        switch code {
-        case 7000...7001: screen = .raid(tab: code - 7000)
-        case 7010: raidPress(1, tab, now)
+        guard case .raid(let step) = screen else { return }
+        switch (step, code) {
+        case (.lobby, 7000...7001): screen = .raid(.lobby(tab: code - 7000))
+        case (.lobby(let tab), 7010): raidPress(1, .lobby(tab: tab), now)
+        case (.tier(let sel), 7020...7029): if code - 7020 == sel { raidPress(1, step, now) } else { screen = .raid(.tier(sel: code - 7020)) }   // a row: picked; again: on
+        case (.tier, 7030): raidPress(1, step, now)
+        case (.balls, 7040): raidBall(now)
+        case (.balls, 7041): raidLeave(home: false, now)
         default: return
         }
     }
-    /// A fight with the week's boss: the server takes 1칸 and starts it with the picked (3.8: 1–3, as they are); it plays on the battle screens (raidOn: its menu, lines, HUD).
-    func raidFight(_ tab: Int, party: [Int]? = nil, back: Screen? = nil, _ now: Date) {
-        act(.raid(party: party), back: back ?? .raid(tab: tab), now, lines: ["레이드", "보스에게 가는 중..."], quiet: true) { [weak self] o, now in
-            guard let self, let f = o.battle else { return nil }
-            raidOn = true; fight = f; freshFight()
-            return (o.beats ?? []).isEmpty ? .battle(f, sel: 0) : .beats(f, o.beats!, since: now, from: f)
+    /// ↩ on the raid's pages: the tier → the lobby; the ball stage → given up (asked first); the lobby → the menu.
+    func raidBack(_ step: RaidStep, _ now: Date) {
+        switch step {
+        case .lobby: screen = menuFor("레이드")
+        case .tier: screen = .raid(.lobby(tab: 0))
+        case .balls: raidLeave(home: false, now)
         }
     }
-    /// A raid fight over: its damage (and BP), the team's clear if this one did it; then the lobby (after home's news, if any).
-    func raidEnded(_ e: BattleEnd, _ now: Date) -> Screen {
-        raidOn = false; cloud?.raidDue = true
-        var cleared = false
-        news.removeAll { if case .raidCleared = $0 { cleared = true; return true }; return false }
-        let dealt = e.dealt ?? 0, bp = e.bp ?? 0
-        let lines = ["\(dealt.formatted()) 데미지!" + (bp > 0 ? " +\(bp)BP" : "")] + (cleared ? ["보스를 쓰러뜨렸다!", "볼을 던질 수 있다"] : e.result == "fled" ? ["기세에 밀려났다"] : [])
-        if !news.isEmpty { growthThen = .raid(tab: 0); return .say(lines, next: .home, since: now) }
-        return .say(lines, next: .raid(tab: 0), since: now)
+
+    // MARK: a run
+    /// A run at the tier picked, with the party picked (1–3): the server takes 1칸 and makes its boss; it plays on the battle screens (raidOn:
+    /// its menu, lines, HUD) — a shiny boss's line after it appears (raidShown).
+    func raidFight(party: [Int]? = nil, back: Screen, _ now: Date) {
+        act(.raid(party: party, tier: raidTier), back: back, now, lines: ["레이드", "보스에게 가는 중..."], quiet: true) { [weak self] o, now in
+            guard let self, let f = o.battle else { return nil }
+            raidOn = true; raidStage = nil; fight = f; freshFight()
+            return (o.beats ?? []).isEmpty ? .battle(f, sel: 0) : .beats(f, Walker.raidShown(o.beats!, from: f), since: now, from: f)
+        }
     }
-    /// A ball at the beaten boss (12 §4.3): the throw plays on the battle stage, then caught or not (and the week's clear reward with the first).
-    func raidBall(_ tab: Int, _ now: Date) {
-        guard let boss = cloud?.raid?.boss else { return }
-        act(.raidBall, back: .raid(tab: tab), now, lines: ["볼을", "던질 준비..."]) { [weak self] o, now in
+    /// A run over: the bars it broke, what it paid and its balls (a weekly reward mailed with it: said); then its ball stage.
+    func raidEnded(_ b: Battle, _ e: BattleEnd, _ now: Date) -> Screen {
+        raidOn = false; cloud?.raidDue = true
+        var mailed = false
+        news.removeAll { if case .mailNew(_, let t) = $0, t.hasPrefix("레이드") { mailed = true; mailNews(t); return true }; return false }
+        let won = e.result == "won", bars = e.bars ?? b.theirs.filter { !$0.alive }.count, balls = e.balls ?? RaidRules.balls + (won ? RaidRules.winBalls : 0)
+        raidStage = RaidPending(boss: b.wild, tier: b.raidTier ?? raidTier, bars: bars, won: won, balls: balls)
+        let paid = (e.gifts ?? []).map(giftName).joined(separator: " · ")
+        let lines = won ? ["\(RaidRules.bars)줄을 모두 깼다!", (paid.isEmpty ? "" : paid + " · ") + "볼 \(balls)개!"]
+                        : [bars > 0 ? "\(bars)줄을 깼다" : "줄을 깨지 못했다", "볼 \(balls)개"]
+        return .say(lines + (mailed ? ["우편함에 이번 주 보상이 왔다"] : []), next: .raid(.balls), since: now)
+    }
+    /// Where a run goes once its ball stage is over: the lobby (내 판), after home's news if any (a level, a move to learn …).
+    func raidAfter() -> Screen {
+        raidStage = nil; cloud?.raidStageOver()
+        if !news.isEmpty { growthThen = .raid(.lobby(tab: 1)); return .home }
+        return .raid(.lobby(tab: 1))
+    }
+
+    /// A new lobby came: one with a ball stage cut off (the app closed, asleep, offline) goes back to it, if the lobby is up.
+    func raidResume(_ now: Date) {
+        guard case .raid(.lobby) = screen, raidStage == nil, waiting == nil, let p = cloud?.raid?.pending else { return }
+        raidStage = p; screen = .say(["잡을 기회가", "남았어요!"], next: .raid(.balls), since: now)
+    }
+
+    // MARK: the ball stage
+    func raidBallsPane() -> PaneContent {
+        guard let p = raidStage else { return PaneContent() }
+        let tier = RaidRules.tier(p.tier)
+        return PaneContent(raidBalls: RaidBallsModel(bars: p.bars, total: RaidRules.bars, dex: p.boss.dex, shiny: p.boss.shiny == true,
+                                                     name: monNames[p.boss.dex] + " Lv.\(p.boss.level)", note: "잡히면 " + (p.boss.level > 100 ? "Lv.100 · " : "") + "\(tier?.perfect ?? p.boss.perfectIVs)V · ★\(p.tier)",
+                                                     balls: p.balls, of: RaidRules.balls + (p.won ? RaidRules.winBalls : 0), won: p.won,
+                                                     foot: ["남은 볼은 이 \(monNames[p.boss.dex])에게만 던질 수 있어요.", "이 화면을 나가면 사라져요."]))
+    }
+    /// The boss on its stage (no HUD), its balls along the bottom (left lit, thrown dark).
+    func raidBallsLCD(_ fb: inout FB, _ now: Date) {
+        guard let p = raidStage else { return }
+        let b = Battle(wild: p.boss, companion: state.companion)
+        stage(&fb, b, now, .idle, hud: false)
+        let of = RaidRules.balls + (p.won ? RaidRules.winBalls : 0)
+        for k in 0..<of { fb.draw(caughtMark, 2 + 7 * k, 2, k < p.balls ? ballPal : [ballPal[3], rgb(120, 124, 132), rgb(120, 124, 132), ballPal[3]]) }   // (top left: the HUD's place, empty here)
+    }
+    /// One ball at the run's boss (the server's dice): the throw on the battle stage, then caught (into the box) or the stage again — or, the
+    /// last one gone, the boss leaves.
+    func raidBall(_ now: Date) {
+        guard let p = raidStage, p.balls > 0, calm else { return }
+        act(.raidBall, back: .raid(.balls), now, lines: ["볼을", "던질 준비..."]) { [weak self] o, now in
             guard let self, let t = o.raidThrow else { return nil }
-            cloud?.raidDue = true
-            let name = monNames[t.mon?.dex ?? boss.dex], back = Screen.raid(tab: tab)
-            let reward = Screen.say(["클리어 보상!", "25BP · 이상한사탕 ×5", "은색병뚜껑"], next: back, since: .distantFuture)
-            let after: [String] = t.caught ? [josa(name, "을", "를") + " 잡았다!", "상자로 보냈다"] : ["놓쳤다...", t.balls > 0 ? "남은 볼 \(t.balls)개" : "볼을 모두 던졌다"]
-            raidThen = .say(after, next: t.reward ? reward : back, since: .distantFuture)
+            let name = monNames[p.boss.dex]
+            raidStage?.balls = t.balls
+            if t.caught { raidThen = .say([josa(name, "을", "를") + " 잡았다!", "상자로 보냈다"], next: raidAfter(), since: .distantFuture) }
+            else if t.balls > 0 { raidThen = .say(["놓쳤다...", "남은 볼 \(t.balls)개"], next: .raid(.balls), since: .distantFuture) }
+            else { raidThen = .say(["놓쳤다...", josa(name, "은", "는") + " 돌아갔다"], next: raidAfter(), since: .distantFuture) }
             usedItem = "몬스터볼"
-            let b = Battle(wild: t.mon ?? boss, companion: state.companion)
+            let b = Battle(wild: t.mon ?? p.boss, companion: state.companion)
             return .beats(b, [.thrown(shakes: t.caught ? 3 : t.shakes), t.caught ? .caught : .broke], since: now, from: b)
         }
     }
@@ -127,10 +260,17 @@ extension Walker {
         func restart(_ s: Screen, _ at: Date) -> Screen { if case .say(let l, let n, _) = s { return .say(l, next: restart(n, at + 3), since: at) }; return s }   // each its 3 s, in turn
         s = restart(s, now); return s
     }
-    /// The team beat it (12 §4.3; the one who did hears it at the fight's end): said, then the lobby with its balls.
-    func raidNews(_ dex: Int, _ now: Date) {
-        cloud?.raidDue = true
-        screen = .say(["팀이 " + josa(monNames[dex], "을", "를"), "쓰러뜨렸다!", "볼을 던질 수 있다"], next: .raid(tab: 0), since: now)
-        notify("unlock", "팀이 " + josa(monNames[dex], "을", "를") + " 쓰러뜨렸어요", "메뉴 → 레이드에서 볼을 던질 수 있어요")
+    /// Leaving the ball stage (그만두기, ↩, 홈): with balls left it's asked first, then given up at the server (raidQuit: the run 놓침).
+    func raidLeave(home: Bool, _ now: Date) {
+        guard let p = raidStage else { screen = home ? .home : .raid(.lobby(tab: 0)); return }
+        if p.balls > 0 {
+            let who = (p.boss.shiny == true ? "이로치 " : "") + josa(monNames[p.boss.dex], "은", "는")
+            guard host?.confirm("그만둘까요?", "남은 볼 \(p.balls)개가 사라지고 \(who) 돌아가요.", ok: "그만두기") ?? true else { return }
+        }
+        act(.raidQuit, back: .raid(.balls), now) { [weak self] _, _ in
+            guard let self else { return nil }
+            let next = raidAfter()
+            return home ? .home : next
+        }
     }
 }

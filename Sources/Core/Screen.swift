@@ -23,7 +23,7 @@ indirect enum Screen {
     case trade(TradeStep)                                              // 12 (M2): 교환 — the open offers (팀's 교환 tab), one in full, making or answering one
     case traded(gave: Mon, got: Mon, with: String, since: Date)        // a trade gone through (already in the save): this is the show
     case market(MarketStep)                                            // 12 §3.3 (3.5): the 교환 게시판 — the posts, one in full, putting one up or offering on one
-    case raid(tab: Int)                                                // 12 (M3): the co-op raid's lobby — the boss, the team's HP, power, 기여 순위 / 최근 공격 (tab)
+    case raid(RaidStep)                                                // 4.0 (16 §8): the raid — its lobby (친구 이번 주 / 내 판), the tier, a run's ball stage
     case radar(bush: Int, cursor: Int, since: Date, chain: Int)        // "!" shows on `bush` from 1.5 s after `since`, for `radarWindow(chain)`
     case battle(Battle, sel: Int)                                      // sel = the menu row (공격 / 볼 / 도구 / 도망, or 공격 / 도구 / 교체 / 기권)
     case moves(Battle, sel: Int)                                       // picking one of the 4 moves

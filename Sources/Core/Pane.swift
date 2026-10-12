@@ -8,6 +8,9 @@ struct SideModel: Equatable {
     struct MoveBtn: Equatable { var name, type: String; var power: Int; var effect: Double; var pp = 0, maxPP = 0; var status = false; var about = ""; var text: String? = nil }   // about · text: 3.8.2's line under the four
     enum Mode: Equatable { case none, menu([String], Int), moves([MoveBtn], Int), party([Card], Int), items([String], Int), ask(Bool) }   // ask: 아니오 / 예 (true = 예 highlighted)
     var foe: Card; var mine: Card; var message: String; var mode: Mode
+    /// 4.0 (16 §8-3): a raid's bars by the menu's prompt — broken, of all, and how much of the one up is left (0...1).
+    struct Bars: Equatable { var broken, total: Int; var cur: CGFloat }
+    var bars: Bars? = nil
 }
 /// 상점 / BP 교환소: the list, and how many.
 struct ShopModel: Equatable {
@@ -205,14 +208,27 @@ struct DuelHubModel: Equatable {
 }
 /// 실시간 대전's invitation (12 §5): who, the rules in a line, the time left, its buttons (수락 · 거절, or 신청 취소).
 struct DuelModel: Equatable { var title, line, note: String; var buttons: [String]; var record: String }
-/// 레이드 (12 §4): this week's boss, the team's HP, my power (3 칸), a tab of rows (기여 순위: rank, name, damage and share; 최근 공격: the
-/// fight's lead, name, damage, when), the button (도전 / 볼 던지기; nil: not now — hint says why).
+/// 레이드 (4.0, 16 §8-1): this week's species, today's runs (of 3) and my power (3 칸), my week (판 · 승 · 잡음 · 이로치), a tab of rows
+/// (친구 이번 주: rank, companion, name, the week; 내 판: the boss, tier and bars, when, 잡음 / 놓침), the button (도전, or back to a ball stage;
+/// nil: not now — hint says why).
 struct RaidModel: Equatable {
-    struct Row: Equatable { var rank: Int?; var dex: Int?; var name, value: String; var me: Bool }
-    var boss: String; var left: String; var hp: CGFloat; var hpText: String; var cleared: Bool
+    struct Row: Equatable { var rank: Int?; var dex: Int; var shiny: Bool; var name, value: String; var pill: String?; var me: Bool }
+    var boss: String; var left: String
+    var todayUsed, todayMax: Int; var todayText: String
     var power: Int; var powerText: String
+    var week: [String]
     var tabs: [String]; var tab: Int; var rows: [Row]; var empty: String
     var go: String?; var hint: String
+}
+/// The tier to fight at (16 §8-5): a row a tier (★, the boss's level, its 31s, the BP a win pays), the pick, the button.
+struct RaidTierModel: Equatable {
+    struct Row: Equatable { var tier, level, perfect, bp: Int }
+    var boss: String; var note: String; var rows: [Row]; var sel: Int; var note2: String; var go: String
+}
+/// A run's ball stage (16 §8-4): its bars, the boss (its shiny, what it'd be), the balls (thrown dark; a lost run's +2 as ghosts), the buttons.
+struct RaidBallsModel: Equatable {
+    var bars, total: Int; var dex: Int; var shiny: Bool; var name, note: String
+    var balls, of: Int; var won: Bool; var foot: [String]
 }
 /// The save server holding the game: what's up, a line or two, and the one button (ID 입력 / 여기서 계속; nil = none).
 struct LoginModel: Equatable { var title: String; var lines: [String]; var button: String? }
@@ -224,6 +240,7 @@ struct PaneContent: Equatable {
     var team: TeamModel? = nil, teamCard: TeamCardModel? = nil
     var trades: TradeListModel? = nil, offer: TradeOfferModel? = nil, pick: TradePickModel? = nil
     var raid: RaidModel? = nil
+    var raidTier: RaidTierModel? = nil, raidBalls: RaidBallsModel? = nil
     var friendReqs: FriendReqModel? = nil, board: MarketBoardModel? = nil, post: MarketPostModel? = nil
     var duel: DuelModel? = nil, hold: HoldModel? = nil, visits: VisitsModel? = nil
     var squad: SquadModel? = nil, duelHub: DuelHubModel? = nil
@@ -235,7 +252,7 @@ extension PaneContent {
     static let home: CGFloat = 406                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size)
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 472 : dex != nil ? 390 : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
-            : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446 : mailList != nil || mailOpen != nil || mailPick != nil ? 466
+            : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil || raidTier != nil || raidBalls != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446 : mailList != nil || mailOpen != nil || mailPick != nil ? 466
             : radar != nil ? 327 : card != nil ? (card!.title != nil || card!.deco != nil ? 254 : 230) : learn != nil ? 444 : tower != nil ? 400 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
     }
 }
