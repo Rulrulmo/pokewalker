@@ -68,7 +68,7 @@ extension Walker {
             m.title = "대전 파티"; m.hint = "3~6마리를 순서대로 골라 주세요 · 대전은 모두 Lv.50"
             if range.contains(picked.count) { m.go = "이 \(picked.count)마리로 정하기" }
         case .raid:
-            let t = RaidRules.tier(raidTier).map { "★\($0.tier) Lv.\($0.level)" } ?? ""                // 4.0: the tier picked, today's runs left (16 §8-1)
+            let t = raidTierInfo(raidTier).map { "★\($0.tier) Lv.\($0.level)" } ?? ""                // 4.0: the tier picked, today's runs left (16 §8-1)
             m.title = "레이드 출전"; m.note = t + (raidLeftToday.map { " · 오늘 \($0)판 남음" } ?? ""); m.hint = "1~3마리를 골라 주세요 · 제 레벨로 싸워요"
             if range.contains(picked.count) { m.go = "이 \(picked.count)마리로 도전" }
         case .duelPick:

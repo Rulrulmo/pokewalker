@@ -18,6 +18,8 @@ extension Walker {
     /// A ball stage to go back to: the one on screen, else the server's (cut off).
     var raidWaiting: RaidPending? { raidStage ?? raidLobby?.pending }
     func bossName(_ m: Mon) -> String { (m.shiny == true ? "★" : "") + monNames[m.dex] }
+    /// A tier as the server has it now (the lobby's), else as this app was built.
+    func raidTierInfo(_ n: Int) -> RaidTier? { raidLobby?.tiers.first { $0.tier == n } ?? RaidRules.tier(n) }
     /// 홈's status row: a ball stage waiting, today's runs and power, the boss.
     var raidStatus: String {
         guard let r = raidLobby else { return "파워 \(raidCells)칸" }
@@ -223,7 +225,7 @@ extension Walker {
     // MARK: the ball stage
     func raidBallsPane() -> PaneContent {
         guard let p = raidStage else { return PaneContent() }
-        let tier = RaidRules.tier(p.tier)
+        let tier = raidTierInfo(p.tier)
         return PaneContent(raidBalls: RaidBallsModel(bars: p.bars, total: RaidRules.bars, dex: p.boss.dex, shiny: p.boss.shiny == true,
                                                      name: monNames[p.boss.dex] + " Lv.\(p.boss.level)", note: "잡히면 " + (p.boss.level > 100 ? "Lv.100 · " : "") + "\(tier?.perfect ?? p.boss.perfectIVs)V · ★\(p.tier)",
                                                      balls: p.balls, of: RaidRules.balls + (p.won ? RaidRules.winBalls : 0), won: p.won,
