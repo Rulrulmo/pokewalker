@@ -300,15 +300,50 @@ private struct Desk {
     #expect(d.act(.use(item: "토망열매", stat: nil)).cannot != nil && d.w.count("토망열매") == 1)
 }
 
-@Test func towerTycoon() {                                                                          // 3.9 (docs/plans/15 §3.3): the 49th and 99th fights
+@Test func towerTycoon() {                                                                          // 3.9 (docs/plans/15 §3.3), 4.1 (plan 17): the 50th and 100th fights
     var w = Engine.fresh(now: t0, starter: firstUID); var r = Seeded(s: 4)
-    for (streak, boss) in [(47, false), (48, true), (49, false), (98, true)] {
+    for (streak, boss) in [(48, false), (49, true), (50, false), (99, true)] {
         w.towerStreak = streak; let f = w.towerFoes(&r)
         #expect((f.trainer == Tower.tycoon) == boss, "\(streak)")
         if boss { #expect(f.foes.map(\.dex) == Tower.tycoonTeams[streak + 1]?.map(\.dex) && f.foes.allSatisfy { $0.perfectIVs == 6 && $0.item != nil && $0.level == 50 }) }
     }
-    #expect(Tower.tycoonTeams[49]?.map(\.dex) == [464, 350, 149] && Tower.tycoonTeams[99]?.map(\.dex) == [149, 350, 376])   // 은 · 금
-    #expect(Tower.tycoonPrint(afterWins: 48) == "은" && Tower.tycoonPrint(afterWins: 98) == "금" && Tower.tycoonPrint(afterWins: 50) == nil)
-    w.towerStreak = 48; let plain = w.towerWin(tycoon: false); w.towerStreak = 48
+    #expect(Tower.tycoonFights == [50, 100] && Tower.tycoonTeams[100]?.map(\.dex) == [149, 350, 486])   // 금: DP's (레지기가스 for 메타그로스)
+    #expect(Tower.tycoonTeams.values.allSatisfy { $0.filter { Tower.isLegend($0.dex) }.count == 1 })     // a legend in each
+    #expect(Tower.tycoonPrint(afterWins: 49) == "은" && Tower.tycoonPrint(afterWins: 99) == "금" && Tower.tycoonPrint(afterWins: 48) == nil && Tower.tycoonPrint(afterWins: 50) == nil)
+    w.towerStreak = 49; let plain = w.towerWin(tycoon: false); w.towerStreak = 49
     #expect(w.towerWin(tycoon: true) == plain * 2)
+    #expect(Tower.reward(100) != nil && Tower.reward(120) == nil && Tower.reward(150) == Tower.endless.gifts && Tower.reward(1000) == Tower.endless.gifts && Tower.reward(175) == nil)
+    #expect(Tower.rewards(upTo: 249).map(\.wins) == Tower.rewards.map(\.wins) + [150, 200] && Tower.rewards(upTo: 6).isEmpty)   // 150, 200, … no end
+}
+
+@Test func towerOneLegend() {                                                                       // 4.1 (docs/plans/17): one legend at most in the tower's three
+    var d = Desk(); d.w.watts = 500
+    for (dex, level, u) in [(384, 100, 9001), (493, 99, 9002), (150, 98, 9003), (149, 60, 9004), (6, 55, 9005)] {   // three legends on top, two others
+        var m = Mon(dex: dex, level: level, female: false); m.uid = u; d.w.box.append(m)
+    }
+    let c = d.w.companion.dex
+    #expect(!Tower.isLegend(c) && (1...493).filter(Tower.isLegend).count == 35 && Tower.isLegend(493) && !Tower.isLegend(149))
+    #expect(d.w.party().map(\.mon.dex) == [c, 384, 149] && d.w.party(anyLegends: true).map(\.mon.dex) == [c, 384, 493])   // the recommended: one; the raid's: any
+    #expect(d.act(.towerPick(slot: 1, uid: 9002)).cannot == nil && d.w.party().map(\.mon.dex) == [c, 493, 149])         // a legend for a legend
+    #expect(d.act(.towerPick(slot: 2, uid: 9003)).cannot == Tower.legendWhy && d.w.party().map(\.mon.dex) == [c, 493, 149])   // a second: refused
+    d.w.towerPick = [9001, 9002, 9003]                                                              // a pick from before 4.1: the tower won't start
+    #expect(d.w.party().map(\.mon.dex) == [384, 493, 150])
+    #expect(d.act(.tower).cannot == Tower.legendWhy && d.w.watts == 500 && !d.p.tower)
+    #expect(d.act(.towerPick(slot: 0, uid: firstUID)).cannot == nil && d.act(.tower).cannot == Tower.legendWhy)   // it comes down a step at a time
+    #expect(d.act(.towerPick(slot: 1, uid: 9004)).cannot == nil && d.w.party().map(\.mon.dex) == [c, 149, 150])
+    #expect(d.act(.tower).cannot == nil && d.w.watts == 450 && d.p.tower)
+    _ = d.fightOut(ball: false)
+    d.p.battle = nil; d.p.tower = true; d.w.towerStreak = 20; d.w.towerPick = [9001, 9002, 9003]  // between fights of a run: refused, the run kept
+    #expect(d.act(.tower).cannot == Tower.legendWhy && d.p.tower && d.w.towerStreak == 20)
+    #expect(d.act(.towerReset).cannot == nil && d.act(.tower).cannot == nil && d.w.towerStreak == 20 && d.p.battle?.mine.filter { Tower.isLegend($0.mon.dex) }.count == 1)
+
+    var w = Engine.fresh(now: t0, starter: firstUID); var r = Seeded(s: 6), signed = 0
+    for streak in [48, 50, 98, 100, 101, 149, 400] {                                                // from the 101st, its last a legend (the tycoon's 50th · 100th: its own)
+        w.towerStreak = streak; let f = w.towerFoes(&r), legend = Tower.legendFight(afterWins: streak)
+        #expect(legend == (streak >= 100) && f.foes.filter { Tower.isLegend($0.dex) }.count == (legend ? 1 : 0) && Tower.isLegend(f.foes[2].dex) == legend, "\(streak)")
+        if legend { #expect(f.trainer != Tower.tycoon && f.foes[2].perfectIVs == 6 && f.foes[2].item != nil && f.foes[2].level == Walk.towerLevel) }
+    }
+    w.towerStreak = 120
+    for _ in 0..<300 { let m = w.towerFoes(&r).foes[2]; if let sig = RaidRules.signature[m.dex] { #expect(m.moves.contains(sig)); signed += 1 } }   // its own move
+    #expect(signed > 0)
 }

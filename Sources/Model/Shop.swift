@@ -225,25 +225,36 @@ extension Walk {
     // MARK: Battle Tower: 3 against a trainer's 3, 50 W to enter, BP per win
     static let towerFee = 50
     /// The party: the companion and the two strongest others (walker + box) — or the player's own (towerPick), whoever of it is still here, topped up the same way.
-    /// ref -1 = companion, -2-i = caught[i], i = box[i].
-    func party() -> [(ref: Int, mon: Mon)] {
+    /// ref -1 = companion, -2-i = caught[i], i = box[i]. Topped up with one legend at most (Tower.legendMax, plan 17) unless `anyLegends` (the raid's
+    /// default, 3.6's duels); a pick stays as picked (one from before 4.1 may hold more: the tower then refuses to start, Engine.tower).
+    func party(anyLegends: Bool = false) -> [(ref: Int, mon: Mon)] {
         let others = caught.enumerated().map { (-2 - $0.offset, $0.element.points) } + box.enumerated().map { ($0.offset, $0.element.points) }
+        let picked = (towerPick ?? []).compactMap { ref(uid: $0) }
         var refs: [Int] = []
-        for r in (towerPick ?? []).compactMap({ ref(uid: $0) }) + [-1] + others.sorted(by: { $0.1 > $1.1 }).map(\.0) where refs.count < 3 && !refs.contains(r) { refs.append(r) }
+        for r in picked + [-1] + others.sorted(by: { $0.1 > $1.1 }).map(\.0) where refs.count < 3 && !refs.contains(r) {
+            if !anyLegends, !picked.contains(r), Tower.isLegend(mon(r)!.dex), legends(refs) >= Tower.legendMax { continue }
+            refs.append(r)
+        }
         return refs.map { (ref: $0, mon: mon($0)!) }
     }
+    /// How many of these (refs) are legends (Tower.isLegend).
+    func legends(_ refs: [Int]) -> Int { refs.filter { mon($0).map { Tower.isLegend($0.dex) } ?? false }.count }
     /// Who can go up the tower, for the lobby's picker: everyone (the companion, the walker's, the box) by level, then dex number (EXP alone would reorder it every step).
     var towerCandidates: [Int] {
         let all = [-1] + caught.indices.map { -2 - $0 } + Array(box.indices), key = all.map { r in let m = mon(r)!; return (-m.level, m.dex) }
         return all.indices.sorted { key[$0] != key[$1] ? key[$0] < key[$1] : $0 < $1 }.map { all[$0] }
     }
     /// The lobby's picker: the one at `r` goes in party slot `slot` (one already in the party swaps places with it). The recommended party again = no pick.
-    mutating func towerSet(_ slot: Int, _ r: Int) {
+    /// Refused (Tower.legendWhy) when it brings the party's legends over Tower.legendMax; a party already over it (a pick from before 4.1) may come down.
+    mutating func towerSet(_ slot: Int, _ r: Int) -> String? {
         var refs = party().map(\.ref)
-        guard refs.indices.contains(slot), mon(r) != nil else { return }
+        guard refs.indices.contains(slot), mon(r) != nil else { return nil }
+        let before = legends(refs)
         if let j = refs.firstIndex(of: r) { refs.swapAt(slot, j) } else { refs[slot] = r }
+        if legends(refs) > Tower.legendMax, legends(refs) > before { return Tower.legendWhy }
         towerPick = nil
         if refs != party().map(\.ref) { towerPick = refs.compactMap { id($0) } }
+        return nil
     }
     /// Writes a fight's EXP back to whoever took part, found by uid wherever they are now (gone or evolved = skipped), and queues what they learn.
     mutating func writeBack(_ uids: [Int], _ mons: [Mon]) {
@@ -287,12 +298,7 @@ extension Walk {
     /// The next trainer: 3 fully evolved non-legends at Lv.50, stronger by tier (towerTier).
     func towerFoes<R: RandomNumberGenerator>(_ r: inout R) -> (trainer: String, foes: [Mon]) {
         let tier = Walk.towerTier(towerStreak ?? 0), lv = Walk.towerLevel
-        if let team = Tower.tycoonTeams[(towerStreak ?? 0) + 1] {                                 // 3.9 (docs/plans/15 §3.3): the tycoon — 6V, 252/252, its items
-            return (Tower.tycoon, team.map { t -> Mon in
-                var m = Mon.wild(t.dex, level: lv, perfect: 6, &r); m.nature = t.nature; m.item = t.item
-                var ev = [6, 0, 0, 0, 0, 252]; ev[t.physical ? 1 : 3] = 252; m.evs = ev; m.known = m.towerMoves(); return m
-            })
-        }
+        if let team = Tower.tycoonTeams[(towerStreak ?? 0) + 1] { return (Tower.tycoon, team.map { Walk.tycoonMon($0, &r) }) }   // 3.9 (docs/plans/15 §3.3): the tycoon
         let legends = Set(courses.flatMap(\.legends) + Walk.legendShop.map(\.dex))           // shop legends too: never a tower foe
         let names = ["엘리트 트레이너", "베테랑", "아가씨", "등산가", "연구원", "격투가", "사이킥", "드래곤 조련사", "모범 소년", "레인저"]
         let he = ["민수", "현우", "도윤", "준호", "태양"], she = ["지은", "서연", "하은", "유나", "보라"]      // a one-sex class gets a name to match (its sprite: trainerFrame)
@@ -301,18 +307,22 @@ extension Walk {
         // 60 of our party's mean) with what they'd know at Lv.25 — still Lv.50. Simulated first-trainer wins: 0 → 32 % for a Lv.15 party, 6 → 62 % at Lv.25.
         let ours = party().map { baseStats[$0.mon.dex].reduce(0, +) }, mean = ours.isEmpty ? 400 : ours.reduce(0, +) / ours.count
         let near = (1...493).filter { d in !legends.contains(d) && d != 292 && abs(baseStats[d].reduce(0, +) - mean) <= 60 }
-        var foes = (0..<3).map { _ -> Mon in
-            if tier == 0, let d = near.randomElement(using: &r) { var m = Mon.wild(d, level: 25, &r); m.known = m.moves; m.level = lv; return m }
-            let d = pool.randomElement(using: &r)!, phys = baseStats[d][1] >= baseStats[d][3]           // 물리형 or 특수형
+        func make(_ d: Int) -> Mon {
+            let phys = baseStats[d][1] >= baseStats[d][3]                                           // 물리형 or 특수형
             var m = Mon.wild(d, level: lv, perfect: [0, 0, 0, 3, 5, 6][tier], &r)
             if (1...2).contains(tier) { m.ivs = (0..<6).map { _ in Int.random(in: 15...31, using: &r) } }
             if tier >= 2 { var ev = [0, 0, 0, 0, 0, 0]; ev[phys ? 1 : 3] = 252; ev[5] = 252; if tier >= 3 { ev[0] = 6 }; m.evs = ev }
             if tier >= 3 {
                 m.nature = (phys ? [3, 13] : [15, 10]).randomElement(using: &r)!                 // 고집 · 명랑 / 조심 · 겁쟁이
-                m.known = m.towerMoves()
+                m.known = m.withSignature(m.towerMoves())                                           // (its own move: only a legend has one, RaidRules.signature)
             }
             return m
         }
+        var foes = (0..<3).map { _ -> Mon in
+            if tier == 0, let d = near.randomElement(using: &r) { var m = Mon.wild(d, level: 25, &r); m.known = m.moves; m.level = lv; return m }
+            return make(pool.randomElement(using: &r)!)
+        }
+        if Tower.legendFight(afterWins: towerStreak ?? 0) { foes[2] = make(Tower.legendFoes.randomElement(using: &r)!) }   // 4.1 (plan 17): from the 101st, its last a legend
         let cls = names.randomElement(using: &r)!, given = cls == "아가씨" ? she : ["등산가", "연구원", "드래곤 조련사", "모범 소년"].contains(cls) ? he : he + she
         let who = cls + " " + given.randomElement(using: &r)!
         var used = Set<String>()                                                                    // held items from 14 wins on (3.8, the user), one of each (the tower's rule)
@@ -323,6 +333,11 @@ extension Walk {
             if let i = pool.filter({ !used.contains($0) }).randomElement(using: &r) { foes[k].item = i; used.insert(i) }
         }
         return (who, foes)
+    }
+    /// One of the tycoon's: Lv.50, 6V, 252/252, its nature and item, the tower's good four (a legend's own move among them, plan 17).
+    static func tycoonMon<R: RandomNumberGenerator>(_ t: (dex: Int, nature: Int, item: String, physical: Bool), _ r: inout R) -> Mon {
+        var m = Mon.wild(t.dex, level: towerLevel, perfect: 6, &r); m.nature = t.nature; m.item = t.item
+        var ev = [6, 0, 0, 0, 0, 252]; ev[t.physical ? 1 : 3] = 252; m.evs = ev; m.known = m.withSignature(m.towerMoves()); return m
     }
     /// A win: streak + 1, BP = 1 (+1 per full 7 already won), +3 on every 7th. Returns the BP.
     mutating func towerWin(tycoon: Bool = false) -> Int {

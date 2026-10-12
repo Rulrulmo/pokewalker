@@ -51,15 +51,34 @@ enum Tower {
         (70, [.deco(kind: "gold")]),
         (100, [.title(name: "타워 타이쿤"), .pickLegend(dex: Tower.legends, level: 70, shiny: true)]),
     ]
+    /// 4.1 (docs/plans/17, the user 10-12): past the table, every 50 from 150 on (150, 200, …, no end) — first time, by mail, as the rest.
+    static let endless = (from: 150, every: 50, gifts: [Gift.items(name: "금색병뚜껑", count: 1)])
+    /// The first-time reward at `wins` wins (the table's or an endless one); nil = none.
+    static func reward(_ wins: Int) -> [Gift]? {
+        rewards.first { $0.wins == wins }?.gifts ?? (wins >= endless.from && (wins - endless.from) % endless.every == 0 ? endless.gifts : nil)
+    }
+    /// Every first-time reward up to `best` wins, in order (the server's mailer).
+    static func rewards(upTo best: Int) -> [(wins: Int, gifts: [Gift])] {
+        rewards.filter { $0.wins <= best } + stride(from: endless.from, through: best, by: endless.every).map { (wins: $0, gifts: endless.gifts) }
+    }
     /// The 100-win pick: every legend the game has (courses, shops, the raid).
     static let legends = [144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251, 377, 378, 379, 380, 381, 382, 383, 384, 385, 386,
                           480, 481, 482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492, 493]
-    /// The tycoon: the 49th (은) and 99th (금) fights of a run (as the games' 21st and 49th), BP twice. Its teams here only (the user: 은 · 금).
-    static let tycoon = "타워 타이쿤", tycoonFights: Set<Int> = [49, 99]
+    /// The tycoon: the 50th (은) and 100th (금) fights of a run (4.1, the user; 3.9–4.0: the 49th · 99th, as the games' 21st and 49th), BP twice.
+    /// Its teams here only (the user: 은 · 금), a legend in each (plan 17: 은 루기아, Silver's; 금 as DP's 금 — 망나뇽 · 밀로틱 · 레지기가스).
+    static let tycoon = "타워 타이쿤", tycoonFights: Set<Int> = [50, 100]
     static let tycoonTeams: [Int: [(dex: Int, nature: Int, item: String, physical: Bool)]] = [
-        49: [(464, 3, "기합의띠", true), (350, 15, "먹다남은음식", false), (149, 3, "생명의구슬", true)],     // 은: 드사이돈 · 밀로틱 · 망나뇽
-        99: [(149, 3, "생명의구슬", true), (350, 15, "먹다남은음식", false), (376, 3, "구애머리띠", true)],   // 금: 망나뇽 · 밀로틱 · 메타그로스
+        50: [(464, 3, "기합의띠", true), (350, 15, "먹다남은음식", false), (249, 3, "생명의구슬", true)],     // 은: 거대코뿌리 · 밀로틱 · 루기아 (망나뇽's place)
+        100: [(149, 3, "생명의구슬", true), (350, 15, "먹다남은음식", false), (486, 3, "구애머리띠", true)],  // 금: 망나뇽 · 밀로틱 · 레지기가스
     ]
     /// 은 or 금 for the fight after `streak` wins (nil: not the tycoon's).
-    static func tycoonPrint(afterWins streak: Int) -> String? { streak + 1 == 49 ? "은" : streak + 1 == 99 ? "금" : nil }
+    static func tycoonPrint(afterWins streak: Int) -> String? { streak + 1 == 50 ? "은" : streak + 1 == 100 ? "금" : nil }
+    /// 4.1 (docs/plans/17, the user 10-12): one legend at most (any of `legends`, the mythical ones too) in the tower's three. The raid and duels take any.
+    static let legendMax = 1, legendWhy = "전설은 1마리만\n나갈 수 있어요"
+    static func isLegend(_ dex: Int) -> Bool { legendSet.contains(dex) }
+    private static let legendSet = Set(legends)
+    /// From the 101st fight of a run on (past the 금 tycoon), every trainer's last one is a legend from `legendFoes` (the user).
+    static let legendFrom = 101
+    static func legendFight(afterWins streak: Int) -> Bool { streak + 1 >= legendFrom }
+    static let legendFoes = legends
 }

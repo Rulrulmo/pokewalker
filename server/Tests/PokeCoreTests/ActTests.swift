@@ -749,6 +749,39 @@ extension SaveDB {
     #expect(card?.title == "타워 타이쿤" && card?.deco == "gold")
 }
 
+@Test func towerEndlessAndReset() async throws {                                                    // 4.1 (docs/plans/17): 150, 200, … then everyone from zero, once
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브")
+    var seq = 1, t = 60.0
+    func go(_ x: Act) async throws -> ActReply {
+        t += 1; defer { seq += 1 }
+        return try reply(await db.act(ActReq(id: "앨리스", session: a, seq: seq, act: x, app: "4.1"), now: base.addingTimeInterval(t)))
+    }
+    func titles() async throws -> [String] {
+        try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: "앨리스", session: a), now: base.addingTimeInterval(t)).body).mails.map(\.title)
+    }
+    _ = try await go(.steps)
+    _ = await act(db, "보브", b, 1, .steps, at: 61)
+    try await setWalk(db, "앨리스") { $0.towerBest = 251; $0.towerStreak = 251 }
+    let paid = try await go(.steps), mailed = try await titles()
+    #expect(paid.walk?.towerRewards == Tower.rewards.map(\.wins) + [150, 200, 250] && mailed.count == 11)
+    #expect(mailed.prefix(3) == ["250연승 달성 보상", "200연승 달성 보상", "150연승 달성 보상"])
+    try await setWalk(db, "앨리스") { $0.watts = 500 }
+    let run = try await go(.tower)                                                                     // a run on (a new one: streak 0), its fight going
+    #expect(run.out.battle?.trainer != nil)
+    let dry = try await db.towerReset(now: 100, dry: true), done = try await db.towerReset(now: 100, dry: false)
+    #expect(dry.contains("앨리스: streak 0 · best 251 · rewards 7,14,21,28,35,50,70,100,150,200,250 · a tower fight on (void)") && !dry.contains("보브") && dry.hasSuffix("1 trainer(s) would be reset (nothing changed: add --yes, with the service stopped)"))
+    #expect(done.hasSuffix("1 trainer(s) reset; tower_rewards emptied"))
+    let after = try await go(.steps)                                                                    // the back-pay sees best 0: nothing again
+    let w = try #require(after.walk), still = try await titles(), gone = try await go(.battle(cmd: .fight(slot: 0))), again = try await db.towerReset(now: 101, dry: true)
+    #expect(w.towerStreak == 0 && w.towerBest == 0 && w.towerRewards == [] && still.count == 11 && after.out.battle == nil)
+    #expect(gone.out.cannot != nil)                                                                    // the fight is gone
+    #expect(again.hasSuffix("0 trainer(s) would be reset (nothing changed: add --yes, with the service stopped)"))
+    try await setWalk(db, "앨리스") { $0.towerBest = 14 }                                              // from zero: 7 and 14 come again
+    let back = try await go(.steps)
+    #expect(back.walk?.towerRewards == [7, 14])
+}
+
 @Test func claimsBecomeMail() async throws {                                                         // 3.8's 받기 함, waiting at the update: mail
     let path = FileManager.default.temporaryDirectory.appendingPathComponent("pokeserver-test-\(UUID().uuidString).db").path
     defer { try? FileManager.default.removeItem(atPath: path) }

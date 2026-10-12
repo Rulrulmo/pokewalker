@@ -100,7 +100,7 @@ extension SaveDB {
             case _ where d.legacy:                                                                  // 3.6's: the tower's three each, on at once
                 guard d.b == key, old else { return "그 대전은 이제\n없어요" }
                 guard let theirs = try trainer(d.a)?.walk.flatMap(decodeWalk) else { return "그 대전은 이제\n없어요" }
-                func party(_ x: Walk) -> [Mon] { x.party().map { p -> Mon in var m = p.mon; if m.known == nil { m.known = m.moves }; m.level = Walk.towerLevel; return m } }
+                func party(_ x: Walk) -> [Mon] { x.party(anyLegends: true).map { p -> Mon in var m = p.mon; if m.known == nil { m.known = m.moves }; m.level = Walk.towerLevel; return m } }
                 var b = Battle(party: party(theirs), trainer: name, foes: party(w)); b.pvp = true
                 var g = SystemRandomNumberGenerator(); b.seed = g.next()
                 d.turns = [b.begin(weather: nil, &g)]; d.battle = b

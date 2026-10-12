@@ -121,7 +121,7 @@ extension SaveDB {
         let best = w.towerBest ?? 0
         guard best >= (Tower.rewards.first?.wins ?? .max) else { return }
         let paid = Set(try db.rows("SELECT wins FROM tower_rewards WHERE key = :k", ["k": .text(key)]).compactMap { $0.int("wins") })
-        for r in Tower.rewards where r.wins <= best && !paid.contains(r.wins) {
+        for r in Tower.rewards(upTo: best) where !paid.contains(r.wins) {                           // (4.1: 150, 200, … too)
             try db.rows("INSERT INTO tower_rewards (key, wins, at) VALUES (:k, :w, :now)", ["k": .text(key), "w": .int(r.wins), "now": .int(now)])
             try sendMail(key, kind: "tower", from: "배틀 타워", title: "\(r.wins)연승 달성 보상", body: "배틀 타워에서 처음으로 \(r.wins)연승에 닿았어요.", gifts: r.gifts, now: now)
         }

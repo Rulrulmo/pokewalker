@@ -29,6 +29,8 @@ let usage = """
       mail-log [<n>]                     the last mails sent, newest first (default 30)
       raid-runs [on | <unix>]            4.0 (docs/plans/16): when the raid's runs start for the team (on = now; test IDs have them always)
       raid-log [<n>]                     the last raid runs: who, the tier, the boss (★ shiny), bars down, won, balls left, caught (default 30)
+      tower-reset [--yes]                4.1 (docs/plans/17), once: every tower streak, best and first-time reward back to zero, runs ended
+                                         (without --yes: who, nothing changed; with it: stop the service first)
     --db: else $DB_PATH, else /var/lib/pokewalker/pokewalker.db
     """
 
@@ -144,6 +146,38 @@ extension SaveDB {
         let k = try key(id), copy = try walkText(id, rev: rev, reason: reason)
         let r = try adminWrite(k, { copy }, now: now)
         return "\(k): history (\(rev), \(reason)) is rev \(r.to) now (rev \(r.from) kept as admin)"
+    }
+
+    /// docs/plans/17 (4.1, the user — once, with that release): every trainer's Battle Tower from zero. The save's streak, best and first-time
+    /// rewards taken (towerStreak 0, towerBest 0, towerRewards []; rev + 1, the old one kept as admin), tower_rewards emptied, a run on ended
+    /// (a tower fight on: void). What was paid stays: BP, items, legends, 장식, 칭호, mail not claimed yet. One transaction; run it with the
+    /// service stopped (an act in between could write an old best back, and its rewards would mail again). dry: who, and nothing changed.
+    func towerReset(now: Int, dry: Bool) throws -> String {
+        try db.transaction {
+            var lines: [String] = [], n = 0
+            for row in try db.rows("SELECT t.key AS k, t.name AS name, t.walk AS walk, t.rev AS rev, p.state AS state FROM trainers t LEFT JOIN play p ON p.key = t.key ORDER BY t.key") {
+                guard let k = row.text("k"), let text = row.text("walk"), let w = decodeWalk(text), let rev = row.int("rev") else { continue }
+                var play = row.text("state").flatMap { try? JSONDecoder().decode(Play.self, from: Data($0.utf8)) }
+                let paid = try db.rows("SELECT wins FROM tower_rewards WHERE key = :k ORDER BY wins", ["k": .text(k)]).compactMap { $0.int("wins") }
+                let on = play?.tower == true, fight = on && play?.battle?.trainer != nil
+                guard (w.towerStreak ?? 0) != 0 || (w.towerBest ?? 0) != 0 || !(w.towerRewards ?? []).isEmpty || !paid.isEmpty || on else { continue }
+                n += 1
+                lines.append("\(row.text("name") ?? k): streak \(w.towerStreak ?? 0) · best \(w.towerBest ?? 0) · rewards \(paid.map(String.init).joined(separator: ","))"
+                             + (fight ? " · a tower fight on (void)" : on ? " · a run on (ended)" : ""))
+                if dry { continue }
+                guard let reset = try db.rows("SELECT json_set(walk, '$.towerStreak', 0, '$.towerBest', 0, '$.towerRewards', json('[]')) AS w FROM trainers WHERE key = :k",
+                                              ["k": .text(k)]).first?.text("w"), walkDecodes(reset) else { throw ServerError(description: "\(k): the reset save doesn't load — nothing changed") }
+                try db.rows("INSERT OR REPLACE INTO history (key, rev, reason, at, walk) VALUES (:k, :r, 'admin', :now, :w)", ["k": .text(k), "r": .int(rev), "now": .int(now), "w": .text(text)])
+                try db.rows("UPDATE trainers SET walk = :w, rev = :r, writer = 'admin' WHERE key = :k", ["w": .text(reset), "r": .int(rev + 1), "k": .text(k)])
+                if on, var p = play {
+                    if fight { p.battle = nil; p.party = nil }
+                    p.tower = false; play = p
+                    try db.rows("UPDATE play SET state = :s WHERE key = :k", ["s": .text(String(decoding: try JSONEncoder().encode(p), as: UTF8.self)), "k": .text(k)])
+                }
+            }
+            if !dry { try db.rows("DELETE FROM tower_rewards") }
+            return (lines + ["\(n) trainer(s)" + (dry ? " would be reset (nothing changed: add --yes, with the service stopped)" : " reset; tower_rewards emptied")]).joined(separator: "\n")
+        }
     }
 
     func set(_ id: String, path: String, value: String, now: Int) throws -> String {
@@ -377,6 +411,7 @@ public func run(_ arguments: [String]) async -> Int32 {
                 guard let at = a == "on" ? unixNow() : Int(a) else { return fail("raid-runs: on, or a unix time") }
                 out = try await db.raidRunsSet(at, now: unixNow())
             } else { out = try await db.raidRunsShow(now: unixNow()) }
+        case ("tower-reset", 0): out = try await db.towerReset(now: unixNow(), dry: !yes)
         case ("raid-log", 0), ("raid-log", 1):
             guard let n = rest.count > 0 ? Int(rest[0]) : 30 else { return fail("raid-log: <n> is a number") }
             out = try await db.raidLog(last: n)

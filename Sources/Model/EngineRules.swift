@@ -68,7 +68,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .tower: return tower()
         case .towerPick(let slot, let uid):
             guard let ref = w.ref(uid: uid), (0..<3).contains(slot) else { return "고를 수 없어요" }
-            w.towerSet(slot, ref); return nil
+            return w.towerSet(slot, ref)
         case .towerReset: w.towerPick = nil; return nil
         case .buy(let bp, let item, let legend, let shell, let qty): return buy(bp, item, legend, shell, qty)
         case .use(let item, let stat, let on): return use(item, stat, on)
@@ -275,7 +275,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         }
         guard (w.raidPower ?? 0) >= Engine.raidPowerCost else { return "파워가 부족하다\n(\(Engine.raidPowerCost.formatted())걸음마다 1칸)" }
         w.raidPower = (w.raidPower ?? 0) - Engine.raidPowerCost
-        let refs = party.map { $0.compactMap { w.ref(uid: $0) } } ?? w.party().map(\.ref)
+        let refs = party.map { $0.compactMap { w.ref(uid: $0) } } ?? w.party(anyLegends: true).map(\.ref)
         p.party = refs.map { w.id($0)! }                                                            // uids first: the fighters carry them, EXP goes back by them
         var b = Battle(wild: rb.boss, party: refs.compactMap { w.mon($0) }); b.seed = r.next()
         b.theirs += Array(repeating: Fighter(rb.boss), count: (rb.tier == nil ? Engine.raidBars : RaidRules.bars) - 1)   // a bar down: it stands up again
@@ -285,6 +285,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         return nil
     }
     mutating func tower() -> String? {
+        guard w.legends(w.party().map(\.ref)) <= Tower.legendMax else { return Tower.legendWhy }        // 4.1 (plan 17): a pick from before; a run goes on once it's changed
         if !p.tower { guard w.spend(Walk.towerFee) else { return "W가 부족하다\n(\(Walk.towerFee)W 필요)" }; w.towerStreak = 0; p.tower = true }
         p.party = w.party().map { w.id($0.ref)! }                                                   // uids first, so the fighters carry them
         let ours = w.party().map { x -> Mon in var m = x.mon; if m.known == nil { m.known = m.moves }; m.level = Walk.towerLevel; return m }   // all as Lv.50 copies
