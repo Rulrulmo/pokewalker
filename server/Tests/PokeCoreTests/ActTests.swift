@@ -924,7 +924,7 @@ extension SaveDB {
     }
 }
 
-@Test func raidBossOwnMove() async throws {                                                       // 16 §3.7: its own move from the level it learns it (★3 on), W43 on
+@Test func raidBossOwnMove() async throws {                                                       // 16 §3.7: its own move from the level it learns it (★3 on)
     var g = Seeded(s: 3)
     for dex in raidRotation {
         for t in RaidRules.tiers {
@@ -939,10 +939,10 @@ extension SaveDB {
     #expect(RaidRules.boss(383, RaidRules.tier(5)!, shiny: false, &g).moves == [414, 284, 76, 126])    // 땅가르기 → 분화
     let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
     _ = try await newTrainer(db, "zz430001")
-    let w42 = Date(timeIntervalSince1970: Double(raidOwnMoves - 3600)), w43 = Date(timeIntervalSince1970: Double(raidOwnMoves + 60))
+    let w42 = Date(timeIntervalSince1970: Double(raidRunsOpen - 3600)), w43 = Date(timeIntervalSince1970: Double(raidRunsOpen + 60))
     let a = try #require(try await db.raidStart("zz430001", tier: 4, app: "4.0", now: w42).boss)
-    let b = try #require(try await db.raidStart("zz430001", tier: 4, app: "4.0", now: w43).boss)
-    #expect(a.boss.dex == 249 && a.boss.moves == Mon.defaultMoves(249, 90) && b.boss.dex == 382 && b.boss.moves.contains(323))   // W42 as it began
+    let b = try #require(try await db.raidStart("zz430001", tier: 5, app: "4.0", now: w43).boss)
+    #expect(a.boss.dex == 249 && a.boss.moves == [177, 219, 105, 248] && b.boss.dex == 382 && b.boss.moves.contains(323))   // the server's: W42's 루기아 too (the user)
 }
 
 @Test func raidRunNoBlowAway() {                                                                 // a Lv.20 루기아 knows 날려버리기: in a run it can't end the fight

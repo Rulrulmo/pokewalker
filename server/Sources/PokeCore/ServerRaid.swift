@@ -144,8 +144,6 @@ let raidRunsOpen: Int = {
     var cal = Calendar(identifier: .iso8601); cal.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
     return Int(cal.date(from: DateComponents(weekOfYear: 43, yearForWeekOfYear: 2026))?.timeIntervalSince1970 ?? 0)
 }()
-/// From when a run's boss knows its own move (RaidRules.boss): W43, so W42's 루기아 ★4 · ★5 stay as the week began (plan 16 §3.7).
-let raidOwnMoves = raidRunsOpen
 let raidUpdate = "레이드가 새로워졌어요\n업데이트해 주세요", raidPendingWhy = "남은 볼이 있어요"
 
 extension SaveDB {
@@ -172,8 +170,7 @@ extension SaveDB {
         guard let t = RaidRules.tier(tier) else { return (nil, "난이도를\n골라 주세요") }
         var g = SystemRandomNumberGenerator()
         let shiny = Int.random(in: 0..<RaidRules.shinyOdds, using: &g) == 0
-        let boss = Int(now.timeIntervalSince1970) >= raidOwnMoves ? RaidRules.boss(raidDex(now), t, shiny: shiny, &g)
-            : Mon.wild(raidDex(now), level: t.level, shiny: shiny ? true : nil, perfect: t.perfect, &g)
+        let boss = RaidRules.boss(raidDex(now), t, shiny: shiny, &g)
         return (RaidBoss(week: raidWeek(key, now), boss: boss, left: 1, tier: t.tier), nil)
     }
     func raidRunsToday(_ key: String, now: Date) throws -> Int {
