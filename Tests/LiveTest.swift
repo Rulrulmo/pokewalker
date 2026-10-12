@@ -688,3 +688,62 @@ import Foundation
     print(failed == 0 ? "PASS live 3.8" : "FAIL \(failed)")
     return failed == 0
 }
+
+/// `--live-tower <id> <pin>` (4.1, plan 17): the tower's one legend against the real server, with a seeded test ID — box 뮤츠 · 루기아 · 망나뇽 ·
+/// 한카리아스 (+ others), a pick from before 4.1 holding two legends (뮤츠 · 루기아 · 망나뇽), W for a run. That pick can't start (legendWhy, no fee)
+/// and can't be sent as it is; it comes down to one; another legend is a shadow on the picker; a legend swaps in last; a second one sent anyway is
+/// refused; then a run starts (no legend at the 1st fight) and is given up. The strip from 7 (the reset's 0s).
+@MainActor func liveTowerTest(_ id: String, _ pin: String) -> Bool {
+    var failed = 0
+    func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-livetower-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
+    let c = Cloud(link: HTTPLink(), dir: tmp); h.texts = [id]; h.pins = [pin, pin, pin]
+    w.startCloud(c, file: tmp.appendingPathComponent("state.json"), bak: tmp.appendingPathComponent("state.json.bak"))
+    @discardableResult func run(_ secs: Double, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end { w.tick(Date()); if done() { return true }; Thread.sleep(forTimeInterval: 0.1) }
+        return done()
+    }
+    func settle() { run(20) { w.waiting == nil && c.inFlight == nil && c.queued == nil && c.out == nil } }
+    func says() -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func party() -> [Int] { w.state.party().map(\.mon.dex) }
+    func uid(_ dex: Int) -> Int { (w.state.box.first { $0.dex == dex } ?? w.state.caught.first { $0.dex == dex })?.uid ?? -1 }
+    func squad() -> Squad? { if case .squad(let q) = w.screen { return q }; return nil }
+    func cell(_ dex: Int) -> Int? { squad().flatMap { q in w.squadKeys(q).firstIndex { w.squadMon(q, $0)?.dex == dex } } }
+    func tap(_ dex: Int) { guard var q = squad(), let i = cell(dex) else { return }; q.at = i; w.screen = .squad(q); w.press(1) }   // ● at its cell (the pages don't matter)
+    check(run(40) { c.phase == .on && c.base != nil }, "live tower: \(id) logged in (\(h.asked))")
+    let seeded = [150, 249, 149, 445].allSatisfy { uid($0) >= 0 } && w.state.watts >= 2 * Walk.towerFee
+    check(seeded, "live tower: seeded — box \(w.state.box.map(\.dex)), \(w.state.watts) W, pick \(String(describing: w.state.towerPick))")
+    guard seeded else { print("FAIL \(failed)"); return false }
+    settle(); w.calmAt = .distantPast
+    let w0 = w.state.watts, old = party()
+    w.towerRun = false; w.screen = .tower(pick: nil); w.pageTap(5400); settle()
+    check(w.state.legends(w.state.party().map(\.ref)) <= 1 || (says() == Walker.noLegend && !w.inBattle && w.state.watts == w0),
+          "live tower: a pick from before 4.1 with two legends (\(old)) can't start — \(says()), no fee (\(w0) → \(w.state.watts) W)")
+    w.screen = .tower(pick: nil); w.pageTap(5410)
+    let mine = squad()?.picked.count ?? 0
+    if w.state.legends(w.state.party().map(\.ref)) > 1 { w.pageTap(8790); check(says() == Walker.noLegend, "live tower: … nor be sent as it is (the picker says why) — \(says())"); w.screen = .squad(squad() ?? Squad(kind: .tower, picked: [], at: 0)) }
+    w.towerPartyPick(); for _ in 0..<mine { w.pageTap(8740) }
+    tap(150); tap(149); tap(445); w.pageTap(8790); settle()
+    check(party() == [150, 149, 445], "live tower: down to one legend — 뮤츠 · 망나뇽 · 한카리아스 set (\(party()))")
+    w.towerPartyPick(); let shadow = squad().flatMap { q in cell(249).map { w.squadPane(q, Date()).squad?.cells[safe: $0 % SquadModel.perPage]?.look } } ?? nil
+    tap(249); let why = says(); if !why.isEmpty { w.press(1) }
+    check(shadow == 1 && why == Walker.noLegend, "live tower: with 뮤츠 in, 루기아 is a shadow and ● on it says why — \(why)")
+    w.towerPartyPick(); for _ in 0..<3 { w.pageTap(8740) }; tap(149); tap(445); tap(249); w.pageTap(8790); settle()
+    check(party() == [149, 445, 249] && says().isEmpty, "live tower: a legend for a legend (루기아 last, sent last) — \(party()) \(says())")
+    w.screen = .tower(pick: nil)
+    w.act(.towerPick(slot: 0, uid: uid(150)), back: .tower(pick: nil), Date()) { _, _ in .tower(pick: nil) }; settle()
+    check(says() == Walker.noLegend && party() == [149, 445, 249], "live tower: a second legend sent anyway — the server's refusal (\(says())), the party as it was")
+    w.screen = .tower(pick: nil); let strip = w.paneContent(Date()).tower, w1 = w.state.watts
+    w.pageTap(5400); run(30) { w.inBattle || !says().isEmpty }
+    let foes = w.fight?.theirs.map(\.mon.dex) ?? []
+    check(w.inBattle && foes.count == 3 && !foes.contains(where: Tower.isLegend) && w.state.watts == w1 - Walk.towerFee,
+          "live tower: one legend in, a run starts (\(w1) → \(w.state.watts) W; the 1st fight's \(foes.map { monNames[$0] }), no legend)")
+    if let b = w.fight { run(30) { if case .battle = w.screen { return true }; if case .moves = w.screen { return true }; return false }; w.screen = .forfeit(b, yes: true); w.press(1); settle() }
+    check(!w.inBattle && (w.state.towerStreak ?? 0) == 0, "live tower: given up — \(says())")
+    check(strip?.rewards.first?.wins == 7 || strip?.rewards.last?.more == true, "live tower: the strip — \(strip?.rewards.map { "\($0.got ? "✓" : "")\($0.wins)\($0.more ? "~" : "")" } ?? []) · \(strip?.next ?? "") (best \(w.state.towerBest ?? -1), rewards \(String(describing: w.state.towerRewards)))")
+    print(failed == 0 ? "PASS live tower" : "FAIL \(failed)")
+    return failed == 0
+}

@@ -35,6 +35,10 @@ if let i = CommandLine.arguments.firstIndex(of: "--live-hold"), i + 2 < CommandL
     guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-hold: a build run from the repository only"); exit(2) }
     exit(liveHoldTest(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2]) ? 0 : 1)
 }
+if let i = CommandLine.arguments.firstIndex(of: "--live-tower"), i + 2 < CommandLine.arguments.count {    // a dev build: 4.1's one legend in the tower with a seeded test ID (Tests/LiveTest.swift)
+    guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-tower: a build run from the repository only"); exit(2) }
+    exit(liveTowerTest(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2]) ? 0 : 1)
+}
 if let i = CommandLine.arguments.firstIndex(of: "--live-v38"), i + 3 < CommandLine.arguments.count {      // a dev build: 3.8's 받기 · 맡겨 키우기 · 대전 menu with two seeded test IDs (Tests/LiveTest.swift)
     guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-v38: a build run from the repository only"); exit(2) }
     exit(liveV38Test(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2], CommandLine.arguments[i + 3]) ? 0 : 1)
