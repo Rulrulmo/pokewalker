@@ -37,6 +37,12 @@ extension Walker {
         case .duelPick: return 3...3
         }
     }
+    /// 배틀 타워 (4.1, the user): one legend at most — while one is picked, another can't go in (its cell a shadow, ● says why); legends still swap.
+    func squadNoLegend(_ s: Squad, _ key: Int) -> Bool {
+        guard case .tower = s.kind, !s.picked.contains(key), let m = squadMon(s, key), Tower.isLegend(m.dex) else { return false }
+        return s.picked.filter { squadMon(s, $0).map { Tower.isLegend($0.dex) } ?? false }.count >= Tower.legendMax
+    }
+    static let noLegend = Tower.legendWhy.components(separatedBy: "\n")                        // (the server's refusal, as the LCD's lines)
     /// A duel's three already sent (the server's): nothing more to change.
     func squadSent(_ s: Squad) -> [Int]? { if case .duelPick = s.kind { return duel?.parties?.picked }; return nil }
     func squadOf(_ s: Squad) -> [Int] { squadSent(s) ?? s.picked }
@@ -46,7 +52,7 @@ extension Walker {
     /// A raid's last pick (still ours), else the tower's three.
     var raidLast: [Int] {
         let kept = raidPicked.filter { state.ref(uid: $0) != nil }
-        return kept.isEmpty ? state.party().compactMap { $0.mon.uid } : kept
+        return kept.isEmpty ? state.party(anyLegends: true).compactMap { $0.mon.uid } : kept      // (the tower's one-legend rule isn't the raid's)
     }
 
     // MARK: the page
@@ -55,14 +61,14 @@ extension Walker {
         let picked = squadOf(s), range = squadRange(s.kind), sent = squadSent(s) != nil
         let fifty: Bool = { if case .raid = s.kind { return false }; return true }()
         let page = Array(keys[min(first, n)..<min(n, first + per)])
-        let cells = page.compactMap { squadMon(s, $0) }.map { GridModel.Cell(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil) }
+        let cells = page.compactMap { k in squadMon(s, k).map { GridModel.Cell(dex: $0.dex, look: squadNoLegend(s, k) ? 1 : 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil) } }
         let strip = (0..<range.upperBound).map { i in picked[safe: i].flatMap { squadMon(s, $0) }.map { SquadModel.Slot(dex: $0.dex, shiny: $0.shiny == true, level: "Lv.\(fifty ? Walk.towerLevel : $0.level)") } }
         var m = SquadModel(title: "", note: "\(picked.count)/\(range.upperBound)", strip: strip, theirs: nil, tabs: Walker.squadSorts, tab: boxSort, boxTitle: "", cells: cells,
                            order: page.map { k in picked.firstIndex(of: k).map { $0 + 1 } }, sel: s.at < n && s.at >= first ? s.at - first : nil, first: first, count: n,
                            empty: "포켓몬이 없어요", go: nil, goSel: s.at >= n, hint: "")
         switch s.kind {
         case .tower:
-            m.title = "배틀 타워 파티"; m.hint = "\(range.upperBound)마리를 순서대로 골라 주세요 · 모두 Lv.50"
+            m.title = "배틀 타워 파티"; m.hint = "\(range.upperBound)마리를 순서대로 · 전설은 1마리 · 모두 Lv.50"
             if range.contains(picked.count) { m.go = "이 \(picked.count)마리로 정하기" }
         case .duelParty:
             m.title = "대전 파티"; m.hint = "3~6마리를 순서대로 골라 주세요 · 대전은 모두 Lv.50"
@@ -100,7 +106,8 @@ extension Walker {
         fb.text(title, 94, 15, 2, right: true, small: true)
         if let i { fb.text("\(i + 1)번째", 94, 26, 3, right: true, small: true) }
         if case .duelPick = s.kind, let l = duelLeft(now) { fb.text("\(l)초", 94, 37, 2, right: true, small: true) }
-        if squadSent(s) == nil { fb.text(i == nil ? "● 고르기" : "● 빼기", 94, 52, 2, right: true, small: true) }
+        if squadNoLegend(s, keys[s.at]) { fb.text(Walker.noLegend[0], 94, 52, 1, right: true, small: true) }                // (as 도구's picker: why, not ●)
+        else if squadSent(s) == nil { fb.text(i == nil ? "● 고르기" : "● 빼기", 94, 52, 2, right: true, small: true) }
     }
 
     // MARK: what you press
@@ -109,11 +116,14 @@ extension Walker {
         var s = s0; let keys = squadKeys(s), n = keys.count
         if k != 1 { s.at = ((min(s.at, n) + (k == 0 ? -1 : 1)) % (n + 1) + n + 1) % (n + 1); screen = .squad(s); return }
         if s.at >= n { squadGo(s, now); return }
-        squadToggle(&s, keys[s.at], n); screen = .squad(s)
+        squadToggle(&s, keys[s.at], n, now)
     }
-    func squadToggle(_ s: inout Squad, _ key: Int, _ n: Int) {
+    /// Picks or drops `key` and shows the squad (a second legend for the tower: says why instead).
+    func squadToggle(_ s: inout Squad, _ key: Int, _ n: Int, _ now: Date) {
+        defer { if case .squad = screen { screen = .squad(s) } }
         guard squadSent(s) == nil else { return }
         if let i = s.picked.firstIndex(of: key) { s.picked.remove(at: i); return }
+        if squadNoLegend(s, key) { screen = .say(Walker.noLegend, next: .squad(s), since: now); return }
         guard s.picked.count < squadRange(s.kind).upperBound else { host?.beep(); return }
         s.picked.append(key)
         if s.picked.count == min(n, squadRange(s.kind).upperBound) { s.at = n }                  // all in (or all there are): onto the button
@@ -127,8 +137,7 @@ extension Walker {
         case 8750..<8774:                                                                          // a first click looks (the LCD shows it), a click on it picks or drops it
             let at = min(s.at, max(0, n - 1)) / per * per + code - 8750
             guard let key = keys[safe: at] else { return }
-            if s.at == at { squadToggle(&s, key, n) } else { s.at = at }
-            screen = .squad(s)
+            if s.at == at { squadToggle(&s, key, n, now) } else { s.at = at; screen = .squad(s) }
         case 8780...8781:
             let pages = max(1, (n + per - 1) / per)
             s.at = min(max(0, n - 1), ((min(s.at, max(0, n - 1)) / per + (code == 8780 ? pages - 1 : 1)) % pages) * per); screen = .squad(s)
@@ -144,7 +153,10 @@ extension Walker {
             screen = .say(l, next: .squad(s), since: now); return
         }
         switch s.kind {
-        case .tower: towerCommit(s.picked, 0, back: .squad(s), now)
+        case .tower:
+            let legends = s.picked.filter { squadMon(s, $0).map { Tower.isLegend($0.dex) } ?? false }.count
+            guard legends <= Tower.legendMax else { screen = .say(Walker.noLegend, next: .squad(s), since: now); return }
+            towerCommit(s.picked, towerOrder(s.picked), back: .squad(s), now)
         case .duelParty:
             act(.duelParty(uids: s.picked), back: .squad(s), now) { _, now in .say(["대전 파티를", "정했다!"], next: .duel(.hub(tab: 0, sel: 0)), since: now) }
         case .raid:
@@ -167,10 +179,17 @@ extension Walker {
     }
     /// 배틀 타워's party (a click on the lobby's rows): the three now, then each slot set in turn (towerPick: one already in swaps places).
     func towerPartyPick() { screen = .squad(Squad(kind: .tower, picked: state.party().compactMap { $0.mon.uid }, at: 0)) }
-    func towerCommit(_ uids: [Int], _ k: Int, back: Screen, _ now: Date) {
-        guard k < uids.count else { screen = .tower(pick: nil); return }
-        if state.party()[safe: k]?.mon.uid == uids[k] { towerCommit(uids, k + 1, back: back, now); return }   // (already there)
-        act(.towerPick(slot: k, uid: uids[k]), back: back, now) { [weak self] _, now in self?.towerCommit(uids, k + 1, back: back, now); return nil }
+    /// The slots in the order they're sent: the legend's last, so the party never holds two on the way (a slot set to one not in it replaces
+    /// whoever was there; one in it swaps) — the non-legends first can only take legends out.
+    func towerOrder(_ uids: [Int]) -> [Int] {
+        let legend = uids.map { state.ref(uid: $0).flatMap { state.mon($0) }.map { Tower.isLegend($0.dex) } ?? false }
+        return uids.indices.filter { !legend[$0] } + uids.indices.filter { legend[$0] }
+    }
+    func towerCommit(_ uids: [Int], _ order: [Int], back: Screen, _ now: Date) {
+        guard let k = order.first else { screen = .tower(pick: nil); return }
+        let rest = Array(order.dropFirst())
+        if state.party()[safe: k]?.mon.uid == uids[k] { towerCommit(uids, rest, back: back, now); return }   // (already there)
+        act(.towerPick(slot: k, uid: uids[k]), back: back, now) { [weak self] _, now in self?.towerCommit(uids, rest, back: back, now); return nil }
     }
     /// 대전 파티 (from the 대전 menu): the registered ones first.
     func duelPartyPick() {

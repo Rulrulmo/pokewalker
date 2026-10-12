@@ -71,7 +71,15 @@ extension Walker {
     }
     /// A streak reward mailed already (the save's towerRewards; a server before 3.9: whatever the best streak passed).
     func towerGot(_ wins: Int) -> Bool { state.towerRewards.map { $0.contains(wins) } ?? false }
-    var towerNextReward: (wins: Int, gifts: [Gift])? { Tower.rewards.first { !towerGot($0.wins) } }
+    var towerNextReward: (wins: Int, gifts: [Gift])? { Tower.rewards.first { !towerGot($0.wins) } ?? (towerNextEndless, Tower.endless.gifts) }
+    /// The lobby's strip, 8 cells: the fixed rewards, and (4.1) the next of every 50 from 150 at the end once the first (7) is got — it slides in for it.
+    var towerStrip: [TowerModel.Reward] {
+        let all = Tower.rewards.map { TowerModel.Reward(wins: $0.wins, short: Walker.rewardShort($0.gifts), got: towerGot($0.wins)) }
+            + [.init(wins: towerNextEndless, short: Walker.rewardShort(Tower.endless.gifts), got: false, more: true)]
+        return all[0].got ? Array(all.dropFirst()) : Array(all.dropLast())
+    }
+    /// 4.1 (the user): after the fixed ones, every 50 wins from 150 — the first of them not mailed yet.
+    var towerNextEndless: Int { var n = Tower.endless.from; while towerGot(n) { n += Tower.endless.every }; return n }
     static func decoName(_ k: String) -> String { k == "gold" ? "트레이너 카드 금장식" : "트레이너 카드 은장식" }
     /// What a gift's 받기 says.
     func giftLine(_ g: Gift) -> String {

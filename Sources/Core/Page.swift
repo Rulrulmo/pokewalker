@@ -595,7 +595,7 @@ extension Page {
             hits.append((rc, 5410 + i))
         }
         let go = r(X0, 307, X1 - X0 - 64, 36), out = r(X1 - 59, 307, 59, 36)
-        c.fill(.rounded(go, 12 * K), m.tycoon != nil ? Ink.gold : Ink.red); c.say(m.tycoon != nil ? "타워 타이쿤에게 도전" : m.run ? "다음 상대" : "도전 · \(m.fee)W", go.midX, go.midY, font(m.tycoon != nil ? 11.5 : 13, .bold), .white, 0.5, maxW: go.width - x(8)); hits.append((go, 5400))   // 3.9: the 49th / 99th fight's, in gold
+        c.fill(.rounded(go, 12 * K), m.tycoon != nil ? Ink.gold : Ink.red); c.say(m.tycoon != nil ? "타워 타이쿤에게 도전" : m.run ? "다음 상대" : "도전 · \(m.fee)W", go.midX, go.midY, font(m.tycoon != nil ? 11.5 : 13, .bold), .white, 0.5, maxW: go.width - x(8)); hits.append((go, 5400))   // 3.9: the tycoon's fight (Tower.tycoonFights), in gold
         c.fill(.rounded(out, 12 * K), Ink.tile); c.say("나가기", out.midX, out.midY, font(11, .bold), Ink.ink, 0.5); hits.append((out, 5401))
         guard !m.rewards.isEmpty else { return }                                                   // 3.9 (15 §6 E): the streak rewards — got ticked green, the next ringed red
         c.say(m.next, x(X0 + 2), y(356), font(9, .semibold), Ink.sub, maxW: x(X1 - X0 - 4))
@@ -603,7 +603,8 @@ extension Page {
         for (i, rw) in m.rewards.enumerated() {
             let rc = r(X0 + CGFloat(i) * (cw + gap), 364, cw, 30), p = Path.rounded(rc, 7 * K)
             c.fill(p, rw.got ? Ink.tint(Ink.green, 0.16) : Ink.tile); if i == nextAt { c.stroke(p, Ink.red, width: 1.3 * K) }
-            c.say((rw.got ? "✓" : "") + "\(rw.wins)", rc.midX, rc.minY + x(10), font(9, .bold), rw.got ? Ink.green : i == nextAt ? Ink.red : Ink.ink, 0.5)
+            let top = (rw.got ? "✓" : "") + "\(rw.wins)" + (rw.more ? "~" : "")                             // more: "150~" (every 50 on)
+            c.say(top, rc.midX, rc.minY + x(10), font(top.count >= 4 ? 8 : 9, .bold), rw.got ? Ink.green : i == nextAt ? Ink.red : Ink.ink, 0.5)
             c.say(rw.short, rc.midX, rc.minY + x(22), font(6.5, .semibold), rw.got ? Ink.green : Ink.sub, 0.5, maxW: rc.width - x(2))
         }
     }
@@ -900,9 +901,9 @@ extension Page {
     }
     // MARK: 3.8's picks in order (14 §4–5): the strip (who goes, in order), a duel's other six, ours numbered, the button
     /// One Pokémon in a slot or cell: its icon (snapped), ★ for 이로치.
-    func monIcon(_ dex: Int, shiny: Bool, _ cell: CGRect, side: CGFloat, lift: CGFloat = 0) {
+    func monIcon(_ dex: Int, shiny: Bool, _ cell: CGRect, side: CGFloat, lift: CGFloat = 0, shadow: Bool = false) {
         let scale = c.scale, snap = { (v: CGFloat) in (v * scale).rounded() / scale }
-        c.image(iconImage(dex), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: 1)
+        c.image(iconImage(dex, shadow: shadow), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: shadow ? 0.6 : 1)
         if shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
     }
     /// A row of slots (3 or 6): each numbered, its Pokémon and level, or empty; a click on a filled one = code + i.
@@ -939,7 +940,7 @@ extension Page {
             let d = x(11), b = CGRect(x: cell.minX + x(2), y: cell.minY + x(2), width: d, height: d); c.fill(.oval(b), Ink.red); c.say("\(o)", b.midX, b.midY, font(7, .bold), .white, 0.5)
         } else {
             if looked { c.stroke(.rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K), Ink.faint, width: 1 * K) }
-            monIcon(e.dex, shiny: false, cell, side: 32 * K)
+            monIcon(e.dex, shiny: false, cell, side: 32 * K, shadow: e.look == 1)                  // 1: can't be picked here (as the 도구 picker's)
         }
         if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
         if e.held { pixelArt(gem, gemPal, CGPoint(x: cell.maxX - x(6), y: cell.maxY - x(6)), 1.4 * K) }

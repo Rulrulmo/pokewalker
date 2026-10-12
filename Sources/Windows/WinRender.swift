@@ -129,6 +129,9 @@ import Foundation
     take("squad_party", on: tme) { v in v.duelOn = false; v.screen = .squad(Squad(kind: .duelParty, picked: Array(wu.prefix(4)), at: 6)) }
     take("squad_tower", on: tme) { v in v.screen = .squad(Squad(kind: .tower, picked: v.state.party().compactMap { $0.mon.uid }, at: 4)) }
     take("squad_raid", on: tme) { v in v.screen = .squad(Squad(kind: .raid, picked: [wu[3], wu[0]], at: 3)) }
+    let lme = online({ var s = base(); var r = Seeded(s: 9); s.box = [150, 249, 382, 445, 6, 130, 384, 248].enumerated().map { var m = Mon.wild($1, level: 50, &r); m.uid = 900 + $0; return m }; return s }())   // 4.1: one legend
+    take("squad_tower_legend", on: lme) { v in let q = Squad(kind: .tower, picked: [900, 903], at: 0)
+        v.screen = .squad(Squad(kind: .tower, picked: q.picked, at: v.squadKeys(q).firstIndex { v.squadMon(q, $0)?.dex == 249 } ?? 0)) }
     let six38 = Array(tme.state.box.prefix(6)).map { m -> Mon in var m = m; m.level = 50; return m }
     let theirs38 = [94, 448, 130, 65, 6, 149].map { DuelMon(dex: $0, female: false, shiny: $0 == 130) }
     take("squad_pick", on: tme) { v in v.duelOn = true; v.duel = DuelView(id: 9, state: "picking", opponent: "민수", challenger: false, deadline: now + 38, parties: DuelParties(mine: six38, theirs: theirs38, picked: nil, theyPicked: true))
@@ -154,7 +157,8 @@ import Foundation
     take("learn") { v in v.state.learning = [v.state.id(-1)!, 87]; v.screen = .learn(sel: 1) }
     take("card_0") { v in v.screen = .card(0) }
     take("card_deco") { v in v.state.deco = "gold"; v.state.titles = ["타워 타이쿤"]; v.screen = .card(0) }                       // 3.9 (15 §6 C · E)
-    take("tower_strip") { v in v.state.towerBest = 26; v.state.towerRewards = [7, 14, 21]; v.towerRun = true; v.state.towerStreak = 48; v.screen = .tower(pick: nil) }
+    take("tower_strip") { v in v.state.towerBest = 26; v.state.towerRewards = [7, 14, 21]; v.towerRun = true; v.state.towerStreak = Tower.tycoonFights.min()! - 1; v.screen = .tower(pick: nil) }
+    take("tower_strip_endless") { v in v.state.towerBest = 163; v.state.towerRewards = Tower.rewards.map(\.wins) + [150]; v.towerRun = true; v.state.towerStreak = 163; v.screen = .tower(pick: nil) }   // 4.1: 200~ next
     take("battle_size3", size: 3) { v in let f = wildFight(v); still(v, "foe 0", 6); v.screen = .battle(f.b, sel: 0) }
     return n
 }

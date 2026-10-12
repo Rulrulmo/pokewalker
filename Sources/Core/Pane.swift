@@ -101,7 +101,7 @@ struct RelearnModel: Equatable {
 struct TowerModel: Equatable {
     struct Member: Equatable { var dex: Int; var name: String; var level: Int; var shiny = false }
     var run: Bool; var streak, best, bp, fee: Int; var party: [Member]; var custom = false   // custom = the player's party, not the recommended one (3.8.3: picked on the 포켓몬 menu's grid)
-    struct Reward: Equatable { var wins: Int; var short: String; var got: Bool }                // 3.9 (15 §6 E): the streak rewards — got = mailed (Walk.towerRewards)
+    struct Reward: Equatable { var wins: Int; var short: String; var got: Bool; var more = false }   // 3.9 (15 §6 E): the streak rewards — got = mailed (Walk.towerRewards); more: 4.1's every 50 from 150 (its next one)
     var rewards: [Reward] = []; var next = ""; var tycoon: String? = nil                       // next: the next reward in words; tycoon: 은 / 금 when the next fight is the tycoon's
 }
 /// 코스: every course, a page of five (the pick's picture is on the LCD). note = what opens a locked one; go = the button (nil: locked, or walking it now).

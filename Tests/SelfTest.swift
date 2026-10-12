@@ -991,6 +991,30 @@ import AppKit                                                                   
     serve(tp) { $0.box.remove(at: 1) }; let twGone = tdex()
     tp.pageTap(5420); drain(tp); let twBack = tdex(), twPlain = tp.state.towerPick == nil && tp.paneContent(Date()).tower?.custom == false
     check(twSaved == [4, 7, 16] && twGone == [7, 16, 25] && twBack == [25, 1, 16] && twPlain, "… kept in the save, by who they are (one let go: the rest stay, topped up as recommended); 추천으로 goes back", "\(String(describing: twSaved)) \(twGone) \(twBack)")
+    // 4.1 (the user): one legend at most in the tower's three — another is a shadow, ● on it says why; legends swap; the legend's slot is sent last
+    let tl = online({ var s = Walk(); s.companion = Mon(dex: 25, level: 10, female: false)
+        s.box = [Mon(dex: 150, level: 70, female: false), Mon(dex: 249, level: 60, female: false), Mon(dex: 1, level: 30, female: false), Mon(dex: 4, level: 20, female: false)]; return s }())
+    func tlq() -> SquadModel? { tl.paneContent(Date()).squad }
+    func tlSay() -> [String]? { if case .say(let l, let next, _) = tl.screen { tl.screen = next; return l }; return nil }
+    tl.screen = .tower(pick: nil); tl.pageTap(5410); tl.pageTap(8740); tl.pageTap(8740); tl.pageTap(8740)
+    let tlCells = tlq()?.cells.map(\.dex) ?? []                                                   // 번호순: 1 4 25 150 249
+    pickAt(tl, tlCells.firstIndex(of: 150)!); let tlShadow = tlq()?.cells.map(\.look), tlHint = tlq()?.hint
+    pickAt(tl, tlCells.firstIndex(of: 249)!); let tlWhy = tlSay(), tlKept = tlq()?.strip.compactMap { $0?.dex }
+    var tlFb = FB(); if case .squad(let q) = tl.screen { tl.squadLCD(&tlFb, q, Date()) }
+    pickAt(tl, tlCells.firstIndex(of: 150)!); pickAt(tl, tlCells.firstIndex(of: 249)!); pickAt(tl, tlCells.firstIndex(of: 1)!); pickAt(tl, tlCells.firstIndex(of: 4)!)
+    let tlSwap = tlq()?.strip.compactMap { $0?.dex }, tlOpen = tlq()?.cells.map(\.look)
+    tl.pageTap(8790); drain(tl); drain(tl); drain(tl); let tlParty = tl.state.party().map(\.mon.dex)
+    tl.pageTap(5410); tl.pageTap(8740); tl.pageTap(8740); tl.pageTap(8740)
+    for d in [150, 25, 4] { pickAt(tl, tlCells.firstIndex(of: d)!) }
+    let tlOrder: [Int] = { if case .squad(let q) = tl.screen { return tl.towerOrder(q.picked) }; return [] }()
+    tl.pageTap(8790); drain(tl); drain(tl); drain(tl); let tlParty2 = tl.state.party().map(\.mon.dex)
+    let tlLugia = tl.state.box.first { $0.dex == 249 }!.uid!
+    tl.act(.towerPick(slot: 1, uid: tlLugia), back: .tower(pick: nil), Date()) { _, _ in .tower(pick: nil) }; drain(tl)
+    let tlRefused: [String]? = { if case .say(let l, _, _) = tl.screen { return l }; return nil }(), tlParty3 = tl.state.party().map(\.mon.dex)
+    check(tlShadow == [2, 2, 2, 2, 1] && tlHint?.contains("전설은 1마리") == true && tlWhy == Walker.noLegend && tlKept == [150] && tlSwap == [249, 1, 4] && tlOpen == [2, 2, 2, 1, 2]
+          && tlParty == [249, 1, 4] && tlOrder == [1, 2, 0] && tlParty2 == [150, 25, 4] && tlRefused == Walker.noLegend && tlParty3 == [150, 25, 4],
+          "배틀 타워 (4.1): one legend at most — with 뮤츠 picked 루기아 is a shadow and ● on it says why (nothing added); dropping 뮤츠 opens it (legends swap); the legend's slot goes last ([루기아 1 4] → [뮤츠 25 4] never holds two on the way); a second legend sent anyway: the server's refusal, said",
+          "\(String(describing: tlShadow)) \(String(describing: tlWhy)) \(String(describing: tlKept)) \(String(describing: tlSwap)) \(String(describing: tlOpen)) \(tlParty) \(tlOrder) \(tlParty2)")
     // 1.3: the walker's team, the stickers, 코스, 배틀 속도, 특훈, 중복 놓아주기
     let nwSave: Walk = { var s = Walk(); s.watts = 500; s.earned = 100_000; s.caught = [Mon(dex: 16, level: 12, female: false)]; s.box = [Mon(dex: 19, level: 8, female: false)]; return s }()
     let nf = online(nwSave, rng: 41); nf.openFeature("포켓 레이더"); drain(nf)

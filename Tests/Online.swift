@@ -97,24 +97,34 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     tc.calmAt = .distantPast; tc.pageTap(5400); drain(tc)
     check(clickedThrough && tc.inBattle, "3.8.6: a click on 다음 상대 under 연승! ends the message, not the next fight from it; a click after starts it", "\(clickedThrough) \(tc.inBattle)")
 
-    // 3.9 (15 §6 E): the streak rewards on the lobby; a win reaching 7 mails its reward (said with the win); the tycoon at the 49th (은), BP twice
+    // 3.9 (15 §6 E): the streak rewards on the lobby; a win reaching 7 mails its reward (said with the win); the tycoon at its first fight (은; 4.1: the 50th), BP twice
     let rw = online({ var s = Walk(); s.watts = 100; s.companion = strong; s.towerStreak = 6; s.towerBest = 6; return s }(), rng: 6)
     rw.towerRun = true; rw.screen = .tower(pick: nil); let strip0 = rw.paneContent(Date()).tower
     var r7 = Battle(party: [rw.state.companion], trainer: "엘리트 x", foes: [Mon(dex: 10, level: 2, female: false)]); r7.theirs[0].hp = 1
     fightOn(rw, r7, tower: true); rw.screen = .moves(r7, sel: 0); rw.press(1); drain(rw); playOut(rw)
     let said7 = says(rw); rw.press(1); let strip7 = rw.paneContent(Date()).tower, lcd7 = rw.compose(Date()).runs.map(\.s)
-    check(strip0?.rewards.map(\.wins) == [7, 14, 21, 28, 35, 50, 70, 100] && strip0?.rewards.allSatisfy { !$0.got } == true && strip0?.next == "다음 보상 7연승 · 이상한사탕 ×3"
-          && said7 == ["7연승!", "+\({ var x = Walk(); x.towerStreak = 6; return x.towerWin() }()) BP", "우편함에 보상이 왔다"] && strip7?.rewards.first?.got == true && strip7?.next == "다음 보상 14연승 · 지닌 도구 1개 고르기"
+    check(strip0?.rewards.map(\.wins) == [7, 14, 21, 28, 35, 50, 70, 100] && strip0?.rewards.contains(where: \.more) == false && strip0?.rewards.allSatisfy { !$0.got } == true && strip0?.next == "다음 보상 7연승 · 이상한사탕 ×3"
+          && said7 == ["7연승!", "+\({ var x = Walk(); x.towerStreak = 6; return x.towerWin() }()) BP", "우편함에 보상이 왔다"] && strip7?.rewards.map(\.wins) == [14, 21, 28, 35, 50, 70, 100, 150] && strip7?.rewards.last?.more == true && strip7?.next == "다음 보상 14연승 · 지닌 도구 1개 고르기"
           && { drain(rw); return rw.mails.contains { $0.title == "7연승 달성 보상" } }() && lcd7.contains("다음 보상 14연승") && rw.state.towerRewards == [7],
-          "3.9 tower: the lobby's strip (7 … 100) and the next reward; a win reaching 7 → 7연승! +4 BP / 우편함에 보상이 왔다 (its mail, read next), ticked; the LCD says the next", "\(said7) \(String(describing: strip7?.next)) \(lcd7)")
-    serve(rw) { $0.towerStreak = 48; $0.towerBest = 48 }; rw.screen = .tower(pick: nil); let lobby48 = rw.paneContent(Date()).tower
+          "3.9 tower: the lobby's strip (7 … 100) and the next reward; a win reaching 7 → 7연승! +4 BP / 우편함에 보상이 왔다 (its mail, read next); 4.1: then the strip slides (14 … 100, 150…); the LCD says the next", "\(said7) \(String(describing: strip7?.next)) \(lcd7)")
+    // 4.1 (the user): after 100, every 50 wins (150, 200, …) a 금색병뚜껑, once — the strip's last cell is the next of them, the line says so
+    let rwE = online({ var s = Walk(); s.companion = strong; s.towerStreak = 0; s.towerBest = 210; return s }())
+    rwE.act(.towerReset, back: .tower(pick: nil)) { _, _ in .tower(pick: nil) }; drain(rwE); drain(rwE); let stripE = rwE.paneContent(Date()).tower   // (any act: the server mails what's reached)
+    let mailedE = { let (srv, key) = server(rwE); return (srv.postBox[key] ?? []).filter { $0.kind == "tower" }.map(\.title) }()
+    check(rwE.state.towerRewards == Tower.rewards.map(\.wins) + [150, 200] && mailedE.contains("150연승 달성 보상") && mailedE.contains("200연승 달성 보상") && !mailedE.contains("250연승 달성 보상")
+          && stripE?.rewards.last.map { ($0.wins, $0.more, $0.got, $0.short) } ?? (0, false, true, "") == (250, true, false, "금뚜껑") && stripE?.next == "다음 보상 250연승 · 금색병뚜껑 (이후 50연승마다)"
+          && rwE.compose(Date()).runs.map(\.s).contains("다음 보상 250연승"),
+          "4.1 tower: every 50 wins from 150 mails a 금색병뚜껑 once (150 · 200 at best 210); the strip's 9th cell is the next (250…), the line adds 이후 50연승마다",
+          "\(String(describing: rwE.state.towerRewards)) \(mailedE) \(String(describing: stripE?.rewards.last)) \(String(describing: stripE?.next))")
+    let ty0 = Tower.tycoonFights.min()! - 1                                                       // the wins before the tycoon's first fight
+    serve(rw) { $0.towerStreak = ty0; $0.towerBest = ty0 }; rw.screen = .tower(pick: nil); let lobby48 = rw.paneContent(Date()).tower
     rw.calmAt = .distantPast; rw.press(1); drain(rw)
     let tycoonFight = rw.fight?.trainer == Tower.tycoon, tycoonTitle = rw.title()
     var r49 = Battle(party: [rw.state.companion], trainer: Tower.tycoon, foes: [Mon(dex: 10, level: 2, female: false)]); r49.theirs[0].hp = 1
     fightOn(rw, r49, tower: true); rw.screen = .moves(r49, sel: 0); rw.press(1); drain(rw); playOut(rw)
     check(lobby48?.tycoon == "은" && tycoonFight && tycoonTitle.title == "타워 타이쿤 (은)" && tycoonTitle.meta.hasPrefix("타이쿤전 · 남은")
-          && says(rw).first == "타워 타이쿤을 이겼다!" && says(rw).dropFirst().first == "49연승! +\({ var x = Walk(); x.towerStreak = 48; return x.towerWin(tycoon: true) }()) BP" && trainerFrame(Tower.tycoon) == "palmer" && frameNames.last == "palmer" && frameData.count == frameNames.count * 3245,
-          "3.9 the tycoon: after 48 wins the lobby's gold 타워 타이쿤에게 도전; its fight (타워 타이쿤 (은) · 타이쿤전, palmer); beaten → 타워 타이쿤을 이겼다! and BP twice", "\(String(describing: lobby48?.tycoon)) \(tycoonTitle) \(says(rw))")
+          && says(rw).first == "타워 타이쿤을 이겼다!" && says(rw).dropFirst().first == "\(ty0 + 1)연승! +\({ var x = Walk(); x.towerStreak = ty0; return x.towerWin(tycoon: true) }()) BP" && trainerFrame(Tower.tycoon) == "palmer" && frameNames.last == "palmer" && frameData.count == frameNames.count * 3245,
+          "3.9 the tycoon: before its first fight the lobby's gold 타워 타이쿤에게 도전; its fight (타워 타이쿤 (은) · 타이쿤전, palmer); beaten → 타워 타이쿤을 이겼다! and BP twice", "\(String(describing: lobby48?.tycoon)) \(tycoonTitle) \(says(rw))")
 
     // the bag: a candy that levels into an evolution, a vitamin, a 진화의 돌, 전부 팔기; 중복 놓아주기
     var rat = Mon(dex: 19, level: 19, female: false); rat.exp = expTable[growthRate[19]][19]

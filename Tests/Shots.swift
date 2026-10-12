@@ -283,6 +283,12 @@ import AppKit
     take("squad_party_full", fme) { v in v.screen = .squad(Squad(kind: .duelParty, picked: [v.state.companion.uid!] + Array(uids.prefix(5)), at: v.squadKeys(Squad(kind: .duelParty, picked: [], at: 0)).count)) }
     take("squad_tower", fme) { v in v.duelOn = false; v.screen = .squad(Squad(kind: .tower, picked: v.state.party().compactMap { $0.mon.uid }, at: 4)) }
     take("squad_raid", fme) { v in v.screen = .squad(Squad(kind: .raid, picked: [uids[3], uids[0]], at: 3)) }
+    // 4.1: the tower's one legend — 뮤츠 in, the other legends shadows; the cursor on 루기아 (the LCD says why)
+    let lme = online({ var s = base(); var r = Seeded(s: 9); s.box = [150, 249, 382, 445, 6, 130, 384, 248].enumerated().map { var m = Mon.wild($1, level: 50, &r); m.uid = 900 + $0; return m }; return s }())
+    let lUids = lme.state.box.compactMap(\.uid)
+    take("squad_tower_legend", lme) { v in v.duelOn = false
+        let keys = v.squadKeys(Squad(kind: .tower, picked: [], at: 0)), at = keys.firstIndex { v.squadMon(Squad(kind: .tower, picked: [], at: 0), $0)?.dex == 249 } ?? 0
+        v.screen = .squad(Squad(kind: .tower, picked: [lUids[0], lUids[3]], at: at)) }
     let six = Array(fme.state.box.prefix(6)).map { m -> Mon in var m = m; m.level = 50; return m }
     let theirs = [DuelMon(dex: 94, female: false, shiny: false), DuelMon(dex: 448, female: true, shiny: false), DuelMon(dex: 130, female: false, shiny: true),
                   DuelMon(dex: 65, female: false, shiny: false), DuelMon(dex: 6, female: false, shiny: false), DuelMon(dex: 149, female: false, shiny: false)]
@@ -336,7 +342,7 @@ import AppKit
         v.animOn = ("foe 0", 6, Date().addingTimeInterval(-60)); v.fight = b; v.screen = .battle(b, sel: 1)
     }
     // 3.9 (15 §6 C · E): 장식 · 칭호 (my card, the friends' list, a friend's card), the tower's strip, the tycoon (its lobby, intro, fight in 은 and 금, the win)
-    let dsrv = FakeCloud(), dme = online({ var s = base(); s.deco = "gold"; s.titles = ["타워 타이쿤"]; s.towerBest = 26; s.towerStreak = 48; return s }(), server: dsrv)
+    let dsrv = FakeCloud(), dme = online({ var s = base(); s.deco = "gold"; s.titles = ["타워 타이쿤"]; s.towerBest = 26; s.towerStreak = Tower.tycoonFights.min()! - 1; return s }(), server: dsrv)
     for (k, f) in [("민수", "gold", "타워 타이쿤"), ("지은", "silver", ""), ("도윤", "", "")].enumerated() {
         var w = Walk(), r = Seeded(s: UInt64(k + 70)); w.companion = Mon.wild([6, 282, 448][k], level: 50, &r); w.deco = f.1.isEmpty ? nil : f.1; w.titles = f.2.isEmpty ? nil : [f.2]
         w.towerBest = [100, 50, 12][k]; w.today = [8_200, 5_100, 900][k]
@@ -350,11 +356,30 @@ import AppKit
     let sme = online({ var s = base(); s.deco = "silver"; s.towerBest = 8; return s }())
     take("card_deco_silver", sme) { v in v.screen = .card(0) }
     take("tower_strip", sme) { v in v.state.towerRewards = [7]; v.towerRun = false; v.screen = .tower(pick: nil) }
-    let tyb = Battle(party: dme.state.party().map(\.mon), trainer: Tower.tycoon, foes: [Mon(dex: 464, level: 50, female: false), Mon(dex: 350, level: 50, female: true), Mon(dex: 149, level: 50, female: false)])
+    // 4.1: after 100, every 50 (the strip's 9th cell: the next of them); the one-time reset (streak, best, rewards all 0 — my card, a friend's, the lobby)
+    take("tower_strip_endless", sme) { v in v.state.towerBest = 163; v.state.towerStreak = 163; v.state.towerRewards = Tower.rewards.map(\.wins) + [150]; v.towerRun = true; v.screen = .tower(pick: nil) }
+    let zsrv = FakeCloud(), zme = online({ var s = base(); s.deco = "gold"; s.titles = ["타워 타이쿤"]; s.towerBest = 0; s.towerStreak = 0; s.towerRewards = []; return s }(), server: zsrv)
+    for (k, n) in ["민수", "지은"].enumerated() {
+        var w = Walk(), r = Seeded(s: UInt64(k + 80)); w.companion = Mon.wild([6, 282][k], level: 50, &r); w.deco = k == 0 ? "gold" : nil; w.titles = k == 0 ? ["타워 타이쿤"] : nil
+        w.towerBest = 0; w.today = [8_200, 5_100][k]; zsrv.add(n, w); zsrv.lastAct[n] = Date(); zsrv.befriend(zme.myName, n)
+    }
+    zme.cloud!.teamDue = true; drain(zme); drain(zme)
+    take("reset_card", zme) { v in v.screen = .card(0) }
+    take("reset_friends_tower", zme) { v in v.screen = .team(sel: 0, tab: TeamTab.tower, card: false) }
+    take("reset_friend_card", zme) { v in let i = v.teamRows(0).firstIndex { $0.card.name == "민수" } ?? 0; v.screen = .team(sel: i, tab: 0, card: true) }
+    take("reset_tower_lobby", zme) { v in v.towerRun = false; v.screen = .tower(pick: nil) }
+    let tyb = Battle(party: dme.state.party().map(\.mon), trainer: Tower.tycoon, foes: Tower.tycoonTeams[Tower.tycoonFights.min()!]!.map { Mon(dex: $0.dex, level: 50, female: $0.dex == 350) })   // its team as it is
     take("tycoon_intro", dme) { v in v.sideOn = true; v.towerRun = true; v.fight = tyb; v.screen = .beats(tyb, [.sendOut(.it, 0)], since: Date().addingTimeInterval(-0.45), from: tyb) }
     take("tycoon_fight", dme) { v in v.sideOn = true; v.fight = tyb; v.screen = .battle(tyb, sel: 0) }
-    take("tycoon_won", dme) { v in v.screen = .say(["타워 타이쿤을 이겼다!", "49연승! +20 BP", "우편함에 보상이 왔다"], next: .tower(pick: nil), since: Date()) }
-    take("tycoon_fight_gold", dme) { v in v.state.towerStreak = 98; v.sideOn = true; v.fight = tyb; v.screen = .battle(tyb, sel: 0) }
+    take("tycoon_won", dme) { v in v.screen = .say(["타워 타이쿤을 이겼다!", "\(Tower.tycoonFights.min()!)연승! +20 BP", "우편함에 보상이 왔다"], next: .tower(pick: nil), since: Date()) }
+    take("tycoon_fight_gold", dme) { v in v.state.towerStreak = Tower.tycoonFights.max()! - 1; v.sideOn = true; v.fight = tyb; v.screen = .battle(tyb, sel: 0) }
+    // 4.1: the tycoon's legend (its team as the Model has it, the legend out) and a trainer's from the 101st fight on (its last one a legend, as towerFoes makes it)
+    for (name, wins) in [("tycoon_legend", Tower.tycoonFights.min()! - 1), ("tycoon_legend_gold", Tower.tycoonFights.max()! - 1), ("tower_legend_foe", Tower.legendFrom - 1)] {
+        var w = dme.state; w.towerStreak = wins; var r = Seeded(s: 41); let f = w.towerFoes(&r)
+        var b = Battle(party: dme.state.party().map(\.mon), trainer: f.trainer, foes: f.foes)
+        if let i = f.foes.firstIndex(where: { Tower.isLegend($0.dex) }) { for k in 0..<i { b.theirs[k].hp = 0 }; b.it = i }
+        take(name, dme) { v in v.state.towerStreak = wins; v.towerRun = true; v.sideOn = true; v.fight = b; v.screen = .battle(b, sel: 0) }
+    }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
     return n

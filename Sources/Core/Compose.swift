@@ -406,7 +406,8 @@ extension Walker {
             let party = state.party()
             return PaneContent(tower: TowerModel(run: towerRun, streak: state.towerStreak ?? 0, best: state.towerBest ?? 0, bp: state.bp ?? 0, fee: Walk.towerFee,
                                                  party: party.map { .init(dex: $0.mon.dex, name: monNames[$0.mon.dex], level: $0.mon.level, shiny: $0.mon.shiny == true) }, custom: state.towerPick != nil,
-                                                 rewards: Tower.rewards.map { .init(wins: $0.wins, short: Walker.rewardShort($0.gifts), got: towerGot($0.wins)) }, next: towerNextReward.map { "다음 보상 \($0.wins)연승 · " + $0.gifts.map(giftName).joined(separator: " + ") } ?? "연승 보상을 모두 받았어요",
+                                                 rewards: towerStrip,
+                                                 next: towerNextReward.map { "다음 보상 \($0.wins)연승 · " + $0.gifts.map(giftName).joined(separator: " + ") + ($0.wins > Tower.rewards.last!.wins ? " (이후 \(Tower.endless.every)연승마다)" : "") } ?? "연승 보상을 모두 받았어요",
                                                  tycoon: towerRun ? Tower.tycoonPrint(afterWins: state.towerStreak ?? 0) : nil))
         default: break
         }

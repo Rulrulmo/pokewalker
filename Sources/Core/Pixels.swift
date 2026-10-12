@@ -107,7 +107,7 @@ func framePic(_ name: String) -> Pic {
 }
 /// A tower trainer's sprite, by class (the name's first words) and, where a class has both, the given name's sex.
 func trainerFrame(_ trainer: String) -> String {
-    if trainer == Tower.tycoon { return "palmer" }                                             // 3.9: the 49th and 99th fights' boss
+    if trainer == Tower.tycoon { return "palmer" }                                             // 3.9: the tycoon fights' boss (Tower.tycoonFights)
     let female = ["지은", "서연", "하은", "유나", "보라"].contains { trainer.hasSuffix($0) }
     for (cls, m, f) in [("엘리트 트레이너", "acetrainer-gen4", "acetrainerf-gen4"), ("베테랑", "veteran-gen4", "veteranf"), ("아가씨", "lady-gen4", "lady-gen4"),
                         ("등산가", "hiker-gen4", "hiker-gen4"), ("연구원", "scientist-gen4", "scientist-gen4"), ("격투가", "blackbelt-gen4", "battlegirl-gen4"),

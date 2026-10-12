@@ -996,7 +996,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     /// 15 §3: each streak reached (towerBest) and not yet rewarded gets its mail, once; the save keeps which (the lobby's strip).
     var towerPaid: [String: Set<Int>] = [:]
     func towerRewards(_ key: String, _ w: inout Walk) {
-        for r in Tower.rewards where r.wins <= (w.towerBest ?? 0) && !(towerPaid[key] ?? []).contains(r.wins) {
+        for r in Tower.rewards(upTo: w.towerBest ?? 0) where !(towerPaid[key] ?? []).contains(r.wins) {   // 4.1: the fixed ones, then every 50 from 150
             towerPaid[key, default: []].insert(r.wins)
             giveMail(key, "tower", from: "배틀 타워", title: "\(r.wins)연승 달성 보상", body: "배틀 타워에서 처음으로 \(r.wins)연승에 닿았어요.", r.gifts)
         }
