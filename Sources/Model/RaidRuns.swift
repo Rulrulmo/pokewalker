@@ -16,6 +16,16 @@ enum RaidRules {
     ]
     static let caughtMax = 100                                          // a boss caught above it comes in at Lv.100 (its EXP that level's least)
     static func tier(_ n: Int?) -> RaidTier? { tiers.first { $0.tier == n } }
+    /// Each boss's own move (the user, 10-12): 루기아 에어로블라스트, 가이오가 해수스파우팅, 그란돈 분화, 디아루가 시간의포효, 펄기아 공간절단,
+    /// 기라티나 섀도다이브 (레쿠쟈 has none in gen 4).
+    static let signature: [Int: Int] = [249: 177, 382: 323, 383: 284, 483: 459, 484: 460, 487: 467]
+    /// A run's boss: the species at the tier's level and V, its four the last it learned by now (as a wild one's) with its own move among them
+    /// from the level it learns it (★3 on: 43–50; ★1 · ★2 as they were — plan 16 §3.7). Caught, it keeps them.
+    static func boss<R: RandomNumberGenerator>(_ dex: Int, _ t: RaidTier, shiny: Bool, _ r: inout R) -> Mon {
+        var m = Mon.wild(dex, level: t.level, shiny: shiny ? true : nil, perfect: t.perfect, &r)
+        if let sig = signature[dex], let at = m.learnLevel(sig), t.level >= at { m.known = m.withSignature(m.moves) }
+        return m
+    }
     /// This week's wins that mail a reward (any tier): the 1st, 3rd and 7th (plan 16 §4.3).
     static let weekly: [(wins: Int, gifts: [Gift])] = [
         (1, [.bp(amount: 25)]), (3, [.items(name: "이상한사탕", count: 5)]), (7, [.items(name: "은색병뚜껑", count: 1)]),
@@ -46,3 +56,15 @@ struct RaidLobby: Codable, Equatable {
 }
 /// What /v2/raid takes: who, and (4.0 on) the app's version (else the User-Agent's).
 struct RaidReq: Codable, Equatable { var id, session: String; var app: String? = nil }
+
+extension Mon {
+    /// These four with its own move (RaidRules.signature) in the place of the weakest attack (towerScore) if it isn't one of them.
+    func withSignature(_ ms: [Int]) -> [Int] {
+        guard let sig = RaidRules.signature[dex], !ms.contains(sig) else { return ms }
+        if ms.count < 4 { return ms + [sig] }
+        var out = ms, hits = ms.indices.filter { !moveTable[ms[$0]]!.isStatus }
+        if hits.isEmpty { hits = [3] }
+        out[hits.min { towerScore(moveTable[ms[$0]]!) < towerScore(moveTable[ms[$1]]!) }!] = sig
+        return out
+    }
+}

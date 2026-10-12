@@ -924,6 +924,27 @@ extension SaveDB {
     }
 }
 
+@Test func raidBossOwnMove() async throws {                                                       // 16 §3.7: its own move from the level it learns it (★3 on), W43 on
+    var g = Seeded(s: 3)
+    for dex in raidRotation {
+        for t in RaidRules.tiers {
+            let m = RaidRules.boss(dex, t, shiny: false, &g), plain = Mon.defaultMoves(dex, t.level)
+            #expect(m.level == t.level && m.perfectIVs >= t.perfect && m.moves.count == 4 && Set(m.moves).count == 4)
+            #expect(m.moves.allSatisfy { (m.learnLevel($0) ?? 999) <= t.level } && m.moves.filter { !plain.contains($0) }.count <= 1)   // one changed at most
+            if let sig = RaidRules.signature[dex], t.tier >= 3 { #expect(m.moves.contains(sig)) } else { #expect(m.moves == plain) }
+        }
+    }
+    #expect(RaidRules.boss(249, RaidRules.tier(4)!, shiny: false, &g).moves == [177, 219, 105, 248])   // 원시의힘 → 에어로블라스트
+    #expect(RaidRules.boss(382, RaidRules.tier(4)!, shiny: false, &g).moves == [401, 323, 38, 56])     // 절대영도 → 해수스파우팅
+    #expect(RaidRules.boss(383, RaidRules.tier(5)!, shiny: false, &g).moves == [414, 284, 76, 126])    // 땅가르기 → 분화
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    _ = try await newTrainer(db, "zz430001")
+    let w42 = Date(timeIntervalSince1970: Double(raidOwnMoves - 3600)), w43 = Date(timeIntervalSince1970: Double(raidOwnMoves + 60))
+    let a = try #require(try await db.raidStart("zz430001", tier: 4, app: "4.0", now: w42).boss)
+    let b = try #require(try await db.raidStart("zz430001", tier: 4, app: "4.0", now: w43).boss)
+    #expect(a.boss.dex == 249 && a.boss.moves == Mon.defaultMoves(249, 90) && b.boss.dex == 382 && b.boss.moves.contains(323))   // W42 as it began
+}
+
 @Test func raidRunNoBlowAway() {                                                                 // a Lv.20 루기아 knows 날려버리기: in a run it can't end the fight
     var r = Seeded(s: 11)
     for seed in 1...40 {
