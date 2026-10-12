@@ -1100,7 +1100,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if (raidRuns[key] ?? []).filter({ $0.day == today }).count >= RaidRules.perDay { return (nil, "오늘은 \(RaidRules.perDay)판을\n다 했어요") }
         guard let t = RaidRules.tier(tier) else { return (nil, "난이도를\n골라 주세요") }
         let shiny = raidShinies.isEmpty ? rng.next() % UInt64(RaidRules.shinyOdds) == 0 : raidShinies.removeFirst()
-        let boss = Mon.wild(raidDex, level: t.level, shiny: shiny ? true : nil, perfect: t.perfect, &rng)
+        let boss = RaidRules.boss(raidDex, t, shiny: shiny, &rng)
         return (RaidBoss(week: "2026-W42", boss: boss, left: 1, tier: t.tier), nil)
     }
     /// A run's fight over (the engine's end): its bars, the win, its balls (the ball stage); the week's 1st · 3rd · 7th win mails its reward.
