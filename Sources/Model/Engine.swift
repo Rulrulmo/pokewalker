@@ -19,7 +19,9 @@ enum Act: Codable, Equatable {
     case greet(to: String)                                       // 인사 to a teammate (docs/plans/12 §2.3): the server delivers it, the save doesn't change
     case tradeOffer(to: String, give: Int, want: Int?)           // 교환 (12 §3): one of our box's for one of theirs (nil: what they choose)
     case tradeAccept(id: Int, give: Int?), tradeDecline(id: Int), tradeCancel(id: Int)
-    case raid(party: [Int]? = nil), raidBall                     // the co-op raid (12 §4): a fight with this week's boss (1칸 of power; 3.8: the 1–3 picked, 14 §4); a ball once the team beat it
+    case raid(party: [Int]? = nil, tier: Int? = nil), raidBall    // the raid (12 §4): a fight with this week's boss (1칸 of power; 3.8: the 1–3 picked, 14 §4); a ball once the team beat it
+                                                                 // 4.0 (docs/plans/16): a run at a tier (RaidRules.tiers), a ball at that run's boss
+    case raidQuit                                                // 4.0: give up a run's ball stage (its balls go, the boss with them)
     case friendRequest(to: String), friendAccept(from: String), friendDecline(from: String), friendRemove(name: String)   // 친구 (12 §2.4, 3.5)
     case marketList(give: Int, wish: [Int], note: String? = nil), marketUnlist(id: Int)    // 교환 게시판 (12 §3.3, 3.5): put one up (wished species shown; 3.8: a note), take it down
     case marketBid(listing: Int, give: Int), marketWithdraw(bid: Int), marketAccept(bid: Int)   // offer one of ours for it, take that back; the poster picks one
@@ -61,7 +63,10 @@ enum News: Codable, Equatable {
 }
 struct RadarShown: Codable, Equatable { var bush: Int, window: Double, chain: Int }
 /// result: caught · won · lost · fled (it got away) · ran (we did) · forfeit. chain: a wild fight's (0 = over); streak · bp: the tower's.
-struct BattleEnd: Codable, Equatable { var result: String; var chain: Int? = nil, streak: Int? = nil, bp: Int? = nil, dealt: Int? = nil }   // dealt: a raid's damage (12 §4.2)
+struct BattleEnd: Codable, Equatable {
+    var result: String; var chain: Int? = nil, streak: Int? = nil, bp: Int? = nil, dealt: Int? = nil   // dealt: a raid's damage (12 §4.2)
+    var bars: Int? = nil, balls: Int? = nil, gifts: [Gift]? = nil      // 4.0 (16 §4): a run's bars down (of 10), its balls (3, 5 for a win), what it paid (its BP)
+}
 /// A raid ball (12 §4.3): did it hold, how it rocked, balls left, what came, and whether the week's clear reward came with it.
 struct RaidThrow: Codable, Equatable { var caught: Bool, shakes: Int, balls: Int; var mon: Mon? = nil; var reward = false }
 struct Outcome: Codable, Equatable {
@@ -104,8 +109,8 @@ struct Play: Codable, Equatable {
     var raid: String? = nil                                      // the week of the raid fight on (its damage goes to that week's boss)
     var raidBoss: RaidBoss? = nil                                // this week's boss as the server has it, for a raid act (set by the server)
 }
-/// 12 §4: the week's boss and what's left of the team's HP.
-struct RaidBoss: Codable, Equatable { var week: String; var boss: Mon; var left: Int }
+/// 12 §4: the week's boss and what's left of the team's HP. 4.0 (16): tier set = a run's own boss (left unused).
+struct RaidBoss: Codable, Equatable { var week: String; var boss: Mon; var left: Int; var tier: Int? = nil }
 /// POST /v2/act. steps: walked first, whatever the act (capped by the server first: `taken`).
 struct ActReq: Codable, Equatable { var id, session: String; var seq: Int; var steps: Int? = nil; var act: Act; var app: String? = nil }   // app: news kinds it knows (12 §1)
 struct ActReply: Codable { var rev: Int; var walk: Walk? = nil; var taken: Int? = nil; var out: Outcome }

@@ -93,14 +93,15 @@ extension Battle {
     mutating func award() {
         let share = faced.filter { mine[$0].alive }.sorted()
         guard trainer == nil, !share.isEmpty else { return }
-        let foe = f(.it).mon
+        let foe = f(.it).mon, evs = raidTier == nil || theirs.filter(\.down).count <= 1             // a raid run: EVs for its first bar only
         for k in mine.indices where mine[k].alive {
-            let full = Battle.wildExp(base: baseExp[foe.dex], foe: foe.level, mine: mine[k].mon.level, share: share.count)
+            let wild = Battle.wildExp(base: baseExp[foe.dex], foe: foe.level, mine: mine[k].mon.level, share: share.count)
+            let full = raidTier == nil ? wild : max(1, wild / RaidRules.expShare)
             var e = share.contains(k) || mine[k].item == "학습장치" ? full : full / 2
             if mine[k].item == "행복의알" { e = e * 3 / 2 }
             e = max(1, e)
             var probe = mine[k].mon; let up = probe.gainBattleExp(e)
-            out.append(.gained(exp: e, level: up ? probe.level : nil, foe: foe.dex, to: k)); apply(out.last!)
+            out.append(.gained(exp: e, level: up ? probe.level : nil, foe: evs ? foe.dex : 0, to: k)); apply(out.last!)
         }
     }
     /// KOs: EXP (and EVs) for ours (wild only), the next one out, or the end of the battle.

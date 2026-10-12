@@ -11,6 +11,11 @@ let raidSchema = """
     CREATE INDEX IF NOT EXISTS raid_hits_week ON raid_hits (week, key);
     CREATE TABLE IF NOT EXISTS raid_catch (week TEXT NOT NULL, key TEXT NOT NULL, balls INTEGER NOT NULL, caught INTEGER NOT NULL, claimed INTEGER NOT NULL,
       PRIMARY KEY (week, key));
+    CREATE TABLE IF NOT EXISTS raid_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, week TEXT NOT NULL, key TEXT NOT NULL, day TEXT NOT NULL, tier INTEGER NOT NULL,
+      boss TEXT NOT NULL, party TEXT NOT NULL, bars INTEGER NOT NULL DEFAULT 0, won INTEGER NOT NULL DEFAULT 0, balls INTEGER NOT NULL DEFAULT 0,
+      caught INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL, ended_at INTEGER);
+    CREATE INDEX IF NOT EXISTS raid_runs_key ON raid_runs (key, week);
+    CREATE TABLE IF NOT EXISTS settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
     """
 let raidRotation = [249, 382, 383, 384, 483, 484, 487]                    // 루기아 가이오가 그란돈 레쿠쟈 디아루가 펄기아 기라티나 (ISO week % 7)
 let raidLevel = 70, raidBarsPerFighter = 4, raidCatchOdds = 0.30, raidApp = "3.4"         // 4 bars a fighter: the user, 10-04 (14 was too many; 14 §4)
@@ -121,5 +126,184 @@ extension SaveDB {
             return try JSONEncoder().encode(RaidReply(week: raid.week, boss: raid.boss, next: raidDex(now.addingTimeInterval(7 * 86400)), hpTotal: raid.total,
                                                        hpLeft: max(0, raid.total - dealt), barHP: raid.bar, ends: ends, fighters: fighters, recent: recent, mine: me))
         }
+    }
+}
+
+// MARK: - 4.0: runs (docs/plans/16)
+// One a day's 칸 of power, 3 a day (KST), each against a boss made for it (this week's species at the tier's level and IVs, a shiny 1 in 32); the
+// fight is the engine's (10 bars, b.raidTier); its end leaves a ball stage here (raid_runs: balls > 0, not caught) for that boss only, until it's
+// caught, out of balls, given up (raidQuit) or the week is over. A fight cut off (a new session) ends as fought with no bars down: its 3 balls wait.
+
+/// A ball's odds at a run's boss: 30 % a species not caught yet (a shiny boss: not caught as shiny yet), 10 % one owned (16 §4.2).
+func raidOdds(_ boss: Mon, _ w: Walk) -> Double {
+    let had = boss.shiny == true ? (w.shinyOwned ?? []).contains(boss.dex) : (w.owned ?? []).contains(boss.dex)
+    return had ? RaidRules.ownedOdds : RaidRules.newOdds
+}
+/// When runs start for the team if no one says (W43's Monday 0:00, KST): `pokeserver raid-runs on` starts them at once (the user: with 4.0's release).
+let raidRunsOpen: Int = {
+    var cal = Calendar(identifier: .iso8601); cal.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
+    return Int(cal.date(from: DateComponents(weekOfYear: 43, yearForWeekOfYear: 2026))?.timeIntervalSince1970 ?? 0)
+}()
+let raidUpdate = "레이드가 새로워졌어요\n업데이트해 주세요", raidPendingWhy = "남은 볼이 있어요"
+
+extension SaveDB {
+    /// Runs, not the team's boss: from the setting raid_runs_from (unix; unset: W43) for the team, at once for test IDs (their own raid, "-test").
+    func raidRuns(_ key: String, _ now: Date) throws -> Bool {
+        if isTestID(key) { return true }
+        return Int(now.timeIntervalSince1970) >= (try raidRunsFrom())
+    }
+    func raidRunsFrom() throws -> Int {
+        try db.rows("SELECT value FROM settings WHERE name = 'raid_runs_from'").first?.text("value").flatMap { Int($0) } ?? raidRunsOpen
+    }
+    func setRaidRunsFrom(_ unix: Int) throws {
+        try db.rows("INSERT INTO settings (name, value) VALUES ('raid_runs_from', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(String(unix))])
+    }
+    /// Before a raid act: the run's boss, or why not (the act then walks its steps only). Before W43 an old app fights the team's boss as ever.
+    func raidStart(_ key: String, tier: Int?, app: String?, now: Date) throws -> (boss: RaidBoss?, why: String?) {
+        guard try raidRuns(key, now) else {
+            return knows(app, RaidRules.app) ? (nil, "새 레이드는\n곧 열려요") : (try raidBoss(key, now: now), nil)
+        }
+        guard knows(app, RaidRules.app) else { return (nil, raidUpdate) }
+        try closeCutRuns(key, now: now)
+        if try raidPending(key, now: now) != nil { return (nil, raidPendingWhy) }
+        if try raidRunsToday(key, now: now) >= RaidRules.perDay { return (nil, "오늘은 \(RaidRules.perDay)판을\n다 했어요") }
+        guard let t = RaidRules.tier(tier) else { return (nil, "난이도를\n골라 주세요") }
+        var g = SystemRandomNumberGenerator()
+        let shiny = Int.random(in: 0..<RaidRules.shinyOdds, using: &g) == 0
+        let boss = Mon.wild(raidDex(now), level: t.level, shiny: shiny ? true : nil, perfect: t.perfect, &g)
+        return (RaidBoss(week: raidWeek(key, now), boss: boss, left: 1, tier: t.tier), nil)
+    }
+    func raidRunsToday(_ key: String, now: Date) throws -> Int {
+        try db.rows("SELECT count(*) AS n FROM raid_runs WHERE key = :k AND day = :d", ["k": .text(key), "d": .text(Walk.key(now))]).first?.int("n") ?? 0
+    }
+    /// A run just started (the engine took the boss): its row, open until the fight ends.
+    func raidRunBegan(_ key: String, _ rb: RaidBoss, party: [Int], now: Date) throws {
+        let e = JSONEncoder(); e.outputFormatting = .sortedKeys
+        try db.rows("INSERT INTO raid_runs (week, key, day, tier, boss, party, at) VALUES (:w, :k, :d, :t, :b, :p, :now)",
+                    ["w": .text(rb.week), "k": .text(key), "d": .text(Walk.key(now)), "t": .int(rb.tier ?? 0),
+                     "b": .text(String(decoding: try e.encode(rb.boss), as: UTF8.self)), "p": .text(String(decoding: try e.encode(party), as: UTF8.self)),
+                     "now": .int(Int(now.timeIntervalSince1970))])
+    }
+    /// The fight ended (the engine's end): bars, the win, its balls (the ball stage); a 1st · 3rd · 7th win of the week mails its reward.
+    func raidRunEnded(_ key: String, end: BattleEnd, now: Int) throws {
+        guard let run = try db.rows("SELECT id, week FROM raid_runs WHERE key = :k AND ended_at IS NULL ORDER BY id DESC LIMIT 1", ["k": .text(key)]).first,
+              let id = run.int("id"), let week = run.text("week") else { return }
+        let won = end.result == "won"
+        try db.rows("UPDATE raid_runs SET bars = :b, won = :w, balls = :n, ended_at = :now WHERE id = :id",
+                    ["b": .int(end.bars ?? 0), "w": .int(won ? 1 : 0), "n": .int(end.balls ?? RaidRules.balls), "now": .int(now), "id": .int(id)])
+        try db.rows("UPDATE raid_runs SET ended_at = :now WHERE key = :k AND ended_at IS NULL", ["now": .int(now), "k": .text(key)])   // (none should be)
+        guard won else { return }
+        let wins = try db.rows("SELECT count(*) AS n FROM raid_runs WHERE key = :k AND week = :w AND won = 1", ["k": .text(key), "w": .text(week)]).first?.int("n") ?? 0
+        if let r = RaidRules.weekly.first(where: { $0.wins == wins }) {
+            try sendMail(key, kind: "raid", from: "레이드", title: "레이드 이번 주 \(wins)승 보상", gifts: r.gifts, now: now)
+        }
+    }
+    /// Runs whose fight is gone (the app closed mid-fight, another PC): over, as fought — no bars down, 3 balls waiting.
+    func closeCutRuns(_ key: String, now: Date) throws {
+        try db.rows("UPDATE raid_runs SET ended_at = :now, balls = :n WHERE key = :k AND ended_at IS NULL",
+                    ["now": .int(Int(now.timeIntervalSince1970)), "n": .int(RaidRules.balls), "k": .text(key)])
+    }
+    /// This week's ball stage not finished: the run, its boss, the balls left.
+    func raidPending(_ key: String, now: Date) throws -> (id: Int, boss: Mon, tier: Int, bars: Int, won: Bool, balls: Int)? {
+        guard let r = try db.rows("""
+            SELECT id, boss, tier, bars, won, balls FROM raid_runs WHERE key = :k AND week = :w AND ended_at IS NOT NULL AND balls > 0 AND caught = 0
+            ORDER BY id DESC LIMIT 1
+            """, ["k": .text(key), "w": .text(raidWeek(key, now))]).first,
+              let id = r.int("id"), let boss = r.text("boss").flatMap({ try? JSONDecoder().decode(Mon.self, from: Data($0.utf8)) }) else { return nil }
+        return (id, boss, r.int("tier") ?? 0, r.int("bars") ?? 0, r.int("won") == 1, r.int("balls") ?? 0)
+    }
+    /// A ball at the waiting run's boss (16 §4.2): 30 % a species not caught yet (a shiny boss: not caught as shiny yet), 10 % one owned.
+    /// Caught: that boss as it was, into the box (the ledger's "raid"). Returns why not, or nil with out.raidThrow set (and w changed).
+    func raidRunBall(_ key: String, walk w: inout Walk, out: inout Outcome, now: Date) throws -> String? {
+        try closeCutRuns(key, now: now)
+        guard let p = try raidPending(key, now: now) else { return "던질 볼이 없어요" }
+        var g = SystemRandomNumberGenerator()
+        let caught = Double.random(in: 0..<1, using: &g) < raidOdds(p.boss, w)
+        var mon: Mon? = nil
+        if caught {
+            var m = p.boss
+            m.uid = try nextUID(key, w); try record(key, m, kind: "raid", now: Int(now.timeIntervalSince1970)); _ = w.keep(m); mon = m
+        }
+        try db.rows("UPDATE raid_runs SET balls = :b, caught = :c WHERE id = :id", ["b": .int(p.balls - 1), "c": .int(caught ? 1 : 0), "id": .int(p.id)])
+        out.raidThrow = RaidThrow(caught: caught, shakes: caught ? 3 : Int.random(in: 0...2, using: &g), balls: p.balls - 1, mon: mon)
+        return nil
+    }
+    /// raidQuit: the waiting ball stage given up (its balls gone: 놓침). Nothing waiting: nothing to do.
+    func raidRunQuit(_ key: String, now: Date) throws {
+        try closeCutRuns(key, now: now)
+        if let p = try raidPending(key, now: now) { try db.rows("UPDATE raid_runs SET balls = 0 WHERE id = :id", ["id": .int(p.id)]) }
+    }
+    /// A trainer's week of runs (nil: none) — the lobby's, a friend's, a TeamCard's.
+    func raidWeekOf(_ key: String, now: Date) throws -> RaidWeek? {
+        guard let r = try db.rows("""
+            SELECT count(*) AS runs, ifnull(sum(won), 0) AS wins, ifnull(sum(caught), 0) AS caught,
+              ifnull(sum(CASE WHEN caught = 1 AND boss LIKE '%"shiny":true%' THEN 1 ELSE 0 END), 0) AS shiny,
+              max(CASE WHEN won = 1 THEN tier END) AS best FROM raid_runs WHERE key = :k AND week = :w
+            """, ["k": .text(key), "w": .text(raidWeek(key, now))]).first, let runs = r.int("runs"), runs > 0 else { return nil }
+        return RaidWeek(runs: runs, wins: r.int("wins") ?? 0, caught: r.int("caught") ?? 0, shiny: r.int("shiny") ?? 0, best: r.int("best"))
+    }
+
+    /// POST /v2/raid from 4.0 (16 §5): the lobby. A fight on in this session stays open; one cut off is over (its balls wait).
+    func raidRunLobby(_ r: RaidReq, now: Date) -> Reply {
+        readGate(r.id, r.session) { key in
+            let p = try db.rows("SELECT session, state FROM play WHERE key = :k", ["k": .text(key)]).first
+            let fighting = p?.text("session") == r.session && (p?.text("state").flatMap { try? JSONDecoder().decode(Play.self, from: Data($0.utf8)) }?.battle?.raidTier != nil)
+            if !fighting { try closeCutRuns(key, now: now) }
+            let open = try raidRuns(key, now), week = raidWeek(key, now)
+            var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
+            let ends = Int(cal.dateInterval(of: .weekOfYear, for: now)?.end.timeIntervalSince1970 ?? now.timeIntervalSince1970)
+            let reset = Int(cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now))?.timeIntervalSince1970 ?? now.timeIntervalSince1970)
+            let runs = try db.rows("SELECT boss, tier, bars, won, caught, at FROM raid_runs WHERE key = :k AND week = :w AND ended_at IS NOT NULL ORDER BY id DESC",
+                                   ["k": .text(key), "w": .text(week)]).compactMap { x -> RaidRunRow? in
+                guard let b = x.text("boss").flatMap({ try? JSONDecoder().decode(Mon.self, from: Data($0.utf8)) }) else { return nil }
+                return RaidRunRow(dex: b.dex, tier: x.int("tier") ?? 0, shiny: b.shiny == true, bars: x.int("bars") ?? 0, won: x.int("won") == 1, caught: x.int("caught") == 1, at: x.int("at") ?? 0)
+            }
+            let friends = try ([key] + friendKeys(key)).compactMap { k -> RaidFriend? in
+                guard let t = try db.rows("SELECT name, walk FROM trainers WHERE key = :k", ["k": .text(k)]).first else { return nil }
+                let wk = try raidWeekOf(k, now: now) ?? RaidWeek(), dex = t.text("walk").flatMap(decodeWalk)?.companion.dex ?? 0
+                return RaidFriend(name: t.text("name") ?? k, dex: dex, runs: wk.runs, wins: wk.wins, caught: wk.caught, shiny: wk.shiny, best: wk.best)
+            }
+            let pend = try raidPending(key, now: now).map { RaidPending(boss: $0.boss, tier: $0.tier, bars: $0.bars, won: $0.won, balls: $0.balls) }
+            let lobby = RaidLobby(week: week, boss: Mon(dex: raidDex(now), level: raidLevel, female: false), next: raidDex(now.addingTimeInterval(7 * 86400)), ends: ends,
+                                  today: RaidToday(used: open ? try raidRunsToday(key, now: now) : 0, max: open ? RaidRules.perDay : 0), resetAt: reset,
+                                  mine: try raidWeekOf(key, now: now) ?? RaidWeek(), runs: runs, friends: friends, pending: pend, tiers: RaidRules.tiers,
+                                  opens: open ? nil : try raidRunsFrom())
+            let e = JSONEncoder(); e.outputFormatting = .sortedKeys
+            return try e.encode(lobby)
+        }
+    }
+    /// An app before 4.0 once runs are on: the old lobby's shape, harmless (one bar, nothing fought) — its 도전 and ball are refused at the act.
+    func raidOldLobby(_ r: RaidReq, now: Date) -> Reply {
+        readGate(r.id, r.session) { key in
+            var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
+            let ends = Int(cal.dateInterval(of: .weekOfYear, for: now)?.end.timeIntervalSince1970 ?? now.timeIntervalSince1970)
+            return try JSONEncoder().encode(RaidReply(week: raidWeek(key, now), boss: Mon(dex: raidDex(now), level: raidLevel, female: false), next: raidDex(now.addingTimeInterval(7 * 86400)),
+                                                       hpTotal: 1, hpLeft: 1, barHP: 1, ends: ends, fighters: [], recent: [],
+                                                       mine: RaidMine(dealt: 0, fights: 0, balls: nil, caught: false, canCatch: false)))
+        }
+    }
+    /// POST /v2/raid: by the app (the body's `app`): 4.0's lobby, or the old one (the team's boss before W43; harmless after).
+    func raidLobby(_ r: RaidReq, now: Date) -> Reply {
+        if knows(r.app, RaidRules.app) { return raidRunLobby(r, now: now) }
+        guard let id = trainerID(r.id), (try? raidRuns(id.key, now)) == false else { return raidOldLobby(r, now: now) }
+        return raidLobby(TeamReq(id: r.id, session: r.session), now: now)
+    }
+
+    // MARK: the operator's (pokeserver raid-runs · raid-log)
+    func raidRunsSet(_ at: Int) throws -> String { try setRaidRunsFrom(at); return try raidRunsShow(now: at) }
+    func raidRunsShow(now: Int) throws -> String {
+        let at = try raidRunsFrom(), f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm"; f.timeZone = TimeZone(identifier: "Asia/Seoul")
+        return "raid runs for the team from \(f.string(from: Date(timeIntervalSince1970: TimeInterval(at)))) KST (\(at)): " + (now >= at ? "on" : "not yet") + " — test IDs always"
+    }
+    func raidLog(last n: Int) throws -> String {
+        let f = DateFormatter(); f.dateFormat = "MM-dd HH:mm"; f.timeZone = TimeZone(identifier: "Asia/Seoul")
+        let rows = try db.rows("SELECT r.*, t.name FROM raid_runs r LEFT JOIN trainers t ON t.key = r.key ORDER BY r.id DESC LIMIT :n", ["n": .int(n)]).map { r -> [String] in
+            let b = r.text("boss").flatMap { try? JSONDecoder().decode(Mon.self, from: Data($0.utf8)) }
+            return [String(r.int("id") ?? 0), f.string(from: Date(timeIntervalSince1970: TimeInterval(r.int("at") ?? 0))), r.text("name") ?? r.text("key") ?? "?", r.text("week") ?? "",
+                    "★\(r.int("tier") ?? 0)", (b?.shiny == true ? "★" : "") + (b.map { "\(monNames[$0.dex]) \($0.level)" } ?? "?"),
+                    r.int("ended_at") == nil ? "fighting" : "\(r.int("bars") ?? 0)/\(RaidRules.bars)", r.int("won") == 1 ? "won" : "-",
+                    String(r.int("balls") ?? 0), r.int("caught") == 1 ? "caught" : "-"]
+        }
+        return table(["id", "at", "who", "week", "tier", "boss", "bars", "won", "balls", "caught"], rows)
     }
 }

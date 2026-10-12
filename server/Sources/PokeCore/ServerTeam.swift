@@ -44,7 +44,9 @@ extension SaveDB {
                 guard let row = try db.rows("SELECT t.name, t.updated_at, p.bank_at, t.walk FROM trainers t LEFT JOIN play p ON p.key = t.key WHERE t.key = :k",
                                             ["k": .text(k)]).first, let w = row.text("walk").flatMap(decodeWalk) else { return nil }
                 let last = max(Double(row.int("updated_at") ?? 0), row.real("bank_at") ?? 0), s = steps[k] ?? (0, 0)
-                return TeamCard(name: row.text("name") ?? k, walk: w, today: s.today, week: s.week, idle: max(0, Int(now.timeIntervalSince1970 - last)))
+                var c = TeamCard(name: row.text("name") ?? k, walk: w, today: s.today, week: s.week, idle: max(0, Int(now.timeIntervalSince1970 - last)))
+                c.raid = try raidWeekOf(k, now: now)                                               // 16 §4.4: this week's runs
+                return c
             }
             let cards = try keys.compactMap(card)
             let asks = try db.rows("SELECT t.name FROM friends f JOIN trainers t ON t.key = f.a WHERE f.b = :k AND f.state = 'pending' ORDER BY f.at", ["k": .text(key)]).compactMap { $0.text("name") }

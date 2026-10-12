@@ -184,20 +184,24 @@ else
     echo "SKIP  게시판 (needs: sudo -u pokewalker $PS set $ID4 '\$.box' …)"
 fi
 
-# 8 — plan 12 M3: the co-op raid (a test ID's own raid: the team's isn't touched) — the lobby, a fight with power, its damage counted
+# 8 — plan 16 (4.0): raid runs (a test ID has them always: the team's raid isn't touched) — 3.9's lobby harmless and its fight refused;
+#     4.0's lobby, a ★1 run (10 bars, 1칸 of power), a retreat (3 balls), the ball stage waiting, a ball, given up
 if admin set "$ID3" '$.raidPower' 30000 >/dev/null; then
-    jq -n --arg id "$ID3" --arg s "$S3" '{id: $id, session: $s}' > "$TMP/req"
-    CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/raid"); BODY=$(cat "$TMP/body")
-    ok "/v2/raid: this week's boss, the testers' raid" is 200 '[.boss.level, (.week | endswith("-test")), .hpLeft == .hpTotal] | tostring' '[70,true,true]'
-    SEQ3=$((SEQ3 + 1)); act3 $SEQ3 '{"raid":{}}'; ok "a raid fight (1칸 of power)" is 200 '[(.out.battle.theirs | length), .walk.raidPower] | tostring' '[3,20000]'
-    for _ in 1 2 3 4 5 6 7; do                                                      # 후퇴: out at once (3.8.3: no turn limit; a raid's retreat always works)
-        SEQ3=$((SEQ3 + 1)); act3 $SEQ3 '{"battle":{"cmd":{"run":{}}}}'
-        [ "$(printf '%s' "$BODY" | jq -r '.out.end.result // empty')" ] && break
-    done
-    ok "it ended, its damage counted" is 200 '.out.end.dealt >= 0' true
-    jq -n --arg id "$ID3" --arg s "$S3" '{id: $id, session: $s}' > "$TMP/req"
-    CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/raid"); BODY=$(cat "$TMP/body")
-    ok "the lobby: one fight of mine" is 200 '.mine.fights' 1
+    raid() { jq -n --arg id "$ID3" --arg s "$S3" --arg a "$1" '{id: $id, session: $s} + (if $a == "" then {} else {app: $a} end)' > "$TMP/req"
+             CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/raid"); BODY=$(cat "$TMP/body"); }
+    act3r() { jq -n --arg id "$ID3" --arg s "$S3" --argjson q "$1" --argjson a "$2" '{id: $id, session: $s, seq: $q, act: $a, app: "4.0"}' > "$TMP/req"
+              CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' -H "X-App-Key: $KEY" --data-binary @"$TMP/req" "$BASE/v2/act"); BODY=$(cat "$TMP/body"); }
+    raid "";    ok "/v2/raid from 3.9: the old shape, harmless" is 200 '[.hpTotal, .hpLeft, (.week | endswith("-test"))] | tostring' '[1,1,true]'
+    SEQ3=$((SEQ3 + 1)); act3 $SEQ3 '{"raid":{}}'; ok "3.9's 도전: update first" is 200 '.out.cannot' "레이드가 새로워졌어요
+업데이트해 주세요"
+    raid "4.0"; ok "4.0's lobby: today, the tiers" is 200 '[.today.max, (.tiers | length), .pending] | tostring' '[3,5,null]'
+    SEQ3=$((SEQ3 + 1)); act3r $SEQ3 '{"raid":{"tier":1}}'; ok "a ★1 run: 10 bars, 1칸 of power" is 200 '[(.out.battle.theirs | length), .out.battle.raidTier, .walk.raidPower] | tostring' '[10,1,20000]'
+    SEQ3=$((SEQ3 + 1)); act3r $SEQ3 '{"battle":{"cmd":{"run":{}}}}'; ok "후퇴: over, 3 balls" is 200 '[.out.end.result, .out.end.bars, .out.end.balls] | tostring' '["ran",0,3]'
+    raid "4.0"; ok "the ball stage waits" is 200 '[.pending.balls, .mine.runs, .today.used] | tostring' '[3,1,1]'
+    SEQ3=$((SEQ3 + 1)); act3r $SEQ3 '{"raid":{"tier":1}}'; ok "no new run before it's done" is 200 '.out.cannot' "남은 볼이 있어요"
+    SEQ3=$((SEQ3 + 1)); act3r $SEQ3 '{"raidBall":{}}'; ok "a ball" is 200 '(.out.raidThrow.balls == 2) or .out.raidThrow.caught' true
+    SEQ3=$((SEQ3 + 1)); act3r $SEQ3 '{"raidQuit":{}}'; ok "given up" is 200 '.out.cannot' null
+    raid "4.0"; ok "nothing waits, the run in 내 판" is 200 '[.pending, (.runs | length)] | tostring' '[null,1]'
 else
     echo "SKIP  raid (needs: sudo -u pokewalker $PS set $ID3 '\$.raidPower' 30000)"
 fi

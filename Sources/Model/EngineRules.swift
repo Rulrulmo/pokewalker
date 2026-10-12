@@ -81,13 +81,13 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .course(let i):
             guard courses.indices.contains(i), w.unlocked(i), i != w.course else { return "갈 수 없는 코스예요" }
             w.setCourse(i, &r); return nil
-        case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
+        case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .raidQuit, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
              .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept,
              .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove, .claim, .visitSend, .visitEnd, .duelQueue, .duelQueueCancel, .duelPick,
              .mailClaim, .mailClaimAll:
             return nil                                                                              // the server's: other trainers' saves, the inbox, the raid, friends, the board, live battles
         case .duelParty(let uids): return duelParty(uids)
-        case .raid(let party): return raid(party)
+        case .raid(let party, _): return raid(party)                                               // (the tier: the server's boss, p.raidBoss)
         }
     }
 
@@ -229,6 +229,15 @@ struct EngineRun<R: RandomNumberGenerator> {
         let result = switch last { case .caught: "caught"; case .won: "won"; case .lost: "lost"; case .fled: "fled"; default: "ran" }
         p.battle = nil
         var end = BattleEnd(result: result)
+        if p.raid != nil, let t = b.raidTier {                                                      // 4.0 (16 §4): a run — its bars, its balls, the tier's BP for a win
+            let bars = b.theirs.filter { !$0.alive }.count, won = last == .won
+            end.bars = bars; end.balls = RaidRules.balls + (won ? RaidRules.winBalls : 0)
+            w.writeBack(p.party ?? [], b.mine.map(\.mon)); p.party = nil; p.raid = nil
+            let h = p.held; p.held = 0; walkNow(h)
+            if won, let bp = RaidRules.tier(t)?.bp { w.bp = (w.bp ?? 0) + bp; end.bp = bp; end.gifts = [.bp(amount: bp)] }
+            growth(); out.end = end
+            return []
+        }
         if p.raid != nil {                                                                          // 12 §4.2: the damage (the server counts it), a BP a bar, EXP as a wild fight's
             let bars = b.theirs.filter { !$0.alive }.count
             end.dealt = b.theirs.reduce(0) { $0 + ($1.maxHP - $1.hp) }; end.bp = bars
@@ -259,7 +268,7 @@ struct EngineRun<R: RandomNumberGenerator> {
     /// 12 §4.2: this week's boss (the server's), 1칸 of power; our party (the tower's three) at its own levels, against 3 of its bars.
     mutating func raid(_ party: [Int]? = nil) -> String? {
         guard let rb = p.raidBoss else { return "이번 주 레이드가\n없어요" }
-        guard rb.left > 0 else { return "이번 주 보스는\n이미 쓰러졌어요" }
+        guard rb.tier != nil || rb.left > 0 else { return "이번 주 보스는\n이미 쓰러졌어요" }       // (4.0: a run's boss is its own)
         if let u = party {                                                                          // 3.8 (14 §4): the player's 1–3, else the tower's three
             guard (1...3).contains(u.count), Set(u).count == u.count else { return "1~3마리를\n골라 주세요" }
             guard u.allSatisfy({ w.ref(uid: $0) != nil }) else { return "그 포켓몬은\n없어요" }
@@ -269,7 +278,8 @@ struct EngineRun<R: RandomNumberGenerator> {
         let refs = party.map { $0.compactMap { w.ref(uid: $0) } } ?? w.party().map(\.ref)
         p.party = refs.map { w.id($0)! }                                                            // uids first: the fighters carry them, EXP goes back by them
         var b = Battle(wild: rb.boss, party: refs.compactMap { w.mon($0) }); b.seed = r.next()
-        b.theirs += Array(repeating: Fighter(rb.boss), count: Engine.raidBars - 1)                  // a bar down: it stands up again
+        b.theirs += Array(repeating: Fighter(rb.boss), count: (rb.tier == nil ? Engine.raidBars : RaidRules.bars) - 1)   // a bar down: it stands up again
+        b.raidTier = rb.tier
         w.see(rb.boss.dex)
         out.beats = b.begin(weather: nil, &r); p.battle = b; p.raid = rb.week; out.battle = b
         return nil
@@ -405,7 +415,7 @@ extension Act {
     /// The server's own acts with other trainers (friends, 인사, trades, the board, the raid's ball): they leave play alone (a chain holds, a radar stays).
     var social: Bool {
         switch self {
-        case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
+        case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .raidQuit, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
              .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept, .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove,
              .claim, .visitSend, .visitEnd, .duelParty, .duelQueue, .duelQueueCancel, .duelPick, .mailClaim, .mailClaimAll: true
         default: false

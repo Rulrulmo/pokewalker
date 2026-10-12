@@ -254,6 +254,7 @@ extension SaveDB { func setPlay(_ key: String, _ p: Play) throws { try db.rows("
         w.raidPower = Engine.raidPowerMax                                                         // (3.8: 10,000 steps a 칸 — more than the test's allowance walks)
     }
     try await setWalk(db, "보브") { $0.raidPower = Engine.raidPowerMax }
+    try await db.setRaidRunsFrom(Int.max)                                                         // the team's boss as before 4.0's runs (16)
     var lobby = try JSONDecoder().decode(RaidReply.self, from: await db.raidLobby(TeamReq(id: "앨리스", session: a), now: base.addingTimeInterval(201)).body)
     #expect(raidRotation.contains(lobby.boss.dex) && lobby.boss.level == 70 && lobby.boss.perfectIVs >= 4)
     #expect(lobby.hpTotal == lobby.barHP * raidBarsPerFighter * 2 && lobby.hpLeft == lobby.hpTotal)          // two walked lately: 8 bars
@@ -763,3 +764,134 @@ extension SaveDB {
     db = try SaveDB(path: path)
     #expect(try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: "앨리스", session: a), now: base.addingTimeInterval(71)).body).mails.count == 1)   // once
 }
+
+// MARK: - 4.0's raid runs (docs/plans/16)
+
+@Test func raidActShapes() throws {                                                              // 3.9's raid JSON still reads; 4.0's round-trips
+    let d = JSONDecoder(), e = JSONEncoder()
+    #expect(try d.decode(Act.self, from: Data(#"{"raid":{"party":[5,6]}}"#.utf8)) == .raid(party: [5, 6], tier: nil))
+    #expect(try d.decode(Act.self, from: Data(#"{"raid":{}}"#.utf8)) == .raid(party: nil, tier: nil))
+    for a in [Act.raid(party: [1], tier: 3), .raidQuit, .raidBall] { #expect(try d.decode(Act.self, from: e.encode(a)) == a) }
+    var end = BattleEnd(result: "won"); end.bars = 10; end.balls = 5; end.gifts = [.bp(amount: 2)]
+    #expect(try d.decode(BattleEnd.self, from: e.encode(end)) == end)
+    var card = try d.decode(TeamCard.self, from: e.encode(TeamCard(name: "a", walk: Walk(), today: 0, week: 0, idle: 0))); card.raid = RaidWeek(runs: 2, wins: 1, caught: 1, shiny: 0, best: 3)
+    #expect(try d.decode(TeamCard.self, from: e.encode(card)) == card)
+}
+
+@Test func raidRunOdds() {                                                                       // 30 % new (shiny: a new shiny), 10 % owned
+    var w = Walk(); w.owned = [249]; w.shinyOwned = [250]
+    var lugia = Mon(dex: 249, level: 50, female: false), hooh = Mon(dex: 250, level: 50, female: false)
+    #expect(raidOdds(lugia, w) == 0.10 && raidOdds(hooh, w) == 0.30)
+    lugia.shiny = true; hooh.shiny = true
+    #expect(raidOdds(lugia, w) == 0.30 && raidOdds(hooh, w) == 0.10)
+}
+
+@Test func raidRunExpAndEVs() {                                                                  // a bar: a fifth of a wild KO's EXP; EVs once a run
+    var me = Mon(dex: 445, level: 60, female: false); me.known = [89, 200, 337, 14]; me.ivs = Array(repeating: 31, count: 6)
+    let boss = Mon(dex: 487, level: 20, female: false)
+    var b = Battle(wild: boss, party: [me]); b.seed = 3; b.raidTier = 1
+    b.theirs += Array(repeating: Fighter(boss), count: RaidRules.bars - 1)
+    var r = SystemRandomNumberGenerator(), gained: [(exp: Int, foe: Int)] = []
+    _ = b.begin(weather: nil, &r)
+    while !b.over, b.turnNo < 80 {
+        let x = b.mine[b.me], slot = x.pp.indices.first { x.pp[$0] > 0 && moveTable[x.moves[$0]]?.isStatus == false } ?? 0
+        for bt in b.turn(.fight(b.forced ?? x.moves[slot]), &r) { if case .gained(let e, _, let f, _) = bt { gained.append((e, f)) } }
+    }
+    #expect(b.theirs.allSatisfy { !$0.alive } && gained.count == RaidRules.bars)
+    #expect(gained.filter { $0.foe > 0 }.count == 1 && gained.first?.foe == 487)                   // EVs: the first bar only
+    #expect(gained.first?.exp ?? 0 <= max(1, Battle.wildExp(base: baseExp[487], foe: 20, mine: 60, share: 1) / RaidRules.expShare))
+    #expect(b.mine[0].mon.evs?.reduce(0, +) == evYield[487].reduce(0, +))
+}
+
+extension SaveDB { func swapSession(_ key: String, _ s: String) throws { try db.rows("UPDATE trainers SET session = :s WHERE key = :k", ["s": .text(s), "k": .text(key)]) } }
+
+@Test func raidRuns() async throws {                                                             // 16 §4: tiers, 10 bars, the ball stage, 3 a day, the week's mail
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    var s = try await newTrainer(db, "앨리스")
+    _ = try await db.newFriendPair("앨리스", try await newTrainer(db, "보브"))
+    var seq = 1, t = 100.0
+    func go(_ a: Act, app: String = "4.0", steps: Int? = nil) async throws -> ActReply {
+        let o = try reply(await db.act(ActReq(id: "앨리스", session: s, seq: seq, steps: steps, act: a, app: app), now: base.addingTimeInterval(t))); seq += 1; t += 1; return o
+    }
+    func lobby(app: String? = "4.0") async throws -> RaidLobby {
+        try JSONDecoder().decode(RaidLobby.self, from: await db.raidLobby(RaidReq(id: "앨리스", session: s, app: app), now: base.addingTimeInterval(t)).body)
+    }
+    func strong() async throws {
+        try await setWalk(db, "앨리스") { w in
+            var c = Mon(dex: 445, level: 100, female: false); c.uid = firstUID; c.known = [89, 200, 337, 14]; c.ivs = Array(repeating: 31, count: 6); w.companion = c
+            w.raidPower = Engine.raidPowerMax
+        }
+    }
+    func fight(_ tier: Int, retreat: Bool = false) async throws -> BattleEnd? {
+        var o = try await go(.raid(party: nil, tier: tier))
+        if let bt = o.out.battle { #expect(bt.theirs.count == RaidRules.bars && bt.raidTier == tier && bt.wild.level == RaidRules.tier(tier)?.level) }
+        while let bt = o.out.battle, o.out.end == nil, o.out.cannot == nil {
+            let x = bt.mine[bt.me], slot = x.pp.indices.first { x.pp[$0] > 0 && moveTable[x.moves[$0]]?.isStatus == false } ?? 0
+            o = try await go(.battle(cmd: retreat ? .run : bt.mustReplace ? .replace(to: bt.mine.indices.first { bt.mine[$0].alive && $0 != bt.me } ?? 0) : .fight(slot: slot)))
+        }
+        return o.out.end
+    }
+    _ = try await go(.steps, steps: 10)
+    try await strong()
+
+    try await db.setRaidRunsFrom(Int.max)                                                         // not yet: 4.0 hears so, 3.9 fights the team's boss
+    let shut = try await lobby()
+    #expect(shut.opens == Int.max && shut.today.max == 0)
+    #expect(try await go(.raid(party: nil, tier: 1)).out.cannot == "새 레이드는\n곧 열려요")
+    try await db.setRaidRunsFrom(0)                                                               // on (pokeserver raid-runs on)
+    let old = try JSONDecoder().decode(RaidReply.self, from: await db.raidLobby(RaidReq(id: "앨리스", session: s), now: base.addingTimeInterval(t)).body)
+    #expect(old.hpTotal == 1 && old.hpLeft == 1 && old.fighters.isEmpty && !old.mine.canCatch)   // 3.9's lobby: harmless
+    #expect(try await go(.raid(party: nil), app: "3.9.1").out.cannot == raidUpdate)
+    #expect(try await go(.raidBall, app: "3.9.1").out.cannot == raidUpdate)
+    #expect(try await go(.raid(party: nil, tier: nil)).out.cannot == "난이도를\n골라 주세요")
+    var l = try await lobby()
+    #expect(l.opens == nil && l.today == RaidToday(used: 0, max: 3) && l.tiers == RaidRules.tiers && l.pending == nil && l.friends.map(\.name) == ["앨리스", "보브"])
+
+    // a win at ★1: 10 bars, 5 balls, 1 BP, the week's 1st win by mail
+    let bp0 = try #require(try await db.trainer("앨리스")?.walk.flatMap(decodeWalk)).bp ?? 0
+    let won = try #require(try await fight(1))
+    #expect(won.result == "won" && won.bars == RaidRules.bars && won.balls == 5 && won.bp == 1 && won.gifts == [.bp(amount: 1)])
+    #expect(try #require(try await db.trainer("앨리스")?.walk.flatMap(decodeWalk)).bp == bp0 + 1)
+    #expect(try await db.mailLog(last: 3).contains("레이드 이번 주 1승 보상"))
+    l = try await lobby()
+    #expect(l.pending?.balls == 5 && l.pending?.won == true && l.pending?.tier == 1 && l.today.used == 1)
+    #expect(l.mine == RaidWeek(runs: 1, wins: 1, caught: 0, shiny: 0, best: 1) && l.runs.count == 1 && l.runs[0].won && l.runs[0].bars == 10)
+    #expect(try await go(.raid(party: nil, tier: 1)).out.cannot == raidPendingWhy)               // the ball stage first
+    var thrown = 0, caught = false
+    while !caught, thrown < 5 {
+        let o = try await go(.raidBall); let th = try #require(o.out.raidThrow)
+        thrown += 1; caught = th.caught
+        #expect(th.balls == 5 - thrown && !th.reward)
+        if caught { #expect(th.mon?.dex == l.pending?.boss.dex && th.mon?.level == 20 && o.walk?.box.contains { $0.uid == th.mon?.uid } == true) }
+    }
+    let after = try await lobby()
+    #expect(after.pending == nil && after.runs[0].caught == caught)
+    #expect(try await go(.raidBall).out.cannot == "던질 볼이 없어요")
+
+    // a retreat at once: 3 balls all the same; given up (raidQuit) they're gone
+    let ran = try #require(try await fight(5, retreat: true))
+    #expect(ran.result == "ran" && ran.bars == 0 && ran.balls == 3 && ran.bp == nil)
+    #expect(try await lobby().pending?.balls == 3)
+    _ = try await go(.raidQuit)
+    l = try await lobby()
+    #expect(l.pending == nil && l.runs.count == 2 && !l.runs[0].caught && l.mine.runs == 2 && l.mine.wins == 1)
+
+    // a fight cut off (a new session): over as fought, its 3 balls wait; then the day's 3 are used
+    _ = try await go(.raid(party: nil, tier: 2))
+    s = "s2"; try await db.swapSession("앨리스", s); seq = 1
+    l = try await lobby()
+    #expect(l.pending?.balls == 3 && l.pending?.bars == 0 && l.today.used == 3)
+    _ = try await go(.raidQuit)
+    try await strong()
+    #expect(try await go(.raid(party: nil, tier: 1)).out.cannot == "오늘은 3판을\n다 했어요")
+    t += 86400                                                                                    // tomorrow: 3 more
+    #expect(try await lobby().today.used == 0)
+    let card = try JSONDecoder().decode(TeamReply.self, from: await db.team(TeamReq(id: "앨리스", session: s), now: base.addingTimeInterval(t)).body).cards[0]
+    #expect(card.raid == RaidWeek(runs: 3, wins: 1, caught: caught ? 1 : 0, shiny: 0, best: 1) || card.raid == nil)   // (nil if tomorrow is a new week)
+}
+extension SaveDB {
+    func newFriendPair(_ a: String, _ s: String) throws {
+        try db.rows("INSERT INTO friends (a, b, state, at) VALUES (:a, '보브', 'friends', 0)", ["a": .text(a)])
+    }
+}
+

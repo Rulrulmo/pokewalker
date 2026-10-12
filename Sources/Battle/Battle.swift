@@ -19,6 +19,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
     var pvp: Bool? = nil                             // a live battle (docs/plans/12 §5): the other side is a player — its pick comes in foePlan, its KO'd one waits for foeMustReplace
     var foePlan: Move? = nil, foeMustReplace: Bool? = nil
     var itemOn: Int? = nil                           // the next item's target among ours (nil = the one out): set before turn(.item)
+    var raidTier: Int? = nil                         // 4.0 (docs/plans/16): a raid run's tier — its bars pay a fifth of a wild KO's EXP, EVs on the first only
     var wild: Mon { theirs[it].mon }
 
     init(wild: Mon, companion: Mon, chain: Int = 0) { self.init(wild: wild, party: [companion], chain: chain) }
@@ -50,7 +51,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
         case .gained(let e, _, let foe, let k):
             let old = mine[k].maxHP
             if mine[k].mon.gainBattleExp(e) { mine[k].hp += mine[k].maxHP - old }                    // a level-up raises current HP too
-            if faced.contains(k) || mine[k].item == "학습장치" { mine[k].mon.gainEVs(from: foe) }       // (3.9: the walker's half share comes without EVs)
+            if foe > 0, faced.contains(k) || mine[k].item == "학습장치" { mine[k].mon.gainEVs(from: foe) }   // (3.9: the walker's half share comes without EVs; foe 0: none)
         default: break
         }
     }

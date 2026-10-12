@@ -27,6 +27,8 @@ let usage = """
       mail <id|--all> --title <t> [--body <b>] [--item <name> <n>]… [--bp <n>] [--watts <n>] [--title-gift <칭호>] [--deco silver|gold]
                                          3.9 (docs/plans/15): a mail to one trainer or all (test IDs left out); no gifts = a notice
       mail-log [<n>]                     the last mails sent, newest first (default 30)
+      raid-runs [on | <unix>]            4.0 (docs/plans/16): when the raid's runs start for the team (on = now; test IDs have them always)
+      raid-log [<n>]                     the last raid runs: who, the tier, the boss (★ shiny), bars down, won, balls left, caught (default 30)
     --db: else $DB_PATH, else /var/lib/pokewalker/pokewalker.db
     """
 
@@ -169,7 +171,7 @@ extension SaveDB {
             try db.rows("UPDATE trainers SET key = :nk, name = :n, session = NULL, device = NULL WHERE key = :k", a.merging(["n": .text(n.name)]) { $1 })
             try db.rows("UPDATE history SET key = :nk WHERE key = :k", a)
             try db.rows("UPDATE OR IGNORE legacy SET key = :nk WHERE key = :k", a)
-            for t in ["pins", "flags", "mons", "chains", "grants", "steps_day", "actions", "raid_hits", "raid_catch", "mail", "tower_rewards"] { try db.rows("UPDATE \(t) SET key = :nk WHERE key = :k", a) }
+            for t in ["pins", "flags", "mons", "chains", "grants", "steps_day", "actions", "raid_hits", "raid_catch", "raid_runs", "mail", "tower_rewards"] { try db.rows("UPDATE \(t) SET key = :nk WHERE key = :k", a) }
             for t in ["trust", "pin_fails", "play"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }   // play: the session ends anyway
             for (t, c) in [("inbox", "to_key"), ("inbox", "from_key"), ("trades", "to_key"), ("trades", "from_key"), ("friends", "a"), ("friends", "b"), ("listings", "key"), ("bids", "key"), ("duels", "a"), ("duels", "b"),
                            ("claims", "key"), ("visits", "owner"), ("visits", "host")] {
@@ -189,7 +191,7 @@ extension SaveDB {
                 try Data(w.utf8).write(to: file, options: .atomic)
                 kept = "save kept as \(file.path)"
             }
-            for t in ["history", "trainers", "pins", "trust", "pin_fails", "mons", "chains", "grants", "play", "steps_day", "actions", "raid_hits", "raid_catch"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
+            for t in ["history", "trainers", "pins", "trust", "pin_fails", "mons", "chains", "grants", "play", "steps_day", "actions", "raid_hits", "raid_catch", "raid_runs"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
             for t in ["inbox", "trades"] { try db.rows("DELETE FROM \(t) WHERE to_key = :k OR from_key = :k", ["k": .text(k)]) }
             try db.rows("DELETE FROM friends WHERE a = :k OR b = :k", ["k": .text(k)])
             for l in try listings("key = :k AND state = 'open'", ["k": .text(k)]) {                    // 3.8: others' Pokémon held by its posts or raised by it go home first
@@ -370,6 +372,14 @@ public func run(_ arguments: [String]) async -> Int32 {
             }
             guard let title, !title.isEmpty else { return fail("mail: --title is needed") }
             out = try await db.adminMail(to, title: title, body: body, gifts: gifts, now: unixNow())
+        case ("raid-runs", 0), ("raid-runs", 1):
+            if let a = rest.first {
+                guard let at = a == "on" ? unixNow() : Int(a) else { return fail("raid-runs: on, or a unix time") }
+                out = try await db.raidRunsSet(at)
+            } else { out = try await db.raidRunsShow(now: unixNow()) }
+        case ("raid-log", 0), ("raid-log", 1):
+            guard let n = rest.count > 0 ? Int(rest[0]) : 30 else { return fail("raid-log: <n> is a number") }
+            out = try await db.raidLog(last: n)
         case ("mail-log", 0), ("mail-log", 1):
             guard let n = rest.count > 0 ? Int(rest[0]) : 30 else { return fail("mail-log: <n> is a number") }
             out = try await db.mailLog(last: n)

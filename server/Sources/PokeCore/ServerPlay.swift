@@ -32,7 +32,7 @@ func actName(_ a: Act) -> String {
     case .battle(let c): "battle \(c)"; case .buy(let bp, let i, let l, let s, let q): "buy \(i ?? l.map { "legend \($0)" } ?? s ?? "?") ×\(q)\(bp ? " (BP)" : "")"
     case .use(let i, _, let on): "use \(i)" + (on.map { " on \($0)" } ?? ""); case .sellAll: "sell all"; case .mon(let op): "mon \(op)"; case .course(let c): "course \(c)"; case .greet(let to): "greet \(to)"
     case .tradeOffer(let to, let g, let wnt): "trade offer → \(to) \(g)\(wnt.map { " for \($0)" } ?? "")"; case .tradeAccept(let i, let g): "trade accept #\(i)\(g.map { " with \($0)" } ?? "")"
-    case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"; case .raid(let p): "raid" + (p.map { " with \($0)" } ?? ""); case .raidBall: "raid ball"
+    case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"; case .raid(let p, let tier): "raid" + (tier.map { " ★\($0)" } ?? "") + (p.map { " with \($0)" } ?? ""); case .raidBall: "raid ball"; case .raidQuit: "raid quit"
     case .friendRequest(let to): "friend request → \(to)"; case .friendAccept(let f): "friend accept \(f)"; case .friendDecline(let f): "friend decline \(f)"
     case .friendRemove(let n): "friend remove \(n)"; case .marketList(let g, let w, _): "market list \(g) wish \(w)"; case .marketUnlist(let i): "market unlist #\(i)"
     case .marketBid(let l, let g): "market bid #\(l) with \(g)"; case .marketWithdraw(let b): "market withdraw bid #\(b)"; case .marketAccept(let b): "market accept bid #\(b)"
@@ -87,11 +87,22 @@ extension SaveDB {
                 }
 
                 var ids = Issued(next: try nextUID(id.key, w)), g = SystemRandomNumberGenerator()
-                if case .raid = r.act { row.play.raidBoss = try raidBoss(id.key, now: now) }        // 12 §4: the engine fights the server's boss
+                var refused: String? = nil                                                          // the server's no before the engine (its steps still walk)
+                if case .raid(_, let tier) = r.act, row.play.battle == nil {                          // 12 §4: the engine fights the server's boss; 16: a run's own
+                    let s = try raidStart(id.key, tier: tier, app: r.app, now: now)
+                    if let why = s.why { refused = why } else { row.play.raidBoss = s.boss }
+                }
                 let fightWeek = row.play.raid
-                var out = Engine.apply(r.act, steps: taken, walk: &w, play: &row.play, rng: &g, now: now, ids: &ids)
+                var out = Engine.apply(refused == nil ? r.act : .steps, steps: taken, walk: &w, play: &row.play, rng: &g, now: now, ids: &ids)
+                if let why = refused { out.cannot = why }
+                let began = row.play.raidBoss
                 row.play.raidBoss = nil
-                if let week = fightWeek, let dealt = out.end?.dealt {                                   // a raid fight ended: its damage to the team's boss
+                if let rb = began, rb.tier != nil, out.cannot == nil, out.battle != nil {             // 16: a run began — its row (the ball stage's, later)
+                    try raidRunBegan(id.key, rb, party: row.play.party ?? [], now: now)
+                }
+                if fightWeek != nil, let end = out.end, end.bars != nil {                             // 16: a run's fight ended: its bars and balls; a weekly win's mail
+                    try raidRunEnded(id.key, end: end, now: unix)
+                } else if let week = fightWeek, let dealt = out.end?.dealt {                          // a raid fight ended: its damage to the team's boss
                     let counted = try raidHit(week, key: id.key, name: t.name, lead: out.battle?.mine.first?.mon.dex ?? w.companion.dex, dealt: dealt, now: unix)
                     let bar = max(1, try db.rows("SELECT bar_hp FROM raids WHERE week = :w", ["w": .text(week)]).first?.int("bar_hp") ?? 1)
                     let earned = (counted + bar - 1) / bar, paid = out.end?.bp ?? 0                     // BP for the bars the counted damage covers (the last, partial one too)
@@ -130,9 +141,13 @@ extension SaveDB {
                         let was = w; var more: [News] = []
                         if let why = try visitAct(r.act, key: id.key, name: t.name, walk: &w, news: &more, now: unix) { out.cannot = why; w = was }
                         else { out.news += more; if w != was { out.changed = true } }
-                    case .raidBall:                                                                     // 12 §4.3: ServerRaid.swift
+                    case .raidBall:                                                                     // 12 §4.3 · 16 §4.2: ServerRaid.swift
                         let was = w
-                        if let why = try raidBall(id.key, walk: &w, out: &out, now: now) { out.cannot = why; w = was } else if w != was { out.changed = true }
+                        let why = try raidRuns(id.key, now) ? (knows(r.app, RaidRules.app) ? try raidRunBall(id.key, walk: &w, out: &out, now: now) : raidUpdate)
+                                                            : try raidBall(id.key, walk: &w, out: &out, now: now)
+                        if let why { out.cannot = why; w = was } else if w != was { out.changed = true }
+                    case .raidQuit:                                                                     // 16 §4.2: the ball stage given up
+                        try raidRunQuit(id.key, now: now)
                     default: break
                     }
                 }
