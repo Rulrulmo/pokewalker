@@ -718,13 +718,14 @@ import Foundation
     check(seeded, "live tower: seeded — box \(w.state.box.map(\.dex)), \(w.state.watts) W, pick \(String(describing: w.state.towerPick))")
     guard seeded else { print("FAIL \(failed)"); return false }
     settle(); w.calmAt = .distantPast
-    let w0 = w.state.watts, old = party()
+    let w0 = w.state.watts, old = party(), two = w.state.legends(w.state.party().map(\.ref)) > 1
+    check(two, "live tower: the seed's pick from before 4.1 holds two legends (\(old)) — reseed if not (a run leaves one)")
+    guard two else { print("FAIL \(failed)"); return false }
     w.towerRun = false; w.screen = .tower(pick: nil); w.pageTap(5400); settle()
-    check(w.state.legends(w.state.party().map(\.ref)) <= 1 || (says() == Walker.noLegend && !w.inBattle && w.state.watts == w0),
-          "live tower: a pick from before 4.1 with two legends (\(old)) can't start — \(says()), no fee (\(w0) → \(w.state.watts) W)")
+    check(says() == Walker.noLegend && !w.inBattle && w.state.watts == w0, "live tower: … it can't start — \(says()), no fee (\(w0) → \(w.state.watts) W)")
     w.screen = .tower(pick: nil); w.pageTap(5410)
     let mine = squad()?.picked.count ?? 0
-    if w.state.legends(w.state.party().map(\.ref)) > 1 { w.pageTap(8790); check(says() == Walker.noLegend, "live tower: … nor be sent as it is (the picker says why) — \(says())"); w.screen = .squad(squad() ?? Squad(kind: .tower, picked: [], at: 0)) }
+    w.pageTap(8790); check(says() == Walker.noLegend, "live tower: … nor be sent as it is (the picker says why) — \(says())")
     w.towerPartyPick(); for _ in 0..<mine { w.pageTap(8740) }
     tap(150); tap(149); tap(445); w.pageTap(8790); settle()
     check(party() == [150, 149, 445], "live tower: down to one legend — 뮤츠 · 망나뇽 · 한카리아스 set (\(party()))")
@@ -737,7 +738,7 @@ import Foundation
     w.act(.towerPick(slot: 0, uid: uid(150)), back: .tower(pick: nil), Date()) { _, _ in .tower(pick: nil) }; settle()
     check(says() == Walker.noLegend && party() == [149, 445, 249], "live tower: a second legend sent anyway — the server's refusal (\(says())), the party as it was")
     w.screen = .tower(pick: nil); let strip = w.paneContent(Date()).tower, w1 = w.state.watts
-    w.pageTap(5400); run(30) { w.inBattle || !says().isEmpty }
+    w.calmAt = .distantPast; w.pageTap(5400); run(30) { w.inBattle || !says().isEmpty }        // (● right after a message is held back a moment: 3.8.6)
     let foes = w.fight?.theirs.map(\.mon.dex) ?? []
     check(w.inBattle && foes.count == 3 && !foes.contains(where: Tower.isLegend) && w.state.watts == w1 - Walk.towerFee,
           "live tower: one legend in, a run starts (\(w1) → \(w.state.watts) W; the 1st fight's \(foes.map { monNames[$0] }), no legend)")

@@ -113,7 +113,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     let mailedE = { let (srv, key) = server(rwE); return (srv.postBox[key] ?? []).filter { $0.kind == "tower" }.map(\.title) }()
     check(rwE.state.towerRewards == Tower.rewards.map(\.wins) + [150, 200] && mailedE.contains("150연승 달성 보상") && mailedE.contains("200연승 달성 보상") && !mailedE.contains("250연승 달성 보상")
           && stripE?.rewards.last.map { ($0.wins, $0.more, $0.got, $0.short) } ?? (0, false, true, "") == (250, true, false, "금뚜껑") && stripE?.next == "다음 보상 250연승 · 금색병뚜껑 (이후 50연승마다)"
-          && rwE.compose(Date()).runs.map(\.s).contains("다음 보상 250연승"),
+          && rwE.compose(Date()).runs.map(\.s).contains { $0 == "다음 보상 250연승" || $0 == "다음 250연승" },   // (the short one where the font is wider: Windows)
           "4.1 tower: every 50 wins from 150 mails a 금색병뚜껑 once (150 · 200 at best 210); the strip's 9th cell is the next (250…), the line adds 이후 50연승마다",
           "\(String(describing: rwE.state.towerRewards)) \(mailedE) \(String(describing: stripE?.rewards.last)) \(String(describing: stripE?.next))")
     let ty0 = Tower.tycoonFights.min()! - 1                                                       // the wins before the tycoon's first fight
