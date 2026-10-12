@@ -819,7 +819,10 @@ extension SaveDB { func swapSession(_ key: String, _ s: String) throws { try db.
     func strong() async throws {
         try await setWalk(db, "앨리스") { w in
             var c = Mon(dex: 445, level: 100, female: false); c.uid = firstUID; c.known = [89, 200, 337, 14]; c.ivs = Array(repeating: 31, count: 6); w.companion = c
-            w.raidPower = Engine.raidPowerMax
+            for (i, (d, mv)) in [(248, [242, 444, 89, 14]), (149, [200, 337, 89, 14])].enumerated() where !w.box.contains(where: { $0.dex == d }) {   // three Lv.100s: ★1 (Lv.40) × 10 bars
+                var m = Mon(dex: d, level: 100, female: false); m.uid = firstUID + 1 + i; m.known = mv; m.ivs = Array(repeating: 31, count: 6); w.box.append(m)
+            }
+            w.lastUID = max(w.lastUID ?? 0, firstUID + 2); w.raidPower = Engine.raidPowerMax
         }
     }
     func fight(_ tier: Int, retreat: Bool = false) async throws -> BattleEnd? {
@@ -862,7 +865,7 @@ extension SaveDB { func swapSession(_ key: String, _ s: String) throws { try db.
         let o = try await go(.raidBall); let th = try #require(o.out.raidThrow)
         thrown += 1; caught = th.caught
         #expect(th.balls == 5 - thrown && !th.reward)
-        if caught { #expect(th.mon?.dex == l.pending?.boss.dex && th.mon?.level == 20 && o.walk?.box.contains { $0.uid == th.mon?.uid } == true) }
+        if caught { #expect(th.mon?.dex == l.pending?.boss.dex && th.mon?.level == min(RaidRules.tier(1)?.level ?? 0, RaidRules.caughtMax) && o.walk?.box.contains { $0.uid == th.mon?.uid } == true) }
     }
     let after = try await lobby()
     #expect(after.pending == nil && after.runs[0].caught == caught)
@@ -895,3 +898,28 @@ extension SaveDB {
     }
 }
 
+
+@Test func raidRunAbove100() async throws {                                                       // ★5 fights at Lv.120 and comes in at Lv.100 (the user)
+    var g = Seeded(s: 5)
+    let boss = Mon.wild(249, level: RaidRules.tier(5)?.level ?? 0, perfect: 5, &g)
+    #expect(boss.level == 120 && boss.points == expTable[growthRate[249]][100] && boss.stats.allSatisfy { $0 > 0 } && !boss.moves.isEmpty)
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let s = try await newTrainer(db, "zz120100")
+    _ = await act(db, "zz120100", s, 1, .steps, steps: 10, at: 60)
+    let e = JSONEncoder(); e.outputFormatting = .sortedKeys
+    try await db.seedRun("zz120100", week: raidWeek("zz120100", base.addingTimeInterval(61)), boss: String(decoding: try e.encode(boss), as: UTF8.self))
+    var q = 2, got: Mon? = nil, walk: Walk? = nil
+    while got == nil, q < 300 {
+        let o = try reply(await db.act(ActReq(id: "zz120100", session: s, seq: q, act: .raidBall, app: "4.0"), now: base.addingTimeInterval(Double(60 + q))))
+        q += 1; if o.out.raidThrow?.caught == true { got = o.out.raidThrow?.mon; walk = o.walk }
+    }
+    let m = try #require(got)
+    #expect(m.level == RaidRules.caughtMax && m.exp == nil && m.perfectIVs >= 5 && m.dex == 249)
+    #expect(SaveCheck.values(try #require(walk)).isEmpty)                                           // nothing above 100 in a save
+}
+extension SaveDB {
+    func seedRun(_ key: String, week: String, boss: String) throws {
+        try db.rows("INSERT INTO raid_runs (week, key, day, tier, boss, party, balls, at, ended_at) VALUES (:w, :k, 'd', 5, :b, '[]', 250, 0, 1)",
+                    ["w": .text(week), "k": .text(key), "b": .text(boss)])
+    }
+}

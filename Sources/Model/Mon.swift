@@ -15,7 +15,7 @@ struct Mon: Codable, Equatable {
     var mint: Int? = nil                 // 민트: the nature its stats go by (its own nature stays): docs/plans/13
     var item: String? = nil              // 지닌 도구 (docs/plans/13 ⑤): out of the bag while held; used up in a fight = gone (Battle/Holding.swift)
 
-    var points: Int { exp ?? expTable[growthRate[dex]][level] }
+    var points: Int { exp ?? expTable[growthRate[dex]][max(1, min(100, level))] }   // (a raid boss fights above 100: docs/plans/16)
     static func level(dex: Int, exp: Int) -> Int { let t = expTable[growthRate[dex]]; return (1...100).last { t[$0] <= exp } ?? 1 }
     /// 1 step = 1 EXP, like HGSS. Returns true on a level-up.
     mutating func gain(_ n: Int) -> Bool {

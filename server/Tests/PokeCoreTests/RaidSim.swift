@@ -42,7 +42,7 @@ private func simFight(_ party: [Mon], boss: Mon, bars: Int, _ r: inout SimRNG) -
     let parties = try JSONDecoder().decode([String: [Mon]].self, from: Data(contentsOf: URL(fileURLWithPath: path)))
     let only = ProcessInfo.processInfo.environment["RAID_SIM_DEX"].flatMap(Int.init)
     let species = only.map { [$0] } ?? raidRotation, bars = Int(ProcessInfo.processInfo.environment["RAID_SIM_BARS"] ?? "") ?? 10
-    let levels = (ProcessInfo.processInfo.environment["RAID_SIM_LEVELS"] ?? "40,50,60,70,80,90,100").split(separator: ",").compactMap { Int($0) }
+    let levels = (ProcessInfo.processInfo.environment["RAID_SIM_LEVELS"] ?? RaidRules.tiers.map { String($0.level) }.joined(separator: ",")).split(separator: ",").compactMap { Int($0) }
     let rel = ProcessInfo.processInfo.environment["RAID_SIM_REL"]                  // "max" / "avg": levels are offsets from the party's top / mean level
     var r = SimRNG(s: 2026_10_19)
     print("RAIDSIM bars \(bars) species \(species) n \(n)/species")

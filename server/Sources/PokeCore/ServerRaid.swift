@@ -222,6 +222,7 @@ extension SaveDB {
         var mon: Mon? = nil
         if caught {
             var m = p.boss
+            if m.level > RaidRules.caughtMax { m.level = RaidRules.caughtMax; m.exp = nil }        // ★5 fights at 120, comes in at 100 (the user)
             m.uid = try nextUID(key, w); try record(key, m, kind: "raid", now: Int(now.timeIntervalSince1970)); _ = w.keep(m); mon = m
         }
         try db.rows("UPDATE raid_runs SET balls = :b, caught = :c WHERE id = :id", ["b": .int(p.balls - 1), "c": .int(caught ? 1 : 0), "id": .int(p.id)])
