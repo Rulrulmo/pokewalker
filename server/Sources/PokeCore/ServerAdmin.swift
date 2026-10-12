@@ -375,7 +375,7 @@ public func run(_ arguments: [String]) async -> Int32 {
         case ("raid-runs", 0), ("raid-runs", 1):
             if let a = rest.first {
                 guard let at = a == "on" ? unixNow() : Int(a) else { return fail("raid-runs: on, or a unix time") }
-                out = try await db.raidRunsSet(at)
+                out = try await db.raidRunsSet(at, now: unixNow())
             } else { out = try await db.raidRunsShow(now: unixNow()) }
         case ("raid-log", 0), ("raid-log", 1):
             guard let n = rest.count > 0 ? Int(rest[0]) : 30 else { return fail("raid-log: <n> is a number") }

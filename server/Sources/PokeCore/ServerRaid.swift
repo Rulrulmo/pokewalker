@@ -290,7 +290,7 @@ extension SaveDB {
     }
 
     // MARK: the operator's (pokeserver raid-runs · raid-log)
-    func raidRunsSet(_ at: Int) throws -> String { try setRaidRunsFrom(at); return try raidRunsShow(now: at) }
+    func raidRunsSet(_ at: Int, now: Int) throws -> String { try setRaidRunsFrom(at); return try raidRunsShow(now: now) }
     func raidRunsShow(now: Int) throws -> String {
         let at = try raidRunsFrom(), f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm"; f.timeZone = TimeZone(identifier: "Asia/Seoul")
         return "raid runs for the team from \(f.string(from: Date(timeIntervalSince1970: TimeInterval(at)))) KST (\(at)): " + (now >= at ? "on" : "not yet") + " — test IDs always"
