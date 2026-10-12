@@ -129,7 +129,9 @@ extension Walker {
             var x = f.minX + 7 * k
             if m.foe.owned { c.miniBall(CGPoint(x: f.minX + 9.5 * k, y: f.minY + 10 * k), 4.2 * k); x = f.minX + 17 * k }
             let lv = "Lv\(m.foe.level)", lvf = font(8, .semibold)
-            let nw = c.say(m.foe.name, x, f.minY + 10.5 * k, font(10, .bold), Ink.ink, maxW: f.maxX - 7 * k - x - width(lv, lvf) - 3 * k)
+            var right = f.maxX - 7 * k
+            if let bars = m.bars { right -= c.say("×\(bars.total - bars.broken)", right, f.minY + 10.5 * k, font(9, .bold), Ink.red, 1) + 3 * k }   // 4.0: a raid's bars left (this one counted)
+            let nw = c.say(m.foe.name, x, f.minY + 10.5 * k, font(10, .bold), Ink.ink, maxW: right - x - width(lv, lvf) - 3 * k)
             c.say(lv, x + nw + 3 * k, f.minY + 11 * k, lvf, Ink.sub)
             var bx = f.minX + 6 * k
             for t in m.foe.types { bx += c.typePill(t, bx, f.minY + 23 * k, h: 9 * k, size: 6.5) + 2 * k }

@@ -131,6 +131,8 @@ import AppKit
         take("raid_shiny_spark", rme) { v in v.raidOn = true; v.screen = .beats(sb, bs, since: Date().addingTimeInterval(-0.75 / v.battleSpeed), from: from) }
         take("raid_shiny_reveal", rme) { v in v.raidOn = true; v.screen = .beats(sb, bs, since: Date().addingTimeInterval(-1.5 / v.battleSpeed), from: from) }
         take("raid_shiny_menu", rme) { v in v.raidOn = true; var b = sb; b.theirs[0].hp = b.theirs[0].maxHP * 2 / 3; v.fight = b; v.screen = .battle(b, sel: 0) }
+        take("raid_shiny_hud", rme) { v in v.sideOn = true; v.raidOn = true; var b = sb; for k in 0..<4 { b.theirs[k].hp = 0 }; b.it = 4; b.theirs[4].hp = b.theirs[4].maxHP / 2; v.fight = b; v.screen = .battle(b, sel: 0) }   // the app's own: the HP boxes
+        rme.sideOn = false
     }
     take("raid_won", rme) { v in v.raidOn = false; v.screen = .say(["10줄을 모두 깼다!", "2BP · 볼 5개!", "우편함에 이번 주 보상이 왔다"], next: .raid(.balls), since: Date()) }
     take("raid_balls", rme) { v in v.raidStage = RaidPending(boss: shinyLugia, tier: 3, bars: 10, won: true, balls: 5); v.screen = .raid(.balls) }

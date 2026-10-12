@@ -46,8 +46,9 @@ extension Walker {
         if let said { msg = said; mode = .none }
         let foe = b.theirs[b.it], mine = b.mine[b.me]
         var theirs = card(foe, out: true); theirs.types = foe.typeList; theirs.owned = (state.owned ?? []).contains(foe.mon.dex)
+        if raidOn, foe.mon.shiny == true { theirs.name = "★" + theirs.name }                         // 4.0: a shiny boss, as the pixel HUD says it
         var m = SideModel(foe: theirs, mine: card(mine, out: true), message: msg, mode: mode)
-        if raidOn, case .menu = mode { m.bars = .init(broken: b.theirs.filter { !$0.alive }.count, total: b.theirs.count, cur: CGFloat(foe.hp) / CGFloat(max(1, foe.maxHP))) }
+        if raidOn { m.bars = .init(broken: b.theirs.filter { !$0.alive }.count, total: b.theirs.count, cur: CGFloat(foe.hp) / CGFloat(max(1, foe.maxHP))) }   // (the pane's strip by a prompt, the HP boxes' ×n)
         return m
     }
     func card(_ f: Fighter, out: Bool) -> SideModel.Card { .init(name: monNames[f.mon.dex], level: f.mon.level, hp: f.hp, max: f.maxHP, out: out, status: f.status?.badge, item: f.item) }
