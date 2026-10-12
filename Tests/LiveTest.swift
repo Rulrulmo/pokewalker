@@ -267,9 +267,9 @@ import Foundation
             }
         }
     }
-    /// 도전 → ★1 → who goes (the strongest `n`), in.
+    /// The lobby (fresh: left alone it goes home after 20 s), 도전 → ★1 → who goes (the strongest `n`), in.
     func start(_ w: Walker, _ c: Cloud, strongest n: Int) {
-        w.calmAt = .distantPast; w.pageTap(7010); w.pageTap(7020); w.pageTap(7020)
+        lobby(w, c); w.calmAt = .distantPast; w.pageTap(7010); w.pageTap(7020); w.pageTap(7020)
         if case .squad(var q) = w.screen {
             q.picked = Array(w.squadKeys(q).sorted { (w.squadMon(q, $0)?.level ?? 0) > (w.squadMon(q, $1)?.level ?? 0) }.prefix(n)); w.screen = .squad(q)
         }
@@ -300,9 +300,10 @@ import Foundation
         print("     throw \(tossed): \(says(wa))")
         wa.press(1); run(2) { false }
     }
+    let over = wa.raidStage == nil && step(wa) != .balls                                         // (the lobby, or home first: a level's news)
     ca.raidDue = true; ca.mailDue = true; run(15) { idle(ca) && !ca.raidDue }
     let rec = ca.raid?.runs.first
-    check(tossed > 0 && step(wa) == .lobby(tab: 1) && rec?.won == true && rec?.tier == 1 && rec?.caught == caught && (ca.mail?.mails.count ?? 0) >= mails0,
+    check(tossed > 0 && over && rec?.won == true && rec?.tier == 1 && rec?.caught == caught && (ca.mail?.mails.count ?? 0) >= mails0,
           "live raidBall: \(tossed) throw(s), \(caught ? "caught (\(wa.state.box.last.map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "-"))" : "out of balls"); the lobby's 내 판 has it (\(String(describing: rec)))")
 
     // A: a second run, retreated; its ball stage cut off (the app closed) — the lobby goes back to it; 홈 gives it up
