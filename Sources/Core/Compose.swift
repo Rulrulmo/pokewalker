@@ -53,6 +53,11 @@ extension Walker {
                 fb.text(e == 0 ? "×" : e > 1 ? "▲" : e < 1 ? "▼" : "", x + 46, y, 2, right: true, small: true)
                 if k == sel { fb.invert(x, y - 1, max(w + 3, 47), 11) }
             }
+            if b.canMega(.me) {                                                                       // 5.0: 메가진화 over the moves (◀ ▶ to it, ● ticks it)
+                let l = (megaOn ? "●" : "○") + "메가진화", w = textWidth(l, small: true) + 4
+                fb.fill(96 - w, 25, w, 12, 0); fb.fill(96 - w, 25, 1, 12, 2); fb.text(l, 94, 26, 3, right: true, small: true)
+                if sel == ms.count { fb.invert(96 - w, 25, w, 12) }
+            }
         case .party(let b, let sel):
             stage(&fb, b, now, .idle)
             fb.fill(0, 13, 96, 51, 0); for y in 13..<64 { for x in 0..<96 { fb.col[y * 96 + x] = 0 } }; fb.fill(0, 13, 96, 1, 2)

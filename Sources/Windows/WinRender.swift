@@ -161,6 +161,11 @@ import Foundation
     take("tower_strip_endless") { v in v.state.towerBest = 163; v.state.towerRewards = Tower.rewards.map(\.wins) + [150]; v.towerRun = true; v.state.towerStreak = 163; v.screen = .tower(pick: nil) }   // 4.1: 200~ next
     Content.$testing.withValue(true) {                                                     // 5.0 (content5): the 도감's regions
         take("dex_regions") { v in v.state.owned = [1, 4, 7, 25, 133, 495, 501, 650]; v.dexRegion = 5; v.screen = .dex(495, filter: 0, detail: false) }
+        var zard = Mon(dex: 6, level: 60, female: false); zard.known = [53, 19, 337, 89]; zard.item = "리자몽나이트X"
+        var cross = Mon(dex: 214, level: 60, female: false); cross.item = "헤라크로스나이트"
+        let mgb = Battle(wild: cross, companion: zard); var both = mgb; both.mine[0].mega = 1; both.theirs[0].mega = 1; both.megaUsed = [true, true]
+        take("battle_mega_toggle_on") { v in v.state.companion = zard; v.megaOn = true; v.fight = mgb; v.screen = .moves(mgb, sel: 4) }   // 메가진화 (§9.6)
+        take("battle_mega_after") { v in v.state.companion = zard; v.fight = both; v.screen = .battle(both, sel: 0) }
     }
     take("battle_size3", size: 3) { v in let f = wildFight(v); still(v, "foe 0", 6); v.screen = .battle(f.b, sel: 0) }
     return n

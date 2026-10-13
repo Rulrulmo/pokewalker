@@ -157,9 +157,18 @@ extension Canvas {
                 c.say(hint + power, rc.maxX - x(8), rc.minY + x(26), font(8, .semibold), dead ? Ink.faint : mv.effect > 1 ? Ink.red : Ink.sub, 1)
                 hits.append((rc, i))
             }
+            let mw: CGFloat = m.mega != nil ? 93 : 0                                                // 5.0: 메가진화 at the right of the note (ticked: purple, the move goes as one)
+            if let on = m.mega {
+                let rc = r(X1 - 88, top + 82, 88, 33), p = Path.rounded(rc, 9 * K)
+                c.fill(p, on ? Ink.c(132, 64, 196) : Ink.tile); if sel == ms.count { c.stroke(p, Ink.red, width: 2 * K) }
+                c.say((on ? "✓ " : "") + "메가진화", rc.midX, rc.midY, font(11, .bold), on ? .white : Ink.ink, 0.5); hits.append((rc, ms.count))
+            }
             if let mv = ms[safe: sel] {                                                            // 3.8.2: what the pick does
-                let box = r(X0, top + 82, w, 33); c.fill(.rounded(box, 9 * K), Ink.tile)
+                let box = r(X0, top + 82, w - mw, 33); c.fill(.rounded(box, 9 * K), Ink.tile)
                 moveNote(mv.about, mv.text, box.insetBy(dx: x(8), dy: x(1.5)), lines: 3)
+            } else if m.mega != nil {                                                              // 메가진화 picked: what it does
+                let box = r(X0, top + 82, w - mw, 33); c.fill(.rounded(box, 9 * K), Ink.tile)
+                c.say("배틀마다 한 번", box.minX + x(8), box.midY, font(9, .medium), Ink.sub, maxW: box.width - x(16))
             }
         case .party(let ps, let sel):                                                             // a row each (three, or four with the walker's team, tighter): name, HP
             let pitch: CGFloat = ps.count > 3 ? 21.5 : 27.5

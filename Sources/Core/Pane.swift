@@ -11,6 +11,7 @@ struct SideModel: Equatable {
     /// 4.0 (16 §8-3): a raid's bars by the menu's prompt — broken, of all, and how much of the one up is left (0...1).
     struct Bars: Equatable { var broken, total: Int; var cur: CGFloat }
     var bars: Bars? = nil
+    var mega: Bool? = nil                                              // 5.0: the move screen's 메가진화 (nil: it can't now), ticked or not
 }
 /// 상점 / BP 교환소: the list, and how many.
 struct ShopModel: Equatable {

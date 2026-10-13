@@ -50,6 +50,20 @@ import AppKit
         let fairy = online({ var s = base(); s.companion = pixie; return s }()), fbt = Battle(wild: Mon(dex: 16, level: 30, female: false), companion: pixie)
         take("battle_moves_fairy", fairy) { v in v.sideOn = true; v.fight = fbt; v.screen = .moves(fbt, sel: 0) }
         fairy.sideOn = false
+        // 메가진화 (§9.6): the button after the moves (off / ticked), the LCD's, the light gathering and bursting, both sides Mega (the HP boxes' names, the LCD's marks)
+        var zard = Mon.wild(6, level: 60, &fr); zard.known = [53, 19, 337, 89]; zard.item = "리자몽나이트X"
+        var cross = Mon.wild(214, level: 60, &fr); cross.item = "헤라크로스나이트"
+        let mg = online({ var s = base(); s.companion = zard; return s }()), mgb = Battle(wild: cross, companion: zard)
+        let glowBeat = Beat.mega(.me, form: 1, text: "리자몽의 리자몽나이트X가 빛나기 시작했다!\n리자몽은 메가리자몽X로 메가진화했다!")
+        take("battle_mega_toggle", mg) { v in v.sideOn = true; v.megaOn = false; v.fight = mgb; v.screen = .moves(mgb, sel: 0) }
+        take("battle_mega_toggle_on", mg) { v in v.sideOn = true; v.megaOn = true; v.fight = mgb; v.screen = .moves(mgb, sel: 4) }
+        take("battle_mega_lcd", mg) { v in v.sideOn = false; v.megaOn = true; v.fight = mgb; v.screen = .moves(mgb, sel: 4) }
+        take("battle_mega_glow", mg) { v in v.sideOn = true; v.screen = .beats(mgb, [glowBeat], since: Date().addingTimeInterval(-0.6 / v.battleSpeed), from: mgb) }
+        take("battle_mega_burst", mg) { v in v.sideOn = true; v.screen = .beats(mgb, [glowBeat], since: Date().addingTimeInterval(-1.05 / v.battleSpeed), from: mgb) }
+        var both = mgb; both.mine[0].mega = 1; both.theirs[0].mega = 1; both.megaUsed = [true, true]
+        take("battle_mega_after", mg) { v in v.sideOn = true; v.fight = both; v.screen = .battle(both, sel: 0) }
+        take("battle_mega_after_lcd", mg) { v in v.sideOn = false; v.fight = both; v.screen = .battle(both, sel: 0) }
+        mg.sideOn = false
     }
     // 3.2 (12 M1): the team
     let tsrv = FakeCloud(), tme = online({ var s = base(); s.today = 4321; s.towerBest = 6; s.owned = Array(1...48); return s }(), server: tsrv)

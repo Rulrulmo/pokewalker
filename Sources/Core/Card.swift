@@ -144,7 +144,7 @@ extension Walker {
         c.bar(me.minX + 7 * k, me.maxX - 7 * k, me.minY + 19.5 * k, mr, Ink.hp(mr), h: 5 * k)
         var ix = me.minX + 7 * k
         if let st = m.mine.status { ix += status(st, ix, me.minY + 29.5 * k) + 3 * k }
-        if let it = m.mine.item { c.say(it, ix, me.minY + 29.5 * k, font(7, .semibold), Ink.blue, maxW: me.maxX - 40 * k - ix) }   // 3.7: what it holds now
-        c.say("\(m.mine.hp) / \(m.mine.max)", me.maxX - 7 * k, me.minY + 29.5 * k, font(10, .semibold), Ink.ink, 1)
+        let hw = c.say("\(m.mine.hp) / \(m.mine.max)", me.maxX - 7 * k, me.minY + 29.5 * k, font(10, .semibold), Ink.ink, 1)
+        if let it = m.mine.item { c.say(it, ix, me.minY + 29.5 * k, font(7, .semibold), Ink.blue, maxW: me.maxX - 11 * k - hw - ix) }   // 3.7: what it holds now (5.0: up to the HP, a stone's long name cut)
     }
 }

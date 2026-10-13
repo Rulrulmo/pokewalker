@@ -71,6 +71,32 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     Content.on = false
     check(on5 && off5, "5.0: content5 in the login turns the Gen VI rules on (dexMax 721); no field, off (493)", "\(on5) \(off5)")
 
+    // 5.0 (docs/plans/18 §9.6): 메가진화 on the move screen — after the moves (◀ ▶), ● ticks it, a move then goes as .megaFight; the beat's two lines
+    // one after the other and its light; the Mega's name on the HP box; once a fight (no button after); none without content5
+    var zard = Mon(dex: 6, level: 60, female: false); zard.known = [53, 19, 337, 89]; zard.item = "리자몽나이트X"
+    let mz = online({ var s = Walk(); s.companion = zard; return s }(), rng: 11)
+    let mb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: mz.state.companion)
+    mz.sideOn = true; mz.screen = .moves(mb, sel: 0); let offButton = mz.paneContent(Date()).battle.map { $0.mega == nil } == true
+    Content.$testing.withValue(true) {
+        fightOn(mz, mb); mz.screen = .moves(mb, sel: 0)
+        mz.press(0); let toToggle = { if case .moves(_, 4) = mz.screen { return true }; return false }() && mz.paneContent(Date()).battle?.mega == false
+        mz.press(1); let ticked = mz.megaOn && mz.paneContent(Date()).battle?.mega == true && { if case .moves(_, 4) = mz.screen { return true }; return false }()
+        mz.press(2); mz.press(1); drain(mz)
+        let sent = server(mz).0.acts.last == .battle(cmd: .megaFight(slot: 0)) && !mz.megaOn
+        var bs: [Beat] = [], from = mb, after: Battle? = nil; if case .beats(let n, let x, _, let f) = mz.screen { bs = x; from = f; after = n }
+        let mega = bs.first { if case .mega(.me, 1, _) = $0 { return true }; return false }
+        let lines = mega.map { [mz.message($0, 0.2, from), mz.message($0, 2.0, from)] } ?? []
+        let glow = mega.map { m -> Bool in mz.screen = .beats(from, [m], since: Date().addingTimeInterval(-1.0 / mz.battleSpeed), from: from); let fb = mz.compose(Date())
+            return fb.sprites.contains { $0.tint == rgb(255, 255, 255) } && picStore.keys.contains("ball star") } ?? false
+        let name = after.map { mz.card($0.mine[$0.me], out: true).name }
+        if let a = after { mz.screen = .moves(a, sel: 0) }
+        check(offButton && toToggle && ticked && sent && lines.count == 2 && lines[0].hasPrefix("리자몽의 리자몽나이트X") && lines[0].hasSuffix("빛나기 시작했다!")
+              && lines[1].hasSuffix("메가진화했다!") && glow && after?.mine[0].mega == 1 && name == "메가리자몽X" && mz.paneContent(Date()).battle.map { $0.mega == nil } == true,
+              "5.0 메가진화: the button after the moves, ticked by ●, the move sent as .megaFight; the light, its two lines; 메가리자몽X on the HP box; once a fight; none off",
+              "\(offButton) \(toToggle) \(ticked) \(sent) \(lines) \(glow) \(String(describing: after?.mine[0].mega)) \(String(describing: name))")
+        calm(mz)
+    }
+
     // a tower run: in for 50 W, a win (streak, BP), the next trainer with no fee, then 기권
     var strong = Mon(dex: 6, level: 50, female: false); strong.known = [53]
     let tv = online({ var s = Walk(); s.watts = 100; s.companion = strong; return s }(), rng: 3)

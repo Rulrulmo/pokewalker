@@ -48,10 +48,12 @@ extension Walker {
         var theirs = card(foe, out: true); theirs.types = foe.typeList; theirs.owned = (state.owned ?? []).contains(foe.mon.dex)
         if raidOn, foe.mon.shiny == true { theirs.name = "★" + theirs.name }                         // 4.0: a shiny boss, as the pixel HUD says it
         var m = SideModel(foe: theirs, mine: card(mine, out: true), message: msg, mode: mode)
+        if case .moves = mode, b.canMega(.me) { m.mega = megaOn }                                   // 5.0: the 메가진화 button (ticked or not)
+        if let s = megaGathering(now) { if s == .me { m.mine.name = monNames[mine.mon.dex] } else { m.foe.name = monNames[foe.mon.dex] } }   // its own name till the light bursts
         if raidOn { m.bars = .init(broken: b.theirs.filter { !$0.alive }.count, total: b.theirs.count, cur: CGFloat(foe.hp) / CGFloat(max(1, foe.maxHP))) }   // (the pane's strip by a prompt, the HP boxes' ×n)
         return m
     }
-    func card(_ f: Fighter, out: Bool) -> SideModel.Card { .init(name: monNames[f.mon.dex], level: f.mon.level, hp: f.hp, max: f.maxHP, out: out, status: f.status?.badge, item: f.item) }
+    func card(_ f: Fighter, out: Bool) -> SideModel.Card { .init(name: f.mega.flatMap { Forms.of(f.mon.dex, $0)?.name } ?? monNames[f.mon.dex], level: f.mon.level, hp: f.hp, max: f.maxHP, out: out, status: f.status?.badge, item: f.item) }
     func sidePick(_ k: Int) {                                                                   // a click on the side panel = selecting that row, then ●
         guard !frozen, waiting == nil else { return }
         lastInput = Date()
@@ -99,7 +101,8 @@ extension Walker {
         case .heal(let s, _, _): return .show(s, dx: 0, dy: s == .me ? 0 : Int(-4 * arc(0.2, 0.4)), flash: false, visible: u > 0.3 || blink)   // ours stays down: its back is cut off
         case .status(let s, _, _): return .show(s, dx: 0, dy: 0, flash: u < 0.4 && blink, visible: true)
         case .note(let s, _), .retype(let s, _): return .show(s, dx: 0, dy: 0, flash: false, visible: true)
-        case .mega(let s, _, _), .reform(let s, _, _): return .show(s, dx: 0, dy: 0, flash: u < 0.6 && blink, visible: true)   // 5.0: a flash for now (mac's A3)
+        case .mega(let s, _, _): return .show(s, dx: 0, dy: 0, flash: false, visible: true)         // 5.0: the light is stage's (megaShot)
+        case .reform(let s, _, _): return .show(s, dx: 0, dy: Int(-3 * arc(0.1, 0.3)), flash: false, visible: u > 0.35 || blink)   // a form for now: a hop and a flicker
         case .fainted(let s): return u < 0.35 ? .show(s, dx: 0, dy: 0, flash: false, visible: blink) : .show(s, dx: 0, dy: Int(34 * min(1, (u - 0.35) / 0.6)), flash: false, visible: true)   // sinks behind its pad
         case .sendOut(.it, let k) where raidOn && k > 0:                                           // 4.0 (16 §8-3): a raid's next bar — it gets up again where it stood (no ball), quickly
             return .show(.it, dx: 0, dy: Int(14 * pow(1 - min(1, u / 0.35), 2)), flash: u < 0.35 && blink, visible: true)
@@ -111,6 +114,19 @@ extension Walker {
         case .gained, .won, .lost: return .idle
         }
     }
+    /// 5.0: the side whose Mega Evolution is still gathering its light (before the burst it shows as it was: name, mark).
+    func megaGathering(_ now: Date) -> Side? {
+        guard case .beats = screen, let s = beatState(now), case .mega(let side, _, _) = s.beat, s.u < 0.9 else { return nil }
+        return side
+    }
+    /// 5.0 (docs/plans/18 §9.6): a Mega Evolution's light, u seconds in — white gathering over it, a burst as it becomes the Mega, stars wheeling round
+    /// it while the white fades.
+    func megaShot(_ s: Side, _ u: Double) -> BallShot {
+        var m = BallShot(); m.side = s
+        m.glow = .init(white: u < 0.9 ? u / 0.9 : max(0, 1 - (u - 0.9) / 0.5))
+        if u >= 0.9 { m.burst = (0, -30, u - 0.9); m.shine = u - 0.9 }
+        return m
+    }
     /// The DS layout: theirs front-on at the top right, ours from behind at the bottom left, each on a pad.
     /// beat = the beat playing and how far into it (the move effects' clock); nil between turns.
     func stage(_ fb: inout FB, _ b: Battle, _ now: Date, _ p: Pose, hud: Bool = true, pending: Set<Side> = [], beat: (Beat, Double)? = nil) {
@@ -120,7 +136,7 @@ extension Walker {
         fb.battleGround(at, art: state.here.art, hour: state.hour, season: state.season, weather: sky, indoor: b.trainer != nil)   // the ground, the pads they stand on
         defer { fb.weatherFX(sky, 0, hud ? 12 : 0, 96, hud ? 38 : 64, t) }   // over the fighters, under the HUD (the tower is indoors)
         let foe = b.theirs[b.it].mon, mine = b.mine[b.me].mon                                          // the HUD: who it is (its own name, level, shine)
-        func look(_ f: Fighter) -> Mon { var m = f.mon; if let x = f.form { m.dex = x.dex }; return m }   // the sprite: 변신 shows what it became
+        func look(_ f: Fighter) -> Mon { var m = f.mon; let x = f.body; m.dex = x.dex; m.form = x.form; return m }   // the sprite: 변신 shows what it became; 5.0: a Mega / battle form its own
         let foeLook = look(b.theirs[b.it]), mineLook = look(b.mine[b.me])
         let up: [Side: Bool] = [.it: b.theirs[b.it].alive || pending.contains(.it), .me: b.mine[b.me].alive || pending.contains(.me)]   // fainted = gone, once its faint has played
         var shown: [Side: (dx: Int, dy: Int, flash: Bool, on: Bool)] = [.it: (0, 0, false, up[.it]!), .me: (0, 0, false, up[.me]!)]
@@ -132,6 +148,7 @@ extension Walker {
             let s = ballShot(bt, u, b, ball: usedItem); shot = s
             shown[s.side] = (s.glow.map { $0.x / 2 } ?? 0, s.glow.map { $0.y / 2 } ?? 0, false, up[s.side]! && s.glow != nil)   // in the ball / not out yet = off the stage
         }
+        if let (bt, u) = beat, case .mega(let s, _, _) = bt { shot = megaShot(s, u) }                // 5.0: the light round a Mega Evolution
         for s in [Side.it, .me] where shown[s]!.on {                                                // theirs first: ours is nearer
             let v = shown[s]!, a = at[s]!
             let alive = s == .me ? b.mine[b.me].alive : b.theirs[b.it].alive                         // only a fainting one sinks behind its pad; a lunge isn't clipped
@@ -155,16 +172,20 @@ extension Walker {
         guard hud else { return }
         // HUD: theirs top-left (name, Lv, bar; a trainer's remaining balls), ours top-right; each on its own plate so the sprite's head can't muddle it
         let ft = (raidOn && foe.shiny == true ? "★" : "") + monNames[foe.dex] + " \(foe.level)" + (b.theirs[b.it].status.map { " " + $0.badge } ?? ""), mt = "\(monNames[mine.dex]) \(mine.level)" + (b.mine[b.me].status.map { " " + $0.badge } ?? "")
-        let owned = (state.owned ?? []).contains(foe.dex), lw = max(38, textWidth(ft, small: true) + 2 + (owned ? 7 : 0)) + (b.trainer != nil ? 13 : 0)
-        let rw = max(38, textWidth(mt, small: true) + 2)
+        let gathering = megaGathering(now)                                                           // 5.0: a Mega's mark after its name (both names in full don't fit), once its light bursts
+        let fm = b.theirs[b.it].mega != nil && gathering != .it, mm = b.mine[b.me].mega != nil && gathering != .me
+        let owned = (state.owned ?? []).contains(foe.dex), lw = max(38, textWidth(ft, small: true) + 2 + (owned ? 7 : 0) + (fm ? 7 : 0)) + (b.trainer != nil ? 13 : 0)
+        let rw = max(38, textWidth(mt, small: true) + 2 + (mm ? 7 : 0))
         for (x0, w) in [(0, lw), (96 - rw, rw)] { for y in 0..<14 { for x in x0..<min(96, x0 + w) { fb.set(x, y, 0) } } }
         fb.text(ft, 1, 0, 3, small: true)
         if owned { fb.draw(caughtMark, textWidth(ft, small: true) + 3, 2, ballPal) }                 // caught before: the HGSS ball mark
+        if fm { fb.draw(megaMark, textWidth(ft, small: true) + 3 + (owned ? 7 : 0), 2, megaPal) }
         let hp = beat == nil ? b : beatState(now).map { drained($0.hp, $0.names, $0.beat, $0.u) } ?? b   // the bars drain (MoveFX.swift)
         hpBar(&fb, 1, 9, 36, hp.theirs[b.it].hp, b.theirs[b.it].maxHP)
         if raidOn { fb.text("×\(b.theirs.filter(\.alive).count)", 39, 6, 3, small: true) }            // 4.0 (16 §8-3): its bars left, this one counted (ten don't fit as gems)
         else if b.trainer != nil { for (k, x) in b.theirs.enumerated() { fb.draw(gem, 39 + 4 * k, 9, x.alive ? ballPal : [ballPal[3], ballPal[3], ballPal[3], ballPal[3]]) } }
         fb.text(mt, 95, 0, 3, right: true, small: true)
+        if mm { fb.draw(megaMark, 95 - textWidth(mt, small: true) - 7, 2, megaPal) }
         hpBar(&fb, 59, 9, 36, hp.mine[b.me].hp, b.mine[b.me].maxHP)
         fb.fill(0, 50, 96, 1, 2)
     }
@@ -227,7 +248,8 @@ extension Walker {
         case .ran: return raidOn ? "후퇴했다!" : "무사히 도망쳤다!"
         case .won: return raidOn ? "\(b.theirs.count)줄을 모두 깼다! 볼 +\(RaidRules.winBalls)" : b.trainer.map { josa($0, "과", "와") + "의 승부에서 이겼다!" } ?? "승리!"
         case .lost: return "눈앞이 캄캄해졌다..."
-        case .mega(_, _, let t), .reform(_, _, let t): return t                                        // 5.0 (server: plan 18 §14.4; the show is mac's A3)
+        case .mega(_, _, let t), .reform(_, _, let t):                                                 // 5.0 (plan 18 §14.4): its lines one after the other, over the beat
+            let ls = t.components(separatedBy: "\n"); return ls[min(ls.count - 1, Int(u / max(0.1, beat.length) * Double(ls.count)))]
         }
     }
 
