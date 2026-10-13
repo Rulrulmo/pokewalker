@@ -1024,6 +1024,9 @@ N을 올리면 생기는 gen.py 필터 버그 3개도 같이 고친다:
   - content5가 켜진 채 5.0 앱이 act하면 그 트레이너의 최소 버전이 5.0이 된다. 그러면 다른 PC의 옛 앱이 막힌다.
 - **업데이트 힌트(§9.8 · §10.3, mac 요청):**
   - `/v1/update` 응답에 서명 밖 `urgent`(Bool), `installBy`(ISO 시각)가 실린다. `pokeserver update-hint urgent|calm [<iso>]`로 정한다.
+    - 시각은 앱이 읽는 모양(ISO8601DateFormatter 기본)이어야 한다. 예: `2026-10-20T09:00:00+09:00`. 서버는 UTC(`…Z`)로 바꿔 저장하고, 앱이 못 읽는 모양은 거절한다(10-14).
+    - 두 힌트는 서명된 manifest가 있을 때만 실린다(라이브에는 늘 있다).
+    - 로컬 서버로 끝까지 확인했다(10-14). 5.0 앱 본문(trainer · staged · blocked · failed · where)이 app_reports에 그대로 남고, 4.1 본문(app · platform만)도 그대로 받는다.
   - 5.0 앱이 `/v1/update` 본문에 `trainer` · `staged` · `blocked` · `failed`(배열) · `where`를 실으면 app_reports 표에 남는다. `pokeserver versions`가 트레이너마다 마지막 앱 · 최소 버전 · 마지막 보고를 보여 준다.
 - **ServerCheck:** 721종, 폼 번호(content5에서만, 그 종의 폼 수 안), 합체(큐레무 646 안에 레시라무 · 제크로무 하나, 폼과 짝이 맞음), 안에 든 포켓몬도 uid 검사 · 원장(settleLedger)에 들어간다. 아는 도구에 6세대 도구 · 스톤 · 중요한 물건 · 새 코스 도구를 더했다.
 - **합체한 큐레무:** 교환 걸기 · 교환 수락 · 게시판 올리기 · 제안 · 맡기기를 모두 막는다("합체를 먼저\n풀어 주세요").

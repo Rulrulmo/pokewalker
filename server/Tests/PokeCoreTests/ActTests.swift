@@ -1078,7 +1078,9 @@ extension SaveDB {
     let v = try await db.versionsReport(now: 200)
     #expect(v.contains("앨리스") && v.contains("translocated") && v.contains("downloads") && v.contains("content5 off"))
     _ = try await db.setUpdateHint(urgent: true, installBy: "2026-11-01T00:00:00+09:00")
-    let h = try await db.updateHint(); #expect(h.urgent && h.installBy == "2026-11-01T00:00:00+09:00")
+    let h = try await db.updateHint(); #expect(h.urgent && h.installBy == "2026-10-31T15:00:00Z")          // (stored as the app reads it)
+    await #expect(throws: ServerError.self) { try await db.setUpdateHint(urgent: true, installBy: "2026-11-01 09:00") }
+    #expect(try await db.updateHint().installBy == "2026-10-31T15:00:00Z")                                   // (a refused one changes nothing)
     let where_ = try JSONDecoder().decode(UpdateReq.self, from: Data(#"{"app":"5.0","platform":"windows","where":"applications"}"#.utf8))
     #expect(where_.place == "applications")
 }

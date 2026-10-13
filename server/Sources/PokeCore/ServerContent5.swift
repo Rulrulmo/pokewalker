@@ -32,10 +32,16 @@ extension SaveDB {
         let by = try db.rows("SELECT value FROM settings WHERE name = 'update_install_by'").first?.text("value")
         return (urgent, by.flatMap { $0.isEmpty ? nil : $0 })
     }
+    /// installBy as the app reads it (ISO8601DateFormatter's default): any offset in, UTC's Z stored; one it can't read is refused.
     func setUpdateHint(urgent: Bool, installBy: String?) throws -> String {
+        let f = ISO8601DateFormatter()
+        let by = try installBy.map { s -> String in
+            guard let d = f.date(from: s) else { throw ServerError(description: "update-hint: \(s) isn't an ISO time the app reads (e.g. 2026-10-20T09:00:00+09:00)") }
+            return f.string(from: d)
+        }
         try db.rows("INSERT INTO settings (name, value) VALUES ('update_urgent', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(urgent ? "1" : "0")])
-        try db.rows("INSERT INTO settings (name, value) VALUES ('update_install_by', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(installBy ?? "")])
-        return "update hint: " + (urgent ? "urgent" : "calm") + (installBy.map { ", install by \($0)" } ?? "")
+        try db.rows("INSERT INTO settings (name, value) VALUES ('update_install_by', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(by ?? "")])
+        return "update hint: " + (urgent ? "urgent" : "calm") + (by.map { ", install by \($0)" } ?? "")
     }
     /// What a 5.0 app's /v1/update says of itself.
     func recordUpdateReport(_ r: UpdateReq, now: Int) throws {
