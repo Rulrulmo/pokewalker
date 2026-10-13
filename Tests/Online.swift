@@ -64,6 +64,13 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     ra.cloud!.addSteps(9); ra.openFeature("포켓 레이더"); drain(ra)
     check(rs.acts.last == .radar && rs.steps.last == 9 && served(ra)?.total == 9, "3.0 steps: those waiting go with a radar (not only with the 15 s ones)", "\(rs.acts.suffix(2)) \(rs.steps.suffix(2))")
 
+    // 5.0 (docs/plans/18 §14.4): the login's content5 sets the session's rules; a login without it (4.1's server, or switched off) puts them back
+    let c5srv = FakeCloud(); c5srv.content5 = true
+    _ = online(Walk(), server: c5srv); let on5 = Content.on && Content.gen6 && dexMax == 721
+    _ = online(Walk()); let off5 = !Content.on && dexMax == 493
+    Content.on = false
+    check(on5 && off5, "5.0: content5 in the login turns the Gen VI rules on (dexMax 721); no field, off (493)", "\(on5) \(off5)")
+
     // a tower run: in for 50 W, a win (streak, BP), the next trainer with no fee, then 기권
     var strong = Mon(dex: 6, level: 50, female: false); strong.known = [53]
     let tv = online({ var s = Walk(); s.watts = 100; s.companion = strong; return s }(), rng: 3)

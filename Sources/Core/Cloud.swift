@@ -320,6 +320,7 @@ final class CloudInbox: @unchecked Sendable {
         if let t = j["trust"] as? String { seat.trust = t }                                   // the PIN passed: this PC is trusted from now on
         if j["busy"] as? Bool == true { phase = .busy(device: j["last_device"] as? String ?? "", at: j["updated_at"] as? Int ?? 0); return }
         guard let session = j["session"] as? String, let rev = j["rev"] as? Int else { asking = .login(force: resume, resume: resume); retryAt = now.addingTimeInterval(Cloud.period); return }
+        Content.on = j["content5"] as? Bool ?? false                                          // 5.0 (docs/plans/18 §14.4): the server's rules, before any fight of this session
         if let text = j["walk"] as? String {
             guard let w = Cloud.walk(text) else {                                              // one this app can't read: nothing to show it with
                 NSLog("pokewalker: cloud: the server's save doesn't decode"); phase = .login; asking = .login(force: resume, resume: resume); retryAt = now.addingTimeInterval(Cloud.period); return
@@ -541,6 +542,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     }
     var rows: [String: Row] = [:], paths: [String] = [], acts: [Act] = [], steps: [Int] = [], held: [() -> Void] = [], clock = 10_000
     var down = false, html: Int? = nil, lose = false, hold = false, old: String? = nil, pins = false
+    var content5 = false                                                                         // 5.0: the login says content5 (pokeserver content5 on)
     var rng = Seeded(s: 77), nextUID = 1_000_001, now: Date? = nil, stepCap: Int? = nil       // stepCap: the steps allowance (the real one fills at 15 a second)
     var lastAct: [String: Date] = [:], inbox: [String: [News]] = [:], greeted: [String: Date] = [:]   // 12 §2 (M1): each trainer's last act, its undelivered 인사, a pair's last one
     // 4.0 (docs/plans/16): raid runs, as the server's ServerRaid.swift — this week's species; each trainer's runs (open: its fight on; a ball stage:
@@ -1210,6 +1212,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             rows[id.key] = r
             var b: [String: Any] = ["exists": true, "name": r.name, "rev": r.rev, "walk": (r.walk as Any?) ?? NSNull(), "session": session, "last_device": was.device, "updated_at": was.at, "tower": carry]
             b["trust"] = trust; if pins, r.pin == nil { b["pin_needed"] = true }
+            if content5 { b["content5"] = true }                                                  // (off: no field, as the server)
             return (200, b)
         case "v1/pin":
             guard j["session"] as? String == r.session else { return (409, ["error": "conflict", "reason": "replaced"]) }
