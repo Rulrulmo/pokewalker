@@ -891,7 +891,7 @@ extension Page {
     // MARK: 지니게 하기 (3.7): who and what it holds now, the bag's holdable ones (빼기 first), the pick's line, the button
     func drawHold(_ m: HoldModel) {
         c.say(m.who, x(X0 + 2), y(206), font(12, .bold), Ink.ink)
-        c.say(m.now.map { "지금 " + $0 } ?? "지닌 도구 없음", x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
+        if !(m.picks && m.now == nil) { c.say(m.now.map { "지금 " + $0 } ?? "지닌 도구 없음", x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1) }   // (5.0's picks: a form, or nothing)
         if m.rows.isEmpty, m.picks { c.say(m.hint, x(Layout.w / 2), y(280), font(10, .medium), Ink.sub, 0.5) }
         else if m.rows.isEmpty { c.say("줄 수 있는 도구가 없어요", x(Layout.w / 2), y(280), font(10, .medium), Ink.sub, 0.5); c.say("상점 · BP 교환소에서 사요", x(Layout.w / 2), y(298), font(9, .medium), Ink.faint, 0.5) }
         let top = max(0, min(m.sel - 2, m.rows.count - 6))
@@ -1185,11 +1185,11 @@ extension Page {
         for (i, row) in m.rows.enumerated() {
             let rc = r(X0, 319 + CGFloat(i) * 21, X1 - X0, 19); tile(rc, 7, on: false, row.me ? Ink.tint(Ink.blue, 0.10) : nil)
             var xl = rc.minX + x(8)
-            if m.tab == 0 { c.say(row.rank.map { "\($0)" } ?? "-", xl + x(5), rc.midY, font(9.5, .bold), (row.rank ?? 9) <= 3 ? Ink.red : Ink.sub, 0.5); xl += x(16) }
+            if m.tab == 0, m.ranks { c.say(row.rank.map { "\($0)" } ?? "-", xl + x(5), rc.midY, font(9.5, .bold), (row.rank ?? 9) <= 3 ? Ink.red : Ink.sub, 0.5); xl += x(16) }
             monIcon(row.dex, shiny: row.shiny, CGRect(x: xl - x(4), y: rc.midY - x(11), width: x(22), height: x(22)), side: 22 * K); xl += x(21)
             var xr = rc.maxX - x(8)
-            if let p = row.pill { xr = pillAt(p, xr, rc.midY, p == "잡음" ? Ink.tint(Ink.green, 0.18) : Ink.board, p == "잡음" ? Ink.green : Ink.sub) }
-            xr -= c.say(row.value, xr, rc.midY, font(8.5, .semibold), m.tab == 0 ? Ink.ink : Ink.sub, 1) + x(6)
+            if let p = row.pill { let good = p == "잡음" || p == "승"; xr = pillAt(p, xr, rc.midY, good ? Ink.tint(Ink.green, 0.18) : Ink.board, good ? Ink.green : Ink.sub) }
+            xr -= c.say(row.value, xr, rc.midY, font(8.5, .semibold), m.tab == 0 && m.ranks ? Ink.ink : Ink.sub, 1) + x(6)
             c.say(row.name, xl, rc.midY, font(9.5, .bold), Ink.ink, maxW: xr - xl)
         }
         let rc = r(X0, 428, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.go == nil ? Ink.tile : Ink.red)

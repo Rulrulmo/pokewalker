@@ -74,6 +74,26 @@ import AppKit
         take("mon_form_hidden", fm) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
         let c5 = online({ var s = base(); s.earned = 10_000_000; s.owned = Array(1...160) + Array(494...540); s.dex(); return s }())
         take("course_unova", c5) { v in v.screen = .course(35) }
+        // 메가 레이드 (§6.4 · §9.6): its lobby (the week's two), its tier, 30 wins' button and pick, the LCD's, a run's Mega boss
+        let msrv = FakeCloud(); msrv.megaWeekNo = 0
+        var mew = Mon.wild(150, level: 100, &fr); mew.known = [94, 105, 58, 247]
+        let mrw = online({ var s = base(); s.companion = mew; s.raidPower = 25_000; return s }(), server: msrv), mkey = server(mrw).1
+        msrv.raidRuns[mkey] = (0..<4).map { k in FakeCloud.RaidRun(tier: k % 3 + 1, boss: Mon(dex: 3, level: 20, female: false), day: "2026-10-1\(k)", at: msrv.clockNow - 3600 * (k + 1), bars: k == 2 ? 6 : 10, won: k != 2, ended: true, mega: true) }
+        mrw.openFeature("메가 레이드"); drain(mrw); drain(mrw)
+        take("mega_raid_lobby", mrw) { v in v.screen = .raid(.lobby(tab: 0)) }
+        take("mega_raid_lobby_lcd", mrw) { v in v.sideOn = false; v.screen = .raid(.lobby(tab: 1)) }
+        take("mega_raid_tier", mrw) { v in v.raidMegaBoss = 0; v.screen = .raid(.tier(sel: 2)) }
+        msrv.raidRuns[mkey]! += (0..<27).map { _ in FakeCloud.RaidRun(tier: 1, boss: Mon(dex: 6, level: 20, female: false), day: "2026-10-01", at: 0, won: true, ended: true, mega: true) }
+        mrw.cloud!.megaRaidDue = true; drain(mrw); drain(mrw)
+        take("mega_raid_ready", mrw) { v in v.screen = .raid(.lobby(tab: 0)) }
+        take("mega_raid_pick", mrw) { v in v.screen = .raid(.pick(sel: 1)) }
+        if let b = msrv.megaRaidStart(mkey, 3, 0).boss {
+            var mb = Battle(wild: b.boss, companion: mew); mb.theirs += Array(repeating: Fighter(b.boss), count: RaidRules.bars - 1); mb.raidTier = 3
+            for i in mb.theirs.indices { mb.theirs[i].mega = b.mega }; mb.megaUsed = [false, true]
+            take("mega_raid_fight", mrw) { v in v.raidOn = true; v.sideOn = true; v.fight = mb; v.screen = .battle(mb, sel: 0) }
+            mrw.raidOn = false
+        }
+        mrw.raidMega = false
     }
     // 3.2 (12 M1): the team
     let tsrv = FakeCloud(), tme = online({ var s = base(); s.today = 4321; s.towerBest = 6; s.owned = Array(1...48); return s }(), server: tsrv)

@@ -130,6 +130,43 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
         calm(ro)
     }
 
+    // 5.0 (docs/plans/18 §6.4 · §9.6): 메가 레이드 — the menu's (content5 only); its lobby (the week's two as tabs, 스톤까지 n/30); ● → its tier (the stone's
+    // odds) → a run (Act.megaRaid: the boss Mega from the start, 10 bars); a win mails its stone (the dice: sure here), said, back to the lobby
+    // (no balls); 30 wins → ● picks one of the week's stones (Act.megaPick) into the bag
+    let menuOff = !menuItems.contains("메가 레이드")
+    Content.$testing.withValue(true) {
+        let ms = FakeCloud(); ms.megaOdds = [true]; ms.megaWeekNo = 0                                   // the week's two: 메가이상해꽃, 메가리자몽X
+        var mew = Mon(dex: 150, level: 100, female: false); mew.known = [94, 105, 58, 247]
+        let mr = online({ var s = Walk(); s.companion = mew; s.raidPower = 30_000; return s }(), server: ms)
+        let (_, mk) = server(mr)
+        mr.openFeature("메가 레이드"); drain(mr)
+        let lobby = mr.paneContent(Date()).raid
+        let lobbyOK = menuItems.contains("메가 레이드") && mr.raidMega && lobby?.tabs == ["메가이상해꽃", "메가리자몽X"] && lobby?.boss == "메가이상해꽃"
+            && lobby?.week.contains("스톤까지 0/30") == true && lobby?.go == "도전 · 파워 1칸"
+        mr.press(1); let tierUp = { if case .raid(.tier) = mr.screen { return true }; return false }() && mr.paneContent(Date()).raidTier?.note2.contains("이상해꽃나이트") == true
+        mr.raidTier = 1; mr.raidFight(back: .raid(.lobby(tab: 0)), Date()); drain(mr)
+        let started = ms.acts.last == .megaRaid(party: nil, tier: 1, boss: 0) && mr.fight.map { $0.theirs.count == RaidRules.bars && $0.theirs.allSatisfy { $0.mega == 1 } } == true
+        for _ in 0..<40 {
+            playOut(mr)
+            if case .battle(let b, _) = mr.screen { mr.screen = .moves(b, sel: 0); mr.press(1); drain(mr) } else { break }
+        }
+        var said: [String] = []; if case .say(let l, _, _) = mr.screen { said = l }
+        let mailed = ms.postBox[mk]?.contains { $0.from == "메가 레이드" && $0.gifts == [.items(name: "이상해꽃나이트", count: 1)] } == true
+        let won = said.first == "\(RaidRules.bars)줄을 모두 깼다!" && said.contains("스톤이 우편함에 왔다!") && mailed && !mr.raidOn
+        mr.press(1); drain(mr)
+        let backLobby = { if case .raid(.lobby(0)) = mr.screen { return true }; return false }() && mr.megaLobby?.mine.wins == 1
+        ms.raidRuns[mk, default: []] += (0..<29).map { _ in FakeCloud.RaidRun(tier: 1, boss: Mon(dex: 6, level: 20, female: false), day: "2026-10-01", at: 0, won: true, ended: true, mega: true) }
+        mr.cloud!.megaRaidDue = true; for _ in 0..<4 where mr.megaLobby?.pity != 30 { mr.tick(Date()); drain(mr) }
+        let ready = mr.paneContent(Date()).raid?.go == "30승! 스톤 고르기" && mr.megaNote == "스톤을 고를 수 있어요!"
+        mr.calmAt = .distantPast; mr.press(1); let pickUp = { if case .raid(.pick(0)) = mr.screen { return true }; return false }() && mr.paneContent(Date()).hold?.rows.map(\.name) == ["이상해꽃나이트", "리자몽나이트X"]
+        mr.press(2); mr.press(1); drain(mr)
+        let picked = mr.state.bag.contains("리자몽나이트X") && ms.megaPity(mk) == 0 && { if case .say(let l, _, _) = mr.screen { return l == ["리자몽나이트X를", "받았다!"] }; return false }()
+        check(menuOff && lobbyOK && tierUp && started && won && backLobby && ready && pickUp && picked,
+              "5.0 메가 레이드: the menu's (content5), its lobby (two bosses, 스톤까지 0/30), tier (the stone's odds), Act.megaRaid (Mega from the start, 10 bars), a win's stone by mail (said, no balls), 30 wins → a stone picked",
+              "\(menuOff) \(lobbyOK) \(String(describing: lobby?.tabs)) \(tierUp) \(started) \(won) \(said) \(mailed) \(backLobby) \(ready) \(String(describing: mr.megaLobby?.pity)) \(String(describing: mr.paneContent(Date()).raid?.go)) \(pickUp) \(picked)")
+        calm(mr); mr.raidMega = false
+    }
+
     // a tower run: in for 50 W, a win (streak, BP), the next trainer with no fee, then 기권
     var strong = Mon(dex: 6, level: 50, female: false); strong.known = [53]
     let tv = online({ var s = Walk(); s.watts = 100; s.companion = strong; return s }(), rng: 3)

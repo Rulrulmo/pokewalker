@@ -223,6 +223,7 @@ struct RaidModel: Equatable {
     var week: [String]
     var tabs: [String]; var tab: Int; var rows: [Row]; var empty: String
     var go: String?; var hint: String
+    var ranks = true                                                   // 5.0: false = the Mega raid's (its tabs are bosses: no rank column)
 }
 /// The tier to fight at (16 §8-5): a row a tier (★, the boss's level, its 31s, the BP a win pays), the pick, the button.
 struct RaidTierModel: Equatable {

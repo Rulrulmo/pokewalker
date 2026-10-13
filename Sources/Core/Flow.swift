@@ -428,7 +428,10 @@ extension Walker {
             c.marketDue = true; screen = .market(.board(tab: 0, sel: 0))
         case "레이드":
             guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: menuFor(name), since: now); return }
-            c.raidDue = true; screen = raidStage != nil ? .raid(.balls) : .raid(.lobby(tab: 0))
+            raidMega = false; c.raidDue = true; screen = raidStage != nil ? .raid(.balls) : .raid(.lobby(tab: 0))
+        case "메가 레이드":                                                                            // 5.0 (docs/plans/18 §6.4)
+            guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: menuFor(name), since: now); return }
+            raidMega = true; c.megaRaidDue = true; screen = .raid(.lobby(tab: raidMegaBoss))
         case "대전": openDuelHub(now)
         case "우편함": openMail(now)
         default: screen = .dex(state.companion.dex, filter: 0, detail: false)

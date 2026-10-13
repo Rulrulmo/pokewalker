@@ -5,7 +5,7 @@ import Foundation
 // given up (raidQuit, asked first). A stage cut off (the app closed, asleep, offline) waits on the server: opening the lobby goes back to it.
 
 /// The raid's pages: the lobby (its two tabs), the tier to fight at, a run's ball stage (RaidPending: Walker.raidStage).
-enum RaidStep: Equatable { case lobby(tab: Int), tier(sel: Int), balls }
+enum RaidStep: Equatable { case lobby(tab: Int), tier(sel: Int), balls, pick(sel: Int) }   // 5.0: pick — the Mega raid's 30 wins' stone (its lobby's tab = the week's boss)
 
 extension Walker {
     static let raidTabs = ["친구 이번 주", "내 판"]
@@ -60,9 +60,10 @@ extension Walker {
     // MARK: the lobby
     func raidPane(_ step: RaidStep, _ now: Date) -> PaneContent {
         switch step {
-        case .lobby(let tab): return raidLobbyPane(tab, now)
+        case .lobby(let tab): return raidMega ? megaLobbyPane(tab, now) : raidLobbyPane(tab, now)
         case .tier(let sel): return raidTierPane(sel)
         case .balls: return raidBallsPane()
+        case .pick(let sel): return megaPickPane(sel)
         }
     }
     func raidLobbyPane(_ tab: Int, _ now: Date) -> PaneContent {
@@ -102,11 +103,14 @@ extension Walker {
     }
 
     /// The tier to fight at: the lobby's tiers (the server's), the pick, its button.
+    /// The tiers as the lobby has them (the Mega raid's own, 5.0), else as this app was built.
+    var raidTiers: [RaidTier] { (raidMega ? megaLobby?.tiers : raidLobby?.tiers) ?? RaidRules.tiers }
     func raidTierPane(_ sel: Int) -> PaneContent {
-        let tiers = raidLobby?.tiers ?? RaidRules.tiers, t = tiers[safe: sel] ?? tiers.first
-        return PaneContent(raidTier: RaidTierModel(boss: raidLobby.map { monNames[$0.boss.dex] } ?? "", note: raidLeftToday.map { "오늘 \($0)판 남음" } ?? "",
+        let tiers = raidTiers, t = tiers[safe: sel] ?? tiers.first
+        let boss = raidMega ? megaLobby?.bosses[safe: raidMegaBoss].map(megaName) ?? "" : raidLobby.map { monNames[$0.boss.dex] } ?? ""
+        return PaneContent(raidTier: RaidTierModel(boss: boss, note: (raidMega ? megaLeftToday : raidLeftToday).map { "오늘 \($0)판 남음" } ?? "",
                                                    rows: tiers.map { .init(tier: $0.tier, level: $0.level, perfect: $0.perfect, bp: $0.bp) }, sel: sel,
-                                                   note2: t.map { $0.level > 100 ? "★\($0.tier)" + ([1, 3].contains($0.tier) ? "은" : "는") + " Lv.\($0.level)으로 싸우고, 잡히면 Lv.100이에요" : "10줄을 다 깨면 승리 · 볼 3개, 이기면 5개" } ?? "",
+                                                   note2: raidMega ? megaTierNote(t) : t.map { $0.level > 100 ? "★\($0.tier)" + ([1, 3].contains($0.tier) ? "은" : "는") + " Lv.\($0.level)으로 싸우고, 잡히면 Lv.100이에요" : "10줄을 다 깨면 승리 · 볼 3개, 이기면 5개" } ?? "",
                                                    go: "★\(t?.tier ?? 1) · 출전 고르기"))
     }
 
@@ -115,10 +119,13 @@ extension Walker {
         let half = Int(now.timeIntervalSinceReferenceDate * 2) % 2
         switch step {
         case .balls: raidBallsLCD(&fb, now); return
+        case .pick(let sel): megaPickLCD(&fb, sel); return
+        case .lobby(let tab) where raidMega: megaLCD(&fb, tab, now); return
         case .tier(let sel):
-            guard let r = raidLobby, let t = r.tiers[safe: sel] else { break }
-            let boss = Mon(dex: r.boss.dex, level: t.level, female: false)
-            fb.text(monNames[boss.dex] + " Lv.\(t.level)", 2, 0); fb.fill(0, 12, 96, 1, 2)
+            guard let t = raidTiers[safe: sel], let dex = raidMega ? megaLobby?.bosses[safe: raidMegaBoss]?.dex : raidLobby?.boss.dex else { break }
+            var boss = Mon(dex: dex, level: t.level, female: false); if raidMega { boss.form = megaLobby?.bosses[safe: raidMegaBoss]?.form }
+            let tname = raidMega ? megaLobby?.bosses[safe: raidMegaBoss].map(megaName) ?? monNames[boss.dex] : monNames[boss.dex]   // 5.0: its Mega's name
+            fb.text(tname + " Lv.\(t.level)", 2, 0); fb.fill(0, 12, 96, 1, 2)
             fb.mon(boss, half, 0, 2, anim: animT("raid tier", boss.dex, now))
             fb.text(String(repeating: "★", count: t.tier), 94, 15, 3, right: true, small: true)
             fb.text("\(t.perfect)V", 94, 28, 2, right: true, small: true)
@@ -141,6 +148,8 @@ extension Walker {
     /// The lobby's ● (and its button): back to a ball stage waiting, else a run — its tier first. ◀ ▶: the tabs.
     func raidPress(_ k: Int, _ step: RaidStep, _ now: Date) {
         switch step {
+        case .lobby(let tab) where raidMega: megaLobbyPress(k, tab, now)
+        case .pick(let sel): megaPickPress(k, sel, now)
         case .lobby(let tab):
             if k != 1 { screen = .raid(.lobby(tab: 1 - tab)); return }
             guard calm else { return }                                                             // (3.8.6: not the ● that ended the fight's last line)
@@ -151,9 +160,9 @@ extension Walker {
             guard raidCells > 0 else { screen = .say(["파워가 부족하다", "(\(Engine.raidPowerCost.formatted())걸음마다 1칸)"], next: .raid(.lobby(tab: tab)), since: now); return }
             screen = .raid(.tier(sel: raidTierIndex))
         case .tier(let sel):
-            let n = raidLobby?.tiers.count ?? 0
+            let n = raidTiers.count
             if k != 1 { if n > 0 { screen = .raid(.tier(sel: (sel + (k == 0 ? n - 1 : 1)) % n)) }; return }
-            guard let t = raidLobby?.tiers[safe: sel] else { return }
+            guard let t = raidTiers[safe: sel] else { return }
             raidTier = t.tier; if persist { settings.set("raidTier", t.tier) }; raidPick(now)
         case .balls:
             if k == 1 { raidBall(now) }
@@ -161,7 +170,7 @@ extension Walker {
     }
     /// The tier last fought at (else the highest whose boss isn't above our strongest), as a row of the lobby's tiers.
     var raidTierIndex: Int {
-        let tiers = raidLobby?.tiers ?? RaidRules.tiers, saved = raidTier > 0 ? raidTier : persist ? settings.int("raidTier", 0) : 0
+        let tiers = raidTiers, saved = raidTier > 0 ? raidTier : persist ? settings.int("raidTier", 0) : 0
         if let i = tiers.firstIndex(where: { $0.tier == saved }) { return i }
         let best = ([state.companion] + state.caught + state.box).map(\.level).max() ?? 1
         return tiers.lastIndex { $0.level <= best } ?? 0
@@ -181,8 +190,9 @@ extension Walker {
     /// ↩ on the raid's pages: the tier → the lobby; the ball stage → given up (asked first); the lobby → the menu.
     func raidBack(_ step: RaidStep, _ now: Date) {
         switch step {
-        case .lobby: screen = menuFor("레이드")
-        case .tier: screen = .raid(.lobby(tab: 0))
+        case .lobby: screen = menuFor(raidMega ? "메가 레이드" : "레이드")
+        case .pick: screen = .raid(.lobby(tab: raidMegaBoss))
+        case .tier: screen = .raid(.lobby(tab: raidMega ? raidMegaBoss : 0))
         case .balls: raidLeave(home: false, now)
         }
     }
@@ -191,7 +201,7 @@ extension Walker {
     /// A run at the tier picked, with the party picked (1–3): the server takes 1칸 and makes its boss; it plays on the battle screens (raidOn:
     /// its menu, lines, HUD) — a shiny boss's line after it appears (raidShown).
     func raidFight(party: [Int]? = nil, back: Screen, _ now: Date) {
-        act(.raid(party: party, tier: raidTier), back: back, now, lines: ["레이드", "보스에게 가는 중..."], quiet: true) { [weak self] o, now in
+        act(raidMega ? .megaRaid(party: party, tier: raidTier, boss: raidMegaBoss) : .raid(party: party, tier: raidTier), back: back, now, lines: [raidMega ? "메가 레이드" : "레이드", "보스에게 가는 중..."], quiet: true) { [weak self] o, now in
             guard let self, let f = o.battle else { return nil }
             raidOn = true; raidStage = nil; fight = f; freshFight()
             return (o.beats ?? []).isEmpty ? .battle(f, sel: 0) : .beats(f, Walker.raidShown(o.beats!, from: f), since: now, from: f)
@@ -199,6 +209,7 @@ extension Walker {
     }
     /// A run over: the bars it broke, what it paid and its balls (a weekly reward mailed with it: said); then its ball stage.
     func raidEnded(_ b: Battle, _ e: BattleEnd, _ now: Date) -> Screen {
+        if raidMega { return megaRaidEnded(b, e, now) }                                            // 5.0: no balls
         raidOn = false; cloud?.raidDue = true
         var mailed = false
         news.removeAll { if case .mailNew(_, let t) = $0, t.hasPrefix("레이드") { mailed = true; mailNews(t); return true }; return false }
@@ -218,7 +229,7 @@ extension Walker {
 
     /// A new lobby came: one with a ball stage cut off (the app closed, asleep, offline) goes back to it, if the lobby is up.
     func raidResume(_ now: Date) {
-        guard case .raid(.lobby) = screen, raidStage == nil, waiting == nil, let p = cloud?.raid?.pending else { return }
+        guard case .raid(.lobby) = screen, !raidMega, raidStage == nil, waiting == nil, let p = cloud?.raid?.pending else { return }
         raidStage = p; screen = .say(["잡을 기회가", "남았어요!"], next: .raid(.balls), since: now)
     }
 
