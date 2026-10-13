@@ -141,7 +141,7 @@ struct Walk: Codable, Equatable {
     /// Lets duplicates(of:) go. Returns (how many, watts).
     mutating func releaseDuplicates(of dex: Int) -> (count: Int, watts: Int) {
         var n = 0, w = 0
-        for i in duplicates(of: dex).sorted(by: >) { w += release(i); n += 1 }                              // from the back, so indices stay valid
+        for i in duplicates(of: dex).sorted(by: >) where box[i].fused == nil { w += release(i); n += 1 }                              // from the back, so indices stay valid
         return (n, w)
     }
     /// Lets box[i] go; a few watts back as thanks (level / 2, at least 1).

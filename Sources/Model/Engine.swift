@@ -41,6 +41,7 @@ enum MonOp: Codable, Equatable {
     case pair(uid: Int), store(uid: Int), fetch(uid: Int), release(uid: Int), releaseDupes(dex: Int)
     case move(uid: Int, slot: Int, move: Int), learn(slot: Int?), trade
     case hold(uid: Int, item: String?)                                // 지니게 하기 (3.7, docs/plans/13 ⑤): from the bag (what it held goes back), nil = take it back
+    case rotom(uid: Int, form: Int?), fuse(uid: Int, with: Int), unfuse(uid: Int)   // 5.0 (docs/plans/18 §5): 로토무카탈로그, 큐레무 합체 / 분리
 }
 
 /// What came of it for the player to see, in the order home shows them (docs/plans/11 §3 news).

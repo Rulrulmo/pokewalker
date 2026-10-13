@@ -357,6 +357,7 @@ struct EngineRun<R: RandomNumberGenerator> {
             guard w.hold(item, ref) else { return item == nil ? "지닌 도구가 없어요" : w.mon(ref)?.item == item ? "이미 지니고 있어요" : "가지고 있지 않아요" }
         case .release(let u):
             guard let ref = w.ref(uid: u), ref >= 0 else { return "놓아줄 수 없어요" }
+            if w.box[ref].fused != nil { return "합체를 먼저\n풀어 주세요" }                                  // (5.0)
             out.watts = w.release(ref)
         case .releaseDupes(let dex):
             let x = w.releaseDuplicates(of: dex)
@@ -373,6 +374,15 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .trade:
             guard let e = w.tradeEvolution(now) else { return "통신 진화할 수\n없어요" }
             evolve(-1, e); learnQueue()
+        case .rotom(let u, let form):
+            guard let ref = w.ref(uid: u) else { return "그 포켓몬은\n없어요" }
+            if let why = w.rotomForm(ref, form) { return why }
+        case .fuse(let u, let other):
+            guard let ref = w.ref(uid: u), let o = w.ref(uid: other) else { return "그 포켓몬은\n없어요" }
+            if let why = w.fuse(ref, with: o) { return why }
+        case .unfuse(let u):
+            guard let ref = w.ref(uid: u) else { return "그 포켓몬은\n없어요" }
+            if let why = w.unfuse(ref) { return why }
         }
         return nil
     }

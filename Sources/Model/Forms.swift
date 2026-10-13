@@ -57,3 +57,38 @@ enum Forms {
     /// Every Mega stone and primal orb (47 + 2): what the Mega raid gives.
     static let stones: [String] = monForms.keys.sorted().flatMap { d in monForms[d]!.compactMap { $0.kind == .mega || $0.kind == .primal ? $0.item : nil } }
 }
+
+// MARK: - forms changed by hand (docs/plans/18 §5, §5.1)
+extension Walk {
+    /// Each 로토무 form's own move: 히트 오버히트, 워시 하이드로펌프, 프로스트 눈보라, 스핀 에어슬래시, 커트 리프스톰.
+    static let rotomMoves = [315, 56, 59, 403, 437]
+    /// 로토무카탈로그: the 로토무 at ref changes form (nil = back to its own); its old form's move becomes the new one's (or goes; 전기쇼크 if
+    /// that leaves nothing), a new one added in a free slot or the last.
+    mutating func rotomForm(_ ref: Int, _ form: Int?) -> String? {
+        guard Content.gen6, (bag + items).contains("로토무카탈로그") else { return "로토무카탈로그가\n없어요" }
+        guard var m = mon(ref), m.dex == 479, form.map({ (1...5).contains($0) }) ?? true, m.form != form else { return "모습을 바꿀 수\n없어요" }
+        let old = m.form.map { Walk.rotomMoves[$0 - 1] }, new = form.map { Walk.rotomMoves[$0 - 1] }
+        var ms = m.moves
+        if let o = old, let i = ms.firstIndex(of: o) { if let n = new, !ms.contains(n) { ms[i] = n } else { ms.remove(at: i) } }
+        else if let n = new, !ms.contains(n) { if ms.count < 4 { ms.append(n) } else { ms[3] = n } }
+        if ms.isEmpty { ms = [84] }
+        m.form = form; m.known = ms; setMon(ref, m); return nil
+    }
+    /// 큐레무 합체 (§5.1): the 큐레무 at ref takes in the 레시라무 (화이트큐레무) or 제크로무 (블랙큐레무) at other — from the walker or the box, not
+    /// the companion — which waits inside it (Mon.fused) until 분리; 얼어붙은세계 becomes 콜드플레어 / 프리즈볼트. 유전자쐐기 is kept.
+    mutating func fuse(_ ref: Int, with other: Int) -> String? {
+        guard Content.gen6, (bag + items).contains("유전자쐐기") else { return "유전자쐐기가\n없어요" }
+        guard var k = mon(ref), k.dex == 646, k.fused == nil, other != -1, ref != other, let p = mon(other), [643, 644].contains(p.dex), p.fused == nil else { return "합체할 수\n없어요" }
+        let white = p.dex == 643
+        k.form = white ? 2 : 1; k.known = k.moves.map { $0 == 549 ? (white ? 554 : 553) : $0 }; k.fused = [p]
+        setMon(ref, k)
+        if other <= -2 { caught.remove(at: -2 - other) } else { box.remove(at: other) }
+        return nil
+    }
+    /// 분리: the one inside back to the box; 콜드플레어 / 프리즈볼트 back to 얼어붙은세계.
+    mutating func unfuse(_ ref: Int) -> String? {
+        guard var k = mon(ref), let p = k.fused?.first else { return "합체하지 않았어요" }
+        k.form = nil; k.known = k.moves.map { [553, 554].contains($0) ? 549 : $0 }; k.fused = nil
+        setMon(ref, k); box.append(p); return nil
+    }
+}

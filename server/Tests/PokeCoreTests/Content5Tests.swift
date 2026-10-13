@@ -424,3 +424,24 @@ private func formed(_ dex: Int, _ f: Int?, _ level: Int = 50) -> Mon { var m = m
     }
     #expect(!Walk.heldBP.contains { $0.item == "돌격조끼" })                                                    // off: 4.1's shop
 }
+
+@Test func gen6RotomAndKyurem() {
+    gen6 {
+        var w = Engine.fresh(now: t0, starter: firstUID); var rot = Mon(dex: 479, level: 40, female: false); rot.known = [84, 109, 506, 247]; w.box = [rot]
+        #expect(w.rotomForm(0, 1) == "로토무카탈로그가\n없어요")
+        w.bag = ["로토무카탈로그"]
+        #expect(w.rotomForm(0, 1) == nil && w.box[0].form == 1 && w.box[0].moves == [84, 109, 506, 315] && w.box[0].typing == ["electric", "fire"])   // 히트: 오버히트
+        #expect(w.rotomForm(0, 2) == nil && w.box[0].moves == [84, 109, 506, 56])                                      // 워시: 하이드로펌프 in its place
+        #expect(w.rotomForm(0, nil) == nil && w.box[0].form == nil && w.box[0].moves == [84, 109, 506])                // back: its move goes
+        var k = Mon(dex: 646, level: 60, female: false); k.known = [549, 58, 225, 304]; let z = Mon(dex: 644, level: 60, female: false)
+        w.box = [k, z]
+        #expect(w.fuse(0, with: 1) == "유전자쐐기가\n없어요")
+        w.bag.append("유전자쐐기")
+        #expect(w.fuse(0, with: 1) == nil && w.box.count == 1 && w.box[0].form == 1 && w.box[0].fused?.first?.dex == 644 && w.box[0].moves.first == 553)   // 블랙큐레무: 프리즈볼트
+        #expect(abilityNames[w.box[0].abilityID] == "테라볼티지" && w.box[0].stats[1] > k.stats[1])
+        #expect(w.unfuse(0) == nil && w.box.count == 2 && w.box[0].form == nil && w.box[0].moves.first == 549 && w.box[1].dex == 644)
+        #expect(w.fuse(1, with: 0) == "합체할 수\n없어요")                                                            // the other way round: no
+    }
+    var w = Engine.fresh(now: t0, starter: firstUID); w.bag = ["유전자쐐기"]; w.box = [Mon(dex: 646, level: 60, female: false), Mon(dex: 643, level: 60, female: false)]
+    #expect(w.fuse(0, with: 1) == "유전자쐐기가\n없어요")                                                              // off: no fusing
+}
