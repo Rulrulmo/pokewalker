@@ -9,7 +9,7 @@ struct ItemOn: Equatable { var item: String; var pick: Int? = nil; var at = 0 }
 extension Walker {
     /// Items the 도구 page gives to one of ours (picked): the rest are used as they are (sold) or only in a fight.
     static func targeted(_ kind: ItemKind) -> Bool {
-        switch kind { case .candy, .vitamin, .evReset, .berry, .bottleCap, .evolution, .mint, .held: true; default: false }
+        switch kind { case .candy, .vitamin, .evReset, .berry, .bottleCap, .evolution, .mint, .held, .key: true; default: false }   // 5.0: .key — FormView's
     }
     /// Ours in the picker's order: the companion, the walker's, then the box as the 포켓몬 grid has it.
     var itemRefs: [Int] { [-1] + state.caught.indices.map { -2 - $0 } + boxOrder }
@@ -27,6 +27,7 @@ extension Walker {
         case .evolution: return state.stoneEvolutions(Date(), ref: ref).contains { $0.item == item } ? nil : "이 도구로 진화하지 않아요"
         case .mint(let k): return (m.mint ?? m.nature ?? 0) == k ? "이미 그 성격 효과" : nil
         case .held: return m.item == item ? "이미 지니고 있어요" : nil
+        case .key: return item == "로토무카탈로그" ? (m.dex == 479 ? nil : "로토무에게만") : item == "유전자쐐기" ? (m.dex == 646 ? nil : "큐레무에게만") : "여기서는 쓸 수 없어요"   // 5.0
         default: return "여기서는 쓸 수 없어요"
         }
     }
@@ -108,6 +109,7 @@ extension Walker {
     func giveItem(_ p: ItemOn, _ now: Date) {
         guard let r = p.pick, itemNot(p.item, r) == nil else { return }
         let back = Screen.items(state.inventory.firstIndex(of: p.item) ?? 0)
+        if keyItemOn(p.item, r) { return }                                                          // 5.0: 로토무카탈로그 · 유전자쐐기 ask what next
         if case .bottleCap(false) = ItemKind.of(p.item) { trainRef = r; screen = .train(state.mon(r)?.effectiveIVs.firstIndex { $0 < 31 } ?? 0); return }
         if case .bottleCap(true) = ItemKind.of(p.item) { trainRef = r; useCap(nil, back: back); return }
         if case .held = ItemKind.of(p.item) { holdOn(r, p.item, back: .itemOn(p), then: { [weak self] in .items(self?.state.inventory.firstIndex(of: p.item) ?? 0) }, now); return }
@@ -124,6 +126,7 @@ extension Walker {
             let k = ItemKind.of(n); guard Walker.targeted(k) else { return false }
             if case .held = k { return false }
             if case .evolution = k { return itemNot(n, ref) == nil }                                // (only the stones it evolves by)
+            if case .key = k { return itemNot(n, ref) == nil }                                       // 5.0: the catalog on a 로토무, the 쐐기 on a 큐레무 only
             return true
         })
         let holds = sorted(state.inventory.filter { Held.holdable($0) && $0 != now })
@@ -157,6 +160,7 @@ extension Walker {
         let here = Screen.hold(ref: ref, sel: sel)
         if r.use {
             if let why = r.why { screen = .say(["이 포켓몬에게는", why], next: here, since: now); return }
+            if keyItemOn(r.name, ref) { return }                                                    // 5.0: FormView's
             switch ItemKind.of(r.name) {
             case .bottleCap(false): trainRef = ref; screen = .train(state.mon(ref)?.effectiveIVs.firstIndex { $0 < 31 } ?? 0)
             case .bottleCap(true): trainRef = ref; useCap(nil, back: here)
@@ -167,6 +171,7 @@ extension Walker {
         holdOn(ref, r.take ? nil : r.name, back: here, then: { .box(ref, act: nil, confirm: false, detail: true) }, now)
     }
     func holdTap(_ code: Int, _ now: Date) {
+        if case .formPick = screen { formPickTap(code, now); return }                                // 5.0: the same rows
         guard case .hold(let ref, let sel) = screen else { return }
         switch code {
         case 5980..<5995: let rows = holdRows(ref), top = max(0, min(sel - 2, rows.count - 6)); screen = .hold(ref: ref, sel: min(rows.count - 1, top + code - 5980))

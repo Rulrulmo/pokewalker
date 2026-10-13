@@ -97,6 +97,39 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
         calm(mz)
     }
 
+    // 5.0 (docs/plans/18 §9.6, §5 · §5.1): 로토무카탈로그 — the bag's 쓰기 → the 로토무 → its forms (the one it is dimmed) → ● changes it (its page after);
+    // 유전자쐐기 — 큐레무 → a 레시라무 of the box's → 합체 (the partner out of the box, inside it), then 분리 brings it back; neither sells
+    Content.$testing.withValue(true) {
+        let ro = online({ var s = Walk(); s.companion = Mon(dex: 479, level: 40, female: false); s.bag = ["로토무카탈로그", "유전자쐐기"]
+                          s.box = [Mon(dex: 646, level: 60, female: false), Mon(dex: 643, level: 60, female: false), Mon(dex: 25, level: 5, female: false)]; return s }())
+        ro.pickFor("로토무카탈로그"); ro.press(1)
+        let page = ro.paneContent(Date()).hold, rows = page?.rows.map(\.name) ?? []
+        let opened = { if case .formPick(-1, "로토무카탈로그", 1) = ro.screen { return true }; return false }() && rows.first == "로토무" && rows.count == 6
+            && page?.rows.first?.why == "지금 모습이에요" && page?.rows[1].dex == 479 && page?.action == "히트로토무(으)로 바꾸기"
+        ro.press(1); drain(ro)
+        let heat = ro.state.companion.form == 1 && { if case .say(let l, .box(-1, nil, false, true), _) = ro.screen { return l == ["로토무는", "히트로토무로 바뀌었다!"] }; return false }()
+            && ro.paneContent(Date()).hold == nil && ro.state.companion.moves.contains(315)
+        let kRef = ro.state.box.firstIndex { $0.dex == 646 }!, kUid = ro.state.box[kRef].uid!
+        ro.screen = .box(kRef, act: nil, confirm: false, detail: true); _ = ro.keyItemOn("유전자쐐기", kRef)
+        let partners = ro.formOptions(kRef, "유전자쐐기").map(\.label)
+        ro.press(1); drain(ro)
+        let k2 = ro.state.ref(uid: kUid).flatMap { ro.state.mon($0) }
+        let fused = k2?.form == 2 && k2?.fused?.first?.dex == 643 && !ro.state.box.contains { $0.dex == 643 } && ro.state.box.count == 2
+        let back = ro.state.ref(uid: kUid)!; _ = ro.keyItemOn("유전자쐐기", back); let unOpt = ro.formOptions(back, "유전자쐐기").map(\.label)
+        ro.press(1); drain(ro)
+        let k3 = ro.state.ref(uid: kUid).flatMap { ro.state.mon($0) }
+        let apart = k3?.form == nil && k3?.fused == nil && ro.state.box.contains { $0.dex == 643 } && ro.state.box.count == 3
+        let keyKind: Bool = { if case .key = ItemKind.of("로토무카탈로그") { return ro.itemUse("로토무카탈로그").0 == "쓸 포켓몬 고르기" }; return false }()
+        ro.state.companion.ability = 2; ro.screen = .box(-1, act: nil, confirm: false, detail: true)            // 로토무 has no hidden one; 리자몽's is 선파워
+        let rotomAb = ro.paneContent(Date()).mon.map { $0.ability == "부유" && $0.form == "히트로토무" } == true
+        ro.state.companion = Mon(dex: 6, level: 40, female: false); ro.state.companion.ability = 2
+        let zardAb = ro.paneContent(Date()).mon?.ability == "선파워 · 숨겨진특성"
+        check(opened && heat && partners == ["레시라무 Lv.60"] && fused && unOpt == ["분리하기"] && apart && keyKind && rotomAb && zardAb,
+              "5.0 로토무카탈로그 (bag → 로토무 → 6 forms, its own dimmed → 히트로토무, 오버히트 in) · 유전자쐐기 (큐레무 + 레시라무 → 화이트큐레무, 분리 back to the box); a page's form chip, 숨겨진특성 only where there is one",
+              "\(opened) \(rows) \(heat) \(partners) \(fused) \(unOpt) \(apart) \(keyKind) \(rotomAb) \(zardAb)")
+        calm(ro)
+    }
+
     // a tower run: in for 50 W, a win (streak, BP), the next trainer with no fee, then 기권
     var strong = Mon(dex: 6, level: 50, female: false); strong.known = [53]
     let tv = online({ var s = Walk(); s.watts = 100; s.companion = strong; return s }(), rng: 3)

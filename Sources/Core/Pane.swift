@@ -52,6 +52,7 @@ struct MonModel: Equatable {
     var nature, natureNote, ability, abilityNote: String; var up, down: Int?   // stat indices the nature raises / lowers (nil = neutral)
     var ivs, evs: [Int]; var hyper: [Int]; var v, evTotal: Int
     var confirm: Bool                                                  // 놓아줄까? is up: the buttons become 아니오 / 예
+    var form: String? = nil                                            // 5.0: its own form (히트로토무, 어택폼 ...), a chip on the 특성 line
     var place = 2                                                      // 0 the companion (nothing to do), 1 the walker's (함께 걷기 / 상자로 보내기), 2 the box's (함께 걷기 / 워커로 / 놓아주기)
     var fetch = false                                                  // the box's: 워커로 is open (the walker has room)
     var dupes = 0                                                      // the box's: how many of its species 중복 놓아주기 would let go (the 놓아줄까? row offers it)
@@ -62,8 +63,9 @@ struct MonModel: Equatable {
 }
 /// 지니게 하기 (docs/plans/13 ⑤): who, what it holds now, the bag's holdable items (빼기 first while it holds one), the pick's line, the button.
 struct HoldModel: Equatable {
-    struct Row: Equatable { var name: String; var count: Int; var note: String; var take: Bool; var use = false; var why: String? = nil }   // take: the 빼기 row; use (3.8.5): one to use on it (why: what it wouldn't do, dimmed)
+    struct Row: Equatable { var name: String; var count: Int; var note: String; var take: Bool; var use = false; var why: String? = nil; var dex: Int? = nil; var form: Int? = nil }   // 5.0: dex = a Pokémon's row (FormView: its icon, no count)   // take: the 빼기 row; use (3.8.5): one to use on it (why: what it wouldn't do, dimmed)
     var who: String; var now: String?; var rows: [Row]; var sel: Int; var action: String?; var hint: String
+    var picks = false                                                  // 5.0: FormView's — "지금" is a form, not a held item
 }
 /// 3.9's 우편함 (15 §6 A): a page of mails (the server's order: gifts to take first), 모두 받기.
 struct MailListModel: Equatable {

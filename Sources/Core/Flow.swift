@@ -117,6 +117,11 @@ extension Walker {
     var seenList: [Int] { Array(Set((state.seen ?? []) + (state.owned ?? []))).sorted() }
     /// What walks on course k (the radar's, its guests, its legends): the 도감's 이 코스 tab, and 코스's 잡음 n/m.
     func courseSpecies(_ k: Int) -> [Int] { let c = courses[k]; return Set(c.slots.map(\.dex) + c.extra.map(\.dex) + c.guests + c.legends).sorted() }
+    /// 5.0 (docs/plans/18 §9.6): a Mon's own form in words, for its pages (히트로토무, 어택폼, 영물폼, 안농 "B", 꽃밭의 모양 ...): a kept or a
+    /// look's form — its name stays the species' everywhere, as the games keep it; nil for the species' own.
+    func formName(_ m: Mon) -> String? { Forms.of(m.dex, m.form).flatMap { $0.kind == .stored || $0.kind == .look ? $0.name : nil } }
+    /// 5.0: a course's 지방 by its `region` (하나 494-649, 칼로스 650-721).
+    func regionName(_ r: ClosedRange<Int>) -> String { dexRegions(721).first { $0.range.contains(r.lowerBound) }?.name ?? "" }
     /// 5.0 (docs/plans/18 §9.6): the 도감's regions up to `last` (관동 ... 신오, then with content5 하나 · 칼로스).
     func dexRegions(_ last: Int) -> [(name: String, range: ClosedRange<Int>)] {
         [("관동", 1...151), ("성도", 152...251), ("호연", 252...386), ("신오", 387...493), ("하나", 494...649), ("칼로스", 650...721)].filter { $0.1.lowerBound <= last }.map { (name: $0.0, range: $0.1) }
@@ -209,7 +214,7 @@ extension Walker {
             case .duel(.hub): screen = menuFor("대전")
             case .duel: screen = .home                                                             // (the invitation stays open: its minute; the queue too)
             case .squad(let s): switch s.kind { case .tower: screen = .tower(pick: nil); case .duelParty: screen = .duel(.hub(tab: 0, sel: 0)); case .raid: screen = .raid(.tier(sel: raidTierIndex)); case .duelPick: screen = .home }   // (a duel's pick: its minute runs)
-            case .hold(let r, _): screen = .box(r, act: nil, confirm: false, detail: true)
+            case .hold(let r, _), .formPick(let r, _, _): screen = .box(r, act: nil, confirm: false, detail: true)
             case .visitPick(let p): screen = teamRows(0).firstIndex { trainerID($0.card.name)?.key == trainerID(p.item)?.key }.map { .team(sel: $0, tab: 0, card: true) } ?? .team(sel: 0, tab: 0, card: false)
             case .items: screen = .box(-1, act: nil, confirm: false)                                  // back to 포켓몬
             case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : menuFor("포켓몬")   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
@@ -339,6 +344,7 @@ extension Walker {
         case .itemOn(let p): itemOnPress(k, p, now)
         case .duel(let s): duelPress(k, s, now)
         case .hold(let r, let s): holdPress(k, r, s, now)
+        case .formPick(let r, let it, let s): formPickPress(k, r, it, s, now)
         case .visitPick(let p): visitPickPress(k, p, now)
         case .squad(let s): squadPress(k, s, now)
         case .mail(let s): mailPress(k, s, now)

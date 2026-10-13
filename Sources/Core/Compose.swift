@@ -157,6 +157,7 @@ extension Walker {
         case .itemOn(let p): itemOnLCD(&fb, p, now)
         case .duel(let s): duelLCD(&fb, s, now)
         case .hold(let ref, let sel): holdLCD(&fb, ref, sel, now)
+        case .formPick(let ref, let item, let sel): formPickLCD(&fb, ref, item, sel, now)
         case .visitPick(let p): visitPickLCD(&fb, p, now)
         case .squad(let s): squadLCD(&fb, s, now)
         case .mail(let s): mailLCD(&fb, s, now)
@@ -227,7 +228,7 @@ extension Walker {
             header((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)")
             fb.mon(m, half, 0, 2, anim: animT("box \(i)", m.dex, now))
             fb.text(i == -1 ? "함께" : i < -1 ? "워커 \(-1 - i)" : "상자 \((boxOrder.firstIndex(of: i) ?? 0) + 1)/\(state.box.count)", 94, 15, 2, right: true, small: true)   // where it is
-            if genderRate[m.dex] >= 0 { fb.text(m.female ? "암컷" : "수컷", 94, 26, 2, right: true, small: true) }; vLabel(m, 36)   // genderless: nothing (the games show no symbol)
+            if genderRate[m.dex] >= 0 || formName(m) != nil { fb.text([genderRate[m.dex] >= 0 ? (m.female ? "암컷" : "수컷") : nil, formName(m).map { $0.replacingOccurrences(of: monNames[m.dex], with: "").trimmingCharacters(in: .whitespaces) }].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "), 94, 26, 2, right: true, small: true) }   // 5.0: its form (히트 · 어택폼 ...); vLabel(m, 36)   // genderless: nothing (the games show no symbol)
             if let a = act {
                 fb.fill(0, 50, 96, 14, 0); fb.fill(0, 50, 96, 1, 2)
                 let opts = confirm ? ["놓아줄까?", "아니오", "예"] : boxActs(i)
@@ -374,6 +375,7 @@ extension Walker {
         if case .itemOn(let p) = sc { return itemOnPane(p, now) }
         if case .duel(let s) = sc { return duelPane(s, now) }
         if case .hold(let ref, let sel) = sc { return holdPane(ref, sel) }
+        if case .formPick(let ref, let item, let sel) = sc { return formPickPane(ref, item, sel) }
         if case .visitPick(let p) = sc { return visitPickPane(p, now) }
         if case .squad(let s) = sc { return squadPane(s, now) }
         if case .mail(let s) = sc { return mailPane(s, now) }
@@ -400,7 +402,7 @@ extension Walker {
             let per = CourseModel.perPage, first = i / per * per
             let rows = (first..<min(courses.count, first + per)).map { k -> CourseModel.Row in
                 let c = courses[k], open = state.unlocked(k), kinds = courseSpecies(k), owned = Set(state.owned ?? [])
-                return .init(name: c.name, note: open ? "잡음 \(kinds.filter(owned.contains).count)/\(kinds.count)" : c.dex > 0 ? "도감 \(c.dex)종" : "누적 \(c.watts.formatted())W", open: open, here: k == state.course)
+                return .init(name: c.name, note: open ? "잡음 \(kinds.filter(owned.contains).count)/\(kinds.count)" : c.dex > 0 ? (c.region.map { regionName($0) + " " } ?? "") + "도감 \(c.dex)종" : "누적 \(c.watts.formatted())W", open: open, here: k == state.course)
             }
             let go = state.unlocked(i) && i != state.course ? josa(courses[i].name, "으로", "로") + " 가기" : nil
             let lv = courses[i].all.map(\.level), about = "Lv.\(lv.min() ?? 1)–\(lv.max() ?? 1) · " + courses[i].types.map { typeKo[$0] ?? $0 }.joined(separator: " · ")
@@ -550,15 +552,16 @@ extension Walker {
         case .revive: return (nil, "배틀 중 기절한 포켓몬에게")
         case .held: return (nil, "포켓몬에게 지니게 해요")                                          // (held ones are targeted: the case above)
         case .heal, .battle: return (nil, "배틀에서 도구로")
-        case .key: return (nil, "중요한 물건이에요")                                                  // 5.0 (server: plan 18 §14; the menus are mac's A4)
+        case .key: return (nil, "중요한 물건이에요")                                                  // 5.0: (로토무카탈로그 · 유전자쐐기 are targeted: the case above)
         }
     }
     /// A Pokémon in full, for its page.
     func monPage(_ m: Mon, act: Int? = nil, confirm: Bool = false) -> MonModel {
         let n = natures[m.mint ?? m.nature ?? 0], neutral = n.up == n.down, name = ["HP", "공격", "방어", "특공", "특방", "스피드"]   // the chips' and hexagons' names: every note fits its line; a mint's nature drives them (3.6)
         let note = neutral ? "능력치에 영향을 주지 않는 성격" : josa(name[n.up], "이", "가") + " 10% 높고 " + josa(name[n.down], "이", "가") + " 10% 낮은 성격"
-        var p = MonModel(nature: m.natureName + (m.mint.map { $0 != (m.nature ?? 0) ? " (민트: " + natures[$0].name + ")" : "" } ?? ""), natureNote: note, ability: m.abilityName, abilityNote: abilityDescs[m.abilityID] ?? "", up: neutral ? nil : n.up, down: neutral ? nil : n.down,
+        var p = MonModel(nature: m.natureName + (m.mint.map { $0 != (m.nature ?? 0) ? " (민트: " + natures[$0].name + ")" : "" } ?? ""), natureNote: note, ability: m.abilityName + (m.ability == 2 && Content.gen6 && (Forms.of(m.dex, m.form)?.hidden ?? hiddenAbility[m.dex]) > 0 ? " · 숨겨진특성" : ""), abilityNote: abilityDescs[m.abilityID] ?? "", up: neutral ? nil : n.up, down: neutral ? nil : n.down,
                         ivs: m.effectiveIVs, evs: m.evs ?? Array(repeating: 0, count: 6), hyper: m.hyper ?? [], v: m.perfectIVs, evTotal: (m.evs ?? []).reduce(0, +), confirm: confirm && act != nil, sel: act.flatMap { $0 < 2 ? $0 : nil })
+        p.form = formName(m)                                                                           // 5.0: its form, by its 특성 (docs/plans/18 §9.6)
         p.moves = m.moves.compactMap { moveTable[$0]?.name }; return p
     }
     /// 홈 (and the other screens): where, the companion, today, then egg / tower / totals / dex.

@@ -64,6 +64,16 @@ import AppKit
         take("battle_mega_after", mg) { v in v.sideOn = true; v.fight = both; v.screen = .battle(both, sel: 0) }
         take("battle_mega_after_lcd", mg) { v in v.sideOn = false; v.fight = both; v.screen = .battle(both, sel: 0) }
         mg.sideOn = false
+        // A4 (§9.6): 로토무카탈로그's forms, 유전자쐐기's partners, a page with its form and hidden ability, the courses' 하나 page
+        var heat = Mon.wild(479, level: 40, &fr); heat.form = 1; heat.ability = 2
+        let fm = online({ var s = base(); s.companion = heat; s.bag = ["로토무카탈로그", "유전자쐐기"]
+                          s.box = [Mon.wild(646, level: 60, &fr), Mon.wild(643, level: 60, &fr), Mon.wild(644, level: 55, &fr)]; return s }())
+        take("form_rotom", fm) { v in v.screen = .formPick(ref: -1, item: "로토무카탈로그", sel: 2) }
+        take("form_rotom_lcd", fm) { v in v.screen = .formPick(ref: -1, item: "로토무카탈로그", sel: 2) }
+        take("form_kyurem", fm) { v in v.screen = .formPick(ref: 0, item: "유전자쐐기", sel: 1) }
+        take("mon_form_hidden", fm) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
+        let c5 = online({ var s = base(); s.earned = 10_000_000; s.owned = Array(1...160) + Array(494...540); s.dex(); return s }())
+        take("course_unova", c5) { v in v.screen = .course(35) }
     }
     // 3.2 (12 M1): the team
     let tsrv = FakeCloud(), tme = online({ var s = base(); s.today = 4321; s.towerBest = 6; s.owned = Array(1...48); return s }(), server: tsrv)

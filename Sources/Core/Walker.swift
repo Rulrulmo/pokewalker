@@ -198,6 +198,7 @@ import Foundation
         case .duel: return ("실시간 대전", duelLeft().map { "\($0)초 남음" } ?? "")
         case .squad(let s): switch s.kind { case .tower: return ("배틀 타워", "파티 고르기 · Lv.50"); case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return ("레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")) }
         case .hold(let r, _): return ("도구 주기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
+        case .formPick(let r, let it, _): return (it, state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .mail(.pick): return ("우편함", "하나를 골라 주세요")
         case .mail: return ("우편함", "선물은 받을 때까지 보관")
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")

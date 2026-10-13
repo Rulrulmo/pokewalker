@@ -341,6 +341,7 @@ extension Canvas {
         // 특성: name, then its description (two lines at most)
         c.say("특성", x(X0 + 2), y(yy + 7), font(9, .medium), Ink.sub)
         c.say(m.ability, x(X0 + 34), y(yy + 7), font(11, .bold), Ink.ink)
+        if let fm = m.form { let f = font(8, .bold), w = width(fm, f) + x(10); c.pill(CGRect(x: x(X1 - 2) - w, y: y(yy + 7) - x(6), width: w, height: x(12)), Ink.tile); c.say(fm, x(X1 - 2) - w / 2, y(yy + 7), f, Ink.sub, 0.5) }   // 5.0: its form
         var lines: [String] = [], cur = "", f = font(9)
         for word in m.abilityNote.split(separator: " ") { let t = cur.isEmpty ? String(word) : cur + " " + word; if width(t, f) > x(X1 - X0 - 36), !cur.isEmpty { lines.append(cur); cur = String(word) } else { cur = t } }
         lines.append(cur)
@@ -891,13 +892,15 @@ extension Page {
     func drawHold(_ m: HoldModel) {
         c.say(m.who, x(X0 + 2), y(206), font(12, .bold), Ink.ink)
         c.say(m.now.map { "지금 " + $0 } ?? "지닌 도구 없음", x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
-        if m.rows.isEmpty { c.say("줄 수 있는 도구가 없어요", x(Layout.w / 2), y(280), font(10, .medium), Ink.sub, 0.5); c.say("상점 · BP 교환소에서 사요", x(Layout.w / 2), y(298), font(9, .medium), Ink.faint, 0.5) }
+        if m.rows.isEmpty, m.picks { c.say(m.hint, x(Layout.w / 2), y(280), font(10, .medium), Ink.sub, 0.5) }
+        else if m.rows.isEmpty { c.say("줄 수 있는 도구가 없어요", x(Layout.w / 2), y(280), font(10, .medium), Ink.sub, 0.5); c.say("상점 · BP 교환소에서 사요", x(Layout.w / 2), y(298), font(9, .medium), Ink.faint, 0.5) }
         let top = max(0, min(m.sel - 2, m.rows.count - 6))
         for (i, row) in m.rows.enumerated() where i >= top && i < top + 6 {
             let rc = r(X0, 216 + CGFloat(i - top) * 29, X1 - X0, 26); tile(rc, 9, on: i == m.sel, row.take ? Ink.tint(Ink.blue, 0.08) : nil)
-            pixelArt(gem, gemPal, CGPoint(x: rc.minX + x(14), y: rc.midY), 2.5 * K)
-            var cw = row.take ? c.say("빼기", rc.maxX - x(9), rc.midY, font(9, .bold), Ink.blue, 1) : c.say("×\(row.count)", rc.maxX - x(9), rc.midY, font(10, .semibold), row.why == nil ? Ink.ink : Ink.faint, 1)
-            if !row.take {                                                                          // 3.8.5: 쓰기 (on it) or 지니기
+            if let d = row.dex { c.image(iconImage(d, shadow: row.why != nil), CGRect(x: rc.minX + x(14) - 14 * K, y: rc.midY - 15 * K, width: 28 * K, height: 28 * K), alpha: 1) }   // 5.0: a Pokémon's row
+            else { pixelArt(gem, gemPal, CGPoint(x: rc.minX + x(14), y: rc.midY), 2.5 * K) }
+            var cw: CGFloat = row.dex != nil ? 0 : row.take ? c.say("빼기", rc.maxX - x(9), rc.midY, font(9, .bold), Ink.blue, 1) : c.say("×\(row.count)", rc.maxX - x(9), rc.midY, font(10, .semibold), row.why == nil ? Ink.ink : Ink.faint, 1)
+            if !row.take, row.dex == nil {                                                          // 3.8.5: 쓰기 (on it) or 지니기
                 let t = row.use ? "쓰기" : "지니기", col = row.why != nil ? Ink.faint : row.use ? Ink.green : Ink.blue
                 cw = rc.maxX - x(9) - pillAt(t, rc.maxX - x(9) - cw - x(5), rc.midY, Ink.tint(col, 0.16), col)
             }
