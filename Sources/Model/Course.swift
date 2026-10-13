@@ -42,7 +42,10 @@ let guestOdds = 0.10   // slots: A A B B C C, items rarest first; dex = Pokédex
 /// Gen IV evolution, mapped onto a walker (see tools/gen.py): level = on level-up at `level`+; friend = on level-up after `friendSteps` together;
 /// item = use a stone from the bag; trade = Connect while it's the companion. `item` on level/trade = must be in the bag (and is used up).
 enum EvoWay { case level, friend, item, trade }
-struct Evo { let from, to: Int; let way: EvoWay; let level: Int; let item: String?; let female: Bool?; let time: String?; let place: String?; let party: Int? }
+struct Evo {
+    let from, to: Int; let way: EvoWay; let level: Int; let item: String?; let female: Bool?; let time: String?; let place: String?; let party: Int?
+    var partyType: String? = nil, weather: String? = nil   // 5.0 (plan 18 §2.6): 판짱 (a Dark type on the walker or in the box), 미끄네일 (rain)
+}
 let friendSteps = 10_000                 // stands in for friendship 220 (Gen IV: +1 per 128 steps from ~70 is ~19k; levels add more)
 
 /// Rerolled every `weatherSteps` steps; the matching types show up 1.5x as often. Not in the original walker.

@@ -14,15 +14,17 @@ Sources (cached in tools/.cache, not committed; every URL is in SRC below — RE
   - Serebii's Pokéwalker course page: per course 6 Pokémon (groups A/B/C x 2) + 10 items, with min steps and chances.
   - PokeAPI CSVs (raw.githubusercontent.com/PokeAPI/pokeapi/master/data/v2/csv/): Korean names, Gen IV types (pokemon_types_past overrides
       the Fairy retcon), moves, abilities, natures, evolutions, stats... (the list is in SRC).
-  New species beyond 493: every table above is by national dex, so raising N and the SRC ranges (plus the Swift constants that assume 493)
-  is the whole job — the sources above cover later generations too, except walk.bin (the overworld set stops at 493).
+  New species beyond 493 (5.0, plan 18): the tables go to N = 721; the pictures stay at N4 = 493 until their sources are picked (the HGSS
+  sets stop at 493). The Gen IV tables are 4.1's exactly (Gen4: 1-493 as HGSS, the new species as Gen VI, never read with content5 off);
+  the Gen VI ones are their changes (Gen6Changes / Gen6Added), applied by Sources/Data/Content.swift behind the content5 switch.
+  `python3 tools/gen.py data` writes the tables only.
 
 The walker's own draw: for each of the 3 carried Pokémon, rarest first, "steps >= min and rand(100) < chance" wins, else the
 next; the commonest is the fallback. Serebii prints the resulting band percentages; chance = the slot's % in the first band
 where it appears, which reproduces every printed row (e.g. A 70 -> B (1-.7)*75 = 22.5 -> C 7.5).
 """
-import csv, io, json, os, re, html, struct, urllib.request, warnings, zlib
-from PIL import Image, ImageChops
+import csv, io, json, os, re, html, struct, sys, urllib.request, warnings, zlib
+if 'data' not in sys.argv[1:]: from PIL import Image, ImageChops
 warnings.filterwarnings('ignore', category=DeprecationWarning)   # Pillow 12: getdata
 
 CACHE = os.path.join(os.path.dirname(__file__), '.cache')
@@ -52,7 +54,9 @@ SRC = {
                                               'move_meta', 'move_meta_stat_changes', 'move_meta_ailments', 'move_flag_map', 'abilities', 'ability_names',
                                               'pokemon_abilities', 'pokemon_abilities_past', 'natures', 'nature_names', 'ability_flavor_text']},
 }
-N = 493  # HGSS national dex
+N = 721   # the national dex through Gen VI (5.0, plan 18): every table below goes to N
+N4 = 493  # HGSS's: the pictures (Resources/*.bin) and every Gen IV table stop here; above it only the Gen VI tables (Sources/Data/Content.swift)
+ARTWORK = 'data' not in sys.argv[1:]
 
 def get(name):
     p = os.path.join(CACHE, name)
@@ -62,195 +66,196 @@ def get(name):
         open(p, 'wb').write(urllib.request.urlopen(req).read())
     return p
 
-# --- hgss.bin: the HGSS battle sprites, drawn one pixel a point. Per species: 15 normal + 15 shiny RGB (index 1...15; 0 = transparent),
-# then the front and the back, 80x80 at 4 bpp (high nibble = left). 6490 B per species. Each frame is moved down to stand on its bottom
-# row (PokeAPI keeps the DS's per-species offsets; the walker has no offset table). A colour slot is a (normal, shiny) pair: two DS
-# slots can share a normal colour and part in the shiny.
-def rgba(name): return Image.open(get(name)).convert('RGBA')
-def dist(a, b): return sum((i - j) ** 2 for i, j in zip(a, b))
-hout, over15 = bytearray(), []
-for dex in range(1, N + 1):
-    imgs = [(rgba(f'hgss/{b}{dex}.png'), rgba(f'hgss/{b}s{dex}.png')) for b in ('', 'b')]
-    for a, sh in imgs: assert a.size == (80, 80) == sh.size, (dex, a.size)
-    shiny = lambda p, q: q[:3] if q[3] >= 128 else p[:3]
-    if all(a.tobytes() == sh.tobytes() for a, sh in imgs):
-        # PokeAPI's HGSS shiny 422/423 (West Sea) are copies of the normal files, and so is Platinum's back pair: the normal -> shiny
-        # map comes from Platinum's front pair, its colours snapped to HGSS's; a colour it never shows takes its nearest one's shift
-        normals = {p[:3] for a, _ in imgs for p in a.getdata() if p[3] >= 128}
-        votes = {}
-        for p, q in zip(rgba(f'plat/{dex}.png').getdata(), rgba(f'plat/s{dex}.png').getdata()):
-            if p[3] >= 128 and q[3] >= 128:
-                n = min(normals, key=lambda k: dist(k, p[:3])); votes.setdefault(n, {}).setdefault(q[:3], 0); votes[n][q[:3]] += 1
-        remap = {n: max(v, key=v.get) for n, v in votes.items()}
-        for n in normals - remap.keys():
-            m = min(remap, key=lambda k: dist(k, n)); remap[n] = tuple(max(0, min(255, c + s - o)) for c, s, o in zip(n, remap[m], m))
-        shiny = lambda p, q: remap[p[:3]]
-    count = {}
-    for a, sh in imgs:
-        for p, q in zip(a.getdata(), sh.getdata()):
-            if p[3] >= 128: k = (p[:3], shiny(p, q)); count[k] = count.get(k, 0) + 1
-    slots = sorted(count, key=lambda k: -count[k])[:15]                     # a DS palette is 15 colours; more (rare) snap to the nearest
-    if len(count) > 15: over15.append(dex)
-    index = {k: slots.index(k) + 1 if k in slots else 1 + min(range(len(slots)), key=lambda i: dist(slots[i][0], k[0]) + dist(slots[i][1], k[1])) for k in count}
-    for n, _ in slots + [((0, 0, 0), 0)] * (15 - len(slots)): hout += bytes(n)
-    for _, s in slots + [(0, (0, 0, 0))] * (15 - len(slots)): hout += bytes(s)
-    for a, sh in imgs:
-        px, qx = list(a.getdata()), list(sh.getdata())
-        drop = 79 - max(y for y in range(80) if any(px[y * 80 + x][3] >= 128 for x in range(80)))   # onto the bottom row
-        cell = lambda x, y: 0 if y < drop or px[(y - drop) * 80 + x][3] < 128 else index[(px[(y - drop) * 80 + x][:3], shiny(px[(y - drop) * 80 + x], qx[(y - drop) * 80 + x]))]
-        for y in range(80):
-            for x in range(0, 80, 2): hout.append(cell(x, y) << 4 | cell(x + 1, y))
-assert len(hout) == N * 6490
-if over15: print('palette snapped (> 15 colour pairs):', over15)
-open('Resources/hgss.bin', 'wb').write(hout)
+if ARTWORK:   # `python3 tools/gen.py data`: the tables only (Sources/Data), the Resources/*.bin left as they are
+    # --- hgss.bin: the HGSS battle sprites, drawn one pixel a point. Per species: 15 normal + 15 shiny RGB (index 1...15; 0 = transparent),
+    # then the front and the back, 80x80 at 4 bpp (high nibble = left). 6490 B per species. Each frame is moved down to stand on its bottom
+    # row (PokeAPI keeps the DS's per-species offsets; the walker has no offset table). A colour slot is a (normal, shiny) pair: two DS
+    # slots can share a normal colour and part in the shiny.
+    def rgba(name): return Image.open(get(name)).convert('RGBA')
+    def dist(a, b): return sum((i - j) ** 2 for i, j in zip(a, b))
+    hout, over15 = bytearray(), []
+    for dex in range(1, N4 + 1):
+        imgs = [(rgba(f'hgss/{b}{dex}.png'), rgba(f'hgss/{b}s{dex}.png')) for b in ('', 'b')]
+        for a, sh in imgs: assert a.size == (80, 80) == sh.size, (dex, a.size)
+        shiny = lambda p, q: q[:3] if q[3] >= 128 else p[:3]
+        if all(a.tobytes() == sh.tobytes() for a, sh in imgs):
+            # PokeAPI's HGSS shiny 422/423 (West Sea) are copies of the normal files, and so is Platinum's back pair: the normal -> shiny
+            # map comes from Platinum's front pair, its colours snapped to HGSS's; a colour it never shows takes its nearest one's shift
+            normals = {p[:3] for a, _ in imgs for p in a.getdata() if p[3] >= 128}
+            votes = {}
+            for p, q in zip(rgba(f'plat/{dex}.png').getdata(), rgba(f'plat/s{dex}.png').getdata()):
+                if p[3] >= 128 and q[3] >= 128:
+                    n = min(normals, key=lambda k: dist(k, p[:3])); votes.setdefault(n, {}).setdefault(q[:3], 0); votes[n][q[:3]] += 1
+            remap = {n: max(v, key=v.get) for n, v in votes.items()}
+            for n in normals - remap.keys():
+                m = min(remap, key=lambda k: dist(k, n)); remap[n] = tuple(max(0, min(255, c + s - o)) for c, s, o in zip(n, remap[m], m))
+            shiny = lambda p, q: remap[p[:3]]
+        count = {}
+        for a, sh in imgs:
+            for p, q in zip(a.getdata(), sh.getdata()):
+                if p[3] >= 128: k = (p[:3], shiny(p, q)); count[k] = count.get(k, 0) + 1
+        slots = sorted(count, key=lambda k: -count[k])[:15]                     # a DS palette is 15 colours; more (rare) snap to the nearest
+        if len(count) > 15: over15.append(dex)
+        index = {k: slots.index(k) + 1 if k in slots else 1 + min(range(len(slots)), key=lambda i: dist(slots[i][0], k[0]) + dist(slots[i][1], k[1])) for k in count}
+        for n, _ in slots + [((0, 0, 0), 0)] * (15 - len(slots)): hout += bytes(n)
+        for _, s in slots + [(0, (0, 0, 0))] * (15 - len(slots)): hout += bytes(s)
+        for a, sh in imgs:
+            px, qx = list(a.getdata()), list(sh.getdata())
+            drop = 79 - max(y for y in range(80) if any(px[y * 80 + x][3] >= 128 for x in range(80)))   # onto the bottom row
+            cell = lambda x, y: 0 if y < drop or px[(y - drop) * 80 + x][3] < 128 else index[(px[(y - drop) * 80 + x][:3], shiny(px[(y - drop) * 80 + x], qx[(y - drop) * 80 + x]))]
+            for y in range(80):
+                for x in range(0, 80, 2): hout.append(cell(x, y) << 4 | cell(x + 1, y))
+    assert len(hout) == N4 * 6490
+    if over15: print('palette snapped (> 15 colour pairs):', over15)
+    open('Resources/hgss.bin', 'wb').write(hout)
 
-# --- icons.bin: the Gen IV box / party icons (the 도감 and 상자 grids), one pixel a point. Per species: 15 RGB (index 1...15; 0 =
-# transparent), then 32x32 at 4 bpp (high nibble = left). 557 B per species. A DS icon palette is 16 colours, so 15 opaque always fit.
-iout = bytearray()
-for dex in range(1, N + 1):
-    a = rgba(f'icons/{dex}.png'); assert a.size == (32, 32), (dex, a.size)
-    px = list(a.getdata()); pal = sorted({p[:3] for p in px if p[3] >= 128})
-    assert 0 < len(pal) <= 15, (dex, len(pal))
-    for c in pal + [(0, 0, 0)] * (15 - len(pal)): iout += bytes(c)
-    cell = lambda p: pal.index(p[:3]) + 1 if p[3] >= 128 else 0
-    for k in range(0, 1024, 2): iout.append(cell(px[k]) << 4 | cell(px[k + 1]))
-assert len(iout) == N * 557
-open('Resources/icons.bin', 'wb').write(iout)
+    # --- icons.bin: the Gen IV box / party icons (the 도감 and 상자 grids), one pixel a point. Per species: 15 RGB (index 1...15; 0 =
+    # transparent), then 32x32 at 4 bpp (high nibble = left). 557 B per species. A DS icon palette is 16 colours, so 15 opaque always fit.
+    iout = bytearray()
+    for dex in range(1, N4 + 1):
+        a = rgba(f'icons/{dex}.png'); assert a.size == (32, 32), (dex, a.size)
+        px = list(a.getdata()); pal = sorted({p[:3] for p in px if p[3] >= 128})
+        assert 0 < len(pal) <= 15, (dex, len(pal))
+        for c in pal + [(0, 0, 0)] * (15 - len(pal)): iout += bytes(c)
+        cell = lambda p: pal.index(p[:3]) + 1 if p[3] >= 128 else 0
+        for k in range(0, 1024, 2): iout.append(cell(px[k]) << 4 | cell(px[k + 1]))
+    assert len(iout) == N4 * 557
+    open('Resources/icons.bin', 'wb').write(iout)
 
-# --- frames.bin: other 80x80 frames at one pixel a point: the HGSS egg, then the Battle Tower's trainers (Gen IV sprites, Showdown's rips).
-# Per frame: 15 RGB, then 80x80 at 4 bpp. 3245 B each, in FRAMES order (Pixels.swift's frameNames mirrors it). Each stands on row 79.
-FRAMES = ['egg', 'acetrainer-gen4', 'acetrainerf-gen4', 'veteran-gen4', 'veteranf', 'lady-gen4', 'hiker-gen4', 'scientist-gen4', 'blackbelt-gen4',
-          'battlegirl-gen4', 'psychic-gen4', 'psychicf-gen4', 'dragontamer', 'schoolkid-gen4', 'pokemonranger-gen4', 'pokemonrangerf-gen4',
-          'palmer']   # 3.9: 타워 타이쿤 (Pt · HGSS's Tower Tycoon)
-fout = bytearray()
-for f in FRAMES:
-    a = rgba(f'frames/{f}.png'); assert a.size == (80, 80), (f, a.size)
-    bot = max(y for y in range(80) for x in range(80) if a.getpixel((x, y))[3] >= 128)
-    b = Image.new('RGBA', (80, 80)); b.paste(a, (0, 79 - bot)); a = b
-    px = list(a.getdata()); pal = sorted({p[:3] for p in px if p[3] >= 128})
-    assert 0 < len(pal) <= 15, (f, len(pal))
-    for c in pal + [(0, 0, 0)] * (15 - len(pal)): fout += bytes(c)
-    cell = lambda p: pal.index(p[:3]) + 1 if p[3] >= 128 else 0
-    for k in range(0, 6400, 2): fout.append(cell(px[k]) << 4 | cell(px[k + 1]))
-assert len(fout) == len(FRAMES) * 3245
-open('Resources/frames.bin', 'wb').write(fout)
+    # --- frames.bin: other 80x80 frames at one pixel a point: the HGSS egg, then the Battle Tower's trainers (Gen IV sprites, Showdown's rips).
+    # Per frame: 15 RGB, then 80x80 at 4 bpp. 3245 B each, in FRAMES order (Pixels.swift's frameNames mirrors it). Each stands on row 79.
+    FRAMES = ['egg', 'acetrainer-gen4', 'acetrainerf-gen4', 'veteran-gen4', 'veteranf', 'lady-gen4', 'hiker-gen4', 'scientist-gen4', 'blackbelt-gen4',
+              'battlegirl-gen4', 'psychic-gen4', 'psychicf-gen4', 'dragontamer', 'schoolkid-gen4', 'pokemonranger-gen4', 'pokemonrangerf-gen4',
+              'palmer']   # 3.9: 타워 타이쿤 (Pt · HGSS's Tower Tycoon)
+    fout = bytearray()
+    for f in FRAMES:
+        a = rgba(f'frames/{f}.png'); assert a.size == (80, 80), (f, a.size)
+        bot = max(y for y in range(80) for x in range(80) if a.getpixel((x, y))[3] >= 128)
+        b = Image.new('RGBA', (80, 80)); b.paste(a, (0, 79 - bot)); a = b
+        px = list(a.getdata()); pal = sorted({p[:3] for p in px if p[3] >= 128})
+        assert 0 < len(pal) <= 15, (f, len(pal))
+        for c in pal + [(0, 0, 0)] * (15 - len(pal)): fout += bytes(c)
+        cell = lambda p: pal.index(p[:3]) + 1 if p[3] >= 128 else 0
+        for k in range(0, 6400, 2): fout.append(cell(px[k]) << 4 | cell(px[k + 1]))
+    assert len(fout) == len(FRAMES) * 3245
+    open('Resources/frames.bin', 'wb').write(fout)
 
-# --- anims.bin: the HGSS entry animations (PokeAPI's APNGs: what a species does as it appears in battle, on its summary, when tapped).
-# Each frame goes onto our grounded 80x80 frame: the rest frame (the last, long-held one) is matched against hgss.bin's front by opaque
-# mask, which carries the grounding shift. Every colour snaps to the species' normal slots (another rip: RGB a little off, a few more
-# colours), so shiny and the grey shades work as for the sprite; where two slots share a normal colour, the one the front has there.
-# Consecutive equal frames merge; the final hold (the APNG's loop pause) is cut to 100 ms. Per species, raw DEFLATE of:
-#   x, y (int16: the box's top-left in the 80x80 frame, may be < 0 or past 79), w (even), h, n (uint8), n x uint16 ms, n frames w x h at 4 bpp.
-# The file: 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none, the static sprite stays), then the blocks.
-def apng(path):
-    """The frames composited, [(RGBA, ms)]: Pillow clears a palette frame to index 0 (opaque black here), not to clear."""
-    b, i, ch = open(path, 'rb').read(), 8, []
-    while i < len(b):
-        n, = struct.unpack('>I', b[i:i + 4]); ch.append((b[i + 4:i + 8], b[i + 8:i + 8 + n])); i += 12 + n
-    head = {t: c for t, c in ch if t in (b'IHDR', b'PLTE', b'tRNS')}
-    def png(w, h, data):
-        c = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d))
-        return Image.open(io.BytesIO(b'\x89PNG\r\n\x1a\n' + c(b'IHDR', struct.pack('>II', w, h) + head[b'IHDR'][8:]) + b''.join(c(t, head[t]) for t in (b'PLTE', b'tRNS') if t in head)
-                                     + c(b'IDAT', data) + c(b'IEND', b''))).convert('RGBA')
-    fr = []
-    for t, c in ch:
-        if t == b'fcTL': fr.append([struct.unpack('>IIIIIHHBB', c)[1:], b''])
-        elif t == b'IDAT' and fr: fr[-1][1] += c                           # an IDAT before any fcTL is the default image, not a frame
-        elif t == b'fdAT': fr[-1][1] += c[4:]
-    canvas, out = Image.new('RGBA', struct.unpack('>II', head[b'IHDR'][:8])), []
-    for k, ((w, h, x, y, num, den, dop, bop), data) in enumerate(fr):
-        f, keep = png(w, h, data), canvas.copy()
-        if bop == 0: canvas.paste(f, (x, y))
-        else: canvas.alpha_composite(f, (x, y))
-        out.append((canvas.copy(), round(num * 1000 / (den or 100))))
-        if dop == 1 or dop == 2 and k == 0: canvas.paste((0, 0, 0, 0), (x, y, x + w, y + h))
-        elif dop == 2: canvas = keep
-    return out
-nib = lambda at, k: hout[at + k // 2] >> 4 if k % 2 == 0 else hout[at + k // 2] & 15
-blocks, poor, none = [], [], []
-for dex in range(1, N + 1):
-    o = (dex - 1) * 6490
-    try: frames = apng(get(f'anim/{dex}.png'))
-    except Exception: none.append(dex); blocks.append(b''); continue            # missing / broken: the static sprite stays
-    slot, front = [tuple(hout[o + i * 3:o + i * 3 + 3]) for i in range(15)], [nib(o + 90, k) for k in range(6400)]
-    # where the rest frame's canvas sits on our frame: the best mask overlap near where their boxes line up
-    smask = Image.frombytes('L', (80, 80), bytes(255 if i else 0 for i in front))
-    rest = frames[-1][0].getchannel('A').point(lambda a: 255 if a >= 128 else 0)
-    sb, rb, ns, nr = smask.getbbox(), rest.getbbox(), smask.histogram()[255], rest.histogram()[255]
-    def iou(x, y): i = ImageChops.multiply(smask, rest.crop((x, y, x + 80, y + 80))).histogram()[255]; return i / (ns + nr - i)
-    cand = {(ax + ex, ay + ey) for ax in {rb[0] - sb[0], rb[2] - sb[2]} for ay in {rb[1] - sb[1], rb[3] - sb[3]} for ex in range(-3, 4) for ey in range(-3, 4)}
-    score, dx, dy = max((iou(x, y), x, y) for x, y in cand)                   # canvas (x, y) = our frame's (x - dx, y - dy)
-    # colours: each of the rip's colours to the slot the front mostly has under it in the rest frame (if they line up), else to the
-    # nearest of the species' own normal colours
-    used = sorted((set(front) | {nib(o + 3290, k) for k in range(6400)}) - {0})                   # the slots the front and back use
-    of = {slot[i - 1]: [j for j in used if slot[j - 1] == slot[i - 1]] for i in used}   # a normal colour's slots
-    shared = {i for s in of.values() if len(s) > 1 for i in s}                # two slots, one normal colour (their shinies part)
-    cols = sorted({c[:3] for im, _ in frames for _, c in im.getcolors(1 << 16) if c[3] >= 128})
-    votes, rp, (W, H) = {}, frames[-1][0].load(), frames[-1][0].size
-    for k, i in enumerate(front):
-        X, Y = k % 80 + dx, k // 80 + dy
-        if i and 0 <= X < W and 0 <= Y < H and rp[X, Y][3] >= 128: v = votes.setdefault(rp[X, Y][:3], {}); v[i] = v.get(i, 0) + 1
-    to = {c: max(votes[c], key=votes[c].get) if score >= 0.9 and sum(votes.get(c, {}).values()) >= 3 else min(used, key=lambda i: dist(slot[i - 1], c)) for c in cols}
-    pal = Image.new('P', (1, 1)); pal.putpalette([v for c in cols + cols[:1] * (256 - len(cols)) for v in c])
-    lut = bytes(to[c] for c in cols + cols[:1] * (256 - len(cols)))
-    idx = [(Image.composite(Image.frombytes('L', im.size, im.convert('RGB').quantize(palette=pal, dither=Image.Dither.NONE).tobytes().translate(lut)),
-                            Image.new('L', im.size), im.getchannel('A').point(lambda a: 255 if a >= 128 else 0)), ms) for im, ms in frames]
-    bx = [m.getbbox() for m, _ in idx if m.getbbox()]
-    b0, b1, b3 = min(b[0] for b in bx), min(b[1] for b in bx), max(b[3] for b in bx)
-    w = max(b[2] for b in bx) - b0; w += w % 2; h = b3 - b1; x0, y0 = b0 - dx, b1 - dy
-    out = []
-    for m, ms in idx:
-        px = bytearray(m.crop((b0, b1, b0 + w, b3)).tobytes())
-        for k in range(len(px)) if shared else ():                              # a shared normal colour: the slot the front has there, if it's one of them
-            x, y = x0 + k % w, y0 + k // w
-            if px[k] in shared and 0 <= x < 80 and 0 <= y < 80 and front[y * 80 + x] in of[slot[px[k] - 1]]: px[k] = front[y * 80 + x]
-        if out and out[-1][0] == px: out[-1][1] += ms
-        else: out.append([px, ms])
-    out[-1][1] = min(out[-1][1], 100)
-    last = out[-1][0]; at = lambda k: last[(k // 80 - y0) * w + k % 80 - x0] if 0 <= k % 80 - x0 < w and 0 <= k // 80 - y0 < h else 0
-    same = sum(at(k) == i for k, i in enumerate(front) if i) / sum(1 for i in front if i)   # the rest frame against the front, index by index
-    if score < 0.95 or same < 0.9: poor.append((dex, round(score, 3), round(same, 3)))
-    assert w < 256 and h < 256 and len(out) < 256, (dex, w, h, len(out))
-    blk = struct.pack('<hhBBB', x0, y0, w, h, len(out)) + b''.join(struct.pack('<H', min(ms, 65535)) for _, ms in out)
-    for px, _ in out: blk += (int.from_bytes(bytes(px[0::2]).translate(bytes(i * 16 & 255 for i in range(256))), 'big') | int.from_bytes(bytes(px[1::2]), 'big')).to_bytes(len(px) // 2, 'big')
-    z = zlib.compressobj(9, zlib.DEFLATED, -15); blocks.append(z.compress(blk) + z.flush())
-off = [4 * (N + 1)]
-for b in blocks: off.append(off[-1] + len(b))
-aout = b''.join(struct.pack('<I', v) for v in off) + b''.join(blocks)
-open('Resources/anims.bin', 'wb').write(aout)
-print(f'anims.bin {len(aout) / 1e6:.2f} MB; no animation: {none}; rest frame off the front (dex, mask IoU, same index):', poor)
+    # --- anims.bin: the HGSS entry animations (PokeAPI's APNGs: what a species does as it appears in battle, on its summary, when tapped).
+    # Each frame goes onto our grounded 80x80 frame: the rest frame (the last, long-held one) is matched against hgss.bin's front by opaque
+    # mask, which carries the grounding shift. Every colour snaps to the species' normal slots (another rip: RGB a little off, a few more
+    # colours), so shiny and the grey shades work as for the sprite; where two slots share a normal colour, the one the front has there.
+    # Consecutive equal frames merge; the final hold (the APNG's loop pause) is cut to 100 ms. Per species, raw DEFLATE of:
+    #   x, y (int16: the box's top-left in the 80x80 frame, may be < 0 or past 79), w (even), h, n (uint8), n x uint16 ms, n frames w x h at 4 bpp.
+    # The file: 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none, the static sprite stays), then the blocks.
+    def apng(path):
+        """The frames composited, [(RGBA, ms)]: Pillow clears a palette frame to index 0 (opaque black here), not to clear."""
+        b, i, ch = open(path, 'rb').read(), 8, []
+        while i < len(b):
+            n, = struct.unpack('>I', b[i:i + 4]); ch.append((b[i + 4:i + 8], b[i + 8:i + 8 + n])); i += 12 + n
+        head = {t: c for t, c in ch if t in (b'IHDR', b'PLTE', b'tRNS')}
+        def png(w, h, data):
+            c = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d))
+            return Image.open(io.BytesIO(b'\x89PNG\r\n\x1a\n' + c(b'IHDR', struct.pack('>II', w, h) + head[b'IHDR'][8:]) + b''.join(c(t, head[t]) for t in (b'PLTE', b'tRNS') if t in head)
+                                         + c(b'IDAT', data) + c(b'IEND', b''))).convert('RGBA')
+        fr = []
+        for t, c in ch:
+            if t == b'fcTL': fr.append([struct.unpack('>IIIIIHHBB', c)[1:], b''])
+            elif t == b'IDAT' and fr: fr[-1][1] += c                           # an IDAT before any fcTL is the default image, not a frame
+            elif t == b'fdAT': fr[-1][1] += c[4:]
+        canvas, out = Image.new('RGBA', struct.unpack('>II', head[b'IHDR'][:8])), []
+        for k, ((w, h, x, y, num, den, dop, bop), data) in enumerate(fr):
+            f, keep = png(w, h, data), canvas.copy()
+            if bop == 0: canvas.paste(f, (x, y))
+            else: canvas.alpha_composite(f, (x, y))
+            out.append((canvas.copy(), round(num * 1000 / (den or 100))))
+            if dop == 1 or dop == 2 and k == 0: canvas.paste((0, 0, 0, 0), (x, y, x + w, y + h))
+            elif dop == 2: canvas = keep
+        return out
+    nib = lambda at, k: hout[at + k // 2] >> 4 if k % 2 == 0 else hout[at + k // 2] & 15
+    blocks, poor, none = [], [], []
+    for dex in range(1, N4 + 1):
+        o = (dex - 1) * 6490
+        try: frames = apng(get(f'anim/{dex}.png'))
+        except Exception: none.append(dex); blocks.append(b''); continue            # missing / broken: the static sprite stays
+        slot, front = [tuple(hout[o + i * 3:o + i * 3 + 3]) for i in range(15)], [nib(o + 90, k) for k in range(6400)]
+        # where the rest frame's canvas sits on our frame: the best mask overlap near where their boxes line up
+        smask = Image.frombytes('L', (80, 80), bytes(255 if i else 0 for i in front))
+        rest = frames[-1][0].getchannel('A').point(lambda a: 255 if a >= 128 else 0)
+        sb, rb, ns, nr = smask.getbbox(), rest.getbbox(), smask.histogram()[255], rest.histogram()[255]
+        def iou(x, y): i = ImageChops.multiply(smask, rest.crop((x, y, x + 80, y + 80))).histogram()[255]; return i / (ns + nr - i)
+        cand = {(ax + ex, ay + ey) for ax in {rb[0] - sb[0], rb[2] - sb[2]} for ay in {rb[1] - sb[1], rb[3] - sb[3]} for ex in range(-3, 4) for ey in range(-3, 4)}
+        score, dx, dy = max((iou(x, y), x, y) for x, y in cand)                   # canvas (x, y) = our frame's (x - dx, y - dy)
+        # colours: each of the rip's colours to the slot the front mostly has under it in the rest frame (if they line up), else to the
+        # nearest of the species' own normal colours
+        used = sorted((set(front) | {nib(o + 3290, k) for k in range(6400)}) - {0})                   # the slots the front and back use
+        of = {slot[i - 1]: [j for j in used if slot[j - 1] == slot[i - 1]] for i in used}   # a normal colour's slots
+        shared = {i for s in of.values() if len(s) > 1 for i in s}                # two slots, one normal colour (their shinies part)
+        cols = sorted({c[:3] for im, _ in frames for _, c in im.getcolors(1 << 16) if c[3] >= 128})
+        votes, rp, (W, H) = {}, frames[-1][0].load(), frames[-1][0].size
+        for k, i in enumerate(front):
+            X, Y = k % 80 + dx, k // 80 + dy
+            if i and 0 <= X < W and 0 <= Y < H and rp[X, Y][3] >= 128: v = votes.setdefault(rp[X, Y][:3], {}); v[i] = v.get(i, 0) + 1
+        to = {c: max(votes[c], key=votes[c].get) if score >= 0.9 and sum(votes.get(c, {}).values()) >= 3 else min(used, key=lambda i: dist(slot[i - 1], c)) for c in cols}
+        pal = Image.new('P', (1, 1)); pal.putpalette([v for c in cols + cols[:1] * (256 - len(cols)) for v in c])
+        lut = bytes(to[c] for c in cols + cols[:1] * (256 - len(cols)))
+        idx = [(Image.composite(Image.frombytes('L', im.size, im.convert('RGB').quantize(palette=pal, dither=Image.Dither.NONE).tobytes().translate(lut)),
+                                Image.new('L', im.size), im.getchannel('A').point(lambda a: 255 if a >= 128 else 0)), ms) for im, ms in frames]
+        bx = [m.getbbox() for m, _ in idx if m.getbbox()]
+        b0, b1, b3 = min(b[0] for b in bx), min(b[1] for b in bx), max(b[3] for b in bx)
+        w = max(b[2] for b in bx) - b0; w += w % 2; h = b3 - b1; x0, y0 = b0 - dx, b1 - dy
+        out = []
+        for m, ms in idx:
+            px = bytearray(m.crop((b0, b1, b0 + w, b3)).tobytes())
+            for k in range(len(px)) if shared else ():                              # a shared normal colour: the slot the front has there, if it's one of them
+                x, y = x0 + k % w, y0 + k // w
+                if px[k] in shared and 0 <= x < 80 and 0 <= y < 80 and front[y * 80 + x] in of[slot[px[k] - 1]]: px[k] = front[y * 80 + x]
+            if out and out[-1][0] == px: out[-1][1] += ms
+            else: out.append([px, ms])
+        out[-1][1] = min(out[-1][1], 100)
+        last = out[-1][0]; at = lambda k: last[(k // 80 - y0) * w + k % 80 - x0] if 0 <= k % 80 - x0 < w and 0 <= k // 80 - y0 < h else 0
+        same = sum(at(k) == i for k, i in enumerate(front) if i) / sum(1 for i in front if i)   # the rest frame against the front, index by index
+        if score < 0.95 or same < 0.9: poor.append((dex, round(score, 3), round(same, 3)))
+        assert w < 256 and h < 256 and len(out) < 256, (dex, w, h, len(out))
+        blk = struct.pack('<hhBBB', x0, y0, w, h, len(out)) + b''.join(struct.pack('<H', min(ms, 65535)) for _, ms in out)
+        for px, _ in out: blk += (int.from_bytes(bytes(px[0::2]).translate(bytes(i * 16 & 255 for i in range(256))), 'big') | int.from_bytes(bytes(px[1::2]), 'big')).to_bytes(len(px) // 2, 'big')
+        z = zlib.compressobj(9, zlib.DEFLATED, -15); blocks.append(z.compress(blk) + z.flush())
+    off = [4 * (N4 + 1)]
+    for b in blocks: off.append(off[-1] + len(b))
+    aout = b''.join(struct.pack('<I', v) for v in off) + b''.join(blocks)
+    open('Resources/anims.bin', 'wb').write(aout)
+    print(f'anims.bin {len(aout) / 1e6:.2f} MB; no animation: {none}; rest frame off the front (dex, mask IoU, same index):', poor)
 
-# --- walk.bin: the HGSS following Pokémon, walking (the home screen's course picture). Per species, raw DEFLATE of: size (uint8: 32, or 64 for the
-# big ones), 15 normal + 15 shiny RGB (slot pairs, as in hgss.bin: the shiny files have the same pixels in other colours), then left, right,
-# down x 4 frames, size x size at 4 bpp. The file: 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none), then the blocks.
-wblocks, wover, wnone = [], [], []
-for dex in range(1, N + 1):
-    four = lambda fs: (fs * 4)[:4]                                                   # 4 frames a direction (딱충이 facing us has 3: round again)
-    try: dirs = [(four([f for f, _ in apng(get(f'ow/{d}/{dex:03}.png'))]), four([f for f, _ in apng(get(f'ow/{d}/shiny_{dex:03}.png'))])) for d in ('left', 'right', 'down')]
-    except Exception: wnone.append(dex); wblocks.append(b''); continue
-    size = dirs[0][0][0].size[0]; assert all(len(n) == 4 == len(sh) and all(f.size == (size, size) for f in n + sh) for n, sh in dirs), dex
-    pairs = {}
-    for n, sh in dirs:
-        for a, b in zip(n, sh):
-            for p, q in zip(a.getdata(), b.getdata()):
-                if p[3] >= 128: pairs.setdefault(p[:3], {}).setdefault(q[:3] if q[3] >= 128 else p[:3], 0); pairs[p[:3]][q[:3] if q[3] >= 128 else p[:3]] += 1
-    pal = sorted(pairs, key=lambda c: -sum(pairs[c].values()))
-    if len(pal) > 15: wover.append((dex, len(pal))); pal = pal[:15]
-    near = lambda c: min(range(len(pal)), key=lambda i: dist(pal[i], c))
-    blk = bytearray([size])
-    for c in pal + [(0, 0, 0)] * (15 - len(pal)): blk += bytes(c)
-    for c in pal: blk += bytes(max(pairs[c], key=pairs[c].get))
-    blk += bytes(3 * (15 - len(pal)))
-    for n, _ in dirs:
-        for f in n:
-            px = list(f.getdata()); cell = lambda p: (pal.index(p[:3]) if p[:3] in pal else near(p[:3])) + 1 if p[3] >= 128 else 0
-            for k in range(0, size * size, 2): blk.append(cell(px[k]) << 4 | cell(px[k + 1]))
-    c = zlib.compressobj(9, zlib.DEFLATED, -15); wblocks.append(c.compress(bytes(blk)) + c.flush())
-off = [494 * 4]                                                                     # offsets into the file, as anims.bin's
-for b in wblocks: off.append(off[-1] + len(b))
-wout = b''.join(struct.pack('<I', v) for v in off) + b''.join(wblocks)
-open('Resources/walk.bin', 'wb').write(wout)
-print(f'walk.bin {len(wout) / 1e6:.2f} MB; none: {wnone}; palette cut to 15:', wover, '; 64 px:', sum(1 for b in wblocks if b and zlib.decompress(b, -15)[0] == 64))
+    # --- walk.bin: the HGSS following Pokémon, walking (the home screen's course picture). Per species, raw DEFLATE of: size (uint8: 32, or 64 for the
+    # big ones), 15 normal + 15 shiny RGB (slot pairs, as in hgss.bin: the shiny files have the same pixels in other colours), then left, right,
+    # down x 4 frames, size x size at 4 bpp. The file: 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none), then the blocks.
+    wblocks, wover, wnone = [], [], []
+    for dex in range(1, N4 + 1):
+        four = lambda fs: (fs * 4)[:4]                                                   # 4 frames a direction (딱충이 facing us has 3: round again)
+        try: dirs = [(four([f for f, _ in apng(get(f'ow/{d}/{dex:03}.png'))]), four([f for f, _ in apng(get(f'ow/{d}/shiny_{dex:03}.png'))])) for d in ('left', 'right', 'down')]
+        except Exception: wnone.append(dex); wblocks.append(b''); continue
+        size = dirs[0][0][0].size[0]; assert all(len(n) == 4 == len(sh) and all(f.size == (size, size) for f in n + sh) for n, sh in dirs), dex
+        pairs = {}
+        for n, sh in dirs:
+            for a, b in zip(n, sh):
+                for p, q in zip(a.getdata(), b.getdata()):
+                    if p[3] >= 128: pairs.setdefault(p[:3], {}).setdefault(q[:3] if q[3] >= 128 else p[:3], 0); pairs[p[:3]][q[:3] if q[3] >= 128 else p[:3]] += 1
+        pal = sorted(pairs, key=lambda c: -sum(pairs[c].values()))
+        if len(pal) > 15: wover.append((dex, len(pal))); pal = pal[:15]
+        near = lambda c: min(range(len(pal)), key=lambda i: dist(pal[i], c))
+        blk = bytearray([size])
+        for c in pal + [(0, 0, 0)] * (15 - len(pal)): blk += bytes(c)
+        for c in pal: blk += bytes(max(pairs[c], key=pairs[c].get))
+        blk += bytes(3 * (15 - len(pal)))
+        for n, _ in dirs:
+            for f in n:
+                px = list(f.getdata()); cell = lambda p: (pal.index(p[:3]) if p[:3] in pal else near(p[:3])) + 1 if p[3] >= 128 else 0
+                for k in range(0, size * size, 2): blk.append(cell(px[k]) << 4 | cell(px[k + 1]))
+        c = zlib.compressobj(9, zlib.DEFLATED, -15); wblocks.append(c.compress(bytes(blk)) + c.flush())
+    off = [494 * 4]                                                                     # offsets into the file, as anims.bin's
+    for b in wblocks: off.append(off[-1] + len(b))
+    wout = b''.join(struct.pack('<I', v) for v in off) + b''.join(wblocks)
+    open('Resources/walk.bin', 'wb').write(wout)
+    print(f'walk.bin {len(wout) / 1e6:.2f} MB; none: {wnone}; palette cut to 15:', wover, '; 64 px:', sum(1 for b in wblocks if b and zlib.decompress(b, -15)[0] == 64))
 
 # --- names / types
 ko, en_item, ko_item, types = {}, {}, {}, {}
@@ -264,8 +269,12 @@ for r in csv.DictReader(open(get('pokemon_types.csv'))):
     if int(r['pokemon_id']) <= N: types.setdefault(int(r['pokemon_id']), []).append(tname[r['type_id']])
 past = {}
 for r in csv.DictReader(open(get('pokemon_types_past.csv'))):
-    if int(r['pokemon_id']) <= N and int(r['generation_id']) >= 4: past.setdefault(int(r['pokemon_id']), []).append(tname[r['type_id']])
+    if int(r['pokemon_id']) <= N4 and int(r['generation_id']) >= 4: past.setdefault(int(r['pokemon_id']), []).append(tname[r['type_id']])
+    assert int(r['generation_id']) < 6, r                                                  # Gen VI's types are today's
+types6 = {d: list(t) for d, t in types.items()}
 types.update(past)
+retyped = {d: types6[d] for d in range(1, N4 + 1) if types6[d] != types[d]}                # the Fairy retcon: 20 species
+assert len(retyped) == 20 and all('fairy' in t for t in retyped.values()), retyped
 assert len(ko) == N and len(types) == N
 
 ITEM_FIX = {'EnergyPowder': 'Energy Powder', 'Thunderstone': 'Thunder Stone', 'BlackGlasses': 'Black Glasses', 'NeverMeltIce': 'Never-Melt Ice', 'TwistedSpoon': 'Twisted Spoon', 'DeepSeaScale': 'Deep Sea Scale', 'DeepSeaTooth': 'Deep Sea Tooth', 'BrightPowder': 'Bright Powder', 'SilphScope': 'Silph Scope', 'Moonstone': 'Moon Stone', 'Tomato Berry': 'Tamato Berry', 'X Special': 'X Sp. Atk',
@@ -342,12 +351,13 @@ PLACE = {462: 'cave', 476: 'cave', 470: 'forest', 471: 'ice'}
 evos = set()
 for r in csv.DictReader(open(get('pokemon_evolution.csv'))):
     to = int(r['evolved_species_id'])
-    if to > N or r['region_id'] or int(r['evolved_pokemon_form_id'] or 0) > 10000 or int(r['required_pokemon_form_id'] or 0) > 10000: continue
+    if to > N or r['region_id']: continue
+    if to not in (666, 678) and (int(r['evolved_pokemon_form_id'] or 0) > 10000 or int(r['required_pokemon_form_id'] or 0) > 10000): continue   # 비비용's patterns, 냐오닉스 ♀: a look, not a species
     frm = int(sp[to]['evolves_from_species_id'])
     trig = {'1': 'level', '2': 'trade', '3': 'item'}.get(r['evolution_trigger_id'])
     if not trig: continue                                                                   # shed (Shedinja)
     way, level = trig, int(r['minimum_level'] or 0)
-    if trig == 'level' and (r['minimum_happiness'] or r['minimum_beauty']): way = 'friend'
+    if trig == 'level' and (r['minimum_happiness'] or r['minimum_beauty'] or r['minimum_affection']): way = 'friend'   # 님피아: affection (a Fairy move aside), as friendship
     if r['known_move_id']: level = MOVE_LEVEL[to]
     item = r['trigger_item_id'] or r['held_item_id']
     item = ko_item.get(item) if item else None
@@ -355,8 +365,10 @@ for r in csv.DictReader(open(get('pokemon_evolution.csv'))):
     time = r['time_of_day'] or None
     place = PLACE.get(to) if r['location_id'] else None
     party = int(r['party_species_id']) if r['party_species_id'] else None
+    ptype = tname[r['party_type_id']] if r['party_type_id'] else None                   # 판짱: a Dark type on the walker or in the box
+    rain = 'rain' if r['needs_overworld_rain'] == '1' else None                          # 미끄네일: the walk's weather is rain
     if r['location_id'] and not place: continue
-    evos.add((frm, to, way, level, item, fem, time, place, party))
+    evos.add((frm, to, way, level, item, fem, time, place, party, ptype, rain))
 evos = sorted(evos)
 tko = {}
 for r in csv.DictReader(open(get('type_names.csv'))):
@@ -365,13 +377,21 @@ for r in csv.DictReader(open(get('type_names.csv'))):
 with open('Sources/Data/Data.swift', 'w') as f:
     f.write('// Generated by tools/gen.py from the HGSS Pokéwalker data (Serebii) and PokeAPI. Do not edit by hand.\n\n')
     f.write('let monNames: [String] = ["", ' + ', '.join(s(ko[i]) for i in range(1, N + 1)) + ']\n')
-    f.write('let monTypes: [[String]] = [[], ' + ', '.join('[' + ', '.join(s(x) for x in types[i]) + ']' for i in range(1, N + 1)) + ']\n\n')
+    f.write('let monTypesGen4: [[String]] = [[], ' + ', '.join('[' + ', '.join(s(x) for x in (types[i] if i <= N4 else types6[i])) + ']' for i in range(1, N + 1)) + ']\n')
+    f.write('let monTypesGen6Changes: [Int: [String]] = [' + ', '.join(f'{d}: [' + ', '.join(s(x) for x in t) + ']' for d, t in sorted(retyped.items())) + ']\n\n')
     f.write('let growthRate: [Int] = [' + ', '.join(map(str, growth)) + ']\n')
     f.write('let expTable: [[Int]] = [[], ' + ', '.join('[0, ' + ', '.join(str(exp[g][l]) for l in range(1, 101)) + ']' for g in range(1, 7)) + ']   // [rate][level]\n')
-    f.write('let typeKo: [String: String] = [' + ', '.join(f'{s(k)}: {s(v)}' for k, v in sorted(tko.items()) if k in TYPES) + ']\n')
-    f.write('let evolutions: [Evo] = [\n')
-    for frm, to, way, level, item, fem, time, place, party in evos:
-        f.write(f'    Evo(from: {frm}, to: {to}, way: .{way}, level: {level}, item: {s(item) if item else "nil"}, female: {fem}, time: {s(time) if time else "nil"}, place: {s(place) if place else "nil"}, party: {party or "nil"}),\n')
+    f.write('let typeKo: [String: String] = [' + ', '.join(f'{s(k)}: {s(v)}' for k, v in sorted(tko.items()) if k in TYPES or k == 'fairy') + ']\n')
+    f.write('let evolutionsGen4: [Evo] = [\n')
+    def evo(frm, to, way, level, item, fem, time, place, party, ptype, rain):
+        return (f'    Evo(from: {frm}, to: {to}, way: .{way}, level: {level}, item: {s(item) if item else "nil"}, female: {fem}, time: {s(time) if time else "nil"}, place: {s(place) if place else "nil"}, party: {party or "nil"}'
+                + (f', partyType: {s(ptype)}' if ptype else '') + (f', weather: {s(rain)}' if rain else '') + '),\n')
+    for e in evos:
+        if e[1] <= N4: f.write(evo(*e))
+    f.write(']\n')
+    f.write('let evolutionsGen6Added: [Evo] = [\n')                                    # the Gen V-VI lines, 이브이 → 님피아 among them
+    for e in evos:
+        if e[1] > N4: f.write(evo(*e))
     f.write(']\n\n')
     courses = courses[:20] + sorted(courses[20:], key=lambda c: c['dex'])
     # --- more Pokémon per course (not in the original): each group gets 2 more candidates, plus 5 rare "guests" (10 % of radar finds).
@@ -383,8 +403,8 @@ with open('Sources/Data/Data.swift', 'w') as f:
     HABITATS = {'field': {'grassland'}, 'forest': {'forest'}, 'mountain': {'mountain', 'rough-terrain'}, 'beach': {'sea', 'waters-edge'},
                 'lake': {'waters-edge', 'sea'}, 'town': {'urban', 'grassland'}, 'cave': {'cave'}}
     def habitat(d): return hab.get(sp[d]['habitat_id']) or BY_TYPE[types[d][0]]
-    legendary = {d for d in range(1, N + 1) if sp[d]['is_legendary'] == '1' or sp[d]['is_mythical'] == '1'}
-    usable = [d for d in range(1, N + 1) if d not in legendary and sp[d]['is_baby'] == '0' and d != 292]
+    legendary = {d for d in range(1, N4 + 1) if sp[d]['is_legendary'] == '1' or sp[d]['is_mythical'] == '1'}
+    usable = [d for d in range(1, N4 + 1) if d not in legendary and sp[d]['is_baby'] == '0' and d != 292]
     tier = lambda d: 0 if int(sp[d]['capture_rate']) < 75 else 1 if int(sp[d]['capture_rate']) < 150 else 2
     def stage(d): f = sp[d]['evolves_from_species_id']; return 0 if not f else 1 + stage(int(f))
     fits_level = lambda d, lv: stage(d) == 0 or stage(d) == 1 and lv >= 20 or stage(d) >= 2 and lv >= 35   # no Lv.8 핫삼
@@ -420,18 +440,18 @@ with open('Sources/Data/Data.swift', 'w') as f:
               ('환상의 숲', 300, '커다란 숲', [151, 251, 385, 386, 489, 490, 492]), ('시작의 방', 350, '리조트', [249, 493])]
     SHOP = [250, 150]                                                                   # 칠색조 (W) and 뮤츠 (BP): bought only, never met — Walk.legendShop
     legends = [d for *_, ls in LEGEND for d in ls]
-    assert sorted(legends + SHOP) == sorted(d for d in range(1, N + 1) if sp[d]['is_legendary'] == '1' or sp[d]['is_mythical'] == '1'), 'every legend exactly once'
+    assert sorted(legends + SHOP) == sorted(d for d in range(1, N4 + 1) if sp[d]['is_legendary'] == '1' or sp[d]['is_mythical'] == '1'), 'every legend exactly once'
     for name, need, base, ls in LEGEND: courses.append({**by[base], 'name': name, 'watts': 0, 'dex': need, 'legends': ls})
     # eggs: the bases of every line you can't otherwise reach (no legends; Shedinja comes from Nincada)
     reach = {25} | {sl[0] for c in courses for sl in c['slots']}                                     # eggs = bases the ORIGINAL tables miss (the extras overlap them on purpose)
     while True:
-        more = {to for frm, to, *_ in evos if frm in reach} - reach
+        more = {to for frm, to, *_ in evos if frm in reach and to <= N4} - reach
         if not more: break
         reach |= more
-    pool = [d for d in range(1, N + 1) if not sp[d]['evolves_from_species_id'] and d not in reach and d not in legends and d not in SHOP and d != 292]
+    pool = [d for d in range(1, N4 + 1) if not sp[d]['evolves_from_species_id'] and d not in reach and d not in legends and d not in SHOP and d != 292]
     base_of = lambda d: d if not sp[d]['evolves_from_species_id'] else base_of(int(sp[d]['evolves_from_species_id']))
-    reach2 = reach | {d for d in range(1, N + 1) if base_of(d) in pool} | set(legends) | set(SHOP) | {292}
-    assert reach2 == set(range(1, N + 1)), sorted(set(range(1, N + 1)) - reach2)
+    reach2 = reach | {d for d in range(1, N4 + 1) if base_of(d) in pool} | set(legends) | set(SHOP) | {292}
+    assert reach2 == set(range(1, N4 + 1)), sorted(set(range(1, N4 + 1)) - reach2)
     f.write('let eggPool: [Int] = [' + ', '.join(map(str, pool)) + ']   // every line not on a course\n')
     f.write('let eggCycles: [Int] = [0, ' + ', '.join(sp[i]['hatch_counter'] for i in range(1, N + 1)) + ']   // x 255 steps (Gen IV)\n')
     # --- battles (Gen IV as in HGSS): base stats, base EXP, catch rate, level-up learnsets (damaging moves only — no status conditions here),
@@ -439,15 +459,21 @@ with open('Sources/Data/Data.swift', 'w') as f:
     stats = {}
     for r in csv.DictReader(open(get('pokemon_stats.csv'))):
         if int(r['pokemon_id']) <= N: stats.setdefault(int(r['pokemon_id']), {})[int(r['stat_id'])] = int(r['base_stat'])
-    past = {}
-    for r in csv.DictReader(open(get('pokemon_stats_past.csv'))):                          # Gen VI raised some (피카츄 방어 30 -> 40): take the value that held in Gen IV
-        d, k, g = int(r['pokemon_id']), int(r['stat_id']), int(r['generation_id'])
-        if d <= N and k <= 6 and g >= 4 and g < past.get((d, k), (99, 0))[0]: past[(d, k)] = (g, int(r['base_stat']))
-    for (d, k), (_, v) in past.items(): stats[d][k] = v
+    def rolled(gen, upto):                                                                 # the value that held in that generation
+        out, past = {d: dict(v) for d, v in stats.items() if d <= upto}, {}
+        for r in csv.DictReader(open(get('pokemon_stats_past.csv'))):
+            d, k, g = int(r['pokemon_id']), int(r['stat_id']), int(r['generation_id'])
+            if d <= upto and k <= 6 and g >= gen and g < past.get((d, k), (99, 0))[0]: past[(d, k)] = (g, int(r['base_stat']))
+        for (d, k), (_, v) in past.items(): out[d][k] = v
+        return out
+    stats6 = rolled(6, N)                                                                  # Gen VI raised some (피카츄 방어 30 -> 40); Gen VII's raises rolled back
+    stats = {**stats6, **rolled(4, N4)}                                                    # Gen IV's, for 1-493
+    raised = {d: stats6[d] for d in range(1, N4 + 1) if stats6[d] != stats[d]}
     bexp = {int(r['id']): int(r['base_experience'] or 50) for r in csv.DictReader(open(get('pokemon.csv'))) if int(r['id']) <= N}
     vg = {r['id']: int(r['order']) for r in csv.DictReader(open(get('version_groups.csv')))}
     HG = vg['10']
     mv = {int(r['id']): dict(r) for r in csv.DictReader(open(get('moves.csv'))) if int(r['generation_id']) <= 4}
+    N4M = max(i for i in mv if i < 10000)                                               # 467: the Gen IV moves (10001-: Colosseum's shadow moves)
     oldChance = {}                                                                      # a secondary effect's chance as it was in HGSS (move_meta only has today's)
     for r in sorted(csv.DictReader(open(get('move_changelog.csv'))), key=lambda r: vg[r['changed_in_version_group_id']], reverse=True):
         m = mv.get(int(r['move_id']))
@@ -461,11 +487,23 @@ with open('Sources/Data/Data.swift', 'w') as f:
     mko = {int(r['move_id']): r['name'] for r in csv.DictReader(open(get('move_names.csv'))) if r['local_language_id'] == '3'}
     # moves this engine can't do right: 속이기 (first turn + flinch), ones that need sleep / a charge / an item / a delay, and self-KOs that would just be free 200-power hits
     known = set(mv)                                                                     # every Gen I-IV move; Battle.swift knows which ones it can run
-    learn = {}
+    mv6ids = {int(r['id']) for r in csv.DictReader(open(get('moves.csv'))) if int(r['generation_id']) <= 6}
+    learn, oras = {}, {}
     for r in csv.DictReader(open(get('pokemon_moves.csv'))):
         d, i = int(r['pokemon_id']), int(r['move_id'])
-        if d <= N and r['version_group_id'] == '10' and r['pokemon_move_method_id'] == '1' and i in known:
+        if d <= N4 and r['version_group_id'] == '10' and r['pokemon_move_method_id'] == '1' and i in known:
             learn.setdefault(d, set()).add((int(r['level']), i))
+        if d <= N and r['version_group_id'] == '16' and r['pokemon_move_method_id'] == '1' and i in mv6ids:
+            oras.setdefault(d, set()).add((int(r['level']), i))
+    for d in range(N4 + 1, N + 1): learn[d] = oras.get(d, set())
+    # the 20 retyped keep HGSS's and add ORAS's new Fairy moves (천사의키스 · 애교부리기 · 달빛 were already there, as Normal);
+    # 픽시 문포스 46 and 토게키스 요정의바람 1 (stone evolutions: what 삐삐 · 토게틱 learn) are the user's (plan 18 §2.1)
+    fairy6 = {int(r['id']) for r in csv.DictReader(open(get('moves.csv'))) if int(r['id']) > 467 and int(r['generation_id']) <= 6 and tname[r['type_id']] == 'fairy'}
+    fairyAdd = {d: {(l, i) for l, i in oras.get(d, set()) if i in fairy6} for d in retyped}
+    fairyAdd[36].add((46, 585)); fairyAdd[468].add((1, 584))
+    for add in fairyAdd.values():                                                       # ORAS lists 가디안's 문포스 · 입치트's 치근거리기 at 1 too: the real level only
+        add -= {(1, i) for l, i in add if l > 1}
+    learn6 = {d: learn.get(d, set()) | add for d, add in fairyAdd.items() if add}
     used = {165} | {i for s in learn.values() for _, i in s}                          # 165 발버둥: for anyone with nothing to hit with yet
     tid = {r['id']: r['identifier'] for r in csv.DictReader(open(get('types.csv')))}
     chart = {}
@@ -476,7 +514,8 @@ with open('Sources/Data/Data.swift', 'w') as f:
         if int(r['generation_id']) >= 4: chart.setdefault(tid[r['damage_type_id']], {})[tid[r['target_type_id']]] = int(r['damage_factor']) / 100
     assert chart['ghost']['steel'] == 0.5 and chart['electric']['water'] == 2 and chart['normal']['ghost'] == 0
     def stage(d): f = sp[d]['evolves_from_species_id']; return 0 if not f else 1 + stage(int(f))
-    f.write('let baseStats: [[Int]] = [[], ' + ', '.join('[' + ', '.join(str(stats[d][k]) for k in range(1, 7)) + ']' for d in range(1, N + 1)) + ']   // HP Atk Def SpA SpD Spe\n')
+    f.write('let baseStatsGen4: [[Int]] = [[], ' + ', '.join('[' + ', '.join(str(stats[d][k]) for k in range(1, 7)) + ']' for d in range(1, N + 1)) + ']   // HP Atk Def SpA SpD Spe\n')
+    f.write('let baseStatsGen6Changes: [Int: [Int]] = [' + ', '.join(f'{d}: [' + ', '.join(str(v[k]) for k in range(1, 7)) + ']' for d, v in sorted(raised.items())) + ']\n')
     f.write('let baseExp: [Int] = [0, ' + ', '.join(str(bexp[d]) for d in range(1, N + 1)) + ']\n')
     f.write('let catchRate: [Int] = [0, ' + ', '.join(sp[d]['capture_rate'] for d in range(1, N + 1)) + ']\n')
     f.write('let stageOf: [Int] = [0, ' + ', '.join(str(stage(d)) for d in range(1, N + 1)) + ']\n')
@@ -497,19 +536,49 @@ with open('Sources/Data/Data.swift', 'w') as f:
     flags = {}
     for r in csv.DictReader(open(get('move_flag_map.csv'))): flags[int(r['move_id'])] = flags.get(int(r['move_id']), 0) | FLAG.get(r['move_flag_id'], 0)
     with open('Sources/Data/BattleData.swift', 'w') as g:
-        g.write('// Generated by tools/gen.py (PokeAPI, rolled back to HGSS / Gen IV). Do not edit by hand.\n\n')
+        g.write('// Generated by tools/gen.py (PokeAPI, rolled back to HGSS / Gen IV; the Gen6 tables to ORAS). Do not edit by hand.\n\n')
         # one statement per move: a single 485-entry literal took swiftc 13 s to type-check, statements are checked one at a time
-        g.write('let moveTable = Dictionary(uniqueKeysWithValues: allMoves().map { ($0.id, $0) })\n')
-        g.write('@_optimize(none) private func allMoves() -> [MoveInfo] {\n    var m: [MoveInfo] = []\n')
-        for i in sorted(mv):
-            m, me = mv[i], meta.get(i, {})
+        def moveInfo(i, m, me, sch, flags):
             def n(k, d=0): return int(me.get(k) or d)
-            g.write(f'    m.append(MoveInfo(id: {i}, name: {s(mko.get(i, m["identifier"]))}, type: {s(tid[m["type_id"]])}, power: {m["power"] or 0}, accuracy: {m["accuracy"] or 0}, '
+            return (f'MoveInfo(id: {i}, name: {s(mko.get(i, m["identifier"]))}, type: {s(tid[m["type_id"]])}, power: {m["power"] or 0}, accuracy: {m["accuracy"] or 0}, '
                     f'kind: {KIND[m["damage_class_id"]]}, priority: {m["priority"]}, pp: {m["pp"] or 1}, cat: {n("meta_category_id")}, target: {m["target_id"]}, '
                     f'ailment: {s(ail.get(me.get("meta_ailment_id", "0"), "none"))}, ailmentChance: {n("ailment_chance")}, flinch: {n("flinch_chance")}, '
                     f'stats: [{", ".join(f"{a}, {b}" for a, b in sch.get(i, []))}], statChance: {n("stat_chance")}, minHits: {n("min_hits")}, maxHits: {n("max_hits")}, '
-                    f'minTurns: {n("min_turns")}, maxTurns: {n("max_turns")}, drain: {n("drain")}, healing: {n("healing")}, crit: {n("crit_rate")}, flags: {flags.get(i, 0)}))\n')
+                    f'minTurns: {n("min_turns")}, maxTurns: {n("max_turns")}, drain: {n("drain")}, healing: {n("healing")}, crit: {n("crit_rate")}, flags: {flags.get(i, 0)})')
+        g.write('let moveTableGen4 = Dictionary(uniqueKeysWithValues: allMoves().map { ($0.id, $0) })\n')
+        g.write('@_optimize(none) private func allMoves() -> [MoveInfo] {\n    var m: [MoveInfo] = []\n')
+        line4 = {i: moveInfo(i, mv[i], meta.get(i, {}), sch, flags) for i in sorted(mv)}
+        for i in sorted(mv): g.write(f'    m.append({line4[i]})\n')
         g.write('    return m\n}\n')
+        # Gen VI (content5): 1-467 rolled back to ORAS (vg 16) instead of HGSS (화염방사 90, 탁쳐서떨구기 65 ...) and 468-621, both as of ORAS;
+        # only what differs from the Gen IV table. 251 집단구타 · 386 혼내기 keep Gen IV's: the engine works their power out.
+        T6 = vg['16']
+        mv6 = {int(r['id']): dict(r) for r in csv.DictReader(open(get('moves.csv'))) if int(r['generation_id']) <= 6}
+        old6 = {}
+        for r in sorted(csv.DictReader(open(get('move_changelog.csv'))), key=lambda r: vg[r['changed_in_version_group_id']], reverse=True):
+            m = mv6.get(int(r['move_id']))
+            if m is None or vg[r['changed_in_version_group_id']] <= T6: continue
+            for k in ('type_id', 'power', 'pp', 'accuracy', 'priority'):
+                if r[k]: m[k] = r[k]
+            if r['effect_chance']: old6[int(r['move_id'])] = int(r['effect_chance'])
+        for i in (105, 135, 208, 303, 355, 156): mv6[i]['pp'] = '10'                    # Gen IX's healing PP 5 came after ORAS
+        meta6 = {int(r['move_id']): r for r in csv.DictReader(open(get('move_meta.csv')))}
+        sch6 = {}
+        for r in csv.DictReader(open(get('move_meta_stat_changes.csv'))): sch6.setdefault(int(r['move_id']), []).append((int(r['stat_id']), int(r['change'])))
+        sch6[229] = []                                                                   # 고속스핀's Speed +1 is Gen VIII's
+        for i, c in old6.items():
+            me = meta6.get(i)
+            if me: me.update({k: str(c) for k in ('ailment_chance', 'flinch_chance', 'stat_chance') if int(me.get(k) or 0) > 0})
+        FLAG6 = {**FLAG, '14': 2048, '15': 4096, '16': 8192, '17': 16384, '18': 32768, '19': 65536}   # + authentic (sound through a substitute) powder bite pulse ballistics mental
+        flags6 = {}
+        for r in csv.DictReader(open(get('move_flag_map.csv'))): flags6[int(r['move_id'])] = flags6.get(int(r['move_id']), 0) | FLAG6.get(r['move_flag_id'], 0)
+        line6 = {i: moveInfo(i, mv6[i], meta6.get(i, {}), sch6, flags6) for i in sorted(mv6)}
+        moves6 = [i for i in sorted(mv6) if N4M < i < 10000 or i in line4 and line6[i] != line4[i] and i not in (251, 386)]
+        g.write('let moveTableGen6Changes = Dictionary(uniqueKeysWithValues: gen6Moves().map { ($0.id, $0) })\n')
+        g.write('@_optimize(none) private func gen6Moves() -> [MoveInfo] {\n    var m: [MoveInfo] = []\n')
+        for i in moves6: g.write(f'    m.append({line6[i]})\n')
+        g.write('    return m\n}\n')
+        print(f'Gen VI moves: {sum(i <= N4M for i in moves6)} of 1-{N4M} differ, {sum(N4M < i < 10000 for i in moves6)} new')
         # abilities in Gen IV
         slots = {}
         for r in csv.DictReader(open(get('pokemon_abilities.csv'))):
@@ -522,23 +591,45 @@ with open('Sources/Data/Data.swift', 'w') as f:
         for (d, sl), (_, a) in pastA.items():
             if a is None: slots.setdefault(d, {}).pop(sl, None)
             else: slots.setdefault(d, {})[sl] = a
-        ab = [[a for sl, a in sorted(slots.get(d, {}).items()) if a <= 123] for d in range(N + 1)]
-        assert all(ab[d] for d in range(1, N + 1)), [d for d in range(1, N + 1) if not ab[d]]
+        ab = [[a for sl, a in sorted(slots.get(d, {}).items()) if a <= 123] for d in range(N4 + 1)]
+        assert all(ab[d] for d in range(1, N4 + 1)), [d for d in range(1, N4 + 1) if not ab[d]]
         assert ab[94] == [26], ab[94]                                                    # 팬텀: 부유 in Gen IV
-        g.write('let abilitySlots: [[Int]] = [[], ' + ', '.join('[' + ', '.join(map(str, ab[d])) + ']' for d in range(1, N + 1)) + ']\n')
+        def rolledAbilities(gen, hidden):                                                # as they were in that generation (pokemon_abilities_past)
+            sl, past = {}, {}
+            for r in csv.DictReader(open(get('pokemon_abilities.csv'))):
+                d = int(r['pokemon_id'])
+                if d <= N and (r['is_hidden'] == '1') == hidden: sl.setdefault(d, {})[int(r['slot'])] = int(r['ability_id'])
+            for r in csv.DictReader(open(get('pokemon_abilities_past.csv'))):
+                d, gg, k = int(r['pokemon_id']), int(r['generation_id']), int(r['slot'])
+                if d <= N and (k == 3) == hidden and gg >= gen and gg < past.get((d, k), (99, None))[0]: past[(d, k)] = (gg, int(r['ability_id']) if r['ability_id'] else None)
+            for (d, k), (_, a) in past.items():
+                if a is None: sl.setdefault(d, {}).pop(k, None)
+                else: sl.setdefault(d, {})[k] = a
+            return sl
+        s6, h6 = rolledAbilities(6, False), rolledAbilities(6, True)
+        ab6 = [[a for k, a in sorted(s6.get(d, {}).items()) if k in (1, 2)] for d in range(N + 1)]
+        hidden = [0] + [h6.get(d, {}).get(3, 0) for d in range(1, N + 1)]
+        assert all(ab6[d] and max(ab6[d]) <= 191 for d in range(1, N + 1)) and max(hidden) <= 191, 'a Gen VII+ ability left'
+        assert ab6[94] == [26] and hidden[94] == 0 and ab6[460] == [117] and hidden[460] == 43, (ab6[94], hidden[94], ab6[460], hidden[460])   # 팬텀 부유; 눈설왕 눈퍼뜨리기 (방음)
+        abChanges = {d: ab6[d] for d in range(1, N4 + 1) if ab6[d] != ab[d]}
+        g.write('let abilitySlotsGen4: [[Int]] = [[], ' + ', '.join('[' + ', '.join(map(str, ab[d] if d <= N4 else ab6[d])) + ']' for d in range(1, N + 1)) + ']\n')
+        g.write('let abilitySlotsGen6Changes: [Int: [Int]] = [' + ', '.join(f'{d}: [' + ', '.join(map(str, v)) + ']' for d, v in sorted(abChanges.items())) + ']\n')
+        g.write('let hiddenAbility: [Int] = [' + ', '.join(map(str, hidden)) + ']   // content5: Gen VI\'s hidden ability (Mon.ability 2), 0 none\n')
         an = {int(r['ability_id']): r['name'] for r in csv.DictReader(open(get('ability_names.csv'))) if r['local_language_id'] == '3'}
-        g.write('let abilityNames: [Int: String] = [' + ', '.join(f'{i}: {s(an[i])}' for i in range(1, 124)) + ']\n')
+        g.write('let abilityNames: [Int: String] = [' + ', '.join(f'{i}: {s(an[i])}' for i in range(1, 192)) + ']\n')
         # what each does, in Korean: the earliest Korean flavour text (X/Y; line breaks are the games' layout)
         fl = {}
         for r in csv.DictReader(open(get('ability_flavor_text.csv'))):
             a, vg = int(r['ability_id']), int(r['version_group_id'])
-            if r['language_id'] == '3' and a <= 123 and (a not in fl or vg < fl[a][0]): fl[a] = (vg, ' '.join(r['flavor_text'].split()))
-        assert len(fl) == 123, sorted(set(range(1, 124)) - set(fl))
+            if r['language_id'] == '3' and a <= 191 and (a not in fl or vg < fl[a][0]): fl[a] = (vg, ' '.join(r['flavor_text'].split()))
+        assert len(fl) == 191, sorted(set(range(1, 192)) - set(fl))
+        fl6 = {a: fl[a][1] for a in (1, 5, 12, 31, 114)}                                   # content5: what the X/Y text says is what they do in Gen VI
         # where the X/Y text describes a later generation's effect, what it does here (Gen IV, singles only); 6: a line break had split 폭발할
         fl.update({a: (0, t) for a, t in {1: '배틀에서는 효과가 없다.', 5: '일격필살 기술을 받지 않는다.', 6: '누구도 폭발할 수 없게 된다.', 12: '헤롱헤롱 상태가 되지 않는다.',
                                           31: '전기 기술을 끌어모은다. 싱글 배틀에서는 효과가 없다.', 114: '물 기술을 끌어모은다. 싱글 배틀에서는 효과가 없다.',
                                           57: '마이너스와 함께 싸우면 특수공격이 오른다. 싱글 배틀에서는 효과가 없다.', 58: '플러스와 함께 싸우면 특수공격이 오른다. 싱글 배틀에서는 효과가 없다.'}.items()})
-        g.write('let abilityDescs: [Int: String] = [' + ', '.join(f'{i}: {s(fl[i][1])}' for i in range(1, 124)) + ']\n')
+        g.write('let abilityDescsGen4: [Int: String] = [' + ', '.join(f'{i}: {s(fl[i][1])}' for i in range(1, 192)) + ']\n')
+        g.write('let abilityDescsGen6Changes: [Int: String] = [' + ', '.join(f'{i}: {s(t)}' for i, t in sorted(fl6.items())) + ']\n')
         nat = list(csv.DictReader(open(get('natures.csv'))))
         nko = {r['nature_id']: r['name'] for r in csv.DictReader(open(get('nature_names.csv'))) if r['local_language_id'] == '3'}
         g.write('let natures: [(name: String, up: Int, down: Int)] = [' + ', '.join(f'({s(nko[r["id"]])}, {int(r["increased_stat_id"]) - 1}, {int(r["decreased_stat_id"]) - 1})' for r in sorted(nat, key=lambda r: int(r['game_index']))) + ']   // stat index 1-5, up == down = neutral\n')
@@ -549,9 +640,18 @@ with open('Sources/Data/Data.swift', 'w') as f:
         wt = {int(r['id']): int(r['weight']) for r in csv.DictReader(open(get('pokemon.csv'))) if int(r['id']) <= N}
         g.write('let weightKg: [Double] = [0, ' + ', '.join(f'{wt[d] / 10:g}' for d in range(1, N + 1)) + ']\n')
         g.write('let genderRate: [Int] = [0, ' + ', '.join(sp[d]['gender_rate'] for d in range(1, N + 1)) + ']   // -1 genderless, else eighths female\n')
-    f.write('let learnsets: [[Int]] = [[], ' + ', '.join('[' + ', '.join(f'{l}, {i}' for l, i in sorted(learn.get(d, set()))) + ']' for d in range(1, N + 1)) + ']   // level, move, level, move ...\n')
-    f.write('let typeChart = typeRows()\n@_optimize(none) private func typeRows() -> [String: [String: Double]] {\n    var c: [String: [String: Double]] = [:]\n')   # a row a statement: quick to type-check
+    f.write('let learnsetsGen4: [[Int]] = [[], ' + ', '.join('[' + ', '.join(f'{l}, {i}' for l, i in sorted(learn.get(d, set()))) + ']' for d in range(1, N + 1)) + ']   // level, move, level, move ...\n')
+    f.write('let learnsetsGen6Changes: [Int: [Int]] = [' + ', '.join(f'{d}: [' + ', '.join(f'{l}, {i}' for l, i in sorted(v)) + ']' for d, v in sorted(learn6.items())) + ']\n')
+    f.write('let typeChartGen4 = typeRows()\n@_optimize(none) private func typeRows() -> [String: [String: Double]] {\n    var c: [String: [String: Double]] = [:]\n')   # a row a statement: quick to type-check
     for a, row in sorted(chart.items()): f.write(f'    c[{s(a)}] = [' + ', '.join(f'{s(b)}: {float(v)!r}' for b, v in sorted(row.items())) + ']\n')
+    f.write('    return c\n}\n')
+    chart6 = {}
+    for r in csv.DictReader(open(get('type_efficacy.csv'))):
+        a, b = tid[r['damage_type_id']], tid[r['target_type_id']]
+        if r['damage_factor'] != '100' and a in TYPES + ['fairy'] and b in TYPES + ['fairy']: chart6.setdefault(a, {})[b] = int(r['damage_factor']) / 100
+    assert chart6['dragon']['fairy'] == 0 and chart6['ghost'].get('steel', 1) == 1 and chart6['fairy']['dragon'] == 2
+    f.write('let typeChartGen6 = typeRows6()\n@_optimize(none) private func typeRows6() -> [String: [String: Double]] {\n    var c: [String: [String: Double]] = [:]\n')
+    for a, row in sorted(chart6.items()): f.write(f'    c[{s(a)}] = [' + ', '.join(f'{s(b)}: {float(v)!r}' for b, v in sorted(row.items())) + ']\n')
     f.write('    return c\n}\n')
     f.write('let rawCourses: [Course] = [\n')   # Model/Course.swift bands its levels into `courses`
     for c in courses:
@@ -582,4 +682,4 @@ for path in ['Sources/Data/Data.swift', 'Sources/Data/BattleData.swift']:
         flush(); cur = None; out_lines.append(line)
     flush()
     open(path, 'w').write('\n'.join(out_lines))
-print('ok', len(courses), 'courses,', len(hout), 'hgss sprite bytes,', len(iout), 'icon bytes')
+print('ok', len(courses), 'courses' + (f', {len(hout)} hgss sprite bytes, {len(iout)} icon bytes' if ARTWORK else ' (tables only)'))

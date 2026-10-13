@@ -630,7 +630,7 @@ import AppKit                                                                   
           "33 legends on courses, each once; 칠색조 / 뮤츠 are shop-only")
     w = Walk(); w.earned = 999_999; check(w.unlocked(19) && !w.unlocked(20), "event course needs the dex, not watts")
     w.owned = Array(1...10); check(w.unlocked(20) && courses[20].name == "노란 숲", "10 caught -> 노란 숲")
-    check(monNames.count == 494 && monTypes.count == 494 && monNames[25] == "피카츄", "493 names + types")
+    check(monNames.count == 722 && monTypes.count == 722 && monNames[25] == "피카츄", "721 names + types (494-721 with content5 only)")
     check(hgssData.count == 493 * 6490, "hgss.bin in the bundle")
     func hex(_ s: String) -> Data { let c = Array(s); return Data(stride(from: 0, to: c.count, by: 2).map { UInt8(String(c[$0...$0 + 1]), radix: 16)! }) }
     var lcg = 1, ab: [UInt8] = []; for _ in 0..<256 { lcg = (lcg * 1103515245 + 12345) & 0x7fffffff; ab.append(lcg >> 16 & 1 == 0 ? 97 : 98) }   // a's and b's: zlib picks a dynamic block

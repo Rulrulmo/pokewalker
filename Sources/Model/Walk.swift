@@ -189,6 +189,8 @@ struct Walk: Codable, Equatable {
         if let t = e.time, (t == "day") != isDay { return false }
         if let i = e.item, !(bag + items).contains(i), m.item != i { return false }                   // (3.7: or held)
         if let p = e.party, !(caught + box).contains(where: { $0.dex == p }) { return false }
+        if let t = e.partyType, !(caught + box).contains(where: { monTypes[$0.dex].contains(t) }) { return false }
+        if let w = e.weather, (weather ?? .sunny).rawValue != w { return false }
         if let p = e.place { switch p { case "cave": if here.art != .cave { return false }; case "forest": if here.art != .forest { return false }; default: if here.name != "얼음 산길" { return false } } }
         return true
     }
