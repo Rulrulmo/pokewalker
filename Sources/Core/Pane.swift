@@ -44,6 +44,7 @@ struct GridModel: Equatable {
     var cells: [Cell]; var first: Int; var sel: Int?                   // this page's cells; first = cells[0]'s place in the whole list; sel = the pick's cell
     var page, pages: Int; var empty: String; var bob: Bool
     var party: [Cell] = []; var partySel: Int? = nil; var items: Int? = nil   // 포켓몬: the companion + the walker's in a row over the box, then the items chip (nil = no row: 도감)
+    var regions: [String]? = nil; var region = 0                       // 5.0 도감 (content5): 전국 · 관동 ... 칼로스 under the tabs (nil = no row)
 }
 /// One Pokémon of the box, in full: nature and ability with what they do, IVs and EVs as hexagons.
 struct MonModel: Equatable {
@@ -251,7 +252,7 @@ extension PaneContent {
     static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
     static let home: CGFloat = 406                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size)
     var height: CGFloat {
-        login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 472 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 472 : dex != nil ? 390 : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
+        login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 472 : grid?.regions != nil ? 448 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 472 : dex != nil ? 390 : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
             : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil || raidTier != nil || raidBalls != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446 : mailList != nil || mailOpen != nil || mailPick != nil ? 466
             : radar != nil ? 327 : card != nil ? (card!.title != nil || card!.deco != nil ? 254 : 230) : learn != nil ? 444 : tower != nil ? 400 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
     }

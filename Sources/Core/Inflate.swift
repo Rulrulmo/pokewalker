@@ -79,9 +79,10 @@ func inflate(_ data: Data) -> [UInt8]? {
     }
     return out
 }
-/// Species dex's packed block of a DEFLATE archive (anims.bin, walk.bin: 494 uint32 offsets, species d = off[d - 1] ..< off[d]); nil = none (an empty block).
+/// Species dex's packed block of a DEFLATE archive (anims.bin, walk.bin: n + 1 uint32 offsets, species d = off[d - 1] ..< off[d]); nil = none (an empty
+/// block, or past the archive's n: the first offset is the table's own size).
 func block(_ a: Data, _ dex: Int) -> Data? {
     func off(_ i: Int) -> Int { Int(a[i * 4]) | Int(a[i * 4 + 1]) << 8 | Int(a[i * 4 + 2]) << 16 | Int(a[i * 4 + 3]) << 24 }
-    guard (1...493).contains(dex), a.count > 494 * 4, off(dex - 1) < off(dex), off(dex) <= a.count else { return nil }
+    guard a.count >= 8, dex >= 1, a.count >= off(0), dex <= off(0) / 4 - 1, off(dex - 1) < off(dex), off(dex) <= a.count else { return nil }
     return a.subdata(in: off(dex - 1)..<off(dex))
 }

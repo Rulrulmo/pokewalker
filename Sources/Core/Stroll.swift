@@ -2,7 +2,7 @@ import Foundation
 // Home: the companion's HGSS walking sprite goes along the course picture while steps come in (the faster they come, the faster),
 // turning at the ends; when they stop it turns to face us.
 
-/// The HGSS following Pokémon (tools/gen.py walk.bin): 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none), then per species a
+/// The HGSS following Pokémon (tools/gen.py walk.bin): n + 1 uint32 offsets (n = 493; species d = off[d - 1] ..< off[d]; empty = none), then per species a
 /// raw-DEFLATE block: size (32, or 64 for the big ones), 15 normal + 15 shiny RGB, then left, right, down x 4 frames, size x size at 4 bpp.
 let walkData = resource("walk.bin") ?? Data()
 struct WalkSprite {

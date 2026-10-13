@@ -259,7 +259,10 @@ extension Walker {
         let when = e.time.map { $0 == "day" ? "낮" : "밤" }, sex = e.female.map { $0 ? "♀" : "♂" }
         let place = e.place.map { ["cave": "동굴 코스", "forest": "숲 코스"][$0] ?? "얼음 산길" }
         switch e.way {
-        case .level: let parts = [e.level > 0 ? "Lv.\(e.level)" : nil, when, sex, place, e.item.map { $0 + " 소지" }, e.party.map { monNames[$0] + " 보유" }].compactMap { $0 }; return parts.isEmpty ? "레벨 업" : parts.joined(separator: " · ")
+        case .level:
+            let parts = [e.level > 0 ? "Lv.\(e.level)" : nil, when, sex, place, e.item.map { $0 + " 소지" }, e.party.map { monNames[$0] + " 보유" },
+                         e.partyType.map { (typeKo[$0] ?? $0) + "타입 보유" }, e.weather.flatMap(Weather.init(rawValue:)).map { "날씨 " + $0.name }].compactMap { $0 }   // 5.0: 판짱 · 미끄네일
+            return parts.isEmpty ? "레벨 업" : parts.joined(separator: " · ")
         case .friend: return (["친밀도(함께 1만 걸음)"] + [when].compactMap { $0 }).joined(separator: " · ")
         case .item: return e.item! + " 사용" + (sex.map { " · " + $0 } ?? "")
         case .trade: return "교환" + (e.item.map { " · " + $0 + " 소지" } ?? "")              // at a real trade (12 §3), at its new trainer; the item from the giver's bag
@@ -296,7 +299,8 @@ extension Walker {
             let l = dexList(f), owned = Set(state.owned ?? []), seen = Set(seenList), shiny = Set(state.shinyOwned ?? []), i = l.firstIndex(of: d), p = page(l.count, i ?? 0)
             return GridModel(tabs: ["전체", "잡음", "못 잡음", "이 코스"], tab: f,
                              cells: l[p.first..<min(l.count, p.first + per)].map { .init(dex: $0, look: owned.contains($0) ? 2 : seen.contains($0) ? 1 : 0, shiny: shiny.contains($0)) },
-                             first: p.first, sel: i.map { $0 - p.first }, page: p.page, pages: p.pages, empty: f == 2 ? "모두 잡았다!" : "아직 없다", bob: bob)
+                             first: p.first, sel: i.map { $0 - p.first }, page: p.page, pages: p.pages, empty: f == 2 ? "모두 잡았다!" : "아직 없다", bob: bob,
+                             regions: Content.gen6 ? ["전국"] + dexRegions(dexMax).map(\.name) : nil, region: dexRegion)   // 5.0: a second row (content5)
         case .box(let i, _, _, false):                                                              // 포켓몬: the companion and the walker's over the box
             let o = boxOrder, b = state.box, at = o.firstIndex(of: i), p = page(o.count, at ?? 0), party = [state.companion] + state.caught
             return GridModel(tabs: ["번호순", "레벨순", "V순", "최근"], tab: boxSort,
@@ -324,6 +328,8 @@ extension Walker {
             screen = .dex(n, filter: f, detail: n == pick)
         case (.dex(let d, _, _), 4100...4103):
             let f = code - 4100, l = dexList(f); screen = .dex(l.contains(d) ? d : l.first ?? d, filter: f, detail: false)   // the pick stays if it's on the new tab
+        case (.dex(let d, let f, _), 4150...4156):                                                   // 5.0: a region (0 = 전국), the tab kept
+            dexRegion = code - 4150; let l = dexList(f); screen = .dex(l.contains(d) ? d : l.first ?? d, filter: f, detail: false)
         case (.box(let pick, _, _, _), 10000...):                                                  // the same: picked first, its page on a second click
             guard let j = boxOrder[safe: code - 10000] else { return }
             screen = .box(j, act: nil, confirm: false, detail: j == pick)
@@ -568,7 +574,7 @@ extension Walker {
     func menuModel(_ g: Int?, _ i: Int) -> MenuModel {
         let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드", "대전", "우편함"]   // offline: what needs the server, dimmed
         let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
-        let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / 493", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "친구": friendRequestsIn > 0 ? "친구 신청 \(friendRequestsIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "친구 · 이번 주 순위", "교환": marketNote,
+        let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / \(dexMax)", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "친구": friendRequestsIn > 0 ? "친구 신청 \(friendRequestsIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "친구 · 이번 주 순위", "교환": marketNote,
                      "레이드": raidNote, "대전": duelNote, "우편함": mailNote]
         let dots: Set<String> = Set([marketDot ? "교환" : nil, friendRequestsIn > 0 ? "친구" : nil, mailDot ? "우편함" : nil, raidDot ? "레이드" : nil].compactMap { $0 })   // 3.8: something waits there (4.0: a raid's ball stage)
         func row(_ n: String) -> MenuModel.Row { off && needs.contains(n) ? .init(name: n, note: "연결되면 할 수 있어요", off: true) : .init(name: n, note: notes[n] ?? "", dot: dots.contains(n)) }

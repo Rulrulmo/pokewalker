@@ -159,6 +159,9 @@ import Foundation
     take("card_deco") { v in v.state.deco = "gold"; v.state.titles = ["타워 타이쿤"]; v.screen = .card(0) }                       // 3.9 (15 §6 C · E)
     take("tower_strip") { v in v.state.towerBest = 26; v.state.towerRewards = [7, 14, 21]; v.towerRun = true; v.state.towerStreak = Tower.tycoonFights.min()! - 1; v.screen = .tower(pick: nil) }
     take("tower_strip_endless") { v in v.state.towerBest = 163; v.state.towerRewards = Tower.rewards.map(\.wins) + [150]; v.towerRun = true; v.state.towerStreak = 163; v.screen = .tower(pick: nil) }   // 4.1: 200~ next
+    Content.$testing.withValue(true) {                                                     // 5.0 (content5): the 도감's regions
+        take("dex_regions") { v in v.state.owned = [1, 4, 7, 25, 133, 495, 501, 650]; v.dexRegion = 5; v.screen = .dex(495, filter: 0, detail: false) }
+    }
     take("battle_size3", size: 3) { v in let f = wildFight(v); still(v, "foe 0", 6); v.screen = .battle(f.b, sel: 0) }
     return n
 }

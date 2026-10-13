@@ -252,7 +252,7 @@ func bubblePic(_ kind: Int) -> Pic {
     }
     c.append((inside, "home: the walker walks the polaroid's photo, clipped to it, end to end"))
     var right = 0                                                                              // the rightmost opaque column of any front sprite
-    for d in 1...493 { for x in stride(from: 79, to: right, by: -1) where (0..<80).contains(where: { spritePixel(d, back: false, x, $0, shiny: false) != 0 }) { right = x; break } }
+    for d in 1...spriteCount { for x in stride(from: 79, to: right, by: -1) where (0..<80).contains(where: { spritePixel(d, back: false, x, $0, shiny: false) != 0 }) { right = x; break } }
     let edge: Int = stickerFeet.x - 40 + right + 3
     c.append((edge < 192, "home: the widest companion and its sticker rim clear the right bezel"))
     v.state.companion = Mon(dex: 6, level: 30, female: false); _ = v.compose(t0)

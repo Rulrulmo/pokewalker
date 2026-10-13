@@ -798,6 +798,26 @@ import AppKit                                                                   
     check(toGrid && gs { onMenu($0, "도감") }, "↩: the entry page → the grid → the menu")
     gv.state.owned = [1, 4, 7, 25, 94]; gv.screen = .dex(7, filter: 0, detail: false); gv.gridTap(4102)
     check(gv.paneContent(Date()).grid.map { $0.cells.isEmpty && $0.sel == nil && $0.empty == "모두 잡았다!" } == true && gv.compose(Date()).runs.contains { $0.s == "모두 잡았다!" }, "an empty tab says so, on the pane and the LCD")
+    // 5.0 (docs/plans/18 §9.6): with content5 the 도감 runs to 721 and a row of regions picks one; past the bundle's pictures nothing is drawn (no crash)
+    let keep = (gv.state.owned, gv.screen)
+    Content.$testing.withValue(true) {
+        gv.state.owned = [1, 4, 25, 495, 650]; gv.dexRegion = 0; gv.screen = .dex(25, filter: 0, detail: false)
+        let g5 = gv.paneContent(Date()).grid
+        gv.gridTap(4155); let unova = gv.dexList(0) == Array(494...649) && gs { if case .dex(494, 0, false) = $0 { return true }; return false }
+        gv.gridTap(4101); let caughtHere = gv.dexList(1) == [495]
+        gv.gridTap(4156); let kalos = gv.dexList(1) == [650] && gv.paneContent(Date()).grid?.region == 6
+        gv.gridTap(4150)
+        check(g5?.regions == ["전국", "관동", "성도", "호연", "신오", "하나", "칼로스"] && g5?.pages == 25 && gv.dexList(1) == [1, 4, 25, 495, 650] && unova && caughtHere && kalos
+              && spritePixel(650, back: false, 40, 79, shiny: false) == 0 && iconPixel(650, 16, 16) == 0 && anim(650) == nil && walkSprite(650) == nil
+              && gs { if case .dex(650, 1, false) = $0 { return true }; return false } && !gv.compose(Date()).sprites.isEmpty,
+              "content5: 도감 to 721 (25 pages), its regions (하나 494-649 · the tab kept · 칼로스), the pictures past 493 blank, not a crash")
+        gv.dexRegion = 0
+    }
+    (gv.state.owned, gv.screen) = keep
+    check(gv.paneContent(Date()).grid?.regions == nil && gv.dexList(0) == Array(1...493) && spriteCount == 493, "content5 off: no regions, 1-493 as in 4.1")
+    let pan = evolutions.first { $0.from == 674 }, goo = evolutions.first { $0.from == 705 }
+    check(Content.$testing.withValue(true) { evolutions.first { $0.from == 674 }.map(gv.evoText) == "Lv.32 · 악타입 보유" && evolutions.first { $0.from == 705 }.map(gv.evoText) == "Lv.50 · 날씨 비" } && pan == nil && goo == nil,
+          "5.0's evolution lines: 판짱 (a Dark type) · 미끄네일 (rain); none with content5 off")
     gv.press(1); check(gs { if case .dex(_, 2, false) = $0 { return true }; return false } && gv.paneContent(Date()).dex == nil, "● on an empty tab: no entry page for a pick that isn't on it")
     gv.openFeature("포켓몬"); let openedOn = gs { if case .box(-1, nil, false, false) = $0 { return true }; return false }; gv.gridStep(GridModel.columns)
     check(openedOn && gv.boxOrder == [1, 0, 2] && gs { if case .box(1, nil, false, false) = $0 { return true }; return false }, "포켓몬 opens on the companion; a row down goes into the box, 번호순 (then the higher level)")

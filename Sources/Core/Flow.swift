@@ -117,15 +117,22 @@ extension Walker {
     var seenList: [Int] { Array(Set((state.seen ?? []) + (state.owned ?? []))).sorted() }
     /// What walks on course k (the radar's, its guests, its legends): the 도감's 이 코스 tab, and 코스's 잡음 n/m.
     func courseSpecies(_ k: Int) -> [Int] { let c = courses[k]; return Set(c.slots.map(\.dex) + c.extra.map(\.dex) + c.guests + c.legends).sorted() }
-    /// The 도감 grid's list for a tab: 전체 (1-493) / 잡음 / 못 잡음 (seen, not caught) / 이 코스 (what walks here, legends too).
+    /// 5.0 (docs/plans/18 §9.6): the 도감's regions up to `last` (관동 ... 신오, then with content5 하나 · 칼로스).
+    func dexRegions(_ last: Int) -> [(name: String, range: ClosedRange<Int>)] {
+        [("관동", 1...151), ("성도", 152...251), ("호연", 252...386), ("신오", 387...493), ("하나", 494...649), ("칼로스", 650...721)].filter { $0.1.lowerBound <= last }.map { (name: $0.0, range: $0.1) }
+    }
+    /// The 도감 grid's list for a tab: 전체 (1-dexMax: 493, or 721 with content5) / 잡음 / 못 잡음 (seen, not caught) / 이 코스 (what walks here,
+    /// legends too); with content5, only the picked region's (dexRegion, 0 = 전국: docs/plans/18 §9.6).
     func dexList(_ f: Int) -> [Int] {
-        let owned = Set(state.owned ?? []), c = state.here
-        switch f {
-        case 1: return owned.sorted()
-        case 2: return seenList.filter { !owned.contains($0) }
-        case 3: return courseSpecies(state.course)
-        default: return Array(1...493)
+        let owned = Set(state.owned ?? [])
+        let all: [Int] = switch f {
+        case 1: owned.sorted()
+        case 2: seenList.filter { !owned.contains($0) }
+        case 3: courseSpecies(state.course)
+        default: Array(1...dexMax)
         }
+        guard let r = dexRegions(dexMax)[safe: dexRegion - 1], Content.gen6 else { return all }
+        return all.filter(r.range.contains)
     }
     /// The box as the 상자 grid shows it (indices into state.box): 번호순 / 레벨순 / V순 / 최근 (the last to arrive first). Keys once per call
     /// (V counts aren't free), ties by level, then EXP (growth rates differ: EXP alone puts a slow Lv.8 over a fast Lv.10).

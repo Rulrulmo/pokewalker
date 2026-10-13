@@ -1,7 +1,7 @@
 import Foundation
 // The HGSS entry animations (tools/gen.py anims.bin): what each species does as it appears, played in place of its sprite, then the sprite again.
 
-/// 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none), then per species a raw-DEFLATE block: x, y (int16), w, h, n (uint8),
+/// n + 1 uint32 offsets (n = 493: HGSS's; species d = off[d - 1] ..< off[d]; empty = none), then per species a raw-DEFLATE block: x, y (int16), w, h, n (uint8),
 /// n x uint16 ms, n frames w x h at 4 bpp (hgss.bin's colour slots; 0 = clear).
 let animData = resource("anims.bin") ?? Data()
 /// One species' animation: its frames' box in the sprite's 80x80 frame (top-left x, y: may be < 0 or past 79: a jump, a stretch), each frame's time.

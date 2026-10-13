@@ -16,6 +16,7 @@ import Foundation
     weak var host: (any Host)?
     var lastInput = Date(), lastStep = Date.distantPast, lastSave = Date()
     var boxSort = 0                                                        // the 상자 grid's order: 번호순 / 레벨순 / V순 / 최근
+    var dexRegion = 0                                                      // 5.0 (content5): the 도감 grid's region, 0 = 전국 (dexRegions)
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
     var keyShown: Bool?? = .none                                           // the 메뉴 / 홈 key as last shown (see homeKey)
     var strollX = 54.0, strollRight = false, strollAt = Date(), strollTurnAt = Date(), stepRate = 0.0   // home: the walking sprite's middle in the course picture (half-dots), which way it goes, the pace

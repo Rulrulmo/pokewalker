@@ -4,11 +4,14 @@ import Foundation
 // MARK: - pixels
 /// HGSS battle sprites (tools/gen.py): per species 15 normal + 15 shiny RGB, then front and back 80x80 at 4 bpp; index 0 = transparent.
 let hgssData: Data = {
-    guard let d = resource("hgss.bin"), d.count == 493 * 6490 else { return Data(count: 493 * 6490) }
+    guard let d = resource("hgss.bin"), d.count >= 493 * 6490, d.count % 6490 == 0 else { return Data(count: 493 * 6490) }
     return d
 }()
+/// The species with pictures in the bundle (493 until 5.0's, docs/plans/18 §9.5): one past them (content5's 494-721 meanwhile) draws nothing.
+let spriteCount = hgssData.count / 6490
 /// 0 = transparent, else 0xFFRRGGBB.
 func spritePixel(_ dex: Int, back: Bool, _ x: Int, _ y: Int, shiny: Bool) -> UInt32 {
+    guard (1...spriteCount).contains(dex) else { return 0 }
     let o = (dex - 1) * 6490, b = hgssData[o + 90 + (back ? 3200 : 0) + y * 40 + x / 2], i = Int(x % 2 == 0 ? b >> 4 : b & 15)
     guard i > 0 else { return 0 }
     let p = o + (shiny ? 45 : 0) + (i - 1) * 3
@@ -117,14 +120,15 @@ func trainerFrame(_ trainer: String) -> String {
 }
 /// The Gen IV box icons (tools/gen.py): per species 15 RGB, then 32x32 at 4 bpp; index 0 = transparent.
 let iconData: Data = {
-    guard let d = resource("icons.bin"), d.count == 493 * 557 else { return Data(count: 493 * 557) }
+    guard let d = resource("icons.bin"), d.count >= 493 * 557, d.count % 557 == 0 else { return Data(count: 493 * 557) }
     return d
 }()
 func iconPixel(_ dex: Int, _ x: Int, _ y: Int) -> UInt32 {
+    guard (1...iconData.count / 557).contains(dex) else { return 0 }                         // (none yet: blank)
     let o = (dex - 1) * 557, b = iconData[o + 45 + y * 16 + x / 2], i = Int(x % 2 == 0 ? b >> 4 : b & 15)
     return i > 0 ? rgb(iconData[o + (i - 1) * 3], iconData[o + (i - 1) * 3 + 1], iconData[o + (i - 1) * 3 + 2]) : 0
 }
-@MainActor var iconCache: [Int: Bitmap] = [:]                                            // at most 493 x 2 small images
+@MainActor var iconCache: [Int: Bitmap] = [:]                                            // at most 2 small images a species
 /// A species' box icon in colour, or (shadow) as a pale silhouette: seen, not caught.
 @MainActor func iconImage(_ dex: Int, shadow: Bool = false) -> Bitmap {
     if let i = iconCache[dex * 2 + (shadow ? 1 : 0)] { return i }

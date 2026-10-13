@@ -40,6 +40,17 @@ import AppKit
     let dexed = online({ var s = base(); s.owned = [1, 4, 7, 25, 133]; s.seen = [16, 19]; s.dex(); return s }())
     take("dex_one_click", dexed) { v in v.screen = .dex(25, filter: 0, detail: false); v.gridTap(10003) }
     take("dex_two_clicks", dexed) { v in v.screen = .dex(25, filter: 0, detail: false); v.gridTap(10003); v.gridTap(10003) }
+    // 5.0 (docs/plans/18 §9.6, content5): the 도감's regions, a species past the bundle's pictures (blank until 5.0's), a Fairy move
+    Content.$testing.withValue(true) {
+        let d5 = online({ var s = base(); s.owned = [1, 4, 7, 25, 133, 495, 501, 650]; s.seen = [16, 19, 494]; s.dex(); return s }())
+        take("dex_regions", d5) { v in v.dexRegion = 0; v.screen = .dex(25, filter: 0, detail: false) }
+        take("dex_regions_unova", d5) { v in v.dexRegion = 5; v.screen = .dex(495, filter: 0, detail: false) }
+        take("dex_regions_blank", d5) { v in v.dexRegion = 6; v.screen = .dex(650, filter: 0, detail: true) }
+        var fr = Seeded(s: 5), pixie = Mon.wild(35, level: 30, &fr); pixie.known = [585, 1, 3, 45]
+        let fairy = online({ var s = base(); s.companion = pixie; return s }()), fbt = Battle(wild: Mon(dex: 16, level: 30, female: false), companion: pixie)
+        take("battle_moves_fairy", fairy) { v in v.sideOn = true; v.fight = fbt; v.screen = .moves(fbt, sel: 0) }
+        fairy.sideOn = false
+    }
     // 3.2 (12 M1): the team
     let tsrv = FakeCloud(), tme = online({ var s = base(); s.today = 4321; s.towerBest = 6; s.owned = Array(1...48); return s }(), server: tsrv)
     let mates: [(String, Int, Int, Int, Int, Int, Bool)] = [("민수", 6, 52, 12_345, 160, 21, true), ("지은", 282, 47, 9_876, 210, 35, true), ("도윤", 448, 61, 15_002, 188, 14, false),

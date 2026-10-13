@@ -13,7 +13,7 @@ enum Ink {
 }
 let typeColor: [String: Color] = (["normal": (168, 167, 122), "fire": (238, 129, 48), "water": (99, 144, 240), "grass": (122, 199, 76), "electric": (247, 208, 44),
     "ice": (150, 217, 214), "fighting": (194, 46, 40), "poison": (163, 62, 161), "ground": (226, 191, 101), "flying": (169, 143, 243), "psychic": (249, 85, 135),
-    "bug": (166, 185, 26), "rock": (182, 161, 54), "ghost": (115, 87, 151), "dragon": (111, 53, 252), "dark": (112, 87, 70), "steel": (183, 183, 206)] as [String: (Int, Int, Int)])
+    "bug": (166, 185, 26), "rock": (182, 161, 54), "ghost": (115, 87, 151), "dragon": (111, 53, 252), "dark": (112, 87, 70), "steel": (183, 183, 206), "fairy": (214, 133, 173)] as [String: (Int, Int, Int)])
     .mapValues { Ink.c($0.0, $0.1, $0.2) }
 @MainActor func font(_ size: CGFloat, _ w: FontSpec.Weight = .regular) -> FontSpec { FontSpec(size: size * K, weight: w) }
 @MainActor func width(_ s: String, _ f: FontSpec) -> CGFloat { fonts.width(s, f) }
@@ -216,6 +216,7 @@ extension Canvas {
             top += 50
         }
         tabs(g.tabs, g.tab, top)
+        if let rg = g.regions { top += 26; tabs(rg, g.region, top, code: 4150) }                    // 5.0: the regions (content5)
         let board = r(X0, top + 28, X1 - X0, 5 * 33)
         c.fill(.rounded(board, 11 * K), Ink.board)
         if g.items != nil { drops.append((board, 4520)) }

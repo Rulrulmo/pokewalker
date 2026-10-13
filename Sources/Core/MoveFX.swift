@@ -22,11 +22,12 @@ let fxTones: [String: [UInt32]] = [
     "dragon": [rgb(32, 24, 120), rgb(72, 64, 208), rgb(128, 136, 248), rgb(200, 212, 255), rgb(248, 248, 255)],
     "dark": [rgb(24, 16, 24), rgb(80, 64, 80), rgb(120, 104, 120), rgb(184, 172, 184), rgb(240, 236, 240)],
     "steel": [rgb(48, 56, 80), rgb(112, 120, 144), rgb(184, 192, 212), rgb(236, 240, 248), rgb(255, 255, 255)],
+    "fairy": [rgb(120, 32, 88), rgb(214, 88, 160), rgb(246, 156, 204), rgb(255, 222, 240), rgb(255, 250, 255)],   // 5.0 (content5)
     "heal": [rgb(24, 88, 48), rgb(56, 160, 80), rgb(128, 224, 128), rgb(216, 255, 208), rgb(255, 255, 255)],
     "sleep": [rgb(40, 48, 112), rgb(96, 112, 200), rgb(168, 184, 240), rgb(224, 232, 255), rgb(255, 255, 255)],
     "love": [rgb(136, 24, 72), rgb(232, 72, 128), rgb(248, 144, 184), rgb(255, 216, 232), rgb(255, 255, 255)],
 ]
-let fxTypes = ["normal", "fire", "water", "electric", "grass", "ice", "fighting", "poison", "ground", "flying", "psychic", "bug", "rock", "ghost", "dragon", "dark", "steel"]
+let fxTypes = ["normal", "fire", "water", "electric", "grass", "ice", "fighting", "poison", "ground", "flying", "psychic", "bug", "rock", "ghost", "dragon", "dark", "steel", "fairy"]
 /// The shapes; a frame k is always from a small range: a size (burst 0-2, orb 0-3, bubble 0-2, ring 0-4, spark 0-2, dust 0-2, zee 0-1), a flicker (flame 0-3, bolt 0-2),
 /// a heading in 45° steps (leaf, shard, drop, gust 0-7), a lump (rock 0-3 big, 4-7 a chip), how far drawn (slash 0-3), top / bottom (jaw 0-1).
 /// core = an orb's inside, no outline: laid over a row of orbs it joins them into one beam.
@@ -203,10 +204,10 @@ func fxLook(_ m: MoveInfo) -> FXLook {
 }
 /// Each type's particle (what its moves spray and pour) and how a special move of it travels.
 let fxBit: [String: FXShape] = ["normal": .spark, "fire": .flame, "water": .drop, "electric": .spark, "grass": .leaf, "ice": .shard, "fighting": .spark, "poison": .bubble,
-                                "ground": .rock, "flying": .gust, "psychic": .ring, "bug": .shard, "rock": .rock, "ghost": .flame, "dragon": .flame, "dark": .gust, "steel": .spark]
+                                "ground": .rock, "flying": .gust, "psychic": .ring, "bug": .shard, "rock": .rock, "ghost": .flame, "dragon": .flame, "dark": .gust, "steel": .spark, "fairy": .spark]
 enum FXShot { case stream, orb, volley, rings, bolt }
 let fxShot: [String: FXShot] = ["normal": .stream, "fire": .stream, "water": .stream, "electric": .bolt, "grass": .volley, "ice": .stream, "fighting": .orb, "poison": .volley,
-                                "ground": .volley, "flying": .volley, "psychic": .rings, "bug": .rings, "rock": .volley, "ghost": .orb, "dragon": .stream, "dark": .rings, "steel": .stream]
+                                "ground": .volley, "flying": .volley, "psychic": .rings, "bug": .rings, "rock": .volley, "ghost": .orb, "dragon": .stream, "dark": .rings, "steel": .stream, "fairy": .orb]
 
 extension Walker {
     /// The beat after this one in the playing turn (its first match; 0-length retypes skipped): does the move land, or only charge?
@@ -526,7 +527,7 @@ extension Walker {
     let keys = picStore.keys.filter { $0.hasPrefix("fx|") }.map { $0.split(separator: "|").map(String.init) }
     out.append((!keys.isEmpty && keys.allSatisfy { k in
         k.count == 4 ? FXShape(rawValue: k[1]) != nil && fxTones[k[2]] != nil && (0..<8).contains(Int(k[3]) ?? -9)
-                     : k.count == 6 && k[1] == "mask" && (1...493).contains(Int(k[2]) ?? 0) && names.contains(k[4]) && (-1...5).contains(Int(k[5]) ?? -9)
+                     : k.count == 6 && k[1] == "mask" && (1...monNames.count - 1).contains(Int(k[2]) ?? 0) && names.contains(k[4]) && (-1...5).contains(Int(k[5]) ?? -9)
     }, "move effect pictures come from a finite set of keys (\(keys.count))"))
     func reach(_ next: Beat) -> Int {                                                           // how far right a 물대포 of ours flies, just before it lands
         let use = Beat.use(.me, move: 55); v.screen = .beats(b, [use, next], since: Date(), from: b)
