@@ -15,6 +15,8 @@ enum Held {
         "원령플레이트": "ghost", "용의플레이트": "dragon", "공포플레이트": "dark", "강철플레이트": "steel",
         "정령플레이트": "fairy",                                                                           // 5.0 (content5): Gen VI's; on sale with the Gen VI items
     ]
+    /// 5.0: 게노세크트's drives, 테크노버스터's type.
+    static let drives: [String: String] = ["아쿠아카세트": "water", "번개카세트": "electric", "블레이즈카세트": "fire", "프리즈카세트": "ice"]
     /// Halve one super-effective hit of that type (카리열매: any Normal hit), then they're eaten.
     static let resist: [String: String] = [
         "오카열매": "fire", "꼬시개열매": "water", "초나열매": "electric", "린드열매": "grass", "플카열매": "ice", "로플열매": "fighting", "으름열매": "poison",

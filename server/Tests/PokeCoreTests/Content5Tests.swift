@@ -144,3 +144,137 @@ private func both<T>(_ body: () -> T) -> (gen4: T, gen6: T) { (Content.$testing.
     let future = both { () -> Int in var b = duel(mon(65, 50, moves: [248]), mon(197, 50)); b.execute(.me, 248, called: true); return b.sides[1].futureDmg }
     #expect(future.gen4 > 0 && future.gen6 == 0)
 }
+
+// MARK: - stage 3: the Gen V–VI moves (plan 18 §2.2, Battle/Gen6Moves.swift)
+private func trainerFight(_ ours: [Mon], _ foes: [Mon], seed: UInt64 = 7) -> Battle { var x = Battle(party: ours, trainer: "테스트", foes: foes); x.seed = seed; return x }
+private func dmg(_ b: Battle, _ id: Int) -> Int { var x = b; let hp = x.f(.it).hp; x.execute(.me, id, called: true); return hp - x.f(.it).hp }
+
+@Test func gen6MoveTable() {
+    gen6 {
+        #expect(Moves.supported(468) && Moves.supported(585) && !Moves.supported(476) && !Moves.supported(507) && !Moves.supported(605) && !Moves.supported(622))
+        #expect((468...621).filter(Moves.supported).count == 154 - 24)                              // 18 no one learns, 5 doubles-only, 프리폴
+        var b = duel(mon(25, moves: [118]), mon(19)); var seen = Set<Int>()
+        for k in 0..<400 { b.seed = UInt64(k); var x = b; x.execute(.me, 118, called: true); if case .use(.me, let id)? = x.out.dropFirst().first(where: { if case .use = $0 { return true }; return false }) { seen.insert(id) } }
+        #expect(!seen.contains { [476, 588, 596, 507, 605].contains($0) })                          // 손가락흔들기 never calls them
+    }
+    #expect(!Moves.supported(468))                                                                     // off: no Gen V–VI moves at all
+}
+
+@Test func gen6MovePower() {
+    gen6 {
+        let a = duel(mon(18, 50, moves: [512]), mon(143, 100)); var held = a; held.mod(.me) { $0.item = "자석" }
+        #expect(dmg(a, 512) > dmg(held, 512) * 3 / 2)                                                 // 애크러뱃: twice with nothing held
+        var p = duel(mon(89, 50, moves: [474]), mon(25, 50)); let plain = dmg(p, 474); p.mod(.it) { $0.status = .poison }
+        #expect(dmg(p, 474) > plain * 3 / 2)                                                           // 베놈쇼크 on a poisoned one
+        var s = duel(mon(65, 50, moves: [500]), mon(143, 100)); let s0 = dmg(s, 500); s.mod(.me) { $0.stage[3] = 2; $0.stage[5] = 2 }
+        #expect(s.gen6Power(.me, .it, moveTable[500]!, 20) == 100 && dmg(s, 500) > s0 * 3)             // 어시스트파워 20 + 20 × 4
+        let heavy = duel(mon(376, 50, moves: [484]), mon(25, 50)), light = duel(mon(25, 50, moves: [484]), mon(376, 50))
+        var h = heavy, l = light
+        #expect(h.gen6Power(.me, .it, moveTable[484]!, 0) == 120 && l.gen6Power(.me, .it, moveTable[484]!, 0) == 40)   // 헤비봄버 by weight
+        var e = duel(mon(25, 50, moves: [486]), mon(143, 50)); let e0 = e.gen6Power(.me, .it, moveTable[486]!, 0); e.mod(.it) { $0.stage[5] = -6 }
+        #expect(e0 == 80 && e.gen6Power(.me, .it, moveTable[486]!, 0) == 150)                         // 일렉트릭볼 by speed: 110 / 50, then / 12.5
+        var echo = duel(mon(25, 50, moves: [497]), mon(143, 50)); echo.mod(.me) { $0.metronome = 2 }
+        #expect(echo.gen6Power(.me, .it, moveTable[497]!, 40) == 120)                                  // 에코보이스's third in a row
+    }
+}
+
+@Test func gen6MoveStats() {
+    gen6 {
+        // 사이코쇼크 hits 방어, 속임수 with the target's 공격, 업어후리기 always crits, 야금야금 past the stages
+        var b = duel(mon(65, 50, moves: [473]), mon(143, 50)); let d0 = dmg(b, 473)
+        b.mod(.it) { $0.stage[4] = 6 }; let spd = dmg(b, 473); b.mod(.it) { $0.stage[4] = 0; $0.stage[2] = 6 }
+        #expect(abs(spd - d0) <= d0 / 6 && dmg(b, 473) < d0 / 2)
+        var f = duel(mon(197, 50, moves: [492]), mon(143, 100)); let f0 = dmg(f, 492); f.mod(.it) { $0.stage[1] = 2 }
+        #expect(dmg(f, 492) > f0 * 8 / 5)
+        var c = duel(mon(68, 50), mon(143, 50)); #expect((0..<50).allSatisfy { _ in c.critical(.me, .it, moveTable[480]!) })
+        var ch = duel(mon(68, 50, moves: [498]), mon(143, 50)); let c0 = dmg(ch, 498); ch.mod(.it) { $0.stage[2] = 6 }
+        #expect(abs(dmg(ch, 498) - c0) <= c0 / 6)
+        // 플라잉프레스 (Fighting + Flying) on a Grass type; 프리즈드라이 on Water
+        let fp = duel(mon(701, 50), mon(152, 50)); #expect(fp.gen6Effect(.me, .it, moveTable[560]!, fp.typeEff("fighting", .it, by: .me)) == 2)
+        let fd = duel(mon(131, 50), mon(7, 50)); #expect(fd.gen6Effect(.me, .it, moveTable[573]!, fd.typeEff("ice", .it, by: .me)) == 2)
+        // 껍질깨기, 클리어스모그, 베놈트랩 (only on a poisoned one)
+        var sm = duel(mon(91, 50, moves: [504]), mon(19)); sm.execute(.me, 504, called: true)
+        #expect(Array(sm.f(.me).stage[1...5]) == [2, -1, 2, -1, 2])
+        var cs = duel(mon(89, 50, moves: [499]), mon(143, 50)); cs.mod(.it) { $0.stage[1] = 4 }; cs.execute(.me, 499, called: true); #expect(cs.f(.it).stage[1] == 0)
+        var vd = duel(mon(89, 50, moves: [599]), mon(143, 50)); vd.execute(.me, 599, called: true); #expect(vd.f(.it).stage[1] == 0)
+        vd.mod(.it) { $0.status = .poison }; vd.execute(.me, 599, called: true); #expect(vd.f(.it).stage[1] == -1 && vd.f(.it).stage[5] == -1)
+    }
+}
+
+@Test func gen6MoveShields() {
+    gen6 {
+        var k = duel(mon(68, 50, moves: [33]), mon(681, 50, moves: [588])); k.execute(.it, 588, called: true); let hp = k.f(.it).hp
+        k.execute(.me, 33, called: true); #expect(k.f(.it).hp == hp && k.f(.me).stage[1] == -2)        // 킹실드: 공격 -2 on contact
+        var sp = duel(mon(68, 50, moves: [33]), mon(650, 50, moves: [596])); sp.execute(.it, 596, called: true); let mine = sp.f(.me).hp
+        sp.execute(.me, 33, called: true); #expect(sp.f(.me).hp == mine - sp.f(.me).maxHP / 8)         // 니들가드: 1/8 back
+        var w = duel(mon(76, 50, moves: [89, 33]), mon(76, 50, moves: [469])); w.execute(.it, 469, called: true)
+        #expect(dmg(w, 89) == 0 && dmg(w, 33) > 0)                                                      // 와이드가드: 지진, not 몸통박치기
+        var q = duel(mon(25, 50, moves: [98]), mon(143, 50, moves: [501])); q.execute(.it, 501, called: true); #expect(dmg(q, 98) == 0)   // 패스트가드: 전광석화
+        var cr = duel(mon(25, 50, moves: [86]), mon(143, 50, moves: [578])); cr.execute(.it, 578, called: true); cr.execute(.me, 86, called: true)
+        #expect(cr.f(.it).status == nil)                                                                // 트릭가드: 전기자석파
+    }
+}
+
+@Test func gen6MoveFields() {
+    gen6 {
+        // 끈적끈적네트 on the next one out
+        var web = trainerFight([mon(595, 50, moves: [564])], [mon(19, 50), mon(20, 50)]); web.execute(.me, 564, called: true); web.switchIn(.it, 1)
+        #expect(web.sides[1].stickyWeb == true && web.f(.it).stage[5] == -1)
+        // 그래스필드: Grass moves ×1.5 and 1/16 back; 미스트필드: no status on the ground
+        var g = duel(mon(1, 50, moves: [75, 580]), mon(143, 50)); let leaf = dmg(g, 75); g.execute(.me, 580, called: true)
+        #expect(g.terrain == .grassy && dmg(g, 75) > leaf * 4 / 3)
+        g.mod(.me) { $0.hp = $0.maxHP / 2 }; let half = g.f(.me).hp; g.endOfTurn(); #expect(g.f(.me).hp == half + g.f(.me).maxHP / 16 && g.terrainLeft == 4)
+        var mist = duel(mon(35, 50, moves: [581]), mon(143, 50)); mist.execute(.me, 581, called: true)
+        #expect(!mist.inflict(.it, .sleep, from: .me, loud: true) && mist.inflict(.me, .burn, from: .it, loud: true) == false)
+        // 원더룸 swaps 방어 / 특수방어; 매직룸 takes the items away
+        var room = duel(mon(68, 50, moves: [33]), mon(80, 50)); let before = dmg(room, 33); room.wonderRoom = 5; #expect(dmg(room, 33) > before)   // 야도란: 방어 110, 특수방어 80
+        var magic = duel(mon(25, 50), mon(143, 50)); magic.mod(.me) { $0.item = "자석" }; magic.magicRoom = 5; #expect(magic.held(.me) == nil)
+        // 떨어뜨리기 grounds a flier; 사우전드애로 hits one; 텔레키네시스 lifts one off the ground
+        var sd = duel(mon(76, 50, moves: [479, 89]), mon(18, 50)); #expect(dmg(sd, 89) == 0); sd.execute(.me, 479, called: true)
+        #expect(sd.grounded(.it) && dmg(sd, 89) > 0)
+        let ta = duel(mon(718, 50, moves: [614]), mon(18, 50)); #expect(dmg(ta, 614) > 0)
+        var tk = duel(mon(65, 50, moves: [477, 89]), mon(76, 50)); tk.execute(.me, 477, called: true); #expect(!tk.grounded(.it) && dmg(tk, 89) == 0)
+        // 물붓기, 핼러윈; 페어리록 holds both in the next turn
+        var soak = duel(mon(7, 50, moves: [487]), mon(4, 50)); soak.execute(.me, 487, called: true); #expect(soak.f(.it).typeList == ["water"])
+        var tt = duel(mon(708, 50, moves: [567]), mon(4, 50)); tt.execute(.me, 567, called: true); #expect(tt.f(.it).typeList == ["fire", "ghost"])
+        var lock = duel(mon(35, 50, moves: [587]), mon(143, 50)); lock.execute(.me, 587, called: true); #expect(lock.trapped(.me) && lock.trapped(.it))
+    }
+}
+
+@Test func gen6MoveSwitches() {
+    gen6 {
+        var v = trainerFight([mon(25, 50, moves: [521]), mon(1, 50)], [mon(143, 70)]); v.execute(.me, 521, called: true)
+        #expect(v.me == 1)                                                                              // 볼트체인지: out it goes
+        var dt = duel(mon(149, 50, moves: [525]), mon(143, 50)); dt.execute(.me, 525, called: true); #expect(dt.over)   // 드래곤테일: a wild one's gone
+        var t2 = trainerFight([mon(149, 50, moves: [525])], [mon(143, 70), mon(19, 30)]); t2.execute(.me, 525, called: true); #expect(t2.it == 1)
+        var fg = duel(mon(68, 50, moves: [515]), mon(143, 100)); let mine = fg.f(.me).hp; let d = dmg(fg, 515); fg.execute(.me, 515, called: true)
+        #expect(d == mine && !fg.f(.me).alive)                                                          // 목숨걸기
+        var pw = duel(mon(4, 50, moves: [52]), mon(12, 50, moves: [600])); pw.execute(.it, 600, called: true); let hp = pw.f(.me).hp
+        pw.execute(.me, 52, called: true); #expect(pw.f(.me).hp == hp - pw.f(.me).maxHP / 4)          // 분진: the Fire move blows up on it
+        var belch = duel(mon(89, 50, moves: [562]), mon(143, 50)); #expect(dmg(belch, 562) == 0)          // 트림: no berry eaten yet
+        belch.mod(.me) { $0.spent = "오랭열매" }; #expect(dmg(belch, 562) > 0)
+    }
+}
+
+@Test func gen6Fuzz() {                                                                            // 3 vs 3 across 1-721, any supported move: always ends, HP in range
+    gen6 {
+        let pool = moveTable.keys.filter(Moves.supported).sorted()
+        var r = Seeded(s: 2026_10_14), ended = 0
+        for round in 0..<200 {
+            func one() -> Mon {
+                var m = Mon.wild(Int.random(in: 1...721, using: &r), level: Int.random(in: 30...80, using: &r), &r)
+                m.known = (0..<4).map { _ in pool.randomElement(using: &r)! }; m.ability = Int.random(in: 0...1, using: &r)
+                return m
+            }
+            var b = Battle(party: [one(), one(), one()], trainer: "퍼저", foes: [one(), one(), one()])
+            _ = b.begin(weather: [nil, .rain, .snow, .fog].randomElement(using: &r)!, &r)
+            for _ in 0..<400 where !b.over {
+                if b.mustReplace, let i = b.mine.indices.first(where: { b.mine[$0].alive && $0 != b.me }) { _ = b.replace(i); continue }
+                _ = b.turn(.fight(b.usable(.me).randomElement(using: &r) ?? 165), &r)
+                for x in b.mine + b.theirs { #expect(x.hp >= 0 && x.hp <= x.maxHP, "round \(round)") }
+            }
+            if b.over { ended += 1 }
+        }
+        #expect(ended >= 190)
+    }
+}

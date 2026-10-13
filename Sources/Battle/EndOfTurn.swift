@@ -71,7 +71,7 @@ extension Battle {
                 if $0.healBlock > 0 { $0.healBlock -= 1 }; if $0.magnetRise > 0 { $0.magnetRise -= 1 }; if $0.embargo > 0 { $0.embargo -= 1 }
                 if $0.lockOn > 0 { $0.lockOn -= 1 }; if $0.slowStart > 0 { $0.slowStart -= 1 }; if $0.uproar > 0 { $0.uproar -= 1 }; if $0.charge > 0 { $0.charge -= 1 }
                 $0.roosted = false; $0.rage = $0.lastMove == 99 && $0.rage
-                if $0.lastMove != 182 && $0.lastMove != 197 && $0.lastMove != 203 { $0.protectChain = 0 }
+                if ![182, 197, 203, 588, 596].contains($0.lastMove) { $0.protectChain = 0 }
             }
             faints()
         }
@@ -83,6 +83,7 @@ extension Battle {
             }
         }
         if trickRoom > 0 { trickRoom -= 1; if trickRoom == 0 { say(.it, "뒤틀린 시공이 원래대로 돌아왔다!") } }
+        gen6EndOfTurn()                                                                              // (5.0: terrains, rooms, 텔레키네시스)
         if gravity > 0 { gravity -= 1; if gravity == 0 { say(.it, "중력이 원래대로 돌아왔다!") } }
         faints()
     }
@@ -115,7 +116,7 @@ extension Battle {
     mutating func faints() {
         guard !over else { return }
         if !f(.it).alive, !f(.it).down {
-            mod(.it) { $0.down = true }; out.append(.fainted(.it))
+            mod(.it) { $0.down = true }; out.append(.fainted(.it)); if Content.gen6 { sides[1].lastFaint = turnNo }
             award()
             if let n = theirs.indices.first(where: { theirs[$0].alive }) {
                 if pvp == true { foeMustReplace = true }                                           // a live battle: the other player picks who's next
@@ -123,7 +124,7 @@ extension Battle {
             } else { out.append(.won); over = true; return }
         }
         if !f(.me).alive, !f(.me).down {
-            mod(.me) { $0.down = true }; out.append(.fainted(.me))
+            mod(.me) { $0.down = true }; out.append(.fainted(.me)); if Content.gen6 { sides[0].lastFaint = turnNo }
             if mine.contains(where: \.alive) { mustReplace = true } else { out.append(.lost); over = true }
         }
     }
@@ -221,6 +222,7 @@ extension Battle {
     /// Held in place: 검은눈빛 / 조이기 / 뿌리박기, or their 그림자밟기 (not on another), 개미지옥 (on the ground), 자력 (on steel).
     func trapped(_ s: Side) -> Bool {
         let x = f(s), y = f(other(s))
+        if let k = fairyLock, k == (inTurn ? turnNo : turnNo + 1) { return true }                  // 5.0: 페어리록, the turn after
         if Content.gen6, x.typeList.contains("ghost") { return x.ingrain }                          // Gen VI: a Ghost type always gets away (뿌리박기 its own)
         if x.trapped || x.bound > 0 || x.ingrain { return true }
         return y.alive && (y.has(23) && !x.has(23) || y.has(71) && grounded(s) || y.has(42) && x.typeList.contains("steel"))

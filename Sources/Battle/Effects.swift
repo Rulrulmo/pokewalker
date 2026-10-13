@@ -42,14 +42,17 @@ extension Battle {
         let id = m.id, n = nm(s), tn = nm(t)
         func fail() { say(s, "그러나 실패했다!") }
         switch m.cat {
+        case 1 where id == 477: _ = gen6Status(s, t, m); return                                      // 텔레키네시스 (5.0)
         case 1: if f(t).sub > 0 && m.onFoe && m.ailment != "perish-song" && !piercesSub(m) { fail() } else { ailment(m.onSelf ? s : t, m.ailment, from: s, loud: true, move: m) }; return
         case 2:
+            if gen6StatRule(s, t, m) { return }                                                          // (5.0: 베놈트랩, 자기장조작, 일구기)
             let who = m.onSelf ? s : t
             if id == 445, genderRate[f(s).mon.dex] < 0 || genderRate[f(t).mon.dex] < 0 || f(s).mon.female == f(t).mon.female { fail(); return }
             let sun = Content.gen6 && id == 74 && weatherOn == .sun ? 2 : 1                                // Gen V+: 성장 +2 in the sun
             for k in stride(from: 0, to: m.stats.count, by: 2) { boost(who, m.stats[k] - 1, m.stats[k + 1] * sun, from: s, pierce: piercesSub(m)) }
             if id == 107 { mod(s) { $0.minimized = true } }; if id == 111 { mod(s) { $0.curled = true } }
             if id == 268 { mod(s) { $0.charge = 2 }; say(s, josa(n, "은", "는") + " 충전했다!") }                    // its next turn's Electric move
+            gen6StatAfter(s, m)                                                                          // (5.0: 바디퍼지, 막말내뱉기)
             return
         case 3:
             var p = m.healing
@@ -93,13 +96,7 @@ extension Battle {
         case 164:
             guard f(s).sub == 0, f(s).hp > f(s).maxHP / 4 else { fail(); return }
             let c = f(s).maxHP / 4; hurt(s, c, josa(n, "의", "의") + " 대타가 나타났다!"); mod(s) { $0.sub = c }
-        case 18, 46:
-            if dAb(t, 21, by: s) || f(t).ingrain { say(t, josa(tn, "은", "는") + " 꿈쩍도 하지 않는다!"); return }
-            if trainer == nil, raidTier == nil { say(t, josa(tn, "은", "는") + " 멀리 날아갔다!"); out.append(s == .me ? .fled : .ran); over = true; return }
-            if raidTier != nil, t == .it { fail(); return }                                        // a raid run (16): the boss stands; ours is sent back as a trainer's would be
-            let others = (t == .me ? mine : theirs).indices.filter { $0 != (t == .me ? me : it) && (t == .me ? mine : theirs)[$0].alive }
-            guard !others.isEmpty else { fail(); return }
-            say(t, josa(tn, "은", "는") + " 멀리 날아갔다!"); switchIn(t, others[roll(others.count)])
+        case 18, 46: blowAway(s, t, loud: true)                                                    // (a raid run, 16: the boss stands; ours is sent back as a trainer's would be)
         case 100:
             guard trainer == nil, raidTier == nil, !f(s).trapped else { fail(); return }             // (a raid run: no one leaves by it)
             say(s, josa(n, "은", "는") + " 순간이동했다!"); out.append(s == .me ? .ran : .fled); over = true
@@ -200,10 +197,11 @@ extension Battle {
             let k = si(t); sides[k].reflect = 0; sides[k].light = 0; sides[k].safeguard = 0; sides[k].mist = 0; sides[k].spikes = 0; sides[k].toxicSpikes = 0; sides[k].stealthRock = false
             if Content.gen6 { let u = si(s); sides[u].spikes = 0; sides[u].toxicSpikes = 0; sides[u].stealthRock = false }   // Gen VI: its own side's hazards too
             if sky == .fog { sky = .clear; say(s, "안개가 걷혔다!") }
+            if Content.gen6 { sides[0].stickyWeb = nil; sides[1].stickyWeb = nil }                     // (5.0)
         case 271, 415: trick(s, t)
         case 278: recycle(s)
         case 433: trickRoom = trickRoom > 0 ? 0 : 5; say(s, trickRoom > 0 ? "시공이 뒤틀렸다!" : "뒤틀린 시공이 원래대로 돌아왔다!")
-        default: say(s, "그러나 아무 일도 일어나지 않았다!")
+        default: if !gen6Status(s, t, m) { say(s, "그러나 아무 일도 일어나지 않았다!") }                // (5.0: Gen6Moves.swift)
         }
     }
     func nextAlive(_ s: Side) -> Int? { let fs = s == .me ? mine : theirs, cur = s == .me ? me : it; return fs.indices.first { $0 != cur && fs[$0].alive } }

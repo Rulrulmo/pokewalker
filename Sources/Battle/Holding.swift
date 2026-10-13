@@ -7,7 +7,7 @@ import Foundation
 extension Battle {
     // MARK: who holds what
     /// The item s holds, if it does anything now (not under 서투름 / 금제).
-    func held(_ s: Side) -> String? { let x = f(s); return x.has(103) || x.embargo > 0 ? nil : x.item }
+    func held(_ s: Side) -> String? { let x = f(s); return x.has(103) || x.embargo > 0 || (magicRoom ?? 0) > 0 ? nil : x.item }   // (5.0: 매직룸)
     func holds(_ s: Side, _ i: String) -> Bool { held(s) == i }
     /// Its species' own item (전기구슬 on 피카츄 …; not once it has 변신ed).
     func holdsFor(_ s: Side, _ i: String) -> Bool { holds(s, i) && f(s).form == nil && Held.species[i]?.contains(f(s).mon.dex) == true }

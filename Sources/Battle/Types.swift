@@ -26,13 +26,16 @@ let statNames = ["HP", "공격", "방어", "특수공격", "특수방어", "스�
 
 enum Moves {
     /// Moves this engine can't run faithfully: doubles-only, Colosseum's shadow moves. They're left out of movesets.
-    static let unsupported: Set<Int> = [166, 266, 270, 274, 286, 289, 382]
+    static let unsupported: Set<Int> = [166, 266, 270, 274, 286, 289, 382,
+                                        476, 495, 502, 505, 597, 507,                              // 5.0: doubles-only (분노가루 당신먼저 사이드체인지 치유파동 아로마미스트), 프리폴
+                                        482, 511, 513, 516, 518, 519, 520, 524, 590, 603, 604, 605, 606, 607, 610, 611, 612, 617]   // no one learns them in 5.0 (the TM plan, plan 18 §2.2)
     static func supported(_ id: Int) -> Bool { id < 10000 && moveTable[id] != nil && !unsupported.contains(id) }
     /// The held-item moves (3.7): learnable, but never in a default set (one that never chose its moves keeps the four it always had).
     static let itemMoves: Set<Int> = [271, 415, 374, 363, 278]
-    static let semiInvulnerable: Set<Int> = [19, 91, 291, 340, 467]  // 공중날기 구멍파기 다이빙 뛰어오르다 섀도다이브
-    static let fixedDamage: Set<Int> = [12, 32, 49, 68, 69, 82, 90, 101, 117, 149, 162, 243, 283, 329, 368]   // only an immunity changes what they do
-    static let fixedOrVariable: Set<Int> = [12, 32, 49, 67, 68, 69, 82, 90, 101, 117, 149, 162, 175, 179, 216, 217, 218, 222, 243, 255, 283, 329, 360, 363, 368, 374, 376, 378, 447, 462]
+    static let semiInvulnerable: Set<Int> = [19, 91, 291, 340, 467, 566]  // 공중날기 구멍파기 다이빙 뛰어오르다 섀도다이브 고스트다이브
+    static let fixedDamage: Set<Int> = [12, 32, 49, 68, 69, 82, 90, 101, 117, 149, 162, 243, 283, 329, 368, 515]   // only an immunity changes what they do
+    static let fixedOrVariable: Set<Int> = [12, 32, 49, 67, 68, 69, 82, 90, 101, 117, 149, 162, 175, 179, 216, 217, 218, 222, 243, 255, 283, 329, 360, 363, 368, 374, 376, 378, 447, 462,
+                                            484, 486, 515, 535]                                   // 헤비봄버 일렉트릭볼 목숨걸기 히트스탬프
 }
 
 func effectiveness(_ type: String, on d: Int) -> Double { monTypes[d].reduce(1) { $0 * (typeChart[type]?[$1] ?? 1) } }
@@ -57,11 +60,18 @@ struct Fighter: Equatable, Codable {
     var spent: String? = nil, spentOwn: Bool? = nil                    // the last one it used up (리사이클 brings it back); spentOwn = its own (gone after a wild fight)
     var choice: Int? = nil, metronome: Int? = nil, micle: Bool? = nil, unburden: Bool? = nil   // 구애 lock, 메트로놈 streak, 미클열매, 곡예 (Optionals: fights saved before 3.7 decode)
     var ownMoves: [Int]? = nil, ownPP: [Int]? = nil                    // its own moves and PP before 변신 / 흉내내기 changed them (back on switching out)
+    // 5.0 (content5, Battle/Gen6Moves.swift): 킹실드 & co. (the protecting move), 떨어뜨리기, 텔레키네시스 turns, 가드셰어 / 파워셰어's stats,
+    // 바디퍼지 times, 송전, 분진, 핼러윈 / 숲의저주's third type. Optionals: fights saved before 5.0 decode.
+    var shield: Int? = nil, smackedDown: Bool? = nil, telekinesis: Int? = nil, statOver: [Int]? = nil, lighter: Int? = nil
+    var electrified: Bool? = nil, powdered: Bool? = nil, addedType: String? = nil
 
     init(_ m: Mon) { mon = m; hp = m.stats[0]; moves = m.moves; pp = m.moves.map { moveTable[$0]?.pp ?? 5 }; item = m.item }
     var maxHP: Int { mon.stats[0] }
     var alive: Bool { hp > 0 }
-    var typeList: [String] { (types ?? plateType.map { [$0] } ?? monTypes[(form ?? mon).dex]).filter { !(roosted && $0 == "flying") } }
+    var typeList: [String] {
+        let t = (types ?? plateType.map { [$0] } ?? monTypes[(form ?? mon).dex]).filter { !(roosted && $0 == "flying") }
+        guard let a = addedType, !t.contains(a) else { return t }; return t + [a]
+    }
     /// 멀티타입: 아르세우스 takes its plate's type.
     var plateType: String? { (form ?? mon).dex == 493 && ability == 121 ? item.flatMap { Held.plates[$0] } : nil }
     var ability: Int { abilityOver ?? (form ?? mon).abilityID }
@@ -76,7 +86,10 @@ struct Fighter: Equatable, Codable {
         moves = om; pp = om.indices.map { k in !transformed && k < mv.count && mv[k] == om[k] ? p[k] : op[k] }   // 변신 / 흉내내기 wear off: its own moves back (after 흉내내기, the PP the others spent since)
     }
 }
-struct SideState: Equatable, Codable { var reflect = 0, light = 0, safeguard = 0, mist = 0, tailwind = 0, luckyChant = 0, spikes = 0, toxicSpikes = 0, stealthRock = false, wish = 0, wishHP = 0, future = 0, futureDmg = 0, healingWish = false, lunarDance = false }
+struct SideState: Equatable, Codable {
+    var reflect = 0, light = 0, safeguard = 0, mist = 0, tailwind = 0, luckyChant = 0, spikes = 0, toxicSpikes = 0, stealthRock = false, wish = 0, wishHP = 0, future = 0, futureDmg = 0, healingWish = false, lunarDance = false
+    var stickyWeb: Bool? = nil, lastFaint: Int? = nil                 // 5.0: 끈적끈적네트; the turn one of this side's fainted (원수갚기)
+}
 
 enum Move: Equatable, Codable { case fight(Int), capture, item(ItemUse), swap(Int), run }
 /// A bag item used in battle (the UI picks it and takes it out of the bag).

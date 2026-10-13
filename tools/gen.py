@@ -567,6 +567,8 @@ with open('Sources/Data/Data.swift', 'w') as f:
         sch6 = {}
         for r in csv.DictReader(open(get('move_meta_stat_changes.csv'))): sch6.setdefault(int(r['move_id']), []).append((int(r['stat_id']), int(r['change'])))
         sch6[229] = []                                                                   # 고속스핀's Speed +1 is Gen VIII's
+        sch6[591] = [(3, 1)]                                                             # 다이아스톰: 방어 +1 in Gen VI (+2 is Gen VII's)
+        mv6[594]['damage_class_id'] = '2'                                               # 물수리검: physical in Gen VI (special from Gen VII)
         for i, c in old6.items():
             me = meta6.get(i)
             if me: me.update({k: str(c) for k in ('ailment_chance', 'flinch_chance', 'stat_chance') if int(me.get(k) or 0) > 0})

@@ -19,6 +19,7 @@ extension Battle {
             if side.spikes > 0 { hurt(s, f(s).maxHP * [0, 1, 2, 3][side.spikes] / [1, 8, 12, 16][side.spikes], josa(n, "은", "는") + " 압정뿌리기의 데미지를 입었다!") }
             if side.toxicSpikes > 0 { if f(s).typeList.contains("poison") { sides[si(s)].toxicSpikes = 0; say(s, "독압정이 사라졌다!") } else { inflict(s, side.toxicSpikes >= 2 ? .toxic : .poison, from: t, loud: false, sync: false) } }
         }
+        stickyWebEntry(s)
         if side.stealthRock, !f(s).has(98) { hurt(s, max(1, Int(Double(f(s).maxHP) * typeEff("rock", s, by: t) / 8)), "뾰족한 바위가 " + josa(n, "을", "를") + " 파고들었다!") }
         if side.healingWish {
             sides[si(s)].healingWish = false; sides[si(s)].lunarDance = false
@@ -77,7 +78,8 @@ extension Battle {
         return out
     }
     private mutating func play(_ m: Move, ball: Double) {
-        for s in [Side.me, .it] { mod(s) { $0.protected = false; $0.endure = false; $0.flinch = false; $0.hitThisTurn = false; $0.movedThisTurn = false; $0.magicCoat = false; $0.turnsOut += 1 } }
+        for s in [Side.me, .it] { mod(s) { $0.protected = false; $0.endure = false; $0.flinch = false; $0.hitThisTurn = false; $0.movedThisTurn = false; $0.magicCoat = false; $0.turnsOut += 1
+            if $0.shield != nil { $0.shield = nil }; if $0.electrified != nil { $0.electrified = nil }; if $0.powdered != nil { $0.powdered = nil } } }   // (5.0: this turn's only)
         let live = pvp == true, (mi, ti) = (me, it)
         var foe = live ? (forcedMove(.it) ?? { if case .fight(let id)? = foePlan { return id }; return usable(.it).first ?? 165 }()) : foeChoice()
         planned = [0, foe]
@@ -180,7 +182,7 @@ extension Battle {
         if m.charges, f(s).charging != id, !(id == 76 && weatherOn == .sun) {                  // turn 1 of a two-turn move
             if !called { deductPP(s, id) }
             mod(s) { $0.charging = id; if Moves.semiInvulnerable.contains(id) { $0.semi = id } }
-            let line = [76: "빛을 흡수했다!", 19: "하늘 높이 날아올랐다!", 91: "땅으로 파고들었다!", 291: "물속으로 잠수했다!", 340: "높이 뛰어올랐다!", 467: "모습을 감췄다!",
+            let line = [76: "빛을 흡수했다!", 19: "하늘 높이 날아올랐다!", 91: "땅으로 파고들었다!", 291: "물속으로 잠수했다!", 340: "높이 뛰어올랐다!", 467: "모습을 감췄다!", 566: "모습을 감췄다!",
                         13: "회오리를 일으켰다!", 130: "목을 움츠렸다!", 143: "강렬한 빛에 휩싸였다!"][id] ?? "힘을 모으고 있다!"
             out.append(.use(s, move: id)); say(s, josa(n, "은", "는") + " " + line)
             if id == 130 { boost(s, 2, 1, from: s) }
@@ -195,9 +197,11 @@ extension Battle {
         if !called, f(s).choice == nil, held(s)?.hasPrefix("구애") == true, id != 165 { mod(s) { $0.choice = id } }       // 구애: locked into it                                                 // 앙코르 / 사슬묶기 / 트집 see the caller, not what 손가락흔들기 & co. called
         if id != 210 { mod(s) { $0.furyCutter = 0 } }                                              // 연속자르기's streak breaks on anything else
         let before = lastUsed; lastUsed = id
+        if powderBlast(s, id) { return }                                                             // (5.0: 분진)
         switch id {                                                                                  // moves that pick another move
         case 118:
-            let pool = moveTable.keys.filter { Moves.supported($0) && ![118, 165, 102, 144, 214, 119, 383, 267, 264, 182, 197, 203, 68, 243, 194].contains($0) }.sorted()
+            let pool = moveTable.keys.filter { Moves.supported($0) && ![118, 165, 102, 144, 214, 119, 383, 267, 264, 182, 197, 203, 68, 243, 194,
+                                                                         469, 501, 546, 547, 548, 553, 554, 555, 557, 561, 578, 588, 591, 592, 593, 596, 614, 615, 621].contains($0) }.sorted()   // (5.0: Gen V–VI's not-callable)
             let pick = pool[roll(pool.count)]; say(s, "손가락흔들기로 " + josa(moveTable[pick]!.name, "이", "가") + " 나왔다!"); execute(s, pick, called: true, depth: depth + 1); return
         case 214:
             let ok = f(s).moves.filter { ![214, 117, 118, 119, 383, 264, 253, 13, 19, 76, 91, 130, 143, 291, 340, 467].contains($0) }
@@ -211,7 +215,7 @@ extension Battle {
         case 267: say(s, "자연의힘은 트라이어택이 되었다!"); execute(s, 161, called: true, depth: depth + 1); return
         default: break
         }
-        if m.onFoe && m.protectable && f(t).protected && id != 364 { say(t, josa(nm(t), "은", "는") + " 공격으로부터 몸을 지켰다!"); crash(s, t, m); return }
+        if m.onFoe, guards(t, m), id != 364 { say(t, josa(nm(t), "은", "는") + " 공격으로부터 몸을 지켰다!"); spikes(s, t, m); crash(s, t, m); return }   // (5.0: 킹실드 & co.)
         if m.onFoe && m.reflectable && f(t).magicCoat { say(t, josa(nm(t), "은", "는") + " 매직코트로 " + josa(m.name, "을", "를") + " 튕겨냈다!"); statusMove(t, s, m); return }
         if m.onFoe, f(t).semi != 0, !canHitSemi(id, f(t).semi), !(f(s).has(99) || f(t).has(99)), f(s).lockOn == 0 { say(t, josa(nm(t), "에게는", "에게는") + " 맞지 않았다!"); crash(s, t, m); return }
         if (m.onFoe || m.accuracy > 0) && !m.onSelf, !hits(s, t, m) { say(t, josa(n, "의", "의") + " 공격은 빗나갔다!"); crash(s, t, m); mod(s) { $0.rollout = 0; $0.furyCutter = 0 }; return }

@@ -10,7 +10,7 @@ extension Battle {
     mutating func absorbRaise(_ t: Side) { say(t, josa(nm(t), "은", "는") + " " + josa(abilityNames[f(t).ability] ?? "", "으로", "로") + " 기술을 끌어모았다!"); boost(t, 3, 1, from: t) }
     func canHitSemi(_ id: Int, _ semi: Int) -> Bool {
         switch semi {
-        case 19, 340: return [87, 16, 239, 327].contains(id)                                         // 번개 바람일으키기 회오리 스카이업퍼
+        case 19, 340: return [87, 16, 239, 327, 542, 479, 614].contains(id)                          // 번개 바람일으키기 회오리 스카이업퍼 (폭풍 떨어뜨리기 사우전드애로)
         case 91: return [89, 222, 90].contains(id)                                                    // 지진 매그니튜드 땅가르기
         case 291: return [57, 250].contains(id)                                                       // 파도타기 바다회오리
         default: return false
@@ -31,12 +31,13 @@ extension Battle {
             return roll(100) < 30 + f(s).mon.level - f(t).mon.level
         }
         if Content.gen6, m.id == 92, f(s).typeList.contains("poison") { return true }               // Gen VI: 맹독 from a Poison type never misses
-        if m.accuracy == 0 || f(s).has(99) || f(t).has(99) || f(s).lockOn > 0 { return true }
+        if m.accuracy == 0 || f(s).has(99) || f(t).has(99) || f(s).lockOn > 0 || (f(t).telekinesis ?? 0) > 0 { return true }   // (텔레키네시스: every move but the KO ones)
         var acc = Double(m.accuracy)
-        if m.id == 87 { if weatherOn == .rain { return true }; if weatherOn == .sun { acc = 50 } }
+        if m.id == 87 || m.id == 542 { if weatherOn == .rain { return true }; if weatherOn == .sun { acc = 50 } }   // 번개, 폭풍
         if m.id == 59, weatherOn == .hail { return true }
         var evas = f(s).has(109) || f(t).identified || f(t).miracleEye ? 0 : f(t).stage[7], accu = dAb(t, 109, by: s) ? 0 : f(s).stage[6]
         if Content.gen6, f(s).has(51) { evas = min(0, evas) }                                       // Gen VI: 날카로운눈 past its evasion boosts
+        if [498, 533].contains(m.id) { evas = 0 }                                                   // 야금야금 · 성스러운칼
         acc *= accMult(accu - evas)
         if f(s).has(14) { acc *= 1.3 }; if f(s).has(55), m.physical { acc *= 0.8 }
         if weatherOn == .sand, dAb(t, 8, by: s) { acc *= 0.8 }; if weatherOn == .hail, dAb(t, 81, by: s) { acc *= 0.8 }
@@ -60,6 +61,7 @@ extension Battle {
     }
     mutating func critical(_ s: Side, _ t: Side, _ m: MoveInfo) -> Bool {
         if dAb(t, 4, by: s) || dAb(t, 75, by: s) || sides[si(t)].luckyChant > 0 { return false }
+        if m.id == 480 { return true }                                                               // 업어후리기: always
         let st = min(4, m.crit + (f(s).focus ? 2 : 0) + (f(s).has(105) ? 1 : 0) + itemCrit(s))
         return roll((Content.gen6 ? [16, 8, 2, 1, 1] : [16, 8, 4, 3, 2])[st]) == 0                    // Gen VI: 1/16 1/8 1/2, then always
     }
@@ -67,12 +69,13 @@ extension Battle {
     /// Gen VI (content5): a crit x1.5 (스나이퍼 x2.25), 객기 not halved by its burn.
     mutating func calc(_ s: Side, _ t: Side, _ m: MoveInfo, power: Int, type: String, eff: Double, crit: Bool) -> Int {
         let a = f(s), d = f(t), phys = m.physical || m.id == 165
-        var A = Double(base(s, phys ? 1 : 3)), D = Double(base(t, phys ? 2 : 4))
-        var aS = a.stage[phys ? 1 : 3], dS = d.stage[phys ? 2 : 4]
+        let onDef = phys || [473, 540, 548].contains(m.id), dk = onDef != wonderRoomOn ? 2 : 4       // 사이코쇼크 & co.: its 방어; 원더룸 swaps the two
+        var A = Double(m.id == 492 ? base(t, 1) : base(s, phys ? 1 : 3)), D = Double(base(t, dk))       // 속임수: the target's 공격
+        var aS = m.id == 492 ? d.stage[1] : a.stage[phys ? 1 : 3], dS = d.stage[onDef ? 2 : 4]
         if crit { aS = max(0, aS); dS = min(0, dS) }
-        if dAb(t, 109, by: s) { aS = 0 }; if a.has(109) { dS = 0 }
-        A *= mult(aS) * itemAttack(s, physical: phys); D *= mult(dS) * itemDefense(t, physical: phys)
-        if phys {
+        if dAb(t, 109, by: s) { aS = 0 }; if a.has(109) || [498, 533].contains(m.id) { dS = 0 }       // (야금야금 · 성스러운칼 past its stages)
+        A *= mult(aS) * itemAttack(s, physical: phys); D *= mult(dS) * itemDefense(t, physical: onDef)
+        if phys, m.id != 492 {
             if a.has(37) || a.has(74) { A *= 2 }; if a.has(55) { A *= 1.5 }; if a.has(62), a.status != nil { A *= 1.5 }
             if a.slowStart > 0 { A *= 0.5 }; if weatherOn == .sun, a.has(122) { A *= 1.5 }
             if dAb(t, 63, by: s), d.status != nil { D *= 1.5 }
@@ -90,6 +93,9 @@ extension Battle {
         if dAb(t, 85, by: s), type == "fire" { P *= 0.5 }; if dAb(t, 87, by: s), type == "fire" { P *= 1.25 }
         if a.charge > 0, type == "electric" { P *= 2 }; if mudSport, type == "electric" { P *= 0.5 }; if waterSport, type == "fire" { P *= 0.5 }
         P = floor(P * itemPower(s, physical: phys, type: type))
+        if terrainUnder(s) == .grassy, type == "grass" { P = floor(P * 1.5) }                        // 5.0: the terrains
+        if terrainUnder(t) == .grassy, [89, 222, 523].contains(m.id) { P = floor(P / 2) }
+        if terrainUnder(t) == .misty, type == "dragon" { P = floor(P / 2) }
         var x = floor(floor(Double(2 * a.mon.level / 5 + 2) * P * A / max(1, D)) / 50)
         if a.status == .burn, phys, !a.has(62), !(Content.gen6 && m.id == 263) { x = floor(x / 2) }
         if !crit, (phys && sides[si(t)].reflect > 0) || (!phys && sides[si(t)].light > 0) { x = floor(x / 2) }
@@ -124,8 +130,10 @@ extension Battle {
         if id == 311 { switch weatherOn { case .sun: type = "fire"; power = 100; case .rain: type = "water"; power = 100; case .sand: type = "rock"; power = 100; case .hail: type = "ice"; power = 100; case .fog: power = 100; default: break } }
         if id == 284 || id == 323 { power = max(1, 150 * f(s).hp / f(s).maxHP) }                   // 분화 / 해수스파우팅: by the HP left
         if id == 449, let p = held(s).flatMap({ Held.plates[$0] }) { type = p }                    // 심판의뭉치: its plate's type
+        if id == 546, let p = held(s).flatMap({ Held.drives[$0] }) { type = p }                    // 테크노버스터: its drive's
         if id == 363, let g = held(s).flatMap({ Held.gift[$0] }) { (type, power) = g }             // 자연의은혜: its berry's
         if f(s).has(96), id != 165 { type = "normal" }                                             // 노말스킨 last: it turns even those Normal (심판의뭉치 without plates is Normal anyway)
+        if f(s).electrified == true, id != 165 { type = "electric" } else if ionDeluge == turnNo, type == "normal" { type = "electric" }   // 송전, 플라스마샤워
         return (type, power)
     }
     mutating func damageMove(_ s: Side, _ t: Side, _ m: MoveInfo) {
@@ -142,7 +150,8 @@ extension Battle {
             if Content.gen6, (type == "electric" && dAb(t, 31, by: s)) || (type == "water" && dAb(t, 114, by: s)) { absorbRaise(t); return }   // Gen V+: 피뢰침 / 마중물
             if type == "fire", dAb(t, 18, by: s) { mod(t) { $0.flashFire = true }; say(t, josa(tn, "은", "는") + " 타오르는불꽃으로 불꽃 기술의 위력이 올라갔다!"); return }
         }
-        let eff = typeEff(type, t, by: s)
+        if gen6Fails(s, t, m) { return }
+        let eff = gen6Effect(s, t, m, typeEff(type, t, by: s))
         if eff == 0 { say(t, tn + "에게는 효과가 없는 것 같다..."); crash(s, t, m); return }
         if dAb(t, 25, by: s), eff <= 1, !type.isEmpty { say(t, josa(tn, "은", "는") + " 불가사의부적으로 공격을 받지 않는다!"); return }
         if id == 138, f(t).status != .sleep { say(t, josa(tn, "은", "는") + " 잠들어 있지 않다!"); return }
@@ -168,6 +177,7 @@ extension Battle {
         case 162: max(1, f(t).hp / 2)
         case 283: f(t).hp > f(s).hp ? f(t).hp - f(s).hp : 0
         case 12, 32, 90, 329: f(t).hp
+        case 515: f(s).hp                                                                     // 목숨걸기
         case 68: f(s).hitThisTurn && !f(s).lastHitSpecial ? f(s).lastHitDmg * 2 : 0
         case 243: f(s).hitThisTurn && f(s).lastHitSpecial ? f(s).lastHitDmg * 2 : 0
         case 368: f(s).hitThisTurn ? f(s).lastHitDmg * 3 / 2 : 0
@@ -187,7 +197,7 @@ extension Battle {
             say(s, josa(n, "의", "의") + " 참았던 힘이 풀렸다!"); land(s, t, m, f(s).bideDmg * 2, eff: 1, crit: false); return
         }
         // variable power
-        let tw = weightKg[f(t).mon.dex]
+        let tw = Content.gen6 ? weight(t) : weightKg[f(t).mon.dex]                                  // (5.0: 바디퍼지)
         switch id {
         case 67, 447: power = tw < 10 ? 20 : tw < 25 ? 40 : tw < 50 ? 60 : tw < 100 ? 80 : tw < 200 ? 100 : 120
         case 175, 179: let p = 48 * f(s).hp / f(s).maxHP; power = p <= 1 ? 200 : p <= 4 ? 150 : p <= 9 ? 100 : p <= 16 ? 80 : p <= 32 ? 40 : 20
@@ -215,6 +225,7 @@ extension Battle {
         case 57, 250: if f(t).semi == 291 { power *= 2 }
         case 16, 239: if [19, 340].contains(f(t).semi) { power *= 2 }
         case 76: if [.rain, .sand, .hail].contains(weatherOn) { power /= 2 }
+        case 474, 484, 486, 497, 500, 506, 512, 514, 535, 558, 559: power = gen6Power(s, t, m, power) ?? power   // 5.0 (Gen6Moves.swift)
         case 282: if Content.gen6, held(t) != nil, !fixedItem(t) { power = power * 3 / 2 }           // Gen VI: x1.5 on what it can knock off
         default: break
         }
@@ -306,6 +317,7 @@ extension Battle {
         if f(t).alive, !subTook, id == 265, f(t).status == .paralysis { setStatus(t, nil, josa(tn, "의", "의") + " 마비가 풀렸다!") }
         if id == 229 {                                                                               // 고속스핀 clears the user's side
             sides[si(s)].spikes = 0; sides[si(s)].stealthRock = false; sides[si(s)].toxicSpikes = 0; mod(s) { $0.seeded = false; $0.bound = 0 }
+            if sides[si(s)].stickyWeb == true { sides[si(s)].stickyWeb = nil }                       // (5.0)
         }
         if m.ailment == "trap", f(t).alive, !subTook, f(t).bound == 0 {                            // each binding move its own line (one "조임" for all read as 조이기 on a ghost)
             let k = Content.gen6 ? (holds(s, "끈기갈고리손톱") ? 8 : 5 + roll(2)) : holds(s, "끈기갈고리손톱") ? 6 : 3 + roll(4)   // 2-5 turns of damage (끈기갈고리손톱: 5); Gen VI 4-5 (7)
@@ -331,7 +343,8 @@ extension Battle {
         if id == 255 { let k = f(s).stockpile; mod(s) { $0.stockpile = 0 }; boost(s, 2, -k, from: s); boost(s, 4, -k, from: s) }   // the stock's 방어 / 특수방어 back
         if id == 99 { mod(s) { $0.rage = true } }
         itemsAfterHit(s, t, m, dealt: dealt)
-        if id == 369, f(s).alive, nextAlive(s) != nil { faints(); if !over, f(s).alive, let i = nextAlive(s) { say(s, josa(n, "은", "는") + " 돌아왔다!"); switchIn(s, i) } }   // a KO (and its EXP) before the switch
+        gen6After(s, t, m, dealt: dealt)
+        if id == 369 || id == 521, f(s).alive, nextAlive(s) != nil { faints(); if !over, f(s).alive, let i = nextAlive(s) { say(s, josa(n, "은", "는") + " 돌아왔다!"); switchIn(s, i) } }   // a KO (and its EXP) before the switch
     }
 
 }

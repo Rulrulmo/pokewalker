@@ -20,6 +20,8 @@ struct Battle: Equatable, Codable {                                 // Codable: 
     var foePlan: Move? = nil, foeMustReplace: Bool? = nil
     var itemOn: Int? = nil                           // the next item's target among ours (nil = the one out): set before turn(.item)
     var raidTier: Int? = nil                         // 4.0 (docs/plans/16): a raid run's tier — its bars pay a fifth of a wild KO's EXP, EVs on the first only
+    var terrain: Terrain? = nil, terrainLeft: Int? = nil, wonderRoom: Int? = nil, magicRoom: Int? = nil   // 5.0 (content5, Gen6Moves.swift): fields and rooms,
+    var ionDeluge: Int? = nil, fairyLock: Int? = nil                                                       // 플라스마샤워's turn, 페어리록's (the next)
     var wild: Mon { theirs[it].mon }
 
     init(wild: Mon, companion: Mon, chain: Int = 0) { self.init(wild: wild, party: [companion], chain: chain) }
@@ -69,7 +71,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
     // MARK: stats, speed, accuracy
     func mult(_ n: Int) -> Double { n >= 0 ? Double(2 + n) / 2 : 2 / Double(2 - n) }
     func accMult(_ n: Int) -> Double { let n = max(-6, min(6, n)); return n >= 0 ? Double(3 + n) / 3 : 3 / Double(3 - n) }
-    func base(_ s: Side, _ k: Int) -> Int { let x = f(s); return k == 0 ? x.maxHP : ((x.form ?? x.mon).stats)[k] }
+    func base(_ s: Side, _ k: Int) -> Int { let x = f(s); return k == 0 ? x.maxHP : (x.statOver ?? (x.form ?? x.mon).stats)[k] }   // (가드셰어 · 파워셰어: statOver)
     func speed(_ s: Side) -> Double {
         let x = f(s); var v = Double(base(s, 5)) * mult(x.stage[5])
         if x.status == .paralysis { v *= x.has(95) ? 1 : 0.25 }
@@ -79,7 +81,10 @@ struct Battle: Equatable, Codable {                                 // Codable: 
         if sides[si(s)].tailwind > 0 { v *= 2 }
         return v * itemSpeed(s)
     }
-    func grounded(_ s: Side) -> Bool { let x = f(s); return gravity > 0 || x.ingrain || x.item == "검은철구" || !(x.typeList.contains("flying") || x.has(26) || x.magnetRise > 0) }
+    func grounded(_ s: Side) -> Bool {
+        let x = f(s)
+        return gravity > 0 || x.ingrain || x.item == "검은철구" || x.smackedDown == true || !(x.typeList.contains("flying") || x.has(26) || x.magnetRise > 0 || (x.telekinesis ?? 0) > 0)
+    }
 
     // MARK: status and stat changes
     /// Tries to give `st` to s. Returns false (quietly, unless `loud`) when it can't stick. A substitute is the move's business (the callers check);
@@ -103,6 +108,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
             if [mine[me], theirs[it]].contains(where: { $0.uproar > 0 }) { return no("소란 때문에 잠들 수 없다!") }
         }
         if weatherOn == .sun, x.has(102) { return no(josa(n, "은", "는") + " 리프가드로 보호받고 있다!") }
+        if terrainUnder(s) == .misty { return no(josa(n, "은", "는") + " 미스트필드에 지켜지고 있다!") }
         if st == .sleep { let turns = 2 + roll(Content.gen6 ? 3 : 4); mod(s) { $0.sleep = turns } }  // 1-4 turns asleep, Gen V+ 1-3 (the counter runs out on the turn it wakes and moves)
         if st == .toxic { mod(s) { $0.toxic = 1 } }
         let line = ["poison": "독에 걸렸다!", "toxic": "맹독을 입었다!", "burn": "화상을 입었다!", "paralysis": "마비되어 기술이 나오기 어려워졌다!", "sleep": "잠들어 버렸다!", "freeze": "얼어붙었다!"][st.rawValue]!
@@ -116,6 +122,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
         if x.confused > 0 { if loud { say(s, josa(nm(s), "은", "는") + " 이미 혼란 상태다!") }; return }
         if x.has(20) { if loud { say(s, josa(nm(s), "은", "는") + " 마이페이스라 혼란하지 않는다!") }; return }
         if from != nil, from != s, sides[si(s)].safeguard > 0 { if loud { say(s, josa(nm(s), "은", "는") + " 신비의 베일에 보호받고 있다!") }; return }
+        if terrainUnder(s) == .misty { if loud { say(s, josa(nm(s), "은", "는") + " 미스트필드에 지켜지고 있다!") }; return }
         let n = 2 + roll(4); mod(s) { $0.confused = n }                                            // 1-4 moves confused (the last one snaps out and acts)
         say(s, josa(nm(s), "은", "는") + " 혼란에 빠졌다!")
     }
