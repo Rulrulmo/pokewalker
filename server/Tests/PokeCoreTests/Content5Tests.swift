@@ -69,3 +69,17 @@ private func learns(_ d: Int, _ level: Int, _ move: Int) -> Bool { let l = learn
     var w = Engine.fresh(now: t0, starter: firstUID); var e = Mon(dex: 133, level: 20, female: false); e.walked = friendSteps + 1; w.companion = e
     #expect(w.levelEvolution(t0)?.to == 196)                                                   // off: no 님피아
 }
+
+@Test func content5Forms() {
+    #expect(monForms.values.joined().filter { $0.kind == .mega }.count == 48 && Forms.stones.count == 49 && Set(Forms.stones).count == 49)   // 47 stones + 2 orbs
+    let x = Forms.mega(6, holding: "리자몽나이트X"), y = Forms.mega(6, holding: "리자몽나이트Y")
+    #expect(x?.n == 1 && x?.form.types == ["fire", "dragon"] && x?.form.abilities == [181] && y?.n == 2 && y?.form.types == nil && y?.form.abilities == [70])
+    #expect(Forms.mega(6, holding: "생명의구슬") == nil && Forms.mega(384, holding: nil) == nil && Forms.of(384, 1)?.item == nil)   // 메가레쿠쟈: 화룡점정
+    #expect(Forms.of(65, 1)?.stats == [55, 50, 65, 175, 95, 150])                                // 메가후딘 as of Gen VI (Gen VII: 특수방어 105)
+    #expect(Forms.mega(382, holding: "쪽빛구슬")?.form.kind == .primal && abilityNames[Forms.of(382, 1)!.abilities![0]] == "시작의바다")
+    #expect(Forms.of(479, 1)?.name == "히트로토무" && Forms.of(479, 1)?.types == ["electric", "fire"] && monForms[479]?.count == 5)
+    #expect(abilityNames[Forms.of(646, 1)!.abilities![0]] == "테라볼티지" && abilityNames[Forms.of(646, 2)!.abilities![0]] == "터보블레이즈")
+    #expect(Forms.of(646, 1)?.learnset?.contains(559) == true && Forms.of(678, 1)?.hidden == 172 && Forms.of(386, 1)?.learnset != nil)
+    #expect(monForms[201]?.count == 27 && monForms[201]!.allSatisfy { $0.kind == .look } && Forms.of(201, 28) == nil && Forms.of(201, 0) == nil)
+    #expect(monForms[25] == nil && monForms[493] == nil && monForms[649] == nil && monForms.keys.allSatisfy { $0 <= 721 })
+}

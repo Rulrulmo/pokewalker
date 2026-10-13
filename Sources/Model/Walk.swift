@@ -255,7 +255,7 @@ struct Walk: Codable, Equatable {
     mutating func repairValues() -> Bool {
         var out = false
         func fix(_ m: inout Mon) {
-            if !(1...493).contains(m.dex) { m.dex = 25; out = true }
+            if !(1...dexMax).contains(m.dex) { m.dex = 25; out = true }
             if !(1...100).contains(m.level) { m.level = max(1, min(100, m.level)); m.exp = nil; out = true }
             if let iv = m.ivs, iv.count != 6 || iv.contains(where: { !(0...31).contains($0) }) { m.ivs = (0..<6).map { max(0, min(31, iv[safe: $0] ?? 0)) }; out = true }
             if let ev = m.evs, ev.count != 6 || ev.contains(where: { !(0...255).contains($0) }) || ev.reduce(0, +) > 510 { m.evs = Array(repeating: 0, count: 6); out = true }

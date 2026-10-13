@@ -52,7 +52,8 @@ SRC = {
                                               'pokemon_stats', 'pokemon', 'moves', 'move_names', 'pokemon_moves', 'type_efficacy', 'type_efficacy_past',
                                               'version_groups', 'move_changelog', 'pokemon_stats_past',
                                               'move_meta', 'move_meta_stat_changes', 'move_meta_ailments', 'move_flag_map', 'abilities', 'ability_names',
-                                              'pokemon_abilities', 'pokemon_abilities_past', 'natures', 'nature_names', 'ability_flavor_text']},
+                                              'pokemon_abilities', 'pokemon_abilities_past', 'natures', 'nature_names', 'ability_flavor_text',
+                                              'pokemon_forms', 'pokemon_form_names', 'item_categories']},
 }
 N = 721   # the national dex through Gen VI (5.0, plan 18): every table below goes to N
 N4 = 493  # HGSS's: the pictures (Resources/*.bin) and every Gen IV table stop here; above it only the Gen VI tables (Sources/Data/Content.swift)
@@ -594,19 +595,21 @@ with open('Sources/Data/Data.swift', 'w') as f:
         ab = [[a for sl, a in sorted(slots.get(d, {}).items()) if a <= 123] for d in range(N4 + 1)]
         assert all(ab[d] for d in range(1, N4 + 1)), [d for d in range(1, N4 + 1) if not ab[d]]
         assert ab[94] == [26], ab[94]                                                    # 팬텀: 부유 in Gen IV
-        def rolledAbilities(gen, hidden):                                                # as they were in that generation (pokemon_abilities_past)
+        def rolledAbilities(gen, hidden):                                                # as they were in that generation (pokemon_abilities_past); forms' rows too
             sl, past = {}, {}
+            ok = lambda d: d <= N or d > 10000
             for r in csv.DictReader(open(get('pokemon_abilities.csv'))):
                 d = int(r['pokemon_id'])
-                if d <= N and (r['is_hidden'] == '1') == hidden: sl.setdefault(d, {})[int(r['slot'])] = int(r['ability_id'])
+                if ok(d) and (r['is_hidden'] == '1') == hidden: sl.setdefault(d, {})[int(r['slot'])] = int(r['ability_id'])
             for r in csv.DictReader(open(get('pokemon_abilities_past.csv'))):
                 d, gg, k = int(r['pokemon_id']), int(r['generation_id']), int(r['slot'])
-                if d <= N and (k == 3) == hidden and gg >= gen and gg < past.get((d, k), (99, None))[0]: past[(d, k)] = (gg, int(r['ability_id']) if r['ability_id'] else None)
+                if ok(d) and (k == 3) == hidden and gg >= gen and gg < past.get((d, k), (99, None))[0]: past[(d, k)] = (gg, int(r['ability_id']) if r['ability_id'] else None)
             for (d, k), (_, a) in past.items():
                 if a is None: sl.setdefault(d, {}).pop(k, None)
                 else: sl.setdefault(d, {})[k] = a
             return sl
         s6, h6 = rolledAbilities(6, False), rolledAbilities(6, True)
+        wt = {int(r['id']): int(r['weight']) for r in csv.DictReader(open(get('pokemon.csv'))) if int(r['id']) <= N}
         ab6 = [[a for k, a in sorted(s6.get(d, {}).items()) if k in (1, 2)] for d in range(N + 1)]
         hidden = [0] + [h6.get(d, {}).get(3, 0) for d in range(1, N + 1)]
         assert all(ab6[d] and max(ab6[d]) <= 191 for d in range(1, N + 1)) and max(hidden) <= 191, 'a Gen VII+ ability left'
@@ -615,6 +618,62 @@ with open('Sources/Data/Data.swift', 'w') as f:
         g.write('let abilitySlotsGen4: [[Int]] = [[], ' + ', '.join('[' + ', '.join(map(str, ab[d] if d <= N4 else ab6[d])) + ']' for d in range(1, N + 1)) + ']\n')
         g.write('let abilitySlotsGen6Changes: [Int: [Int]] = [' + ', '.join(f'{d}: [' + ', '.join(map(str, v)) + ']' for d, v in sorted(abChanges.items())) + ']\n')
         g.write('let hiddenAbility: [Int] = [' + ', '.join(map(str, hidden)) + ']   // content5: Gen VI\'s hidden ability (Mon.ability 2), 0 none\n')
+        # --- forms (content5, plan 18 §5 · §6): per species, forms 1... (Mon.form; 0 = the species, the tables above), as of ORAS. Only what a form
+        # changes: types, stats, abilities, hidden, weight, its own level-up moves; a Mega its stone. Left out: 피카츄's costumes, 뾰족귀 피츄,
+        # 영원의 꽃 플라엣테 (events), 아르세우스 · 게노세크트 (their held item does it), and Gen VII+.
+        pk = {int(r['id']): r for r in csv.DictReader(open(get('pokemon.csv')))}
+        fko = {int(r['pokemon_form_id']): r['form_name'] or r['pokemon_name'] for r in csv.DictReader(open(get('pokemon_form_names.csv'))) if r['local_language_id'] == '3'}
+        ptypes, pstats = {}, {}
+        for r in csv.DictReader(open(get('pokemon_types.csv'))): ptypes.setdefault(int(r['pokemon_id']), []).append((int(r['slot']), tid[r['type_id']]))
+        for r in csv.DictReader(open(get('pokemon_stats.csv'))):
+            if int(r['stat_id']) <= 6: pstats.setdefault(int(r['pokemon_id']), {})[int(r['stat_id'])] = int(r['base_stat'])
+        fpast = {}
+        for r in csv.DictReader(open(get('pokemon_stats_past.csv'))):                  # Gen VII's changes rolled back (메가후딘 특수방어 105 -> 95)
+            d, k, gg = int(r['pokemon_id']), int(r['stat_id']), int(r['generation_id'])
+            if d > 10000 and k <= 6 and gg >= 6 and gg < fpast.get((d, k), (99, 0))[0]: fpast[(d, k)] = (gg, int(r['base_stat']))
+        for (d, k), (_, v) in fpast.items(): pstats[d][k] = v
+        flearn = {}
+        for r in csv.DictReader(open(get('pokemon_moves.csv'))):
+            d, i = int(r['pokemon_id']), int(r['move_id'])
+            if d > 10000 and r['pokemon_move_method_id'] == '1' and i in mv6ids and r['version_group_id'] in ('10', '16'): flearn.setdefault((d, r['version_group_id']), set()).add((int(r['level']), i))
+        icat = {r['id']: r['identifier'] for r in csv.DictReader(open(get('item_categories.csv')))}
+        stones = {r['identifier']: ko_item[r['id']] for r in csv.DictReader(open(get('items.csv'))) if icat[r['category_id']] == 'mega-stones' and int(r['id']) <= 811}
+        def stone(ident):                                                               # charizard-mega-x -> charizardite-x: the longest shared start
+            base, xy = ident.split('-mega')[0], ident.split('-mega')[1][1:]
+            pre = lambda a, b: next((k for k in range(min(len(a), len(b))) if a[k] != b[k]), min(len(a), len(b)))
+            c = [k for k in stones if (k.endswith('-' + xy) if xy else not k[-2:] in ('-x', '-y'))]
+            return stones[max(c, key=lambda k: pre(k, base))]
+        SKIP = {'pichu-spiky-eared', 'floette-eternal'}
+        forms = {}
+        for r in sorted(csv.DictReader(open(get('pokemon_forms.csv'))), key=lambda r: (int(r['pokemon_id']), int(r['form_order']), int(r['id']))):
+            pid, d = int(r['pokemon_id']), int(pk[int(r['pokemon_id'])]['species_id'])
+            if d > N or int(r['introduced_in_version_group_id']) > 16 or r['identifier'] in SKIP or d in (25, 493, 649): continue
+            if r['is_default'] == '1' and pid < 10000: continue                                # the species itself
+            kind = 'mega' if r['is_mega'] == '1' else 'primal' if r['identifier'].endswith('-primal') else 'battle' if r['is_battle_only'] == '1' else 'stored' if pid > 10000 else 'look'
+            name = ('원시' + ko[d]) if kind == 'primal' else fko[int(r['id'])]
+            x = {'name': s(name), 'kind': '.' + kind}
+            if pid > 10000:
+                ty = [t for _, t in sorted(ptypes[pid])]; st = [pstats[pid][k] for k in range(1, 7)]
+                ab = [a for k, a in sorted(s6.get(pid, {}).items()) if k in (1, 2)]; hd = h6.get(pid, {}).get(3, 0)
+                assert ab and max(ab) <= 191 and hd <= 191, (r['identifier'], ab, hd)
+                base6 = (types6[d], stats6[d], ab6[d], hidden[d], wt[d])
+                if ty != base6[0]: x['types'] = '[' + ', '.join(map(s, ty)) + ']'
+                if [stats6[d][k] for k in range(1, 7)] != st: x['stats'] = '[' + ', '.join(map(str, st)) + ']'
+                if ab != base6[2]: x['abilities'] = '[' + ', '.join(map(str, ab)) + ']'
+                if hd != base6[3]: x['hidden'] = str(hd)
+                if int(pk[pid]['weight']) != wt[d]: x['weight'] = f'{int(pk[pid]["weight"]) / 10:g}'
+                ls = flearn.get((pid, '10' if d <= N4 else '16'))
+                if ls and ls != learn.get(d, set()): x['learnset'] = '[' + ', '.join(f'{l}, {i}' for l, i in sorted(ls)) + ']'
+            if kind == 'mega' and d != 384: x['item'] = s(stone(r['identifier']))             # 메가레쿠쟈: 화룡점정, no stone
+            if kind == 'primal': x['item'] = s({'kyogre-primal': '쪽빛구슬', 'groudon-primal': '주홍구슬'}[r['identifier']])
+            forms.setdefault(d, []).append(x)
+        megas = [x for fs in forms.values() for x in fs if x['kind'] == '.mega']
+        assert len(megas) == 48 and len({x['item'] for x in megas if 'item' in x}) == 47 == len(stones), (len(megas), len(stones))
+        g.write('let monForms = formTable()   // content5: species -> its forms 1... (Mon.form)\n@_optimize(none) private func formTable() -> [Int: [MonForm]] {\n    var f: [Int: [MonForm]] = [:]\n')
+        for d, fs in sorted(forms.items()):
+            g.write(f'    f[{d}] = [' + ', '.join('MonForm(' + ', '.join(f'{k}: {v}' for k, v in x.items()) + ')' for x in fs) + ']\n')
+        g.write('    return f\n}\n')
+        print(f'forms: {sum(map(len, forms.values()))} on {len(forms)} species ({len(megas)} megas)')
         an = {int(r['ability_id']): r['name'] for r in csv.DictReader(open(get('ability_names.csv'))) if r['local_language_id'] == '3'}
         g.write('let abilityNames: [Int: String] = [' + ', '.join(f'{i}: {s(an[i])}' for i in range(1, 192)) + ']\n')
         # what each does, in Korean: the earliest Korean flavour text (X/Y; line breaks are the games' layout)
@@ -637,7 +696,6 @@ with open('Sources/Data/Data.swift', 'w') as f:
         for r in csv.DictReader(open(get('pokemon_stats.csv'))):
             if int(r['pokemon_id']) <= N: ev.setdefault(int(r['pokemon_id']), {})[int(r['stat_id'])] = int(r['effort'])
         g.write('let evYield: [[Int]] = [[], ' + ', '.join('[' + ', '.join(str(ev[d][k]) for k in range(1, 7)) + ']' for d in range(1, N + 1)) + ']\n')
-        wt = {int(r['id']): int(r['weight']) for r in csv.DictReader(open(get('pokemon.csv'))) if int(r['id']) <= N}
         g.write('let weightKg: [Double] = [0, ' + ', '.join(f'{wt[d] / 10:g}' for d in range(1, N + 1)) + ']\n')
         g.write('let genderRate: [Int] = [0, ' + ', '.join(sp[d]['gender_rate'] for d in range(1, N + 1)) + ']   // -1 genderless, else eighths female\n')
     f.write('let learnsetsGen4: [[Int]] = [[], ' + ', '.join('[' + ', '.join(f'{l}, {i}' for l, i in sorted(learn.get(d, set()))) + ']' for d in range(1, N + 1)) + ']   // level, move, level, move ...\n')
