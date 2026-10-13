@@ -141,6 +141,23 @@ enum Update {
         #endif
         return nil
     }
+    /// 5.0 (docs/plans/18 §9.8, the server's app_reports): why it can't install here, as a word (translocated · dev · readonly), nil = it can.
+    static func blockKind(_ app: URL) -> String? {
+        if app.path.contains("/AppTranslocation/") { return "translocated" }
+        if Store.devBuild(app) { return "dev" }
+        return blocker(app) == nil ? nil : "readonly"
+    }
+    /// ... and where it lives: applications (응용 프로그램, Windows' installed Programs), downloads (or a download's translocated copy), other.
+    static func whereKind(_ app: URL) -> String {
+        let p = app.path.lowercased()
+        if p.contains("/apptranslocation/") || p.contains("/downloads/") { return "downloads" }
+        if p.contains("/applications/") || p.contains("/appdata/local/programs/") { return "applications" }
+        return "other"
+    }
+    /// When what's staged came (ready.json written), nil = nothing staged.
+    static func stagedAt(_ dir: URL) -> Date? { (try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent("ready.json").path))?[.modificationDate] as? Date }
+    /// 5.0: the next install starts the app again in the background (an update gone in by itself: no window to the front, no focus taken).
+    nonisolated(unsafe) static var quiet = false
     /// A folder this app can write in, found by writing (Windows' ReadOnly attribute on 다운로드 · 문서 · 바탕 화면 only marks a special folder,
     /// yet Foundation's isWritableFile there says no: the cause of most Windows PCs never updating, 2026-10-08).
     static func canWrite(_ dir: URL) -> Bool {
@@ -189,7 +206,7 @@ enum Update {
         let script = dir.appendingPathComponent("install.sh")
         guard (try? Data(macHelper.utf8).write(to: script, options: .atomic)) != nil else { return false }
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        p.arguments = [script.path, pid, app.path, r.staged, dir.path, r.version, relaunch ? "1" : "0"]
+        p.arguments = [script.path, pid, app.path, r.staged, dir.path, r.version, relaunch ? "1" : "0", quiet ? "1" : "0"]
         #endif
         try? Data(r.version.utf8).write(to: dir.appendingPathComponent("attempt"), options: .atomic)   // once a version: atLaunch gives up on it if this doesn't take
         return (try? p.run()) != nil
@@ -207,14 +224,14 @@ enum Update {
     static let macHelper = #"""
         #!/bin/sh
         # PokeWalker's installer (Core/Update.swift): $1 the app's pid, $2 the app, $3 the staged one, $4 the update folder, $5 its version, $6 = 1: open it
-        # after. Once the app has exited the staged one takes its place; the old one is kept until it has, and put back on failure (the version noted as failed).
-        pid=$1 app=$2 new=$3 dir=$4 ver=$5 again=$6 old="$2.old-update"
+        # after ($7 = 1: in the background). Once the app has exited the staged one takes its place; the old one is kept until it has, and put back on failure (the version noted as failed).
+        pid=$1 app=$2 new=$3 dir=$4 ver=$5 again=$6 quiet=$7 old="$2.old-update"
         exec > "$dir/install.log" 2>&1
         while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
         rm -rf "$old"
         if mv "$app" "$old" && mv "$new" "$app"; then rm -rf "$old"; echo "installed $ver"
         else [ -e "$app" ] || mv "$old" "$app"; echo "$ver" >> "$dir/failed"; rm -f "$dir/ready.json"; echo "failed $ver: the old app is back"; fi
-        [ "$again" = 1 ] && open "$app"
+        if [ "$again" = 1 ]; then if [ "$quiet" = 1 ]; then open -g "$app"; else open "$app"; fi; fi
         exit 0
         """#
 
@@ -250,6 +267,7 @@ final class UpdateInbox: @unchecked Sendable {
     let blocked: String?                                                   // 3.8.5: why it can't install here (nil: it can) — then it only asks
     var available: String? = nil                                           // a newer version out while blocked (signed): the menu and a banner say so
     var heard: Heard? = nil                                                // the last check's, for 업데이트 확인 (the walker clears it)
+    var urgent = false, installBy: Date? = nil                             // 5.0 (docs/plans/18 §9.8): the server's hints outside the signed manifest (urgent: asked hourly, in at a lull)
     private(set) var fetching: String? = nil                               // the version downloading
 
     init(link: any CloudLink, dir: URL, app: URL, platform: String = Update.entryKey, now: Date = Date(), blocked: String? = nil) {   // platform: the manifest's line
@@ -261,20 +279,23 @@ final class UpdateInbox: @unchecked Sendable {
         guard persist, let a = Update.appURL, !Store.devBuild(a) else { return nil }
         return Updater(link: HTTPLink(), dir: Update.dir, app: a, blocked: Update.blocker(a))
     }
-    func tick(_ now: Date) {
-        for r in inbox.take() { take(r) }
+    /// report: 5.0's lines for the server's app_reports (trainer, staged, blocked, failed, where), asked only when a check goes out.
+    func tick(_ now: Date, report: () -> [String: Any] = { [:] }) {
+        for r in inbox.take() { take(r, now) }
         guard !busy, now >= nextCheck else { return }
-        nextCheck = now.addingTimeInterval(Updater.period); busy = true; heard = nil
-        let body = (try? JSONSerialization.data(withJSONObject: ["app": appVersion, "platform": appPlatform])) ?? Data()
+        nextCheck = now.addingTimeInterval(urgent ? 3600 : Updater.period); busy = true; heard = nil
+        let body = (try? JSONSerialization.data(withJSONObject: report().merging(["app": appVersion, "platform": appPlatform]) { $1 })) ?? Data()
         link.post("v1/update", body) { [inbox] s, d in inbox.put(.answer(s, d)) }
     }
     /// 426 from the save server: a newer app is out — ask now.
     func checkNow() { nextCheck = .distantPast }
 
-    private func take(_ r: UpdateInbox.Item) {
+    private func take(_ r: UpdateInbox.Item, _ now: Date) {
         switch r {
         case .answer(let s, let d):
             guard let j = s == 200 ? (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] : nil else { busy = false; heard = .failed; return }   // offline: the next round
+            urgent = j["urgent"] as? Bool ?? false; installBy = (j["installBy"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }   // 5.0: unsigned hints
+            if urgent { nextCheck = min(nextCheck, now.addingTimeInterval(3600)) }                  // (urgent: asked again within the hour)
             guard let m = j["manifest"] as? String, let sig = j["sig"] as? String else { busy = false; heard = .newest; return }        // nothing released yet
             guard let e = Update.accept(m, sig, platform: platform, over: appVersion, failed: Update.failed(dir)) else {
                 busy = false; heard = Update.newer(m, than: appVersion) ? .failed : .newest; return                                   // a newer one not taken: bad signature, no zip here …
@@ -323,8 +344,8 @@ extension Walker {
     /// 업데이트 확인 · 설치: asked now; what it finds goes in (updateTick).
     func checkAndInstall() { guard let u = updater, !u.busy else { return }; installWhenStaged = true; u.heard = nil; u.checkNow() }
     /// The LCD says so, then (installAt) the quit's own path (steps, a save, the server's answers, a flush) and the helper, which starts the new one.
-    func installSoon(_ v: String, _ now: Date) {
-        installWhenStaged = false; screen = .say([v + "로", "업데이트할게요"], next: .home, since: now); installAt = now.addingTimeInterval(1.5)
+    func installSoon(_ v: String, _ now: Date, quiet: Bool = false) {                           // quiet (5.0): it went in by itself — started again in the background
+        Update.quiet = quiet; installWhenStaged = false; screen = .say([v + "로", "업데이트할게요"], next: .home, since: now); installAt = now.addingTimeInterval(1.5)
     }
     /// The tick's: a click's check answered — staged: in (once nothing's in progress); nothing newer, or it didn't work: said. Then the install itself.
     func updateTick(_ now: Date) {
@@ -343,12 +364,37 @@ extension Walker {
                 if installBlocker == nil { screen = .say(lines, next: screen, since: now) } else { notify("update", lines.joined(separator: " "), "") }
             }
         }
+        if let v = stagedUpdate, installAt == nil, !installWhenStaged, installBlocker == nil {           // 5.0 (§9.8): by itself — 426 at once, else at a lull; a day's reminder
+            if cloud?.phase == .oldApp || autoInstallDue(now) { installSoon(v, now, quiet: cloud?.phase != .oldApp) }
+            else if v == notedUpdate, let at = notedAt, now.timeIntervalSince(at) > 86400 {
+                notedAt = now; updateNotices += 1; notify("update", "\(v) 업데이트가 기다리고 있어요", "다시 시작하면 바뀌어요 · 우클릭 → 업데이트 설치")
+            }
+        }
         if let at = installAt, now >= at, installBlocker == nil, let h = host { installAt = nil; relaunchAfterQuit = true; h.quit() }
     }
-    /// A download just staged: a banner, once a version.
+    /// 5.0 (docs/plans/18 §9.8): what /v1/update hears of this install (the server's app_reports, `pokeserver versions`).
+    var updateReport: [String: Any] {
+        var r: [String: Any] = [:]
+        if let t = cloud?.seat.trainerID.flatMap(trainerID) { r["trainer"] = t.key }
+        guard let u = updater else { return r }
+        if let v = Update.ready(u.dir)?.version { r["staged"] = v }
+        if let b = Update.blockKind(u.app) { r["blocked"] = b }
+        let f = Update.failed(u.dir); if !f.isEmpty { r["failed"] = f }
+        r["where"] = Update.whereKind(u.app)
+        return r
+    }
+    /// 5.0: a staged update goes in by itself when nobody's at it — home or the menu, nothing going on, no step or click for 3 minutes; 30 s
+    /// once it's urgent, past its installBy, or a day after it came. (The server wanting a newer app: at once, in updateTick.)
+    func autoInstallDue(_ now: Date) -> Bool {
+        guard let u = updater, stagedUpdate != nil else { return false }
+        switch screen { case .home, .menu: break; default: return false }
+        let hurry = u.urgent || u.installBy.map { now >= $0 } == true || Update.stagedAt(u.dir).map { now.timeIntervalSince($0) > 86400 } == true
+        return now.timeIntervalSince(max(lastStep, lastInput)) >= (hurry ? 30 : 180)
+    }
+    /// A download just staged: a banner, once a version (5.0: and again a day later while it waits).
     func noteStaged(_ v: String) {
         guard v != notedUpdate else { return }
-        notedUpdate = v; updateNotices += 1
+        notedUpdate = v; notedAt = Date(); updateNotices += 1
         notify("update", "\(v) 업데이트를 받아 두었어요", "우클릭 → 업데이트 설치로 바로 바꿀 수 있어요. 다음에 끄거나 켤 때도 바뀌어요.")
     }
     /// The first launch of a new version: it says so, on the LCD and as a banner.

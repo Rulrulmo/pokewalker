@@ -44,6 +44,7 @@ import Foundation
     var cloudAsked: Cloud.Phase? = nil, cloudAsking = false                // the question asked
     var cloudShown: Cloud.Phase? = nil, idBoxShown = false                 // the server's state the LCD shows; the ID box opened by itself (once a launch)
     var updater: Updater? = nil, shuttingDown = false                      // auto-update (Core/Update.swift): set at launch; a logout / shutdown puts nothing in at quit
+    var notedAt: Date? = nil                                               // 5.0: when the staged one's banner last showed (a day: again)
     var relaunchAfterQuit = false, notedUpdate: String? = nil, updateNotices = 0   // the menu's 업데이트 설치: the quit starts the new version; the version a banner said was ready
     var installWhenStaged = false, installAt: Date? = nil                  // 업데이트 확인 · 설치 clicked: what it finds goes in; the install's moment (after the LCD says so)
     /// What the quit runs to put a staged update in (relaunch: start it after); the self-test's stub records it instead.
@@ -110,7 +111,7 @@ import Foundation
         cloudTick(now)                                                                             // the server's answers (their screens, the save) …
         settle(now)                                                                                // … and at home its news, then where a fight was going on to
         if now.timeIntervalSince(lastSave) > 60 { save() }
-        updater?.tick(now); updateTick(now)
+        updater?.tick(now) { [unowned self] in updateReport }; updateTick(now)
     }
     /// Fights, shows and animations play at 30 fps; the rest (the walking sprite too: HGSS steps it every 0.15 s) at the tick's 10.
     var busy: Bool { switch screen { case .beats, .hatch, .evolve, .radar, .traded: true; default: animating || waiting != nil } }   // (an act out: its dots)

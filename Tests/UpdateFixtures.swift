@@ -19,10 +19,11 @@ func updateFixtureChecks() -> [(Bool, String)] {
 /// The save server's update API in a few lines: the manifest and signature it gives (nil = no release), the zip it sends; what was asked.
 final class FakeUpdates: CloudLink, @unchecked Sendable {
     var manifest: String? = fixtureManifest99, sig: String? = fixtureSig99, zip = Data(fixtureZip99.mac), paths: [String] = [], down = false   // down: no answer
+    var bodies: [[String: Any]] = [], hints: [String: Any] = [:]                                   // 5.0: what was asked with; the unsigned hints given
     func post(_ path: String, _ json: Data, done: @escaping @Sendable (Int, Data) -> Void) {
-        paths.append(path)
+        paths.append(path); bodies.append((try? JSONSerialization.jsonObject(with: json)) as? [String: Any] ?? [:])
         if down { done(0, Data()); return }
-        done(200, (try? JSONSerialization.data(withJSONObject: ["manifest": (manifest as Any?) ?? NSNull(), "sig": (sig as Any?) ?? NSNull()])) ?? Data())
+        done(200, (try? JSONSerialization.data(withJSONObject: hints.merging(["manifest": (manifest as Any?) ?? NSNull(), "sig": (sig as Any?) ?? NSNull()]) { $1 })) ?? Data())
     }
     func get(_ path: String, done: @escaping @Sendable (Int, Data) -> Void) { paths.append(path); done(200, zip) }
 }
@@ -154,5 +155,47 @@ final class FakeUpdates: CloudLink, @unchecked Sendable {
     sw.towerRun = false; sw.tick(t0 + 6); let said = says(sw, ["9.9로", "업데이트할게요"]); sw.tick(t0 + 8)
     c.append((held && said && sh.quits == 1 && sw.relaunchAfterQuit && sw.updateNotices == 0,
               "update row: what a click finds staged goes in by itself (no banner) — after the tower run it came during, the LCD saying so first"))
+
+    // 5.0 (docs/plans/18 §9.8): what /v1/update hears (the server's app_reports) and the hints it gives back
+    let hl = FakeUpdates(); hl.manifest = nil; hl.sig = nil; hl.hints = ["urgent": true, "installBy": "2026-10-20T00:00:00Z"]
+    let hu = Updater(link: hl, dir: tmp.appendingPathComponent("h1"), app: shipped, platform: "mac", now: t0)
+    hu.tick(t0 + 31) { ["trainer": "zz123456", "staged": "99.0", "where": "applications"] }; hu.tick(t0 + 32)
+    let sent = hl.bodies.first.map { $0["trainer"] as? String == "zz123456" && $0["staged"] as? String == "99.0" && $0["app"] as? String == appVersion && $0["platform"] as? String == appPlatform } == true
+    let hinted = hu.urgent && hu.installBy == ISO8601DateFormatter().date(from: "2026-10-20T00:00:00Z")
+    hu.tick(t0 + 32 + 3599); let hourly = hl.bodies.count == 1; hu.tick(t0 + 32 + 3601); hu.tick(t0 + 32 + 3602)
+    let rw = Walker(state: Walk()); rw.persist = false
+    rw.updater = Updater(link: FakeUpdates(), dir: readyIn("r1", "99.0"), app: shipped, platform: "mac", now: t0)
+    try? "98.0\n".write(to: tmp.appendingPathComponent("r1/failed"), atomically: true, encoding: .utf8)
+    let rep = rw.updateReport
+    let report = rep["staged"] as? String == "99.0" && rep["blocked"] == nil && rep["failed"] as? [String] == ["98.0"] && rep["where"] as? String == "applications" && rep["trainer"] == nil
+    let kinds = Update.whereKind(URL(fileURLWithPath: "/Users/a/Downloads/PokeWalker.app")) == "downloads" && Update.whereKind(URL(fileURLWithPath: "/private/var/folders/x/AppTranslocation/A1/d/PokeWalker.app")) == "downloads"
+        && Update.whereKind(URL(fileURLWithPath: "/C:/Users/a/AppData/Local/Programs/PokeWalker/PokeWalker.exe")) == "applications" && Update.whereKind(URL(fileURLWithPath: "/Users/a/Desktop/PokeWalker.app")) == "other"
+        && Update.blockKind(URL(fileURLWithPath: "/private/var/folders/x/AppTranslocation/A1/d/PokeWalker.app")) == "translocated" && Update.blockKind(repo.appendingPathComponent("PokeWalker.app")) == "dev" && Update.blockKind(shipped) == nil
+    let okR = sent && hinted && hourly && hl.bodies.count == 2 && report && kinds
+    c.append((okR, "5.0 update: /v1/update hears trainer · staged · blocked · failed · where (app and platform kept); urgent and installBy taken (then asked hourly); where's and why's words"
+              + (okR ? "" : " — \(sent) \(hinted) \(hourly) \(hl.bodies.count) \(report) \(rep) \(kinds) \(hl.bodies)")))
+
+    // 5.0: a staged one goes in by itself when nobody's at it (home, nothing on, no step or click for 3 minutes; 30 s urgent), started again quietly;
+    // never mid-fight; the server wanting a newer app (426): at once; a day staged and still waiting: the banner again
+    func autoWalker(_ name: String) -> (Walker, TestHost) {
+        let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h; w.installUpdate = { _ in true }
+        let l = FakeUpdates(); l.manifest = nil; l.sig = nil
+        w.updater = Updater(link: l, dir: readyIn(name, "99.0"), app: shipped, platform: "mac", now: t0)
+        w.screen = .home; w.lastInput = t0; w.lastStep = t0; return (w, h)
+    }
+    let (aw, ah) = autoWalker("a1")
+    aw.tick(t0 + 120); let waits = !says(aw, ["99.0로", "업데이트할게요"])
+    aw.tick(t0 + 181); let goes = says(aw, ["99.0로", "업데이트할게요"]) && Update.quiet; aw.tick(t0 + 184)
+    let auto = waits && goes && ah.quits == 1 && aw.relaunchAfterQuit
+    let (bw, bh) = autoWalker("a2"); bw.towerRun = true; bw.screen = .tower(pick: nil); bw.tick(t0 + 400); bw.tick(t0 + 403)
+    let (uw2, uh2) = autoWalker("a3"); uw2.updater?.urgent = true; uw2.tick(t0 + 31); uw2.tick(t0 + 34)
+    let auto426: Bool = {
+        _ = readyIn("u5", "99.0"); let h = TestHost(); uw.host = h; uw.installUpdate = { _ in true }; uw.lastInput = Date(); uw.lastStep = Date()
+        uw.tick(Date()); let said = says(uw, ["99.0로", "업데이트할게요"]) && !Update.quiet; uw.tick(Date() + 2); return said && h.quits == 1
+    }()
+    let (dw, _) = autoWalker("a4"); dw.notedUpdate = "99.0"; dw.notedAt = t0 - 90_000; dw.lastInput = t0 + 10; dw.tick(t0 + 20)
+    c.append((auto && bh.quits == 0 && !says(bw, ["99.0로", "업데이트할게요"]) && uh2.quits == 1 && auto426 && dw.updateNotices == 1 && dw.notedAt == t0 + 20,
+              "5.0 update: in by itself at a lull (3 min on home; 30 s urgent), started again quietly; never mid-run; 426: at once; a day waiting: the banner again"))
+    Update.quiet = false
     return c
 }
