@@ -15,12 +15,14 @@ enum ItemKind: Equatable {
     case sell(Int)                 // watts at the exchange
     case mint(Int)                 // 민트 (SwSh): the stats go by this nature (its own stays shown): docs/plans/13
     case held(String)              // only to hold (3.7, Held.swift): 구애머리띠, 먹다남은음식 … (berries and evolution items keep their own use, and can be held too)
+    case key                       // 5.0: an important item, never sold (로토무카탈로그, 유전자쐐기, and the legend rewards' later)
 
     /// One line on what it does (the bag list, the shops).
     var summary: String {
         switch self {
         case .heal(let n): "배틀 HP +\(n)"; case .revive(let n): "배틀: 기절한 포켓몬 HP \(n)%로"; case .held(let i): "지니게 하기: " + (Held.summary(i) ?? "");
         case .mint(let k): natures[k].up == natures[k].down ? "능력 보정 없는 성격으로" : "\(statNames[natures[k].up]) ↑ · \(statNames[natures[k].down]) ↓ 성격으로"
+        case .key: "중요한 물건"
         case .candy: "레벨 +1"; case .evReset: "노력치 전부 0"; case .bottleCap(let gold): gold ? "특훈: 모든 개체값 → 31 (Lv.50부터)" : "특훈: 개체값 하나 → 31 (Lv.50부터)"
         case .vitamin(let k, let d): "\(["HP", "공격", "방어", "특공", "특방", "스피드"][k]) 노력치 \(d > 0 ? "+" : "−")10"; case .berry: "친밀도 +500걸음"; case .evolution: "진화 도구"; case .sell(let p): "팔면 \(p)W"
         case .battle(let u):
@@ -29,6 +31,8 @@ enum ItemKind: Equatable {
             case .x(let k, _): "배틀 \(statNames[k]) +1"; case .guardSpec: "배틀 능력 저하 막기 (5턴)"; case .direHit: "배틀 급소율 +"; case .heal, .revive: "" }
         }
     }
+    /// The important ones (5.0, plan 18 §5): what a form change or 큐레무 합체 takes, kept when used.
+    static let keys: Set<String> = ["로토무카탈로그", "유전자쐐기", "비추는거울", "그라시데아꽃", "굴레의항아리"]
     static func of(_ i: String) -> ItemKind {
         let all: [Status] = [.poison, .burn, .paralysis, .sleep, .freeze]
         let use: [String: ItemUse] = ["해독제": .cure([.poison], confusion: false), "화상치료제": .cure([.burn], confusion: false), "마비치료제": .cure([.paralysis], confusion: false),
@@ -38,6 +42,7 @@ enum ItemKind: Equatable {
             "회복약": .restore, "PP에이드": .pp(10, all: false), "PP회복": .pp(99, all: false), "PP에이더": .pp(10, all: true), "PP맥스": .pp(99, all: true),
             "플러스파워": .x(1, 1), "디펜드업": .x(2, 1), "스페셜업": .x(3, 1), "스페셜가드": .x(4, 1), "스피드업": .x(5, 1), "잘-맞히기": .x(6, 1), "크리티컬커터": .direHit, "이펙트가드": .guardSpec]
         if let u = use[i] { return .battle(u) }
+        if ItemKind.keys.contains(i) { return .key }
         if let k = ["맥스업", "타우린", "사포닌", "리보플라빈", "키토산", "알칼로이드"].firstIndex(of: i) { return .vitamin(k, 10) }
         if let k = ["유석열매", "시마열매", "파비열매", "로매열매", "또뽀열매", "토망열매"].firstIndex(of: i) { return .vitamin(k, -10) }
         if i == "순백떡" { return .evReset }

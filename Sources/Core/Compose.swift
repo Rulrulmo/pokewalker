@@ -550,6 +550,7 @@ extension Walker {
         case .revive: return (nil, "배틀 중 기절한 포켓몬에게")
         case .held: return (nil, "포켓몬에게 지니게 해요")                                          // (held ones are targeted: the case above)
         case .heal, .battle: return (nil, "배틀에서 도구로")
+        case .key: return (nil, "중요한 물건이에요")                                                  // 5.0 (server: plan 18 §14; the menus are mac's A4)
         }
     }
     /// A Pokémon in full, for its page.

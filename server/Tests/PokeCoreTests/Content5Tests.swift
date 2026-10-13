@@ -477,3 +477,10 @@ private func formed(_ dex: Int, _ f: Int?, _ level: Int = 50) -> Mon { var m = m
     }
     #expect(!Tower.isLegend(646) && Tower.legendFoes.count == 35 && Tower.tycoonTeams[50]![1].dex == 350)   // off
 }
+
+@Test func gen6BagKinds() {
+    #expect(ItemKind.of("로토무카탈로그") == .key && ItemKind.of("유전자쐐기") == .key && Walk.bagTab("유전자쐐기") == "기타")
+    var w = Walk(); w.bag = ["로토무카탈로그", "유전자쐐기", "금구슬"]; let sold = w.sell("로토무카탈로그"); #expect(sold == 0 && w.bag.contains("로토무카탈로그"))   // never sold
+    gen6 { #expect(Walk.bagTab("리자몽나이트X") == "메가스톤" && Walk.bagTab("쪽빛구슬") == "메가스톤" && Walk.bagTabs.count == 9 && Walk.bagTab("돌격조끼") == "지닌 도구") }
+    #expect(Walk.bagTabs.count == 8)                                                                     // off: 4.1's eight
+}
