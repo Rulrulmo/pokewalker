@@ -83,3 +83,64 @@ private func learns(_ d: Int, _ level: Int, _ move: Int) -> Bool { let l = learn
     #expect(monForms[201]?.count == 27 && monForms[201]!.allSatisfy { $0.kind == .look } && Forms.of(201, 28) == nil && Forms.of(201, 0) == nil)
     #expect(monForms[25] == nil && monForms[493] == nil && monForms[649] == nil && monForms.keys.allSatisfy { $0 <= 721 })
 }
+
+// MARK: - stage 2: Fairy and the Gen VI rules (plan 18 §3), each against Gen IV's
+private func mon(_ dex: Int, _ level: Int = 50, moves: [Int]? = nil, ability: Int? = nil) -> Mon {
+    var m = Mon(dex: dex, level: level, female: false); m.known = moves; m.nature = 0; m.ivs = Array(repeating: 31, count: 6)
+    if let a = ability { m.ability = abilitySlots[dex].firstIndex(of: a) }
+    return m
+}
+private func duel(_ a: Mon, _ b: Mon, seed: UInt64 = 7) -> Battle { var x = Battle(wild: b, party: [a]); x.seed = seed; return x }
+private func both<T>(_ body: () -> T) -> (gen4: T, gen6: T) { (Content.$testing.withValue(false, operation: body), Content.$testing.withValue(true, operation: body)) }
+
+@Test func gen6Crits() {
+    let r = both { () -> (Double, Bool) in
+        let b = duel(mon(6, 100, moves: [53]), mon(143, 100)), m = moveTable[53]!
+        var x = b, y = b
+        let plain = x.calc(.me, .it, m, power: 90, type: "fire", eff: 1, crit: false), crit = y.calc(.me, .it, m, power: 90, type: "fire", eff: 1, crit: true)
+        var z = duel(mon(6, 100), mon(143, 100)); z.mod(.me) { $0.focus = true }                   // 기합에너지 +2 and 베어가르기's +1: stage 3
+        let always = (0..<200).allSatisfy { _ in z.critical(.me, .it, moveTable[163]!) }
+        return (Double(crit) / Double(plain), always)
+    }
+    #expect(abs(r.gen4.0 - 2) < 0.06 && !r.gen4.1 && abs(r.gen6.0 - 1.5) < 0.06 && r.gen6.1)
+}
+
+@Test func gen6Statuses() {
+    let para = both { () -> Bool in var b = duel(mon(25), mon(19)); return b.inflict(.me, .paralysis, from: .it, loud: true) }
+    #expect(para.gen4 && !para.gen6)                                                                   // Electric: no paralysis
+    let sleeps = both { () -> Set<Int> in Set((1...200).map { k in var b = duel(mon(19), mon(19), seed: UInt64(k)); b.inflict(.me, .sleep, from: .it, loud: true); return b.f(.me).sleep }) }
+    #expect(sleeps.gen4 == [2, 3, 4, 5] && sleeps.gen6 == [2, 3, 4])                                    // 1-4 turns → 1-3
+    let ghost = both { () -> (Bool, Bool) in
+        var b = duel(mon(94), mon(19)); b.mod(.me) { $0.trapped = true; $0.bound = 3 }; let held = b.trapped(.me)
+        b.mod(.me) { $0.ingrain = true }; return (held, b.trapped(.me))
+    }
+    #expect(ghost.gen4 == (true, true) && ghost.gen6 == (false, true))                                  // a Ghost gets away (its own 뿌리박기 aside)
+}
+
+@Test func gen6Moves() {
+    // 울음소리 (sound) through a substitute; 버섯포자 on a Grass type
+    let growl = both { () -> Int in var b = duel(mon(19, moves: [45]), mon(1)); b.mod(.it) { $0.sub = 20 }; b.execute(.me, 45, called: true); return b.f(.it).stage[1] }
+    #expect(growl.gen4 == 0 && growl.gen6 == -1)
+    let spore = both { () -> Status? in var b = duel(mon(286, moves: [147]), mon(1)); b.execute(.me, 147, called: true); return b.f(.it).status }
+    #expect(spore.gen4 == .sleep && spore.gen6 == nil)
+    // 피뢰침 takes 10만볼트 and 전기자석파 in (특수공격 +1); 옹골참 holds at full HP
+    let rod = both { () -> (Int, Int, Int) in
+        var b = duel(mon(25, 100, moves: [85, 86]), mon(310, 30, ability: 31)); let hp = b.f(.it).hp
+        b.execute(.me, 85, called: true); let a = (hp - b.f(.it).hp, b.f(.it).stage[3])
+        var c = duel(mon(25, 100, moves: [86]), mon(310, 30, ability: 31)); c.execute(.me, 86, called: true)
+        return (a.0, a.1, c.f(.it).stage[3])
+    }
+    #expect(rod.gen4.0 > 0 && rod.gen4.1 == 0 && rod.gen6 == (0, 1, 1))
+    let sturdy = both { () -> Int in var b = duel(mon(9, 100, moves: [57]), mon(74, 10, ability: 5)); b.execute(.me, 57, called: true); return b.f(.it).hp }
+    #expect(sturdy.gen4 == 0 && sturdy.gen6 == 1)
+    // an ability's weather lasts 5 turns; the course's still lasts
+    let sun = both { () -> (Int, Int) in
+        var r = Seeded(s: 3); var b = duel(mon(383), mon(19)); _ = b.begin(weather: nil, &r)
+        var c = duel(mon(19), mon(19)); _ = c.begin(weather: .rain, &r); return (b.skyTurns, c.skyTurns)
+    }
+    #expect(sun.gen4 == (0, 0) && sun.gen6 == (5, 0))
+    // 잠재파워 60; 미래예지 Psychic (none on a Dark type)
+    #expect(both { () -> Int in let b = duel(mon(25), mon(19)); return b.moveType(.me, moveTable[237]!).power }.gen6 == 60)
+    let future = both { () -> Int in var b = duel(mon(65, 50, moves: [248]), mon(197, 50)); b.execute(.me, 248, called: true); return b.sides[1].futureDmg }
+    #expect(future.gen4 > 0 && future.gen6 == 0)
+}

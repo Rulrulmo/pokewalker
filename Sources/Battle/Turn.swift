@@ -31,12 +31,12 @@ extension Battle {
         guard f(s).alive, !over else { return }
         switch f(s).ability {
         case 22: say(s, josa(n, "의", "의") + " 위협!"); boost(t, 1, -1, from: s)
-        case 2: sky = .rain; skyTurns = 0; say(s, josa(n, "의", "의") + " 잔비로 비가 내리기 시작했다!")
-        case 70: sky = .sun; skyTurns = 0; say(s, josa(n, "의", "의") + " 가뭄으로 햇살이 강해졌다!")
-        case 45: sky = .sand; skyTurns = 0; say(s, josa(n, "의", "의") + " 모래날림으로 모래바람이 불기 시작했다!")
-        case 117: sky = .hail; skyTurns = 0; say(s, josa(n, "의", "의") + " 눈퍼뜨리기로 싸라기눈이 내리기 시작했다!")
+        case 2: sky = .rain; skyTurns = abilitySkyTurns(s, "축축한바위"); say(s, josa(n, "의", "의") + " 잔비로 비가 내리기 시작했다!")
+        case 70: sky = .sun; skyTurns = abilitySkyTurns(s, "뜨거운바위"); say(s, josa(n, "의", "의") + " 가뭄으로 햇살이 강해졌다!")
+        case 45: sky = .sand; skyTurns = abilitySkyTurns(s, "보송보송바위"); say(s, josa(n, "의", "의") + " 모래날림으로 모래바람이 불기 시작했다!")
+        case 117: sky = .hail; skyTurns = abilitySkyTurns(s, "차가운바위"); say(s, josa(n, "의", "의") + " 눈퍼뜨리기로 싸라기눈이 내리기 시작했다!")
         case 88 where f(t).alive: boost(s, base(t, 2) < base(t, 4) ? 1 : 3, 1, from: s)
-        case 36 where f(t).alive: let a = f(t).ability; if ![0, 36, 121].contains(a) { mod(s) { $0.abilityOver = a }; say(s, josa(n, "은", "는") + " " + monNames[f(t).mon.dex] + "의 " + josa(abilityNames[a]!, "을", "를") + " 트레이스했다!") }
+        case 36 where f(t).alive: let a = f(t).ability; if !(Content.gen6 ? [0, 36, 121, 59, 122, 149, 150, 161, 176] : [0, 36, 121]).contains(a) { mod(s) { $0.abilityOver = a }; say(s, josa(n, "은", "는") + " " + monNames[f(t).mon.dex] + "의 " + josa(abilityNames[a]!, "을", "를") + " 트레이스했다!") }
         case 46: say(s, josa(n, "은", "는") + " 프레셔를 발휘하고 있다!")
         case 104: say(s, josa(n, "은", "는") + " 틀을 깼다!")
         case 112: mod(s) { $0.slowStart = 5 }; say(s, josa(n, "은", "는") + " 좀처럼 힘을 낼 수 없다!")
@@ -48,6 +48,8 @@ extension Battle {
         forecast()
         heldCheck(s); heldCheck(t)                                                                   // (위협 → 하양허브; 독압정 → a berry)
     }
+    /// An ability's weather: for good in Gen IV, 5 turns in Gen VI (8 with its rock). The course's own weather always lasts.
+    func abilitySkyTurns(_ s: Side, _ rock: String) -> Int { Content.gen6 ? (holds(s, rock) ? 8 : 5) : 0 }
     mutating func forecast() {
         for s in [Side.me, .it] where f(s).mon.dex == 351 && f(s).has(59) {
             let ty = ["sun": "fire", "rain": "water", "hail": "ice"]["\(weatherOn)"] ?? "normal"
@@ -166,7 +168,7 @@ extension Battle {
         return max(1, Int((floor(floor(Double(2 * a.mon.level / 5 + 2) * 40 * A / D) / 50) + 2) * Double(85 + roll(16)) / 100))
     }
     mutating func deductPP(_ s: Side, _ id: Int) {
-        let cost = f(other(s)).alive && f(other(s)).has(46) ? 2 : 1
+        let cost = f(other(s)).alive && f(other(s)).has(46) && (!Content.gen6 || moveTable[id]?.onFoe == true) ? 2 : 1   // 프레셔: Gen VI only on what's aimed at it
         mod(s) { if let k = $0.moves.firstIndex(of: id) { $0.pp[k] = max(0, $0.pp[k] - cost); if $0.pp[k] == 0, $0.encore > 0, $0.encoreMove == id { $0.encore = 0 } } }   // 앙코르 ends with the PP
     }
 
@@ -214,6 +216,10 @@ extension Battle {
         if m.onFoe, f(t).semi != 0, !canHitSemi(id, f(t).semi), !(f(s).has(99) || f(t).has(99)), f(s).lockOn == 0 { say(t, josa(nm(t), "에게는", "에게는") + " 맞지 않았다!"); crash(s, t, m); return }
         if (m.onFoe || m.accuracy > 0) && !m.onSelf, !hits(s, t, m) { say(t, josa(n, "의", "의") + " 공격은 빗나갔다!"); crash(s, t, m); mod(s) { $0.rollout = 0; $0.furyCutter = 0 }; return }
         if m.onFoe, m.sound, id != 195, dAb(t, 43, by: s) { say(t, josa(nm(t), "은", "는") + " 방음으로 소리를 막았다!"); return }
+        if Content.gen6, m.onFoe, m.flags & 4096 != 0, f(t).typeList.contains("grass") || dAb(t, 142, by: s) || holds(t, "방진고글") {   // Gen VI: powder and spores
+            say(t, josa(nm(t), "에게는", "에게는") + " 효과가 없는 것 같다..."); return
+        }
+        if id == 86, Content.gen6, dAb(t, 31, by: s) { absorbRaise(t); return }                       // Gen V+: 피뢰침 draws it in too
         if id == 86, typeEff("electric", t, by: s) == 0 || dAb(t, 10, by: s) || dAb(t, 78, by: s) {        // 전기자석파 is the one status move type immunity stops
             say(t, josa(nm(t), "에게는", "에게는") + " 효과가 없는 것 같다..."); return
         }

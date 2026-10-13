@@ -25,7 +25,13 @@ extension Battle {
         guard !over else { return }                                                                  // a KO that ended it: nothing after the last beat (the screen would read on)
         for s in [Side.me, .it] {
             let k = si(s)
-            if sides[k].future > 0 { sides[k].future -= 1; if sides[k].future == 0, f(s).alive { hurt(s, sides[k].futureDmg, josa(nm(s), "은", "는") + " 미래의 공격을 받았다!") } }
+            if sides[k].future > 0 {
+                sides[k].future -= 1
+                if sides[k].future == 0, f(s).alive {
+                    if sides[k].futureDmg > 0 { hurt(s, sides[k].futureDmg, josa(nm(s), "은", "는") + " 미래의 공격을 받았다!") }
+                    else { say(s, josa(nm(s), "에게는", "에게는") + " 효과가 없는 것 같다...") }                              // (Gen VI: a Dark type)
+                }
+            }
             if sides[k].wish > 0 { sides[k].wish -= 1; if sides[k].wish == 0, f(s).alive { restore(s, sides[k].wishHP, "희망사항이 이루어졌다!") } }
         }
         faints()
@@ -51,10 +57,11 @@ extension Battle {
             if f(s).alive, x.cursed, !guardian { hurt(s, max(1, x.maxHP / 4), josa(n, "은", "는") + " 저주를 받고 있다!") }
             if f(s).alive, x.bound > 0, f(t).alive {                                                   // (its binder KO'd: let go when the next comes out)
                 let by = moveTable[x.boundBy]?.name ?? "조이기"
-                mod(s) { $0.bound -= 1 }; if f(s).bound == 0 { say(s, josa(n, "은", "는") + " " + by + "에서 풀려났다!") } else if !guardian { hurt(s, max(1, x.maxHP / 16), josa(n, "은", "는") + " " + by + "의 데미지를 입었다!") }
+                let cut = Content.gen6 ? (holds(t, "조임밴드") ? 6 : 8) : 16                                   // Gen VI: 1/8 (조임밴드 1/6)
+                mod(s) { $0.bound -= 1 }; if f(s).bound == 0 { say(s, josa(n, "은", "는") + " " + by + "에서 풀려났다!") } else if !guardian { hurt(s, max(1, x.maxHP / cut), josa(n, "은", "는") + " " + by + "의 데미지를 입었다!") }
             }
             if f(s).alive, x.has(3), x.turnsOut > 0 { boost(s, 5, 1, from: s) }
-            if f(s).alive, x.has(61), f(s).status != nil, pct(30) { setStatus(s, nil, josa(n, "은", "는") + " 탈피로 나았다!") }
+            if f(s).alive, x.has(61), f(s).status != nil, Content.gen6 ? roll(3) == 0 : pct(30) { setStatus(s, nil, josa(n, "은", "는") + " 탈피로 나았다!") }
             if f(s).alive, x.status == .sleep, f(t).alive, f(t).has(123), !guardian { hurt(s, max(1, x.maxHP / 8), josa(n, "은", "는") + " 나이트메어에 시달리고 있다!") }
             if f(s).alive, x.yawn > 0 { mod(s) { $0.yawn -= 1 }; if f(s).yawn == 0 { inflict(s, .sleep, from: t, loud: false) } }
             if f(s).alive, x.perish > 0 { mod(s) { $0.perish -= 1 }; say(s, josa(n, "의", "의") + " 멸망 카운트가 \(f(s).perish)" + (f(s).perish == 2 ? "가" : "이") + " 되었다!"); if f(s).perish == 0 { hurt(s, f(s).hp, "") } }
@@ -214,6 +221,7 @@ extension Battle {
     /// Held in place: 검은눈빛 / 조이기 / 뿌리박기, or their 그림자밟기 (not on another), 개미지옥 (on the ground), 자력 (on steel).
     func trapped(_ s: Side) -> Bool {
         let x = f(s), y = f(other(s))
+        if Content.gen6, x.typeList.contains("ghost") { return x.ingrain }                          // Gen VI: a Ghost type always gets away (뿌리박기 its own)
         if x.trapped || x.bound > 0 || x.ingrain { return true }
         return y.alive && (y.has(23) && !x.has(23) || y.has(71) && grounded(s) || y.has(42) && x.typeList.contains("steel"))
     }
@@ -248,7 +256,7 @@ extension Battle {
     /// The ▲ / ▼ / 효과 없음 hint on our move button: the type chart as that move will meet theirs (fixed damage only minds an immunity; a status move only 전기자석파's).
     func hint(_ id: Int, _ type: String) -> Double {
         let e = typeEff(type, .it, by: .me)
-        if id == 248 { return 1 }                                                                  // 미래예지: typeless in Gen IV
+        if id == 248, !Content.gen6 { return 1 }                                                   // 미래예지: typeless in Gen IV
         if moveTable[id]!.isStatus { return id == 86 && e == 0 ? 0 : 1 }
         return Moves.fixedDamage.contains(id) ? (e == 0 ? 0 : 1) : e
     }

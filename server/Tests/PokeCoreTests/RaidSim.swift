@@ -38,8 +38,11 @@ private func simFight(_ party: [Mon], boss: Mon, bars: Int, _ r: inout SimRNG) -
     return (down == bars, down, b.turnNo)
 }
 
-@Test func raidSim() throws {
+@Test func raidSim() throws {                                                                // CONTENT5=1: with the 5.0 switch on (docs/plans/18)
     guard let path = ProcessInfo.processInfo.environment["RAID_SIM"] else { return }
+    try Content.$testing.withValue(ProcessInfo.processInfo.environment["CONTENT5"] != nil) { try raidSim(path) }
+}
+private func raidSim(_ path: String) throws {
     let n = Int(ProcessInfo.processInfo.environment["RAID_SIM_N"] ?? "") ?? 60
     let parties = try JSONDecoder().decode([String: [Mon]].self, from: Data(contentsOf: URL(fileURLWithPath: path)))
     let only = ProcessInfo.processInfo.environment["RAID_SIM_DEX"].flatMap(Int.init)

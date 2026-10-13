@@ -95,17 +95,19 @@ struct Battle: Equatable, Codable {                                 // Codable: 
         case .poison, .toxic: if t.contains("poison") || t.contains("steel") || x.has(17) { return no(josa(n, "에게는", "에게는") + " 효과가 없는 것 같다...") }
         case .burn: if t.contains("fire") || x.has(41) { return no(josa(n, "에게는", "에게는") + " 효과가 없는 것 같다...") }
         case .freeze: if t.contains("ice") || x.has(40) || weatherOn == .sun { return false }
-        case .paralysis: if x.has(7) { return no(josa(n, "은", "는") + " 유연 때문에 마비되지 않는다!") }
+        case .paralysis:
+            if x.has(7) { return no(josa(n, "은", "는") + " 유연 때문에 마비되지 않는다!") }
+            if Content.gen6, t.contains("electric") { return no(josa(n, "에게는", "에게는") + " 효과가 없는 것 같다...") }   // Gen VI
         case .sleep:
             if x.has(15) || x.has(72) { return no(josa(n, "은", "는") + " 잠들지 않는다!") }
             if [mine[me], theirs[it]].contains(where: { $0.uproar > 0 }) { return no("소란 때문에 잠들 수 없다!") }
         }
         if weatherOn == .sun, x.has(102) { return no(josa(n, "은", "는") + " 리프가드로 보호받고 있다!") }
-        if st == .sleep { let turns = 2 + roll(4); mod(s) { $0.sleep = turns } }                       // 1-4 turns asleep (the counter runs out on the turn it wakes and moves)
+        if st == .sleep { let turns = 2 + roll(Content.gen6 ? 3 : 4); mod(s) { $0.sleep = turns } }  // 1-4 turns asleep, Gen V+ 1-3 (the counter runs out on the turn it wakes and moves)
         if st == .toxic { mod(s) { $0.toxic = 1 } }
         let line = ["poison": "독에 걸렸다!", "toxic": "맹독을 입었다!", "burn": "화상을 입었다!", "paralysis": "마비되어 기술이 나오기 어려워졌다!", "sleep": "잠들어 버렸다!", "freeze": "얼어붙었다!"][st.rawValue]!
         setStatus(s, st, josa(n, "은", "는") + " " + line)
-        if sync, let src = from, src != s, f(s).has(28), [.poison, .toxic, .burn, .paralysis].contains(st) { inflict(src, st == .toxic ? .poison : st, from: s, loud: false) }   // 싱크로
+        if sync, let src = from, src != s, f(s).has(28), [.poison, .toxic, .burn, .paralysis].contains(st) { inflict(src, st == .toxic && !Content.gen6 ? .poison : st, from: s, loud: false) }   // 싱크로 (Gen V+: 맹독 as 맹독)
         return true
     }
     mutating func confuse(_ s: Side, from: Side?, loud: Bool) {
@@ -118,13 +120,13 @@ struct Battle: Equatable, Codable {                                 // Codable: 
         say(s, josa(nm(s), "은", "는") + " 혼란에 빠졌다!")
     }
     /// Stage change on s (by `from`'s move). Simple doubles, Clear Body & co. block drops, Mist too.
-    mutating func boost(_ s: Side, _ k: Int, _ n0: Int, from: Side, loud: Bool = true) {
+    mutating func boost(_ s: Side, _ k: Int, _ n0: Int, from: Side, loud: Bool = true, pierce: Bool = false) {   // pierce: a sound move, through a substitute (Gen VI)
         let x = f(s); guard x.alive else { return }
         var n = x.has(86) ? n0 * 2 : n0
         if n < 0, from != s {
             if sides[si(s)].mist > 0 { if loud { say(s, josa(nm(s), "은", "는") + " 흰안개에 둘러싸여 있다!") }; return }
             if x.has(29) || x.has(73) || (k == 1 && x.has(52)) || (k == 6 && x.has(51)) { if loud { say(s, josa(nm(s), "의", "의") + " " + abilityNames[x.ability]! + " 때문에 " + josa(stat(k), "이", "가") + " 떨어지지 않는다!") }; return }
-            if x.sub > 0 { if loud { say(s, "그러나 실패했다!") }; return }
+            if x.sub > 0, !pierce { if loud { say(s, "그러나 실패했다!") }; return }
         }
         let cur = x.stage[k]
         if (n > 0 && cur >= 6) || (n < 0 && cur <= -6) { if loud { say(s, josa(nm(s), "의", "의") + " " + josa(stat(k), "은", "는") + " 더 " + (n > 0 ? "올라가지" : "떨어지지") + " 않는다!") }; return }

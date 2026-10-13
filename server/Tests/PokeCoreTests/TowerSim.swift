@@ -9,6 +9,7 @@ import Testing
 //   plain — a 51st-to-99th fight;  은 / 금 — the tycoon's teams as they are, and with each legend in each slot (은: the slot's item and side);
 //   101+ — a fight from the 101st, per legend (its last one).
 // TOWER_SIM_TEAMS="50:464,350,249;100:149,350,376": only these tycoon teams (by fight; slot k keeps that team's item, its side by base stats).
+// TOWER_SIM_QUICK: the tycoons as set, without each legend in each slot. CONTENT5=1: with the 5.0 switch on.
 
 private struct SimRNG: RandomNumberGenerator { var s: UInt64; mutating func next() -> UInt64 { s &+= 0x9E3779B97F4A7C15; var z = s; z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9; z = (z ^ (z >> 27)) &* 0x94D049BB133111EB; return z ^ (z >> 31) } }
 
@@ -34,8 +35,11 @@ private func fight(_ ours: [Mon], _ trainer: String, _ foes: [Mon], _ r: inout S
     return b.theirs.allSatisfy { !$0.alive }
 }
 
-@Test func towerSim() throws {
+@Test func towerSim() throws {                                                                // CONTENT5=1: with the 5.0 switch on (docs/plans/18)
     guard let path = ProcessInfo.processInfo.environment["TOWER_SIM"] else { return }
+    try Content.$testing.withValue(ProcessInfo.processInfo.environment["CONTENT5"] != nil) { try towerSim(path) }
+}
+private func towerSim(_ path: String) throws {
     let n = Int(ProcessInfo.processInfo.environment["TOWER_SIM_N"] ?? "") ?? 60
     var saves = try JSONDecoder().decode([String: Walk].self, from: Data(contentsOf: URL(fileURLWithPath: path)))
     if let who = ProcessInfo.processInfo.environment["TOWER_SIM_WHO"] { let k = Set(who.split(separator: ",").map(String.init)); saves = saves.filter { k.contains($0.key) } }
@@ -70,6 +74,7 @@ private func fight(_ ours: [Mon], _ trainer: String, _ foes: [Mon], _ r: inout S
         let team = Tower.tycoonTeams[fightNo]!
         print("TOWERSIM " + show("\(label) as set: " + team.map { monNames[$0.dex] }.joined(separator: "·"), rates { (Tower.tycoon, team.map { Walk.tycoonMon($0, &r) }) }))
         var rows: [(String, Double)] = []
+        if ProcessInfo.processInfo.environment["TOWER_SIM_QUICK"] != nil { continue }               // the teams as set only
         for k in team.indices { for d in Tower.legends {
             var t = team; let phys = baseStats[d][1] >= baseStats[d][3]; t[k] = (d, phys ? 3 : 15, team[k].item, phys)
             let x = rates { (Tower.tycoon, t.map { Walk.tycoonMon($0, &r) }) }

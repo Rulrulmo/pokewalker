@@ -13,6 +13,7 @@ enum Held {
         "불구슬플레이트": "fire", "물방울플레이트": "water", "우레플레이트": "electric", "초록플레이트": "grass", "고드름플레이트": "ice", "주먹플레이트": "fighting",
         "맹독플레이트": "poison", "대지플레이트": "ground", "푸른하늘플레이트": "flying", "이상한플레이트": "psychic", "비단벌레플레이트": "bug", "암석플레이트": "rock",
         "원령플레이트": "ghost", "용의플레이트": "dragon", "공포플레이트": "dark", "강철플레이트": "steel",
+        "정령플레이트": "fairy",                                                                           // 5.0 (content5): Gen VI's; on sale with the Gen VI items
     ]
     /// Halve one super-effective hit of that type (카리열매: any Normal hit), then they're eaten.
     static let resist: [String: String] = [
