@@ -1111,7 +1111,8 @@ import AppKit                                                                   
         return lv.min() == b.lowerBound && lv.max() == b.upperBound && kept && zip(raw.all, c.all).allSatisfy { $0.dex == $1.dex && $0.steps == $1.steps }
     }
     let byWatts = courses.filter { $0.dex == 0 }.map { ($0.watts, courseBands[$0.name]!.upperBound) }.sorted { $0 < $1 }.map(\.1)
-    check(courseBands.count == courses.count && bandsOK && byWatts == byWatts.sorted() && courses.last { $0.dex == 0 }.map { courseBands[$0.name] == 52...65 } == true,
+    check(Set(courses.map(\.name)).isSubset(of: Set(courseBands.keys)) && bandsOK &&   // (5.0: the bands hold 하나 · 칼로스 too, content5's)
+          byWatts == byWatts.sorted() && courses.last { $0.dex == 0 }.map { courseBands[$0.name] == 52...65 } == true,
           "1.14: every course (W and dex) banded — its lowest at the band's bottom, highest at the top, order and species kept, later courses higher",
           "\(courses.filter { c in courseBands[c.name].map { b in c.all.map(\.level).min() != b.lowerBound || c.all.map(\.level).max() != b.upperBound } ?? true }.map { "\($0.name) \($0.all.map(\.level))" }) \(byWatts)")
     check([0, 1, 3, 10, 15].map(Walk.chainLevel) == [0, 2, 6, 20, 20], "1.14: a radar chain's wild ones +2 levels a link, up to +20")
