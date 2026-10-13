@@ -32,7 +32,7 @@ func actName(_ a: Act) -> String {
     case .battle(let c): "battle \(c)"; case .buy(let bp, let i, let l, let s, let q): "buy \(i ?? l.map { "legend \($0)" } ?? s ?? "?") ×\(q)\(bp ? " (BP)" : "")"
     case .use(let i, _, let on): "use \(i)" + (on.map { " on \($0)" } ?? ""); case .sellAll: "sell all"; case .mon(let op): "mon \(op)"; case .course(let c): "course \(c)"; case .greet(let to): "greet \(to)"
     case .tradeOffer(let to, let g, let wnt): "trade offer → \(to) \(g)\(wnt.map { " for \($0)" } ?? "")"; case .tradeAccept(let i, let g): "trade accept #\(i)\(g.map { " with \($0)" } ?? "")"
-    case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"; case .raid(let p, let tier): "raid" + (tier.map { " ★\($0)" } ?? "") + (p.map { " with \($0)" } ?? ""); case .raidBall: "raid ball"; case .raidQuit: "raid quit"
+    case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"; case .raid(let p, let tier): "raid" + (tier.map { " ★\($0)" } ?? "") + (p.map { " with \($0)" } ?? ""); case .raidBall: "raid ball"; case .raidQuit: "raid quit"; case .megaRaid(let p, let tier, let boss): "mega raid #\(boss) ★\(tier)" + (p.map { " with \($0)" } ?? ""); case .megaPick(let s): "mega pick \(s)"
     case .friendRequest(let to): "friend request → \(to)"; case .friendAccept(let f): "friend accept \(f)"; case .friendDecline(let f): "friend decline \(f)"
     case .friendRemove(let n): "friend remove \(n)"; case .marketList(let g, let w, _): "market list \(g) wish \(w)"; case .marketUnlist(let i): "market unlist #\(i)"
     case .marketBid(let l, let g): "market bid #\(l) with \(g)"; case .marketWithdraw(let b): "market withdraw bid #\(b)"; case .marketAccept(let b): "market accept bid #\(b)"
@@ -92,6 +92,10 @@ extension SaveDB {
                     let s = try raidStart(id.key, tier: tier, app: r.app, now: now)
                     if let why = s.why { refused = why } else { row.play.raidBoss = s.boss }
                 }
+                if case .megaRaid(_, let tier, let boss) = r.act, row.play.battle == nil {           // 5.0: a Mega raid run (plan 18 §6.4)
+                    let s = try raidStart(id.key, tier: tier, app: r.app, now: now, mega: boss)
+                    if let why = s.why { refused = why } else { row.play.raidBoss = s.boss }
+                }
                 let fightWeek = row.play.raid
                 var out = Engine.apply(refused == nil ? r.act : .steps, steps: taken, walk: &w, play: &row.play, rng: &g, now: now, ids: &ids)
                 if let why = refused { out.cannot = why }
@@ -101,7 +105,7 @@ extension SaveDB {
                     try raidRunBegan(id.key, rb, party: row.play.party ?? [], now: now)
                 }
                 if fightWeek != nil, let end = out.end, end.bars != nil {                             // 16: a run's fight ended: its bars and balls; a weekly win's mail
-                    try raidRunEnded(id.key, end: end, now: unix)
+                    try raidRunEnded(id.key, end: end, walk: w, now: unix)
                 } else if let week = fightWeek, let dealt = out.end?.dealt {                          // a raid fight ended: its damage to the team's boss
                     let counted = try raidHit(week, key: id.key, name: t.name, lead: out.battle?.mine.first?.mon.dex ?? w.companion.dex, dealt: dealt, now: unix)
                     let bar = max(1, try db.rows("SELECT bar_hp FROM raids WHERE week = :w", ["w": .text(week)]).first?.int("bar_hp") ?? 1)
@@ -148,6 +152,9 @@ extension SaveDB {
                         if let why { out.cannot = why; w = was } else if w != was { out.changed = true }
                     case .raidQuit:                                                                     // 16 §4.2: the ball stage given up
                         try raidRunQuit(id.key, now: now)
+                    case .megaPick(let stone):                                                          // 5.0: the 30 wins' stone (ServerRaid.swift)
+                        let was = w
+                        if let why = try megaPick(id.key, stone, walk: &w, now: now) { out.cannot = why; w = was } else { out.changed = true }
                     default: break
                     }
                 }

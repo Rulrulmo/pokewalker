@@ -84,10 +84,11 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .raidQuit, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
              .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept,
              .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove, .claim, .visitSend, .visitEnd, .duelQueue, .duelQueueCancel, .duelPick,
-             .mailClaim, .mailClaimAll:
+             .mailClaim, .mailClaimAll, .megaPick:
             return nil                                                                              // the server's: other trainers' saves, the inbox, the raid, friends, the board, live battles
         case .duelParty(let uids): return duelParty(uids)
         case .raid(let party, _): return raid(party)                                               // (the tier: the server's boss, p.raidBoss)
+        case .megaRaid(let party, _, _): return raid(party)                                        // (5.0: its boss, the server's, as its Mega)
         }
     }
 
@@ -283,6 +284,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         var b = Battle(wild: rb.boss, party: refs.compactMap { w.mon($0) }); b.seed = r.next()
         b.theirs += Array(repeating: Fighter(rb.boss), count: (rb.tier == nil ? Engine.raidBars : RaidRules.bars) - 1)   // a bar down: it stands up again
         b.raidTier = rb.tier
+        if let k = rb.mega { for i in b.theirs.indices { b.theirs[i].mega = k }; b.megaUsed = [false, true] }   // 5.0: the Mega raid's boss, Mega from the start
         w.see(rb.boss.dex)
         out.beats = b.begin(weather: nil, &r); p.battle = b; p.raid = rb.week; out.battle = b
         return nil

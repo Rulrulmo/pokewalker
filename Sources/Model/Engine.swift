@@ -22,6 +22,8 @@ enum Act: Codable, Equatable {
     case raid(party: [Int]? = nil, tier: Int? = nil), raidBall    // the raid (12 §4): a fight with this week's boss (1칸 of power; 3.8: the 1–3 picked, 14 §4); a ball once the team beat it
                                                                  // 4.0 (docs/plans/16): a run at a tier (RaidRules.tiers), a ball at that run's boss
     case raidQuit                                                // 4.0: give up a run's ball stage (its balls go, the boss with them)
+    case megaRaid(party: [Int]? = nil, tier: Int, boss: Int)     // 5.0 (docs/plans/18 §6.4): a Mega raid run at a tier against the week's boss 0 / 1
+    case megaPick(stone: String)                                 // 5.0: the 30 wins' stone, one of the week's two
     case friendRequest(to: String), friendAccept(from: String), friendDecline(from: String), friendRemove(name: String)   // 친구 (12 §2.4, 3.5)
     case marketList(give: Int, wish: [Int], note: String? = nil), marketUnlist(id: Int)    // 교환 게시판 (12 §3.3, 3.5): put one up (wished species shown; 3.8: a note), take it down
     case marketBid(listing: Int, give: Int), marketWithdraw(bid: Int), marketAccept(bid: Int)   // offer one of ours for it, take that back; the poster picks one
@@ -113,7 +115,7 @@ struct Play: Codable, Equatable {
     var raidBoss: RaidBoss? = nil                                // this week's boss as the server has it, for a raid act (set by the server)
 }
 /// 12 §4: the week's boss and what's left of the team's HP. 4.0 (16): tier set = a run's own boss (left unused).
-struct RaidBoss: Codable, Equatable { var week: String; var boss: Mon; var left: Int; var tier: Int? = nil }
+struct RaidBoss: Codable, Equatable { var week: String; var boss: Mon; var left: Int; var tier: Int? = nil; var mega: Int? = nil }   // mega: the Mega raid's form (5.0)
 /// POST /v2/act. steps: walked first, whatever the act (capped by the server first: `taken`).
 struct ActReq: Codable, Equatable { var id, session: String; var seq: Int; var steps: Int? = nil; var act: Act; var app: String? = nil }   // app: news kinds it knows (12 §1)
 struct ActReply: Codable { var rev: Int; var walk: Walk? = nil; var taken: Int? = nil; var out: Outcome }

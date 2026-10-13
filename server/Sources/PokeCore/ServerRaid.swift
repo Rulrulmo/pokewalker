@@ -13,8 +13,9 @@ let raidSchema = """
       PRIMARY KEY (week, key));
     CREATE TABLE IF NOT EXISTS raid_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, week TEXT NOT NULL, key TEXT NOT NULL, day TEXT NOT NULL, tier INTEGER NOT NULL,
       boss TEXT NOT NULL, party TEXT NOT NULL, bars INTEGER NOT NULL DEFAULT 0, won INTEGER NOT NULL DEFAULT 0, balls INTEGER NOT NULL DEFAULT 0,
-      caught INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL, ended_at INTEGER);
+      caught INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL, ended_at INTEGER, kind TEXT);
     CREATE INDEX IF NOT EXISTS raid_runs_key ON raid_runs (key, week);
+    CREATE TABLE IF NOT EXISTS mega_picks (key TEXT NOT NULL, week TEXT NOT NULL, stone TEXT NOT NULL, at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
     """
 let raidRotation = [249, 382, 383, 384, 483, 484, 487]                    // 루기아 가이오가 그란돈 레쿠쟈 디아루가 펄기아 기라티나 (ISO week % 7)
@@ -159,7 +160,17 @@ extension SaveDB {
         try db.rows("INSERT INTO settings (name, value) VALUES ('raid_runs_from', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(String(unix))])
     }
     /// Before a raid act: the run's boss, or why not (the act then walks its steps only). Before W43 an old app fights the team's boss as ever.
-    func raidStart(_ key: String, tier: Int?, app: String?, now: Date) throws -> (boss: RaidBoss?, why: String?) {
+    func raidStart(_ key: String, tier: Int?, app: String?, now: Date, mega: Int? = nil) throws -> (boss: RaidBoss?, why: String?) {
+        if let k = mega {                                                                         // 5.0 (plan 18 §6.4): a Mega raid run
+            guard Content.gen6, knows(app, MegaRaid.app) else { return (nil, "메가 레이드는\n아직 열리지 않았어요") }
+            try closeCutRuns(key, now: now)
+            if try raidPending(key, now: now) != nil { return (nil, raidPendingWhy) }
+            if try raidRunsToday(key, now: now) >= RaidRules.perDay { return (nil, "오늘은 \(RaidRules.perDay)판을\n다 했어요") }
+            guard let t = RaidRules.tier(tier) else { return (nil, "난이도를\n골라 주세요") }
+            guard let b = megaWeek(now)[safe: k] else { return (nil, "그 보스는\n이번 주에 없어요") }
+            var g = SystemRandomNumberGenerator()
+            return (RaidBoss(week: raidWeek(key, now), boss: MegaRaid.boss(b, t, &g), left: 1, tier: t.tier, mega: b.form), nil)
+        }
         guard try raidRuns(key, now) else {
             return knows(app, RaidRules.app) ? (nil, "새 레이드는\n곧 열려요") : (try raidBoss(key, now: now), nil)
         }
@@ -179,18 +190,26 @@ extension SaveDB {
     /// A run just started (the engine took the boss): its row, open until the fight ends.
     func raidRunBegan(_ key: String, _ rb: RaidBoss, party: [Int], now: Date) throws {
         let e = JSONEncoder(); e.outputFormatting = .sortedKeys
-        try db.rows("INSERT INTO raid_runs (week, key, day, tier, boss, party, at) VALUES (:w, :k, :d, :t, :b, :p, :now)",
-                    ["w": .text(rb.week), "k": .text(key), "d": .text(Walk.key(now)), "t": .int(rb.tier ?? 0),
+        try db.rows("INSERT INTO raid_runs (week, key, day, tier, boss, party, at, kind) VALUES (:w, :k, :d, :t, :b, :p, :now, :kind)",
+                    ["w": .text(rb.week), "k": .text(key), "d": .text(Walk.key(now)), "t": .int(rb.tier ?? 0), "kind": rb.mega == nil ? .null : .text("mega"),
                      "b": .text(String(decoding: try e.encode(rb.boss), as: UTF8.self)), "p": .text(String(decoding: try e.encode(party), as: UTF8.self)),
                      "now": .int(Int(now.timeIntervalSince1970))])
     }
     /// The fight ended (the engine's end): bars, the win, its balls (the ball stage); a 1st · 3rd · 7th win of the week mails its reward.
-    func raidRunEnded(_ key: String, end: BattleEnd, now: Int) throws {
-        guard let run = try db.rows("SELECT id, week FROM raid_runs WHERE key = :k AND ended_at IS NULL ORDER BY id DESC LIMIT 1", ["k": .text(key)]).first,
+    func raidRunEnded(_ key: String, end: BattleEnd, walk w: Walk? = nil, now: Int) throws {
+        guard let run = try db.rows("SELECT id, week, kind, tier, boss FROM raid_runs WHERE key = :k AND ended_at IS NULL ORDER BY id DESC LIMIT 1", ["k": .text(key)]).first,
               let id = run.int("id"), let week = run.text("week") else { return }
-        let won = end.result == "won"
+        let won = end.result == "won", mega = run.text("kind") == "mega"
         try db.rows("UPDATE raid_runs SET bars = :b, won = :w, balls = :n, ended_at = :now WHERE id = :id",
-                    ["b": .int(end.bars ?? 0), "w": .int(won ? 1 : 0), "n": .int(end.balls ?? RaidRules.balls), "now": .int(now), "id": .int(id)])
+                    ["b": .int(end.bars ?? 0), "w": .int(won ? 1 : 0), "n": .int(mega ? 0 : end.balls ?? RaidRules.balls), "now": .int(now), "id": .int(id)])   // (a Mega raid: no balls)
+        if mega, won, let tier = run.int("tier"), let stone = run.text("boss").flatMap({ try? JSONDecoder().decode(Mon.self, from: Data($0.utf8)) })?.item {
+            var g = SystemRandomNumberGenerator()
+            if Int.random(in: 0..<100, using: &g) < MegaRaid.stoneOdds[max(0, min(4, tier - 1))] {    // 5.0: the stone, or BP for one had
+                let had = w.map { MegaRaid.stonesHad($0).contains(stone) } ?? false
+                try sendMail(key, kind: "raid", from: "메가 레이드", title: had ? "\(stone) 대신 BP" : "\(stone)를 얻었다!",
+                             gifts: had ? [.bp(amount: MegaRaid.duplicateBP(tier))] : [.items(name: stone, count: 1)], now: now)
+            }
+        }
         try db.rows("UPDATE raid_runs SET ended_at = :now WHERE key = :k AND ended_at IS NULL", ["now": .int(now), "k": .text(key)])   // (none should be)
         guard won else { return }
         let wins = try db.rows("SELECT count(*) AS n FROM raid_runs WHERE key = :k AND week = :w AND won = 1", ["k": .text(key), "w": .text(week)]).first?.int("n") ?? 0
@@ -254,7 +273,7 @@ extension SaveDB {
             var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
             let ends = Int(cal.dateInterval(of: .weekOfYear, for: now)?.end.timeIntervalSince1970 ?? now.timeIntervalSince1970)
             let reset = Int(cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now))?.timeIntervalSince1970 ?? now.timeIntervalSince1970)
-            let runs = try db.rows("SELECT boss, tier, bars, won, caught, at FROM raid_runs WHERE key = :k AND week = :w AND ended_at IS NOT NULL ORDER BY id DESC",
+            let runs = try db.rows("SELECT boss, tier, bars, won, caught, at FROM raid_runs WHERE key = :k AND week = :w AND ended_at IS NOT NULL AND kind IS NULL ORDER BY id DESC",
                                    ["k": .text(key), "w": .text(week)]).compactMap { x -> RaidRunRow? in
                 guard let b = x.text("boss").flatMap({ try? JSONDecoder().decode(Mon.self, from: Data($0.utf8)) }) else { return nil }
                 return RaidRunRow(dex: b.dex, tier: x.int("tier") ?? 0, shiny: b.shiny == true, bars: x.int("bars") ?? 0, won: x.int("won") == 1, caught: x.int("caught") == 1, at: x.int("at") ?? 0)
@@ -285,6 +304,7 @@ extension SaveDB {
     }
     /// POST /v2/raid: by the app (the body's `app`): 4.0's lobby, or the old one (the team's boss before W43; harmless after).
     func raidLobby(_ r: RaidReq, now: Date) -> Reply {
+        if r.kind == "mega", Content.gen6, knows(r.app, MegaRaid.app) { return megaRaidLobby(r, now: now) }   // 5.0
         if knows(r.app, RaidRules.app) { return raidRunLobby(r, now: now) }
         guard let id = trainerID(r.id), (try? raidRuns(id.key, now)) == false else { return raidOldLobby(r, now: now) }
         return raidLobby(TeamReq(id: r.id, session: r.session), now: now)
@@ -307,4 +327,47 @@ extension SaveDB {
         }
         return table(["id", "at", "who", "week", "tier", "boss", "bars", "won", "balls", "caught"], rows)
     }
+
+    // MARK: 5.0: the Mega raid (docs/plans/18 §6.4)
+    /// This ISO week's two Mega raid bosses (the legend raid's own week number).
+    func megaWeek(_ now: Date) -> [MegaBoss] { var cal = Calendar(identifier: .iso8601); cal.timeZone = .current; return MegaRaid.week(cal.component(.weekOfYear, from: now)) }
+    /// The pick's count: every Mega raid win (any week, boss, tier), 30 off for each stone picked.
+    func megaPity(_ key: String) throws -> Int {
+        let wins = try db.rows("SELECT count(*) AS n FROM raid_runs WHERE key = :k AND kind = 'mega' AND won = 1", ["k": .text(key)]).first?.int("n") ?? 0
+        let picks = try db.rows("SELECT count(*) AS n FROM mega_picks WHERE key = :k", ["k": .text(key)]).first?.int("n") ?? 0
+        return wins - MegaRaid.pity * picks
+    }
+    /// megaPick: one of the week's two stones not had yet, for 30 wins. Returns why not (w unchanged), or nil with the stone in the bag.
+    func megaPick(_ key: String, _ stone: String, walk w: inout Walk, now: Date) throws -> String? {
+        guard Content.gen6, megaWeek(now).contains(where: { $0.stone == stone }) else { return "이번 주 보스의\n스톤이 아니에요" }
+        guard !MegaRaid.stonesHad(w).contains(stone) else { return "이미 가지고 있어요" }
+        guard try megaPity(key) >= MegaRaid.pity else { return "아직 \(MegaRaid.pity)승이\n안 됐어요" }
+        try db.rows("INSERT INTO mega_picks (key, week, stone, at) VALUES (:k, :w, :s, :now)",
+                    ["k": .text(key), "w": .text(raidWeek(key, now)), "s": .text(stone), "now": .int(Int(now.timeIntervalSince1970))])
+        w.bag.append(stone); return nil
+    }
+    /// POST /v2/raid, kind "mega": the Mega raid's lobby.
+    func megaRaidLobby(_ r: RaidReq, now: Date) -> Reply {
+        readGate(r.id, r.session) { key in
+            try closeCutRuns(key, now: now)
+            let week = raidWeek(key, now), had = (try db.rows("SELECT walk FROM trainers WHERE key = :k", ["k": .text(key)]).first?.text("walk").flatMap(decodeWalk)).map(MegaRaid.stonesHad) ?? []
+            var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
+            let ends = Int(cal.dateInterval(of: .weekOfYear, for: now)?.end.timeIntervalSince1970 ?? now.timeIntervalSince1970)
+            let reset = Int(cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now))?.timeIntervalSince1970 ?? now.timeIntervalSince1970)
+            let rows = try db.rows("SELECT boss, tier, bars, won, caught, at FROM raid_runs WHERE key = :k AND week = :w AND ended_at IS NOT NULL AND kind = 'mega' ORDER BY id DESC",
+                                   ["k": .text(key), "w": .text(week)])
+            let runs = rows.compactMap { x -> RaidRunRow? in
+                guard let b = x.text("boss").flatMap({ try? JSONDecoder().decode(Mon.self, from: Data($0.utf8)) }) else { return nil }
+                return RaidRunRow(dex: b.dex, tier: x.int("tier") ?? 0, shiny: false, bars: x.int("bars") ?? 0, won: x.int("won") == 1, caught: false, at: x.int("at") ?? 0)
+            }
+            let mine = RaidWeek(runs: runs.count, wins: runs.filter(\.won).count, best: runs.filter(\.won).map(\.tier).max())
+            func mark(_ bs: [MegaBoss]) -> [MegaBoss] { bs.map { var b = $0; b.had = had.contains(b.stone); return b } }
+            let lobby = MegaRaidLobby(week: week, bosses: mark(megaWeek(now)), next: mark(megaWeek(now.addingTimeInterval(7 * 86400))), ends: ends,
+                                      today: RaidToday(used: try raidRunsToday(key, now: now), max: RaidRules.perDay), resetAt: reset, mine: mine, runs: runs,
+                                      pity: max(0, try megaPity(key)), pityNeed: MegaRaid.pity, odds: MegaRaid.stoneOdds, tiers: RaidRules.tiers)
+            let e = JSONEncoder(); e.outputFormatting = .sortedKeys
+            return try e.encode(lobby)
+        }
+    }
 }
+

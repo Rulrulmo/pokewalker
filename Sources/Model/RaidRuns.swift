@@ -60,7 +60,7 @@ struct RaidLobby: Codable, Equatable {
     var opens: Int? = nil
 }
 /// What /v2/raid takes: who, and (4.0 on) the app's version (else the User-Agent's).
-struct RaidReq: Codable, Equatable { var id, session: String; var app: String? = nil }
+struct RaidReq: Codable, Equatable { var id, session: String; var app: String? = nil; var kind: String? = nil }   // kind "mega": the Mega raid's lobby (5.0)
 
 extension Mon {
     /// These four with its own move (RaidRules.signature) in the place of the weakest attack (towerScore) if it isn't one of them.
@@ -72,4 +72,44 @@ extension Mon {
         out[hits.min { towerScore(moveTable[ms[$0]]!) < towerScore(moveTable[ms[$1]]!) }!] = sig
         return out
     }
+}
+
+// MARK: - 5.0 (content5): the Mega raid (docs/plans/18 §6.4)
+// Apart from the raid: its own menu and its own two bosses a week, the same power and 3 a day (both raids count them, and the weekly mail's
+// wins); the same tiers. The boss comes as its Mega (or 원시) form; no balls — a win may give that boss's stone (★1 3 % … ★5 20 %; one had:
+// ★×5 BP instead), and every 30 Mega raid wins (any boss, any tier) one stone of the week's two is the trainer's to pick (megaPick).
+enum MegaRaid {
+    static let app = "5.0"
+    /// The rotation (monForms' order): every Mega with a stone but 메가디안시 (not in 5.0), and both 원시 — 48 (메가레쿠쟈 has none: 화룡점정).
+    static let bosses: [MegaBoss] = monForms.keys.sorted().flatMap { d -> [MegaBoss] in
+        d == 719 ? [] : monForms[d]!.enumerated().compactMap { k, f in (f.kind == .mega || f.kind == .primal) ? f.item.map { MegaBoss(dex: d, form: k + 1, stone: $0) } : nil }
+    }
+    /// An ISO week's two (24 weeks a round).
+    static func week(_ isoWeek: Int) -> [MegaBoss] { [bosses[(2 * isoWeek) % bosses.count], bosses[(2 * isoWeek + 1) % bosses.count]] }
+    static let stoneOdds = [3, 5, 8, 10, 20]                    // % a win, ★1–★5 (the user, 10-13)
+    static let pity = 30                                        // wins for one pick
+    static func duplicateBP(_ tier: Int) -> Int { 5 * tier }
+    /// Its Mega's own move: 메가뮤츠 사이코브레이크, 원시가이오가 근원의파동, 원시그란돈 단애의칼 (in the place of the weakest attack).
+    static let signature: [Int: Int] = [150: 540, 382: 618, 383: 619]
+    /// A run's boss: the species at the tier's level and IVs with its stone (it fights as its Mega: RaidBoss.mega).
+    static func boss<R: RandomNumberGenerator>(_ b: MegaBoss, _ t: RaidTier, _ r: inout R) -> Mon {
+        var m = Mon.wild(b.dex, level: t.level, perfect: t.perfect, &r); m.item = b.stone
+        if let sig = signature[b.dex] {
+            var ms = m.moves
+            if !ms.contains(sig) { if ms.count < 4 { ms.append(sig) } else if let k = ms.indices.filter({ !moveTable[ms[$0]]!.isStatus }).min(by: { m.towerScore(moveTable[ms[$0]]!) < m.towerScore(moveTable[ms[$1]]!) }) { ms[k] = sig } else { ms[3] = sig } }
+            m.known = ms
+        }
+        return m
+    }
+    /// The stones a trainer has: in the bag, on the walker, held by any of theirs.
+    static func stonesHad(_ w: Walk) -> Set<String> { Set(w.bag + w.items + ([w.companion] + w.caught + w.box).compactMap(\.item)) }
+}
+struct MegaBoss: Codable, Equatable { var dex, form: Int; var stone: String; var had: Bool? = nil }
+/// POST /v2/raid with kind "mega" (5.0): the week's two (had: that stone already), next week's, the day's runs (both raids'), the week's Mega
+/// runs, the pick's count (pity of pityNeed), the odds by tier.
+struct MegaRaidLobby: Codable, Equatable {
+    var week: String; var bosses: [MegaBoss]; var next: [MegaBoss]; var ends: Int
+    var today: RaidToday; var resetAt: Int
+    var mine: RaidWeek; var runs: [RaidRunRow]
+    var pity: Int; var pityNeed: Int; var odds: [Int]; var tiers: [RaidTier]
 }
