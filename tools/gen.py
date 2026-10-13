@@ -91,6 +91,20 @@ def get(name):
         open(p + '.part', 'wb').write(urllib.request.urlopen(req).read()); os.replace(p + '.part', p)
     return p
 
+def form_rows():
+    """monForms' forms (5.0: Mon.form 1...; the pictures after the species'), one list for the tables and the pictures: [(row, pokemon id, species,
+    kind)], pokemon_forms.csv in (pokemon id, form order, id) order; not a species' own, nor what 5.0 leaves out (past ORAS, 피카츄's, 아르세우스 ·
+    게노세크트's, the 귀 · 영원의 꽃 ones). A species' forms are numbered in this order."""
+    species = {int(r['id']): int(r['species_id']) for r in csv.DictReader(open(get('pokemon.csv')))}
+    out = []
+    for r in sorted(csv.DictReader(open(get('pokemon_forms.csv'))), key=lambda r: (int(r['pokemon_id']), int(r['form_order']), int(r['id']))):
+        pid, d = int(r['pokemon_id']), species[int(r['pokemon_id'])]
+        if d > N or int(r['introduced_in_version_group_id']) > 16 or r['identifier'] in {'pichu-spiky-eared', 'floette-eternal'} or d in (25, 493, 649): continue
+        if r['is_default'] == '1' and pid < 10000: continue                                # the species itself
+        kind = 'mega' if r['is_mega'] == '1' else 'primal' if r['identifier'].endswith('-primal') else 'battle' if r['is_battle_only'] == '1' else 'stored' if pid > 10000 else 'look'
+        out.append((r, pid, d, kind))
+    return out
+
 if ARTWORK:   # `python3 tools/gen.py data`: the tables only (Sources/Data), the Resources/*.bin left as they are; `art`: the pictures only
     from concurrent.futures import ThreadPoolExecutor
     def rgba(name): return Image.open(get(name)).convert('RGBA')
@@ -102,20 +116,14 @@ if ARTWORK:   # `python3 tools/gen.py data`: the tables only (Sources/Data), the
         """A DS frame (palette index 0 = clear) through a palette, as RGBA."""
         im = im.crop(box); out = Image.new('RGBA', im.size); out.putdata([pal[i] + (255,) if i else (0, 0, 0, 0) for i in im.getdata()]); return out
 
-    # --- the pictures' numbers ("art": Pixels.swift's art(dex, form)): 1-N the species, then every form of the tables' monForms in (species, form)
-    # order (gen.py data's own filter, below: the two must agree, SelfTest counts them). Where each comes from:
+    # --- the pictures' numbers ("art": Pixels.swift's artIndex(dex, form)): 1-N the species, then every form of the tables' monForms in (species,
+    # form) order (form_rows, as the tables'; SelfTest counts them). Where each comes from:
     #   1-493 and their forms (not the Megas): HGSS's as in 4.1 (PokeAPI; teobz's walking); a form by PokeAPI's own name (10008 = 히트로토무, 201-b = 안농 B, 422-east)
     #   494-721, every Mega and primal, the forms past 493: hg-engine (80x80 DS sprites made as HGSS's: front.png's palette the normal, back.png's
     #   the shiny; its box icon; its walking sprite, 2 frames a direction), and Showdown's gen5ani (BW's animations, Smogon's in their style) where there's one
-    pkr, spi = {int(r['id']): r for r in rows('pokemon.csv')}, {int(r['id']): r['identifier'] for r in rows('pokemon_species.csv')}
-    ART, forms = [None] + [{'dex': d, 'ident': spi[d], 'kind': None, 'pid': d} for d in range(1, N + 1)], []
-    for r in sorted(rows('pokemon_forms.csv'), key=lambda r: (int(r['pokemon_id']), int(r['form_order']), int(r['id']))):
-        pid, d = int(r['pokemon_id']), int(pkr[int(r['pokemon_id'])]['species_id'])
-        if d > N or int(r['introduced_in_version_group_id']) > 16 or r['identifier'] in {'pichu-spiky-eared', 'floette-eternal'} or d in (25, 493, 649): continue
-        if r['is_default'] == '1' and pid < 10000: continue
-        kind = 'mega' if r['is_mega'] == '1' else 'primal' if r['identifier'].endswith('-primal') else 'battle' if r['is_battle_only'] == '1' else 'stored' if pid > 10000 else 'look'
-        forms.append({'dex': d, 'ident': r['identifier'], 'kind': kind, 'pid': pid})
-    ART += sorted(forms, key=lambda a: a['dex'])                                       # stable: a species' forms in their own order
+    spi = {int(r['id']): r['identifier'] for r in rows('pokemon_species.csv')}
+    forms = [{'dex': d, 'ident': r['identifier'], 'kind': kind, 'pid': pid} for r, pid, d, kind in form_rows()]
+    ART = [None] + [{'dex': d, 'ident': spi[d], 'kind': None, 'pid': d} for d in range(1, N + 1)] + sorted(forms, key=lambda a: a['dex'])   # (stable: a species' forms in their order)
     have5 = set(re.findall(r'href="\./([^"/]+)\.gif"', open(get('gen5ani/index.html')).read()))
     for a in ART[1:]:
         d, i, k = a['dex'], a['ident'], a['kind']
