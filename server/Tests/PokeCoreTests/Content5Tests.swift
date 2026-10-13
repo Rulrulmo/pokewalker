@@ -44,7 +44,7 @@ private func learns(_ d: Int, _ level: Int, _ move: Int) -> Bool { let l = learn
 @Test func content5Evolutions() {
     gen6 {
         func evo(_ a: Int, _ b: Int) -> [Evo] { evolutions.filter { $0.from == a && $0.to == b } }
-        #expect(evo(133, 700).count == 1 && evo(133, 700)[0].way == .friend)                    // 님피아: steps together, not any level-up
+        #expect(evo(133, 700).count == 1 && evo(133, 700)[0].way == .friend && evo(133, 700)[0].moveType == "fairy")   // 님피아: steps together and a Fairy move
         #expect(Set(evo(677, 678).map(\.female)) == [true, false] && evo(665, 666).first?.level == 12)   // 냐오닉스 both; 비비용 at all
         #expect(evo(674, 675).first?.partyType == "dark" && evo(705, 706).first?.weather == "rain" && evo(686, 687).first?.level == 30)
         #expect(evo(588, 589).first?.way == .trade && evo(682, 683).first?.item == "향기주머니" && evo(696, 697).first?.time == "day")
@@ -61,10 +61,18 @@ private func learns(_ d: Int, _ level: Int, _ move: Int) -> Bool { let l = learn
         w.weather = .rain
         #expect(w.levelEvolution(t0)?.to == 706)
         w.weather = nil
+        // 님피아 (the user, 10-14: as the games): 1만 걸음 and a Fairy move → 님피아, before 에브이 · 블래키; without one, by day 에브이, by night 블래키
         var e = Mon(dex: 133, level: 20, female: false); e.walked = friendSteps
-        w.companion = e; let a = w.levelEvolution(t0)?.to
-        e.walked = friendSteps + 1; w.companion = e; let b = w.levelEvolution(t0)?.to
-        #expect(w.isDay && Set([a, b]) == [196, 700])                                           // by day: 에브이 or 님피아
+        #expect(Mon(dex: 133, level: 9, female: false).moves.contains(186) && moveTable[186]?.type == "fairy" && e.relearnable.contains(186))   // 천사의키스 at 9
+        e.known = [33, 39, 28, 98]
+        let plain = [friendSteps, friendSteps + 1].map { n -> Int? in e.walked = n; w.companion = e; return w.levelEvolution(t0)?.to }
+        #expect(w.isDay && plain == [196, 196])
+        e.known = [33, 39, 186, 98]
+        let fairy = [friendSteps, friendSteps + 1].map { n -> Int? in e.walked = n; w.companion = e; return w.levelEvolution(t0)?.to }
+        #expect(fairy == [700, 700])
+        w.total = 650; #expect(!w.isDay && w.levelEvolution(t0)?.to == 700)                     // by night too
+        e.known = [33, 39, 28, 98]; w.companion = e; #expect(w.levelEvolution(t0)?.to == 197)
+        e.walked = friendSteps - 1; e.known = [186]; w.companion = e; #expect(w.levelEvolution(t0) == nil)   // the steps first
     }
     var w = Engine.fresh(now: t0, starter: firstUID); var e = Mon(dex: 133, level: 20, female: false); e.walked = friendSteps + 1; w.companion = e
     #expect(w.levelEvolution(t0)?.to == 196)                                                   // off: no 님피아
@@ -472,7 +480,7 @@ private func formed(_ dex: Int, _ f: Int?, _ level: Int = 50) -> Mon { var m = m
         for _ in 0..<600 { let f = w.towerFoes(&r); #expect(Tower.isLegend(f.foes[2].dex)); if Tower.legendsGen6Added.contains(f.foes[2].dex) { newOnes.insert(f.foes[2].dex) } }
         #expect(newOnes.count >= 15 && Tower.legendFoes.count == 54 && Tower.isLegend(646) && Tower.legends.count == 35)   // the 100-win pick stays 35
         w.towerStreak = 49; let silver = w.towerFoes(&r); #expect(silver.foes.map(\.dex) == [464, 80, 249] && silver.foes[1].item == "야도란나이트")
-        w.towerStreak = 99; let gold = w.towerFoes(&r); #expect(gold.foes.map(\.dex) == [149, 248, 486] && gold.foes[1].item == "마기라스나이트")
+        w.towerStreak = 99; let gold = w.towerFoes(&r); #expect(gold.foes.map(\.dex) == [149, 376, 486] && gold.foes[1].item == "메타그로스나이트")
         #expect(Tower.megaFoes.count == 42 && RaidRules.signature[643] == 558)
     }
     #expect(!Tower.isLegend(646) && Tower.legendFoes.count == 35 && Tower.tycoonTeams[50]![1].dex == 350)   // off

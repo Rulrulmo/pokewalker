@@ -50,6 +50,7 @@ enum EvoWay { case level, friend, item, trade }
 struct Evo {
     let from, to: Int; let way: EvoWay; let level: Int; let item: String?; let female: Bool?; let time: String?; let place: String?; let party: Int?
     var partyType: String? = nil, weather: String? = nil   // 5.0 (plan 18 §2.6): 판짱 (a Dark type on the walker or in the box), 미끄네일 (rain)
+    var moveType: String? = nil                            // 5.0: 님피아 — it knows a move of this type (Fairy), and goes before 에브이 · 블래키
 }
 let friendSteps = 10_000                 // stands in for friendship 220 (Gen IV: +1 per 128 steps from ~70 is ~19k; levels add more)
 

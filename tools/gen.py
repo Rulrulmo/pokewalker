@@ -368,8 +368,9 @@ for r in csv.DictReader(open(get('pokemon_evolution.csv'))):
     party = int(r['party_species_id']) if r['party_species_id'] else None
     ptype = tname[r['party_type_id']] if r['party_type_id'] else None                   # 판짱: a Dark type on the walker or in the box
     rain = 'rain' if r['needs_overworld_rain'] == '1' else None                          # 미끄네일: the walk's weather is rain
+    mtype = tname[r['known_move_type_id']] if r['known_move_type_id'] else None        # 님피아: it knows a Fairy move (and goes first)
     if r['location_id'] and not place: continue
-    evos.add((frm, to, way, level, item, fem, time, place, party, ptype, rain))
+    evos.add((frm, to, way, level, item, fem, time, place, party, ptype, rain, mtype))
 evos = sorted(evos)
 tko = {}
 for r in csv.DictReader(open(get('type_names.csv'))):
@@ -384,9 +385,9 @@ with open('Sources/Data/Data.swift', 'w') as f:
     f.write('let expTable: [[Int]] = [[], ' + ', '.join('[0, ' + ', '.join(str(exp[g][l]) for l in range(1, 101)) + ']' for g in range(1, 7)) + ']   // [rate][level]\n')
     f.write('let typeKo: [String: String] = [' + ', '.join(f'{s(k)}: {s(v)}' for k, v in sorted(tko.items()) if k in TYPES or k == 'fairy') + ']\n')
     f.write('let evolutionsGen4: [Evo] = [\n')
-    def evo(frm, to, way, level, item, fem, time, place, party, ptype, rain):
+    def evo(frm, to, way, level, item, fem, time, place, party, ptype, rain, mtype):
         return (f'    Evo(from: {frm}, to: {to}, way: .{way}, level: {level}, item: {s(item) if item else "nil"}, female: {fem}, time: {s(time) if time else "nil"}, place: {s(place) if place else "nil"}, party: {party or "nil"}'
-                + (f', partyType: {s(ptype)}' if ptype else '') + (f', weather: {s(rain)}' if rain else '') + '),\n')
+                + (f', partyType: {s(ptype)}' if ptype else '') + (f', weather: {s(rain)}' if rain else '') + (f', moveType: {s(mtype)}' if mtype else '') + '),\n')
     for e in evos:
         if e[1] <= N4: f.write(evo(*e))
     f.write(']\n')
@@ -551,10 +552,11 @@ with open('Sources/Data/Data.swift', 'w') as f:
             oras.setdefault(d, set()).add((int(r['level']), i))
     for d in range(N4 + 1, N + 1): learn[d] = oras.get(d, set())
     # the 20 retyped keep HGSS's and add ORAS's new Fairy moves (천사의키스 · 애교부리기 · 달빛 were already there, as Normal);
-    # 픽시 문포스 46 and 토게키스 요정의바람 1 (stone evolutions: what 삐삐 · 토게틱 learn) are the user's (plan 18 §2.1)
+    # 픽시 문포스 46 and 토게키스 요정의바람 1 (stone evolutions: what 삐삐 · 토게틱 learn) are the user's (plan 18 §2.1); so is 이브이's 천사의키스
+    # at 9 (님피아 wants a Fairy move, and HGSS's 이브이 learns none)
     fairy6 = {int(r['id']) for r in csv.DictReader(open(get('moves.csv'))) if int(r['id']) > 467 and int(r['generation_id']) <= 6 and tname[r['type_id']] == 'fairy'}
     fairyAdd = {d: {(l, i) for l, i in oras.get(d, set()) if i in fairy6} for d in retyped}
-    fairyAdd[36].add((46, 585)); fairyAdd[468].add((1, 584))
+    fairyAdd[36].add((46, 585)); fairyAdd[468].add((1, 584)); fairyAdd[133] = {(9, 186)}
     for add in fairyAdd.values():                                                       # ORAS lists 가디안's 문포스 · 입치트's 치근거리기 at 1 too: the real level only
         add -= {(1, i) for l, i in add if l > 1}
     learn6 = {d: learn.get(d, set()) | add for d, add in fairyAdd.items() if add}

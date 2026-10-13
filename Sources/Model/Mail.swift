@@ -68,10 +68,10 @@ enum Tower {
     /// Its teams here only (the user: 은 · 금), a legend in each (plan 17: 은 루기아, Silver's; 금 as DP's 금 — 망나뇽 · 밀로틱 · 레지기가스).
     static let tycoon = "타워 타이쿤", tycoonFights: Set<Int> = [50, 100]
     static var tycoonTeams: [Int: [(dex: Int, nature: Int, item: String, physical: Bool)]] { Content.gen6 ? tycoonTeamsGen6 : tycoonTeamsGen4 }
-    /// 5.0 (plan 18 §6.3): 밀로틱's place a Mega — 은 메가야도란, 금 메가마기라스 (as hard as 4.1's in the sims, §11.4).
+    /// 5.0 (plan 18 §6.3): 밀로틱's place a Mega — 은 메가야도란, 금 메가메타그로스 (the user, 10-14: 메가마기라스 left 금 at 3 % in the sims, §11.4).
     static let tycoonTeamsGen6: [Int: [(dex: Int, nature: Int, item: String, physical: Bool)]] = [
         50: [(464, 3, "기합의띠", true), (80, 15, "야도란나이트", false), (249, 3, "생명의구슬", true)],
-        100: [(149, 3, "생명의구슬", true), (248, 3, "마기라스나이트", true), (486, 3, "구애머리띠", true)],
+        100: [(149, 3, "생명의구슬", true), (376, 3, "메타그로스나이트", true), (486, 3, "구애머리띠", true)],
     ]
     static let tycoonTeamsGen4: [Int: [(dex: Int, nature: Int, item: String, physical: Bool)]] = [
         50: [(464, 3, "기합의띠", true), (350, 15, "먹다남은음식", false), (249, 3, "생명의구슬", true)],     // 은: 거대코뿌리 · 밀로틱 · 루기아 (망나뇽's place)

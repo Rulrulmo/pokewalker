@@ -196,14 +196,17 @@ struct Walk: Codable, Equatable {
         if let p = e.party, !(caught + box).contains(where: { $0.dex == p }) { return false }
         if let t = e.partyType, !(caught + box).contains(where: { $0.typing.contains(t) }) { return false }
         if let w = e.weather, (weather ?? .sunny).rawValue != w { return false }
+        if let t = e.moveType, !m.moves.contains(where: { moveTable[$0]?.type == t }) { return false }
         if let p = e.place { switch p { case "cave": if here.art != .cave { return false }; case "forest": if here.art != .forest { return false }; default: if here.name != "얼음 산길" { return false } } }
         return true
     }
-    /// What the companion (or the one at ref) becomes on this level-up, if anything. Several fits (Wurmple, Tyrogue): picked by its steps, fixed per moment.
+    /// What the companion (or the one at ref) becomes on this level-up, if anything. Several fits (Wurmple, Tyrogue): picked by its steps, fixed per moment;
+    /// one that asks for a move's type goes first (5.0: 님피아 over 에브이 · 블래키, as the games — 기술 바꾸기 decides).
     func levelEvolution(_ now: Date, ref: Int = -1) -> Evo? {
         guard let m = mon(ref), m.item != "변함없는돌" else { return nil }                             // 변함없는돌: never by level or friendship
         let fits = evolutions.filter { $0.from == m.dex && ($0.way == .level && m.level >= $0.level || $0.way == .friend && (m.walked ?? 0) >= friendSteps) && allows($0, m, now) }
-        return fits.isEmpty ? nil : fits[(m.walked ?? 0) % fits.count]
+        let first = fits.filter { $0.moveType != nil }, pick = first.isEmpty ? fits : first
+        return pick.isEmpty ? nil : pick[(m.walked ?? 0) % pick.count]
     }
     func stoneEvolutions(_ now: Date, ref: Int = -1) -> [Evo] { guard let m = mon(ref) else { return [] }; return evolutions.filter { $0.from == m.dex && $0.way == .item && allows($0, m, now) } }
     func tradeEvolution(_ now: Date) -> Evo? { companion.item == "변함없는돌" ? nil : evolutions.first { $0.from == companion.dex && $0.way == .trade && allows($0, companion, now) } }
