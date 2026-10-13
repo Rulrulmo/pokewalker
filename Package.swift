@@ -7,5 +7,5 @@ let package = Package(
     name: "PokeWalker",
     platforms: [.macOS(.v13)],
     targets: [.executableTarget(name: "PokeWalker", path: ".", exclude: ["docs", "tools", "Resources", "README.md", "Info.plist", "build.sh", "server"], sources: ["Sources", "Tests"],   // Resources: copied next to the exe
-                                linkerSettings: [.unsafeFlags(["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup"], .when(platforms: [.windows]))])]   // a window app: no console of its own
+                                linkerSettings: [.unsafeFlags(["-Xlinker", "/SUBSYSTEM:WINDOWS", "-Xlinker", "/ENTRY:mainCRTStartup", "-Xlinker", "/STACK:8388608"], .when(platforms: [.windows]))])]   // a window app: no console of its own; the main thread's stack 8 MB as the Mac's (Windows' 1 MB overflowed in --selftest, 5.0's bigger Battle frames)
 )
