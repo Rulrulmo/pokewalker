@@ -881,6 +881,21 @@ N을 올리면 생기는 gen.py 필터 버그 3개도 같이 고친다:
   - `python3 tools/gen.py art`는 그림만 다시 만든다. ARTWORK 블록은 mac이 맡는다.
   - 폼 목록은 data 쪽 필터를 그대로 옮겨 쓴다. 서버가 폼 필터를 바꾸면 그림도 다시 만들어야 한다. SelfTest가 그림 수 = 721 + 폼 수를 검사한다.
 
+**A5 2부(mac, 10-14, 사용자: "나머진 추천대로", 켜는 날 금요일 오후 = 10-23)**
+
+- **§9.8의 1~4:** 1 · 3 · 4번은 A5 1부(ed3b9d1)에 들어가 있다. 2번의 나머지로 받아 둔 업데이트가 있으면 홈 LCD 오른쪽 위에 빨간 NEW 표시를 붙였다(`Walker.updateWaits`). 하루 한 번 배너는 1부에 있다.
+- **Mac dmg:** `./build.sh dist`가 dist/PokeWalker.dmg도 만든다. 앱과 /Applications 링크를 넣은 ULFO 이미지다.
+  - publish는 `PokeWalker-mac.dmg`를 릴리스에 올리고, manifest에 `macDmg` {file, sha256, size}를 넣는다.
+  - 자동 업데이트는 그대로 `mac`(zip)을 쓴다. 옛 앱은 모르는 키를 무시한다.
+  - 서버 쪽(release.json, 페이지의 Mac 버튼, /v1/download/mac-dmg)은 서버가 7d4db68에서 맞췄다.
+- **옛 설치 정리(Core/OldApps.swift):**
+  - Mac은 켤 때 Spotlight(mdfind, 같은 번들 ID)로 이 앱보다 옛 버전인 PokeWalker.app을 찾는다.
+    - 빼는 것: 개발 빌드(build.sh 옆), /Volumes, 휴지통, translocation, 같거나 새 버전.
+    - 찾으면 우클릭 메뉴에 "예전 앱 휴지통으로 (n개)"가 생기고, 누를 때만 옮긴다. 배너는 찾은 목록마다 한 번이다.
+  - Windows는 5.0 처음 실행 때 "예전 PokeWalker 폴더는 지워도 돼요"를 한 번 알린다.
+  - 둘 다 테스트 walker(persist 꺼짐)와 개발 빌드에서는 동작하지 않는다.
+- **새로 설치 안내:** README 맨 위와 Mac 설치 순서(dmg를 응용 프로그램으로 끌어다 놓기), 자동 업데이트 절에 넣었다. 페이지 · 우편 문구는 §9.8 "안내 문구(안)"을 그대로 쓴다.
+
 ### 14.3 2단계: 페어리 · 6세대 규칙(서버, 10-14, f5f5ae7)
 
 모두 `Content.gen6` 뒤에 있다. 꺼지면 4.1 그대로다. 레이드 시뮬레이션(13팀 × 5단계)을 끈 채 돌리면 프로토타입의 4.1 기준선과 한 줄도 다르지 않다.

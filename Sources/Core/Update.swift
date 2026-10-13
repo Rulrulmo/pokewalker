@@ -350,13 +350,14 @@ extension Walker {
     /// The tick's: a click's check answered — staged: in (once nothing's in progress); nothing newer, or it didn't work: said. Then the install itself.
     func updateTick(_ now: Date) {
         guard let u = updater else { return }
+        let staged = stagedUpdate; updateWaits = staged                                             // (ready.json read once a tick; 5.0: home's NEW tag)
         if let v = u.staged { u.staged = nil; if !installWhenStaged { noteStaged(v) } }                // (a click's own download: no banner, it goes in)
         if let v = u.available, let why = u.blocked, v != notedUpdate, !installWhenStaged {           // 3.8.5: out, can't go in here — a banner, once a version
             notedUpdate = v; updateNotices += 1
             notify("update", "\(v) 버전이 나왔어요", why + " · 그러면 자동으로 받아요")
         }
         if installWhenStaged {
-            if let v = stagedUpdate { if installBlocker == nil { installSoon(v, now) } }
+            if let v = staged { if installBlocker == nil { installSoon(v, now) } }
             else if let h = u.heard {
                 u.heard = nil; installWhenStaged = false
                 let lines = h == .newest ? ["최신 버전이에요", appVersion] : h == .available ? ["\(u.available ?? "") 버전이 나왔어요", u.blocked ?? ""] : ["업데이트를", "확인하지 못했어요"]
@@ -364,7 +365,7 @@ extension Walker {
                 if installBlocker == nil { screen = .say(lines, next: screen, since: now) } else { notify("update", lines.joined(separator: " "), "") }
             }
         }
-        if let v = stagedUpdate, installAt == nil, !installWhenStaged, installBlocker == nil {           // 5.0 (§9.8): by itself — 426 at once, else at a lull; a day's reminder
+        if let v = staged, installAt == nil, !installWhenStaged, installBlocker == nil {                // 5.0 (§9.8): by itself — 426 at once, else at a lull; a day's reminder
             if cloud?.phase == .oldApp || autoInstallDue(now) { installSoon(v, now, quiet: cloud?.phase != .oldApp) }
             else if v == notedUpdate, let at = notedAt, now.timeIntervalSince(at) > 86400 {
                 notedAt = now; updateNotices += 1; notify("update", "\(v) 업데이트가 기다리고 있어요", "다시 시작하면 바뀌어요 · 우클릭 → 업데이트 설치")

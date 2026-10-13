@@ -48,6 +48,7 @@ extension Walker {
             if cloud == nil { m.append(.separator) }
             m += updateRows(u)                                                                    // (3.8.5: where it can't install, why and a check)
         } else if persist, let a = Update.appURL, Store.devBuild(a) { m.append(MenuItem("자동 업데이트 없음 · 개발 빌드", enabled: false)) }
+        if let r = oldAppsRow { m.append(r) }                                                     // 5.0 (§9.8): older copies of this Mac's (Core/OldApps.swift)
         m.append(.separator)
         m.append(MenuItem("종료", key: "q", action: { self.host?.quit() }))
         return m

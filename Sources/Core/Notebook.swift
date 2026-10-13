@@ -24,6 +24,7 @@ extension Walker {
         if paperStyle == 4 { for k in 0..<2 { fb.pic("nb|pin|\(k)|" + tone, k == 0 ? P.x + 8 : P.x + P.w - 9, k == 0 ? P.y + 5 : P.y + P.h - 8, behind: true) { lcdReady(pinPic(k, night)) } } }   // cork: pins
         else { for k in 0..<2 { fb.pic("nb|tape|\(k)|" + tone, k == 0 ? P.x + 6 : P.x + P.w - 5, k == 0 ? P.y + 5 : P.y + P.h - 7, behind: true) { lcdReady(tapePic(k)) } } }
         fb.stuck("nb|cal|\(state.season.rawValue)|" + tone, P.x + P.w - 16, P.y - 3) { lcdReady(sticker(calendarPic(state.season), night: night)) }
+        if updateWaits != nil { fb.stuck("nb|new|" + tone, 168, 4) { lcdReady(sticker(newTagPic(), night: night)) } }   // 5.0 (docs/plans/18 §9.8): an update waits
         let n = min(3, state.caught.count) + (state.egg == nil ? 0 : 1), u = t.truncatingRemainder(dividingBy: 9), who = Int(t / 9) % max(1, n)
         func hop(_ k: Int) -> Int { k == who && u < 0.45 ? Int((sin(u / 0.45 * .pi) * 4).rounded()) : 0 }   // now and then one of them pops
         for (k, m) in state.caught.prefix(3).enumerated() {                                    // the walker's catches along the bottom, a little staggered
@@ -194,6 +195,15 @@ func calendarPic(_ s: Season) -> Pic {
     for x in 0..<W { p.set(x, H - 1, rgb(214, 206, 190)) }; for y in 9..<H { p.set(W - 1, y, rgb(214, 206, 190)) }
     let e = emblem(s); p.paste(e, (W - e.w) / 2, 9 + (H - 9 - e.h) / 2)
     return p
+}
+
+/// 5.0 (docs/plans/18 §9.8): a red NEW tag for the corner — an update is in and waits (it goes in at the next lull, or 우클릭 → 업데이트 설치).
+func newTagPic() -> Pic {
+    let n: [String] = ["w..w", "ww.w", "w.ww", "w..w", "w..w"], e: [String] = ["www", "w..", "ww.", "w..", "www"], w: [String] = ["w...w", "w...w", "w.w.w", "w.w.w", ".w.w."]
+    var rows: [String] = [".rrrrrrrrrrrrrr."]
+    for k in 0..<5 { let r: String = "r" + n[k] + "r" + e[k] + "r" + w[k] + "r"; rows.append(r.replacingOccurrences(of: ".", with: "r")) }
+    rows.append(".rrrrrrrrrrrrrr.")
+    return Pic(rows, ["r": rgb(222, 64, 52), "w": rgb(255, 255, 255)])
 }
 
 // MARK: - the emote

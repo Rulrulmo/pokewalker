@@ -194,8 +194,9 @@ final class FakeUpdates: CloudLink, @unchecked Sendable {
         uw.tick(Date()); let said = says(uw, ["99.0로", "업데이트할게요"]) && !Update.quiet; uw.tick(Date() + 2); return said && h.quits == 1
     }()
     let (dw, _) = autoWalker("a4"); dw.notedUpdate = "99.0"; dw.notedAt = t0 - 90_000; dw.lastInput = t0 + 10; dw.tick(t0 + 20)
-    c.append((auto && bh.quits == 0 && !says(bw, ["99.0로", "업데이트할게요"]) && uh2.quits == 1 && auto426 && dw.updateNotices == 1 && dw.notedAt == t0 + 20,
-              "5.0 update: in by itself at a lull (3 min on home; 30 s urgent), started again quietly; never mid-run; 426: at once; a day waiting: the banner again"))
+    let tagged = dw.updateWaits == "99.0" && dw.compose(t0 + 20).pics.contains { $0.key.hasPrefix("nb|new|") } && !{ let x = Walker(state: Walk()); x.persist = false; x.screen = .home; return x }().compose(t0).pics.contains { $0.key.hasPrefix("nb|new|") }
+    c.append((auto && bh.quits == 0 && !says(bw, ["99.0로", "업데이트할게요"]) && uh2.quits == 1 && auto426 && dw.updateNotices == 1 && dw.notedAt == t0 + 20 && tagged,
+              "5.0 update: in by itself at a lull (3 min on home; 30 s urgent), started again quietly; never mid-run; 426: at once; a day waiting: the banner again; home's NEW tag while one waits"))
     Update.quiet = false
     return c
 }

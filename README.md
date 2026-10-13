@@ -15,13 +15,15 @@
 
 ## 받기 · 설치
 
-팀 배포 페이지 **https://pokewalker.rulrulmo.work** (팀 비밀번호)에서 최신 Mac zip · Windows 설치 프로그램과 패치 내역을 받아요. 한 번 설치하면 그다음부터는 앱이 스스로 업데이트해요.
+팀 배포 페이지 **https://pokewalker.rulrulmo.work** (팀 비밀번호)에서 최신 Mac dmg · Windows 설치 프로그램과 패치 내역을 받아요. 한 번 설치하면 그다음부터는 앱이 스스로 업데이트해요.
+
+> **5.0은 모두 새로 설치해 주세요.** 기록은 서버에 있어서 같은 PC에서는 설치만 하면 그대로 이어지고, 다른 PC에서는 트레이너 ID(와 PIN)로 이어져요. 예전 앱은 지워도 돼요. Mac은 5.0이 예전 앱을 찾아 우클릭 메뉴에 **예전 앱 휴지통으로**를 보여 줘요(누를 때만 옮겨요).
 
 ### Mac
 
 macOS 13 이상, Apple Silicon · Intel.
 
-1. zip을 풀고 `PokeWalker.app`을 **응용 프로그램 폴더**로 옮겨요. 다운로드 폴더에서 바로 실행하면 자동 업데이트가 안 돼요(메뉴에 이유가 보여요).
+1. dmg를 열고 `PokeWalker`를 옆의 **응용 프로그램**(Applications) 폴더로 끌어다 놓아요. dmg 안이나 다운로드 폴더에서 바로 실행하면 자동 업데이트가 안 돼요(메뉴에 이유가 보여요). 다 옮겼으면 dmg는 꺼내고 지워도 돼요.
 2. 처음 한 번은 **우클릭 → 열기 → 열기**. Apple 개발자 서명이 없어서 더블클릭하면 "확인되지 않은 개발자"로 막혀요.
    - macOS 15 이상에서 그래도 막히면: 한 번 실행해 본 뒤 **시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기**.
    - 또는 터미널: `xattr -dr com.apple.quarantine /Applications/PokeWalker.app`
@@ -65,6 +67,7 @@ Mac과 다른 점:
 ### 자동 업데이트
 
 - 켜고 30초 뒤, 그다음 6시간마다(서버가 "더 새 앱이 필요해요"라고 하면 바로) 확인해서 **조용히 받아 두고**, 다음에 끄거나 켤 때 바꿔 넣어요.
+- 5.0부터는 앱을 끄지 않아도 들어가요. 받아 둔 게 있으면 홈 화면 오른쪽 위에 **NEW**가 붙어요. 홈이나 메뉴 화면에서 3분 동안 걸음 · 클릭이 없으면 스스로 바꿔 넣고 뒤에서 다시 켜져요. 서버가 급하다고 하면 30초, 하루가 지나도 못 들어갔으면 30초예요. 기다리는 동안 하루에 한 번 알려 줘요.
 - 바로 바꾸려면 우클릭 → **업데이트 확인 · 설치** 또는 **업데이트 설치 (다시 시작)**. 배틀 · 대전 · 연출 중에는 끝난 뒤에 돼요.
 - 릴리스 키(Ed25519)로 서명된 manifest와 받은 파일의 SHA-256이 맞을 때만 설치해요. Mac은 zip을 풀어 앱을 바꾸고, **Windows는 받은 설치 프로그램을 조용히 실행**해요(앱이 꺼지면 그 자리에 덮어쓰고 다시 켜요, 3.9.1).
 - 실패하면 원래 앱이 그대로 켜지고 그 버전은 다시 시도하지 않아요(한 번 시도한 뒤에도 옛 버전이면 실패로 적고 그냥 켜져요).
@@ -349,7 +352,7 @@ Swift 6, 외부 의존성 없음. Mac은 `swiftc`로 AppKit 앱을, Windows는 S
 ```sh
 ./build.sh            # 빌드 + 셀프테스트(실패하면 빌드 실패) + PokeWalker.app 조립
 ./build.sh run        # 빌드 후 실행 — 이름이 PokeWalker인 프로세스를 모두 끄니, 설치된 앱도 꺼져요
-./build.sh dist       # dist/PokeWalker.zip — Apple Silicon + Intel 유니버설, macOS 13+, 애드혹 서명
+./build.sh dist       # dist/PokeWalker.zip · .dmg — Apple Silicon + Intel 유니버설, macOS 13+, 애드혹 서명(dmg: 앱 + 응용 프로그램 바로가기, 5.0)
 ./build.sh publish    # release (아래), --dry: 올리기 전까지만
 ```
 
@@ -377,7 +380,7 @@ Swift 6, 외부 의존성 없음. Mac은 `swiftc`로 AppKit 앱을, Windows는 S
 
 1. 버전(`Info.plist` · `Platform.swift`의 `windowsVersion`)과 `docs/patch-notes.txt`를 고치고 main에 push.
 2. Windows CI가 그 커밋에서 통과.
-3. `./build.sh publish` — Mac zip + 그 커밋의 Windows 빌드 zip + 서명한 manifest를 GitHub release `v<버전>`에, 패치 노트는 `patch-notes.txt`의 그 버전 칸.
+3. `./build.sh publish` — Mac zip · dmg + 그 커밋의 Windows 빌드 zip · 설치 프로그램 + 서명한 manifest를 GitHub release `v<버전>`에, 패치 노트는 `patch-notes.txt`의 그 버전 칸. 자동 업데이트는 zip(Mac) · 설치 프로그램(Windows)을, 페이지는 dmg(`macDmg`) · 설치 프로그램을 써요.
 4. 엔진(`Sources/Model` · `Battle` · `Data`)이나 서버가 바뀐 릴리스면 서버를 먼저 설치(`server/build.sh install`).
 5. 서버 쪽에서 `server/publish.sh` — 서명 · 크기 · SHA-256을 확인한 뒤에야 배포 페이지와 `/v1/update`가 새 버전을 알려요.
 

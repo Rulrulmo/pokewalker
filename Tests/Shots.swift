@@ -55,6 +55,8 @@ import AppKit
         let g6 = online({ var s = base(); s.companion = frog; s.caught = [Mon.wild(495, level: 10, &r5), wash]
                           s.box = [vivi] + [494, 497, 500, 503, 571, 609, 635, 643, 644, 646, 650, 653, 656, 700, 706, 716, 717, 718, 719, 720, 721].map { Mon.wild($0, level: 50, &r5) }; return s }())
         take("home_gen6", g6) { v in v.screen = .home }
+        take("home_update_new", g6) { v in v.updateWaits = "5.0.1"; v.screen = .home }                // 5.0 (§9.8): an update waits: the NEW tag
+        g6.updateWaits = nil
         take("box_gen6", g6) { v in v.screen = .box(0, act: nil, confirm: false) }
         take("mon_gen6_form", g6) { v in v.screen = .box(-3, act: nil, confirm: false, detail: true) }
         let xb = Battle(wild: Mon.wild(716, level: 50, &r5), companion: frog)

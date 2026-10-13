@@ -1,11 +1,12 @@
 #!/bin/sh
 # ./build.sh        build PokeWalker.app (this Mac only); runs --selftest first, so a broken rule or missing data fails the build
 # ./build.sh run    build, then (re)launch
-# ./build.sh dist   dist/PokeWalker.zip for other Macs: Apple Silicon + Intel, macOS 13+, ad-hoc signed (no Apple Developer ID)
+# ./build.sh dist   dist/PokeWalker.zip for other Macs: Apple Silicon + Intel, macOS 13+, ad-hoc signed (no Apple Developer ID); 5.0: and
+#                   dist/PokeWalker.dmg, the same app beside a link to 응용 프로그램 (the download page's: dragged in, it updates itself; updates take the zip)
 # ./build.sh winsetup [run]   dist/PokeWalker-windows-setup.exe from a windows workflow's build (the last good one, or that run): to try the installer
 # ./build.sh publish [--dry]   the signed release, for auto-update and the download page (committed and pushed first; gh logged in): dist's Mac zip,
 #                      the windows workflow's build of this commit (one already going is joined, else started first; the Mac's is built meanwhile), manifest.json (version, build, commit,
-#                      each zip's sha256 and size; 3.9.1: windowsSetup, the installer makensis builds here from the windows build) and manifest.sig (Ed25519 by the release key: tools/release-key.swift, this Mac only) on the GitHub
+#                      each zip's sha256 and size; 3.9.1: windowsSetup, the installer makensis builds here from the windows build; 5.0: macDmg, the Mac's disk image) and manifest.sig (Ed25519 by the release key: tools/release-key.swift, this Mac only) on the GitHub
 #                      release v<version>; then the server's Claude publishes it. --dry stops before the upload (and never starts a windows build)
 set -e
 cd "$(dirname "$0")"
@@ -40,21 +41,21 @@ if [ "$1" = publish ]; then
         WAIT=1
     fi
     "$0" dist                                                                     # (meanwhile)
-    cp dist/PokeWalker.zip dist/PokeWalker-mac.zip
+    cp dist/PokeWalker.zip dist/PokeWalker-mac.zip; cp dist/PokeWalker.dmg dist/PokeWalker-mac.dmg
     if [ -n "$WAIT" ]; then echo "waiting for the windows build (run $RUN)"; gh run watch "$RUN" --exit-status > /dev/null || { echo "the windows build failed: gh run view $RUN"; exit 1; }; fi
     rm -rf dist/win; gh run download "$RUN" -n PokeWalker-windows-x64 -D dist/win/PokeWalker   # a PokeWalker folder at the zip's top
     (cd dist/win && zip -qrX ../PokeWalker-windows-x64.zip PokeWalker)
     winsetup "$V"                                                                 # 3.9.1: the installer, from the same folder
     sum() { shasum -a 256 "$1" | cut -d' ' -f1; }; size() { stat -f %z "$1"; }
-    printf '{"build":"%s","commit":"%s","mac":{"file":"PokeWalker-mac.zip","sha256":"%s","size":%s},"version":"%s","windows":{"file":"PokeWalker-windows-x64.zip","sha256":"%s","size":%s},"windowsSetup":{"file":"PokeWalker-windows-setup.exe","sha256":"%s","size":%s}}' \
-        "$B" "$SHA" "$(sum dist/PokeWalker-mac.zip)" "$(size dist/PokeWalker-mac.zip)" "$V" "$(sum dist/PokeWalker-windows-x64.zip)" "$(size dist/PokeWalker-windows-x64.zip)" \
+    printf '{"build":"%s","commit":"%s","mac":{"file":"PokeWalker-mac.zip","sha256":"%s","size":%s},"macDmg":{"file":"PokeWalker-mac.dmg","sha256":"%s","size":%s},"version":"%s","windows":{"file":"PokeWalker-windows-x64.zip","sha256":"%s","size":%s},"windowsSetup":{"file":"PokeWalker-windows-setup.exe","sha256":"%s","size":%s}}' \
+        "$B" "$SHA" "$(sum dist/PokeWalker-mac.zip)" "$(size dist/PokeWalker-mac.zip)" "$(sum dist/PokeWalker-mac.dmg)" "$(size dist/PokeWalker-mac.dmg)" "$V" "$(sum dist/PokeWalker-windows-x64.zip)" "$(size dist/PokeWalker-windows-x64.zip)" \
         "$(sum dist/PokeWalker-windows-setup.exe)" "$(size dist/PokeWalker-windows-setup.exe)" > dist/manifest.json   # compact, keys sorted, no newline: these bytes are signed and uploaded
     swift tools/release-key.swift sign dist/manifest.json > dist/manifest.sig
     KEY=$(sed -n 's|^let releaseKey.*unhex("\([0-9a-f]*\)").*|\1|p' Sources/Model/Ed25519.swift)
     [ ${#KEY} = 64 ] || { echo "no releaseKey in Model/Ed25519.swift to check the signature with"; exit 1; }
     swift tools/release-key.swift verify dist/manifest.json "$(cat dist/manifest.sig)" "$KEY" > /dev/null || { echo "the signature doesn't check with the app's releaseKey (Model/Ed25519.swift)"; exit 1; }
     if [ -n "$DRY" ]; then echo "dry: nothing uploaded"; cat dist/manifest.json; echo; cat dist/manifest.sig; exit; fi
-    set -- dist/PokeWalker-mac.zip dist/PokeWalker-windows-x64.zip dist/PokeWalker-windows-setup.exe dist/manifest.json dist/manifest.sig
+    set -- dist/PokeWalker-mac.zip dist/PokeWalker-mac.dmg dist/PokeWalker-windows-x64.zip dist/PokeWalker-windows-setup.exe dist/manifest.json dist/manifest.sig
     if gh release view "v$V" >/dev/null 2>&1; then gh release upload "v$V" "$@" --clobber
     else gh release create "v$V" "$@" --target "$SHA" --title "PokeWalker $V" \
         --notes "$(awk -v h="■ $V " 'index($0, h) == 1 { on = 1; next } /^■ / { on = 0 } on' docs/patch-notes.txt)"; fi
@@ -75,7 +76,9 @@ if [ "$1" = dist ]; then
     $A/Contents/MacOS/PokeWalker --selftest > /dev/null
     codesign --force --deep -s - $A
     ditto -c -k --keepParent $A dist/PokeWalker.zip
-    echo "dist/PokeWalker.zip ($(du -h dist/PokeWalker.zip | cut -f1)) — $(lipo -archs $A/Contents/MacOS/PokeWalker), macOS 13+"
+    mkdir dist/dmg && ditto $A dist/dmg/PokeWalker.app && ln -s /Applications dist/dmg/Applications   # 5.0 (docs/plans/18 §9.8): drag it in
+    hdiutil create -quiet -volname PokeWalker -srcfolder dist/dmg -fs HFS+ -format ULFO -ov dist/PokeWalker.dmg; rm -rf dist/dmg
+    echo "dist/PokeWalker.zip ($(du -h dist/PokeWalker.zip | cut -f1)) · .dmg ($(du -h dist/PokeWalker.dmg | cut -f1)) — $(lipo -archs $A/Contents/MacOS/PokeWalker), macOS 13+"
     exit
 fi
 A=PokeWalker.app; bundle $A
