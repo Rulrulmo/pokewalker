@@ -89,6 +89,8 @@ enum MegaRaid {
     static let stoneOdds = [3, 5, 8, 10, 20]                    // % a win, ★1–★5 (the user, 10-13)
     static let pity = 30                                        // wins for one pick
     static func duplicateBP(_ tier: Int) -> Int { 5 * tier }
+    /// A win's stone mail title (one had: its BP instead). 쪽빛구슬 · 주홍구슬 take 을.
+    static func mailTitle(_ stone: String, had: Bool) -> String { had ? "\(stone) 대신 BP" : josa(stone, "을", "를") + " 얻었다!" }
     /// Its Mega's own move: 메가뮤츠 사이코브레이크, 원시가이오가 근원의파동, 원시그란돈 단애의칼 (in the place of the weakest attack).
     static let signature: [Int: Int] = [150: 540, 382: 618, 383: 619]
     /// A run's boss: the species at the tier's level and IVs with its stone (it fights as its Mega: RaidBoss.mega).

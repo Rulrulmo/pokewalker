@@ -1056,6 +1056,7 @@ extension SaveDB {
         #expect(titles.contains("리자몽나이트X를 얻었다!") && titles.contains("리자몽나이트X 대신 BP"))
     }
     #expect(MegaRaid.stoneOdds == [3, 5, 8, 10, 20])
+    #expect(MegaRaid.mailTitle("쪽빛구슬", had: false) == "쪽빛구슬을 얻었다!" && MegaRaid.mailTitle("리자몽나이트Y", had: false) == "리자몽나이트Y를 얻었다!" && MegaRaid.mailTitle("주홍구슬", had: true) == "주홍구슬 대신 BP")
 }
 
 // MARK: - 5.0 stage 7: the server's part (docs/plans/18 §10)

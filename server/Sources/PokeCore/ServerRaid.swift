@@ -206,7 +206,7 @@ extension SaveDB {
             var g = SystemRandomNumberGenerator()
             if Int.random(in: 0..<100, using: &g) < MegaRaid.stoneOdds[max(0, min(4, tier - 1))] {    // 5.0: the stone, or BP for one had
                 let had = w.map { MegaRaid.stonesHad($0).contains(stone) } ?? false
-                try sendMail(key, kind: "raid", from: "메가 레이드", title: had ? "\(stone) 대신 BP" : "\(stone)를 얻었다!",
+                try sendMail(key, kind: "raid", from: "메가 레이드", title: MegaRaid.mailTitle(stone, had: had),
                              gifts: had ? [.bp(amount: MegaRaid.duplicateBP(tier))] : [.items(name: stone, count: 1)], now: now)
             }
         }
