@@ -802,3 +802,33 @@ N을 올리면 생기는 gen.py 필터 버그 3개도 같이 고친다:
 8. 배포 방식과 켜는 날의 MIN_APP 5.0은 개발이 끝난 뒤 정한다(§10. 확인 필요 단계)
 
 **구현(10-13 시작):** §12 순서대로 main에 `content5` 스위치를 끈 채 쌓는다. 데이터 → 페어리 · 규칙 → 기술 → 특성 · 숨겨진특성 → 도구 · 폼 · 메가 → 코스 · 풀 · 시뮬레이션 → 서버 막기. 서버 설치 · 재시작, 라이브 DB 변경(raid_runs ALTER 포함), MIN_APP, 배포는 사용자 OK 뒤다. 그림 자원(gen.py의 스프라이트 · 오프셋)은 mac의 샘플을 사용자가 본 뒤 정하니, 그 전에는 데이터 표(Data · BattleData)부터 한다.
+
+## 14. 구현 기록(서버)
+
+엔진 · 데이터를 바꾸면 여기에 적는다. mac 세션은 메시지가 늦게 닿을 수 있어서, 앱이 알아야 할 이름과 모양은 이 절이 기준이다.
+
+### 14.1 1단계: 데이터(10-13, 51c273e · 08e75fb)
+
+- **스위치:** `Content.gen6`(Sources/Data/Content.swift).
+  - 서버 설정은 `Content.on`이다. 7단계에서 `pokeserver content5`와 로그인 응답으로 이어 붙인다.
+  - 테스트는 `Content.$testing.withValue(true) { … }`로 켠다. 테스트가 나란히 돌아서 `on`은 건드리지 않는다.
+  - 꺼진 동안은 4.1의 표 그대로다. 생성한 4세대 표가 4.1과 같은 것을 확인했다(1~493 바이트 비교).
+- **끝 번호:** `dexMax`. 꺼지면 493, 켜지면 721이다. 앱의 번호 범위 가드(§12 1단계)는 이 값을 쓴다.
+- **표 이름:**
+  - 스위치로 고르는 것(쓰는 쪽은 그대로): `monTypes` · `baseStats` · `learnsets` · `abilitySlots` · `moveTable` · `typeChart` · `abilityDescs` · `evolutions`. 뒤에는 `…Gen4` 표와 `…Gen6Changes`(또는 `evolutionsGen6Added`)가 있다.
+  - 721까지 하나인 것: `monNames`(count 722) · `growthRate` · `eggCycles` · `catchRate` · `baseExp` · `genderRate` · `weightKg` · `evYield` · `stageOf` · `abilityNames`(191까지)
+  - 새로 생긴 것: `hiddenAbility`(Mon.ability 2, 0 = 없음), `monForms`, `typeKo["fairy"] = "페어리"`
+  - 아직 4.1 그대로인 것: `eggPool` · `rawCourses`. 6단계(하나 · 칼로스 코스, 알 풀)에서 스위치를 단다.
+- **gen.py:** `python3 tools/gen.py data`는 표만 쓰고 Resources/*.bin은 건드리지 않는다. 그림은 N4 = 493에 그대로 둔다(그림 출처가 정해지면 넓힌다).
+- **기술:** 467개 중 160개가 6세대 값이 다르다(ORAS 기준. 새 플래그 포함). 새 기술 468~621은 154개다. 새 플래그 비트: 2048 대타 관통, 4096 가루, 8192 물기, 16384 파동, 32768 탄, 65536 정신. 엔진이 아직 쓰지 않는다(2 · 3단계).
+- **폼(§2.5):** `monForms[dex]`의 순번이 폼 번호다(1부터. nil · 0 = 기본). `Forms.of(dex, n)`로 찾는다.
+  - `MonForm`(Sources/Model/Forms.swift): `name`(한국어. 메가리자몽X, 히트로토무, 원시가이오가, 안농 "B"), `kind`(.look · .stored · .battle · .mega · .primal), 바뀌는 것만(types · stats · abilities · hidden · weight · learnset), 메가 · 원시는 `item`(스톤 · 구슬)
+  - 165폼, 83종. 메가 48(스톤 47. 메가레쿠쟈는 화룡점정), 원시 2. `Forms.mega(dex, holding:)`, `Forms.stones`(49).
+  - 뺀 것: 피카츄 옷, 뾰족귀 피츄, 영원의 꽃 플라엣테, 아르세우스 · 게노세크트 타입(지닌 도구로 정해짐).
+  - `Mon.form` 필드는 5단계에서 더한다.
+- **진화(§2.6):** `Evo`에 선택 필드 `partyType`(판짱: 워커나 상자에 악타입)과 `weather`(미끄네일: 걷기 날씨가 비)를 더했다. 도감의 진화 줄에 이 조건 문구가 필요하다(mac).
+  - **§2.6을 고친 것:** 님피아는 "에브이 · 블래키보다 먼저 검사"가 아니라 다른 친밀도 진화와 같은 줄(`.friend`)로 넣었다. 먼저 검사하면 에브이 · 블래키가 영영 나오지 않는다(셋 다 함께 1만 걸음이 조건). 지금 규칙(조건이 맞는 진화가 여럿이면 걸음 수로 고름)대로 낮에는 에브이 · 님피아, 밤에는 블래키 · 님피아로 나뉜다.
+  - 냐오닉스 ♀ · 비비용 · 님피아의 필터 버그를 고쳤다.
+- **페어리 기술 표(§2.1):** 계획의 표와 같다. ORAS가 가디안 문포스 · 입치트 치근거리기를 Lv.1에도 두는데, 계획대로 원래 레벨(62 · 49)만 넣었다.
+- **테스트:** 서버 92개(Content5Tests 4개 포함). 앱 SelfTest를 리눅스에서 돌리면 HEAD와 같은 4개만 실패한다(글꼴 · 데이터 폴더. 리눅스에서만).
+- **다음(서버가 할 것):** 도구 데이터(돌격조끼 · 주얼 · 메가스톤의 Held 요약)는 5단계에서 한다. 7단계에서 `/v1/update`에 서명 밖 `urgent` · `installBy`를 넣고, 5.0 앱이 보내는 `trainer` · `staged` · `blocked` · `failed` · `where`를 `pokeserver versions`에 보여 준다(mac 요청).
