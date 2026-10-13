@@ -41,7 +41,10 @@ extension Mon {
         if perfect > 0 { for k in Array(0..<6).shuffled(using: &r).prefix(perfect) { m.ivs![k] = 31 } }
         return m
     }
-    var abilityID: Int { let s = abilitySlots[dex]; return s[min(ability ?? 0, s.count - 1)] }   // the slot survives evolution, like the games
+    var abilityID: Int {                                                                       // the slot survives evolution, like the games
+        if ability == 2, Content.gen6, hiddenAbility[dex] > 0 { return hiddenAbility[dex] }       // 5.0: 2 = the hidden one (plan 18 §4)
+        let s = abilitySlots[dex]; return s[min(ability ?? 0, s.count - 1)]
+    }
     var abilityName: String { abilityNames[abilityID] ?? "" }
     var natureName: String { natures[nature ?? 0].name }
     /// The IVs battles use: its own (15 if never rolled), with the 특훈 ones at 31.

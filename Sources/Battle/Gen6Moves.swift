@@ -11,7 +11,10 @@ extension Battle {
     func terrainUnder(_ s: Side) -> Terrain? { (terrainLeft ?? 0) > 0 && grounded(s) ? terrain : nil }
     var wonderRoomOn: Bool { (wonderRoom ?? 0) > 0 }
     /// A fighter's weight, 바디퍼지 taken off (100 kg each, 0.1 kg at least).
-    func weight(_ s: Side) -> Double { let x = f(s); return max(0.1, weightKg[(x.form ?? x.mon).dex] - 100 * Double(x.lighter ?? 0)) }
+    func weight(_ s: Side) -> Double {                                                          // (헤비메탈 x2, 라이트메탈 x1/2)
+        let x = f(s), w = weightKg[(x.form ?? x.mon).dex] * (x.has(134) ? 2 : x.has(135) ? 0.5 : 1)
+        return max(0.1, w - 100 * Double(x.lighter ?? 0))
+    }
 
     // MARK: damaging moves
     /// The Gen V–VI moves' own power (nil: as the data has it).
@@ -87,12 +90,12 @@ extension Battle {
     // MARK: protection
     /// Whether t's protection stops this move (방어 · 판별 any protectable one; 킹실드 · 마룻바닥세워막기 damaging ones; 와이드가드 spread
     /// moves; 패스트가드 priority ones; 트릭가드 status moves aimed at it).
-    func guards(_ t: Side, _ m: MoveInfo) -> Bool {
+    func guards(_ t: Side, _ m: MoveInfo, by s: Side) -> Bool {
         guard f(t).protected else { return false }
         switch f(t).shield {
         case 588?, 561?: return m.protectable && !m.isStatus
         case 469?: return [9, 11, 14].contains(m.target)
-        case 501?: return m.priority > 0
+        case 501?: return priority(s, m.id) > 0
         case 578?: return m.isStatus && m.onFoe
         default: return m.protectable
         }

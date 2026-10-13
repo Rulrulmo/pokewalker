@@ -23,6 +23,7 @@ extension Battle {
             x.item = nil; x.choice = nil
             if x.has(84) { x.unburden = true }
         }
+        if Content.gen6, f(s).has(167), f(s).spent?.hasSuffix("열매") == true, f(s).alive { restore(s, max(1, f(s).maxHP / 3), josa(nm(s), "은", "는") + " 볼주머니로 체력을 회복했다!") }   // (5.0)
     }
     /// s's item is taken off it (탁쳐서떨구기, 도둑질, 트릭, 벌레먹기): its own comes back after the fight.
     @discardableResult mutating func takeItem(_ s: Side) -> String? {
@@ -102,6 +103,7 @@ extension Battle {
     }
     /// A berry's effect on s: held, when its moment has come; forced = thrown at it or 벌레먹기 / 쪼아대기 (whatever the HP). Whether it did anything.
     @discardableResult mutating func eat(_ s: Side, _ i: String, forced: Bool) -> Bool {
+        if Content.gen6, !forced, f(other(s)).alive, f(other(s)).has(127), i.hasSuffix("열매") { return false }   // 긴장감 (5.0)
         let x = f(s), n = nm(s), half = forced || x.hp * 2 <= x.maxHP, pinch = forced || x.hp * (x.has(82) ? 2 : 4) <= x.maxHP   // 먹보: at 1/2
         let by = josa(n, "은", "는") + " " + josa(i, "으로", "로") + " "
         if let c = Held.cures[i] {
@@ -175,7 +177,7 @@ extension Battle {
         }
         if id == 363, f(s).item.flatMap({ Held.gift[$0] }) != nil { useUp(s) }                       // 자연의은혜: the berry's gone
         if dealt > 0, f(s).alive, holds(s, "조개껍질방울") { restore(s, max(1, dealt / 8), josa(n, "은", "는") + " 조개껍질방울로 체력을 조금 회복했다!") }
-        if dealt > 0, f(s).alive, holds(s, "생명의구슬"), !f(s).has(98) { hurt(s, max(1, f(s).maxHP / 10), josa(n, "은", "는") + " 생명이 조금 깎였다!") }
+        if dealt > 0, f(s).alive, holds(s, "생명의구슬"), !f(s).has(98), !sheerForce(s, m) { hurt(s, max(1, f(s).maxHP / 10), josa(n, "은", "는") + " 생명이 조금 깎였다!") }
     }
     /// 내던지기: what the thrown item does to t once it lands (a berry it eats; the orbs, 전기구슬, 독바늘, 왕의징표석 / 예리한이빨, the herbs).
     mutating func flung(_ i: String, at t: Side, from s: Side) {

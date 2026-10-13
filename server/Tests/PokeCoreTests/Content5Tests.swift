@@ -278,3 +278,72 @@ private func dmg(_ b: Battle, _ id: Int) -> Int { var x = b; let hp = x.f(.it).h
         #expect(ended >= 190)
     }
 }
+
+// MARK: - stage 4: the Gen V–VI abilities and hidden abilities (plan 18 §2.3, §4; Battle/Gen6Abilities.swift)
+private func with(_ b: Battle, _ s: Side, _ a: Int) -> Battle { var x = b; x.mod(s) { $0.abilityOver = a }; return x }
+
+@Test func gen6HiddenAbilities() {
+    var m = Mon(dex: 3, level: 50, female: false); m.ability = 2
+    let id = both { m.abilityID }
+    #expect(id.gen4 == abilitySlotsGen4[3].last && id.gen6 == 34)                                     // 이상해꽃: 엽록소 (Gen IV: no slot 2, the last one)
+    #expect(Walk.chainHiddenOdds(4) == 0 && Walk.chainHiddenOdds(5) == 0.10 && Walk.chainHiddenOdds(10) == 0.25)
+    let share = both { () -> (Int, Int) in
+        var w = Walk(), r = Seeded(s: 11), hidden = 0, could = 0
+        for _ in 0..<600 { let x = w.radarMon(&r, chain: 10).mon; if hiddenAbility[x.dex] > 0 { could += 1; if x.ability == 2 { hidden += 1 } } }
+        _ = w.owned; return (hidden, could)
+    }
+    #expect(share.gen4.0 == 0 && share.gen6.1 > 300 && (15...35).contains(100 * share.gen6.0 / share.gen6.1))   // about a quarter at a chain of 10
+}
+
+@Test func gen6AbilitiesStats() {
+    gen6 {
+        var c = with(duel(mon(25), mon(19)), .me, 126); c.boost(.me, 1, -1, from: .it); #expect(c.f(.me).stage[1] == 1)        // 심술꾸러기
+        var d = with(duel(mon(25), mon(19)), .me, 128); d.boost(.me, 2, -1, from: .it); #expect(d.f(.me).stage[1] == 2)        // 오기
+        var k = with(duel(mon(25), mon(19)), .me, 172); k.boost(.me, 5, -1, from: .it); #expect(k.f(.me).stage[3] == 2)        // 승기
+        var p = with(duel(mon(25), mon(19)), .me, 145); p.boost(.me, 2, -1, from: .it); #expect(p.f(.me).stage[2] == 0)        // 부풀린가슴
+        let pr = with(duel(mon(25, moves: [86]), mon(19)), .me, 158), gw = with(duel(mon(18, moves: [17]), mon(19)), .me, 177)
+        #expect(pr.priority(.me, 86) == 1 && pr.priority(.me, 85) == 0 && gw.priority(.me, 17) == 1)   // 짓궂은마음, 질풍날개
+        var sand = with(duel(mon(25), mon(19)), .me, 146); let v = sand.speed(.me); sand.sky = .sand; #expect(sand.speed(.me) == v * 2)   // 모래헤치기
+        let heavy = with(duel(mon(25), mon(19)), .me, 134); #expect(heavy.weight(.me) == weightKg[25] * 2)                    // 헤비메탈
+    }
+}
+
+@Test func gen6AbilitiesDamage() {
+    gen6 {
+        let base = duel(mon(25, 50, moves: [33, 85]), mon(143, 100))
+        #expect(dmg(with(base, .it, 136), 33) * 2 <= dmg(base, 33) + 1)                                          // 멀티스케일 at full HP
+        #expect(dmg(with(base, .it, 169), 33) * 2 <= dmg(base, 33) + 1 && dmg(with(base, .it, 169), 85) == dmg(base, 85))   // 퍼코트: physical only
+        var skin = with(duel(mon(35, 50, moves: [33]), mon(143, 100)), .me, 182)
+        #expect(skin.moveType(.me, moveTable[33]!).type == "fairy" && dmg(skin, 33) * 10 > dmg(duel(mon(35, 50, moves: [33]), mon(143, 100)), 33) * 18)   // 페어리스킨: Fairy, ×1.3 and STAB
+        skin.mod(.it) { $0.abilityOver = 0 }
+        var bond = with(duel(mon(115, 50, moves: [33]), mon(143, 100)), .me, 185); bond.execute(.me, 33, called: true)
+        #expect(bond.out.filter { if case .hit = $0 { return true }; return false }.count == 2)                // 부자유친: twice
+        let sheer = with(duel(mon(130, 50, moves: [44]), mon(143, 100)), .me, 125)                              // 물기 (flinch 30 %)
+        #expect(dmg(sheer, 44) > dmg(duel(mon(130, 50, moves: [44]), mon(143, 100)), 44) * 6 / 5)
+        var nofl = sheer; for k in 0..<40 { nofl.seed = UInt64(k); var x = nofl; x.execute(.me, 44, called: true); #expect(!x.f(.it).flinch) }
+        #expect(dmg(with(duel(mon(76, 50, moves: [88]), mon(143, 50)), .it, 171), 88) > 0)                   // 방탄 doesn't stop 돌떨구기 (not a ball)
+        #expect(dmg(with(duel(mon(5, 50, moves: [188]), mon(143, 50)), .it, 171), 188) == 0)                 // 방탄: 오물폭탄
+        var sap = with(duel(mon(1, 50, moves: [75]), mon(143, 50)), .it, 157); sap.execute(.me, 75, called: true)
+        #expect(sap.f(.it).hp == sap.f(.it).maxHP && sap.f(.it).stage[1] == 1)                                // 초식
+    }
+}
+
+@Test func gen6AbilitiesMoments() {
+    gen6 {
+        var pro = with(duel(mon(658, 50, moves: [85]), mon(143, 50)), .me, 168); pro.execute(.me, 85, called: true)
+        #expect(pro.f(.me).typeList == ["electric"])                                                       // 변환자재
+        var mir = with(duel(mon(25, 50, moves: [86]), mon(143, 50)), .it, 156); mir.execute(.me, 86, called: true)
+        #expect(mir.f(.it).status == nil && mir.f(.me).status == nil)                                      // 매직미러 (back on an Electric type: no 마비 either)
+        var mir2 = with(duel(mon(19, 50, moves: [86]), mon(143, 50)), .it, 156); mir2.execute(.me, 86, called: true)
+        #expect(mir2.f(.it).status == nil && mir2.f(.me).status == .paralysis)
+        var regen = trainerFight([mon(80, 50), mon(1, 50)], [mon(19, 50)]); regen.mod(.me) { $0.abilityOver = 144; $0.hp = 10 }
+        regen.switchIn(.me, 1); #expect(regen.mine[0].hp == 10 + regen.mine[0].maxHP / 3)                  // 재생력
+        var barb = with(duel(mon(68, 50, moves: [33]), mon(143, 50)), .it, 160); let hp = barb.f(.me).hp; barb.execute(.me, 33, called: true)
+        #expect(barb.f(.me).hp == hp - barb.f(.me).maxHP / 8)                                                // 철가시
+        var nerve = with(duel(mon(25), mon(19)), .it, 127); nerve.mod(.me) { $0.item = "자뭉열매"; $0.hp = 1 }; nerve.heldCheck(.me)
+        #expect(nerve.f(.me).item == "자뭉열매")                                                            // 긴장감: no berry
+        var veil = with(duel(mon(25), mon(19)), .me, 175); let slept = veil.inflict(.me, .sleep, from: .it, loud: true); #expect(!slept)   // 스위트베일
+        var r = Seeded(s: 5); var ditto = Mon(dex: 132, level: 50, female: false); ditto.ability = 2
+        var imp = duel(ditto, mon(143, 50)); _ = imp.begin(weather: nil, &r); #expect(imp.f(.me).form?.dex == 143)   // 괴짜: 메타몽 comes out 변신
+    }
+}

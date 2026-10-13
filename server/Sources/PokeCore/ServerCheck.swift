@@ -20,7 +20,7 @@ enum SaveCheck {
             if let iv = m.ivs, iv.count != 6 || iv.contains(where: { !(0...31).contains($0) }) { bad("IVs \(iv)") }
             if let ev = m.evs, ev.count != 6 || ev.contains(where: { !(0...255).contains($0) }) || ev.reduce(0, +) > 510 { bad("EVs \(ev)") }
             if let n = m.nature, !(0..<25).contains(n) { bad("nature \(n)") }
-            if let a = m.ability, !(0..<abilitySlots[m.dex].count).contains(a) { bad("ability slot \(a) of #\(m.dex)") }
+            if let a = m.ability, !(0..<abilitySlots[m.dex].count).contains(a), !(Content.gen6 && a == 2 && hiddenAbility[m.dex] > 0) { bad("ability slot \(a) of #\(m.dex)") }   // (5.0: 2 = hidden)
             if let h = m.hyper, h.contains(where: { !(0...5).contains($0) }) || m.level < 50 { bad("hyper training \(h) at Lv.\(m.level)") }
         }
         let uids = mons(w).compactMap(\.uid)

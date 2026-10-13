@@ -43,6 +43,7 @@ extension Battle {
         case 112: mod(s) { $0.slowStart = 5 }; say(s, josa(n, "은", "는") + " 좀처럼 힘을 낼 수 없다!")
         case 107 where f(t).alive: if f(t).moves.contains(where: { let m = moveTable[$0]!; return !m.isStatus && typeEff(m.type, s, by: t) > 1 }) { say(s, josa(n, "은", "는") + " 몸서리를 쳤다!") }
         case 108 where f(t).alive: if let best = f(t).moves.max(by: { (moveTable[$0]?.power ?? 0) < (moveTable[$1]?.power ?? 0) }) { say(s, josa(monNames[f(t).mon.dex] + "의 " + moveTable[best]!.name, "을", "를") + " 꿰뚫어 보았다!") }
+        case 150 where f(t).alive: statusMove(s, t, moveTable[144]!)                                // 괴짜: 변신 on coming out (5.0)
         case 119 where f(t).alive: if let i = f(t).item { say(s, josa(n, "은", "는") + " " + josa(nm(t) + "의 " + i, "을", "를") + " 통찰했다!") }   // 통찰
         default: break
         }
@@ -62,6 +63,7 @@ extension Battle {
         let keep = f(s)
         mod(other(s)) { $0.bound = 0; $0.attracted = false; if !baton { $0.trapped = $0.ingrain } }   // the one leaving lets go of what it held on the other (조이기, 헤롱헤롱; 검은눈빛 passes with 바톤터치)
         if f(s).has(30), f(s).status != nil, f(s).alive { mod(s) { $0.status = nil } }             // 자연회복 (quietly, as it leaves)
+        if Content.gen6 { regenerate(s) }                                                           // 재생력 (5.0)
         mod(s) { $0.clearVolatile() }
         out.append(.sendOut(s, i)); apply(out.last!)
         if s == .me { faced.insert(i) } else { faced = [me] }
@@ -112,7 +114,7 @@ extension Battle {
     mutating func replaceFoe(_ i: Int) -> [Beat] { out = []; foeMustReplace = nil; switchIn(.it, i); return out }
     /// Priority, then speed (Trick Room flips it; 늑장 goes last); ties at random.
     mutating func moveFirst(_ a: Int, _ b: Int) -> Bool {
-        let pa = moveTable[a]!.priority, pb = moveTable[b]!.priority
+        let pa = priority(.me, a), pb = priority(.it, b)                                              // (5.0: 짓궂은마음 · 질풍날개)
         if pa != pb { return pa > pb }
         let qa = quick(.me), qb = quick(.it)                                                         // 선제공격손톱 · 애슈열매 / 느림보꼬리
         if qa != qb { return qa > qb }
@@ -193,6 +195,7 @@ extension Battle {
         mod(s) { $0.charging = 0; $0.semi = 0 }
         if !called && !second && f(s).lock == 0 && f(s).bide == 0 { deductPP(s, id) }           // a rampage's / 참기's later turns are free
         out.append(.use(s, move: id))
+        if Content.gen6 { protean(s, m) }                                                              // 변환자재 (5.0)
         if !called { mod(s) { $0.metronome = $0.lastMove == id ? ($0.metronome ?? 0) + 1 : nil; $0.lastMove = id } }   // (메트로놈's streak)
         if !called, f(s).choice == nil, held(s)?.hasPrefix("구애") == true, id != 165 { mod(s) { $0.choice = id } }       // 구애: locked into it                                                 // 앙코르 / 사슬묶기 / 트집 see the caller, not what 손가락흔들기 & co. called
         if id != 210 { mod(s) { $0.furyCutter = 0 } }                                              // 연속자르기's streak breaks on anything else
@@ -215,14 +218,16 @@ extension Battle {
         case 267: say(s, "자연의힘은 트라이어택이 되었다!"); execute(s, 161, called: true, depth: depth + 1); return
         default: break
         }
-        if m.onFoe, guards(t, m), id != 364 { say(t, josa(nm(t), "은", "는") + " 공격으로부터 몸을 지켰다!"); spikes(s, t, m); crash(s, t, m); return }   // (5.0: 킹실드 & co.)
-        if m.onFoe && m.reflectable && f(t).magicCoat { say(t, josa(nm(t), "은", "는") + " 매직코트로 " + josa(m.name, "을", "를") + " 튕겨냈다!"); statusMove(t, s, m); return }
+        if m.onFoe, guards(t, m, by: s), id != 364 { say(t, josa(nm(t), "은", "는") + " 공격으로부터 몸을 지켰다!"); spikes(s, t, m); crash(s, t, m); return }   // (5.0: 킹실드 & co.)
+        let mirror = !f(t).magicCoat && dAb(t, 156, by: s)                                          // 매직미러 (5.0)
+        if m.onFoe && m.reflectable && (f(t).magicCoat || mirror) { say(t, josa(nm(t), "은", "는") + (mirror ? " 매직미러로 " : " 매직코트로 ") + josa(m.name, "을", "를") + " 튕겨냈다!"); statusMove(t, s, m); return }
         if m.onFoe, f(t).semi != 0, !canHitSemi(id, f(t).semi), !(f(s).has(99) || f(t).has(99)), f(s).lockOn == 0 { say(t, josa(nm(t), "에게는", "에게는") + " 맞지 않았다!"); crash(s, t, m); return }
         if (m.onFoe || m.accuracy > 0) && !m.onSelf, !hits(s, t, m) { say(t, josa(n, "의", "의") + " 공격은 빗나갔다!"); crash(s, t, m); mod(s) { $0.rollout = 0; $0.furyCutter = 0 }; return }
         if m.onFoe, m.sound, id != 195, dAb(t, 43, by: s) { say(t, josa(nm(t), "은", "는") + " 방음으로 소리를 막았다!"); return }
         if Content.gen6, m.onFoe, m.flags & 4096 != 0, f(t).typeList.contains("grass") || dAb(t, 142, by: s) || holds(t, "방진고글") {   // Gen VI: powder and spores
             say(t, josa(nm(t), "에게는", "에게는") + " 효과가 없는 것 같다..."); return
         }
+        if Content.gen6, gen6Blocks(s, t, m) { return }                                                // 방탄, 초식 (5.0)
         if id == 86, Content.gen6, dAb(t, 31, by: s) { absorbRaise(t); return }                       // Gen V+: 피뢰침 draws it in too
         if id == 86, typeEff("electric", t, by: s) == 0 || dAb(t, 10, by: s) || dAb(t, 78, by: s) {        // 전기자석파 is the one status move type immunity stops
             say(t, josa(nm(t), "에게는", "에게는") + " 효과가 없는 것 같다..."); return

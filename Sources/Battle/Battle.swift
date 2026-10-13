@@ -77,6 +77,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
         if x.status == .paralysis { v *= x.has(95) ? 1 : 0.25 }
         if x.status != nil, x.has(95) { v *= 1.5 }                                               // 속보
         if weatherOn == .rain, x.has(33) { v *= 2 }; if weatherOn == .sun, x.has(34) { v *= 2 }  // 쓱쓱 / 엽록소
+        if weatherOn == .sand, x.has(146) { v *= 2 }                                             // 모래헤치기 (5.0)
         if x.slowStart > 0 { v *= 0.5 }
         if sides[si(s)].tailwind > 0 { v *= 2 }
         return v * itemSpeed(s)
@@ -96,6 +97,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
         if x.status != nil { return no(x.status == st || (st == .poison && x.status == .toxic) ? josa(n, "은", "는") + " 이미 " + st.badge + " 상태다!" : "그러나 실패했다!") }
         if from != nil, from != s, sides[si(s)].safeguard > 0 { return no(josa(n, "은", "는") + " 신비의 베일에 보호받고 있다!") }
         let t = x.typeList
+        if from != nil, from != s, x.has(166), t.contains("grass") { return no(josa(n, "은", "는") + " 플라워베일로 보호받고 있다!") }   // (5.0)
         switch st {
         case .poison, .toxic: if t.contains("poison") || t.contains("steel") || x.has(17) { return no(josa(n, "에게는", "에게는") + " 효과가 없는 것 같다...") }
         case .burn: if t.contains("fire") || x.has(41) { return no(josa(n, "에게는", "에게는") + " 효과가 없는 것 같다...") }
@@ -104,7 +106,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
             if x.has(7) { return no(josa(n, "은", "는") + " 유연 때문에 마비되지 않는다!") }
             if Content.gen6, t.contains("electric") { return no(josa(n, "에게는", "에게는") + " 효과가 없는 것 같다...") }   // Gen VI
         case .sleep:
-            if x.has(15) || x.has(72) { return no(josa(n, "은", "는") + " 잠들지 않는다!") }
+            if x.has(15) || x.has(72) || x.has(175) { return no(josa(n, "은", "는") + " 잠들지 않는다!") }   // (스위트베일, 5.0)
             if [mine[me], theirs[it]].contains(where: { $0.uproar > 0 }) { return no("소란 때문에 잠들 수 없다!") }
         }
         if weatherOn == .sun, x.has(102) { return no(josa(n, "은", "는") + " 리프가드로 보호받고 있다!") }
@@ -130,9 +132,10 @@ struct Battle: Equatable, Codable {                                 // Codable: 
     mutating func boost(_ s: Side, _ k: Int, _ n0: Int, from: Side, loud: Bool = true, pierce: Bool = false) {   // pierce: a sound move, through a substitute (Gen VI)
         let x = f(s); guard x.alive else { return }
         var n = x.has(86) ? n0 * 2 : n0
+        if x.has(126) { n = -n }                                                                     // 심술꾸러기 (5.0)
         if n < 0, from != s {
             if sides[si(s)].mist > 0 { if loud { say(s, josa(nm(s), "은", "는") + " 흰안개에 둘러싸여 있다!") }; return }
-            if x.has(29) || x.has(73) || (k == 1 && x.has(52)) || (k == 6 && x.has(51)) { if loud { say(s, josa(nm(s), "의", "의") + " " + abilityNames[x.ability]! + " 때문에 " + josa(stat(k), "이", "가") + " 떨어지지 않는다!") }; return }
+            if x.has(29) || x.has(73) || (k == 1 && x.has(52)) || (k == 6 && x.has(51)) || (k == 2 && x.has(145)) || (x.has(166) && x.typeList.contains("grass")) { if loud { say(s, josa(nm(s), "의", "의") + " " + abilityNames[x.ability]! + " 때문에 " + josa(stat(k), "이", "가") + " 떨어지지 않는다!") }; return }
             if x.sub > 0, !pierce { if loud { say(s, "그러나 실패했다!") }; return }
         }
         let cur = x.stage[k]
@@ -141,5 +144,6 @@ struct Battle: Equatable, Codable {                                 // Codable: 
         mod(s) { $0.stage[k] += n }
         let how = abs(n) >= 3 ? (n > 0 ? "매우 크게 올라갔다!" : "매우 크게 떨어졌다!") : abs(n) == 2 ? (n > 0 ? "크게 올라갔다!" : "크게 떨어졌다!") : (n > 0 ? "올라갔다!" : "떨어졌다!")
         say(s, josa(nm(s), "의", "의") + " " + josa(stat(k), "이", "가") + " " + how)
+        if n < 0, from != s, Content.gen6 { if x.has(128) { boost(s, 1, 2, from: s) }; if x.has(172) { boost(s, 3, 2, from: s) } }   // 오기 · 승기 (5.0)
     }
 }

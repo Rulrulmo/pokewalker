@@ -11,9 +11,9 @@ extension Battle {
         for s in [Side.me, .it] where f(s).alive && !over {
             let x = f(s), n = nm(s), guardian = x.has(98)
             switch weatherOn {
-            case .sand where !x.typeList.contains(where: { ["rock", "ground", "steel"].contains($0) }) && !x.has(8) && !guardian && ![91, 291].contains(x.semi): hurt(s, max(1, x.maxHP / 16), "모래바람이 " + josa(n, "을", "를") + " 덮쳤다!")   // only underground / underwater is out of it
+            case .sand where !x.typeList.contains(where: { ["rock", "ground", "steel"].contains($0) }) && !x.has(8) && !x.has(142) && !x.has(146) && !x.has(159) && !guardian && ![91, 291].contains(x.semi): hurt(s, max(1, x.maxHP / 16), "모래바람이 " + josa(n, "을", "를") + " 덮쳤다!")   // only underground / underwater is out of it
             case .hail:
-                if x.has(115) { restore(s, max(1, x.maxHP / 16), "") } else if !x.typeList.contains("ice"), !x.has(81), !guardian, ![91, 291].contains(x.semi) { hurt(s, max(1, x.maxHP / 16), "싸라기눈이 " + josa(n, "을", "를") + " 덮쳤다!") }   // 아이스바디 (always on an ice type)
+                if x.has(115) { restore(s, max(1, x.maxHP / 16), "") } else if !x.typeList.contains("ice"), !x.has(81), !x.has(142), !guardian, ![91, 291].contains(x.semi) { hurt(s, max(1, x.maxHP / 16), "싸라기눈이 " + josa(n, "을", "를") + " 덮쳤다!") }   // 아이스바디 (always on an ice type)
             case .rain:
                 if x.has(44) { restore(s, max(1, x.maxHP / 16), "") }; if x.has(87) { restore(s, max(1, x.maxHP / 8), "") }
                 if x.has(93), x.status != nil { setStatus(s, nil, josa(n, "은", "는") + " 촉촉바디로 나았다!") }
@@ -61,6 +61,7 @@ extension Battle {
                 mod(s) { $0.bound -= 1 }; if f(s).bound == 0 { say(s, josa(n, "은", "는") + " " + by + "에서 풀려났다!") } else if !guardian { hurt(s, max(1, x.maxHP / cut), josa(n, "은", "는") + " " + by + "의 데미지를 입었다!") }
             }
             if f(s).alive, x.has(3), x.turnsOut > 0 { boost(s, 5, 1, from: s) }
+            if Content.gen6 { gen6AbilitiesEndOfTurn(s) }                                             // 변덕쟁이, 수확 (5.0)
             if f(s).alive, x.has(61), f(s).status != nil, Content.gen6 ? roll(3) == 0 : pct(30) { setStatus(s, nil, josa(n, "은", "는") + " 탈피로 나았다!") }
             if f(s).alive, x.status == .sleep, f(t).alive, f(t).has(123), !guardian { hurt(s, max(1, x.maxHP / 8), josa(n, "은", "는") + " 나이트메어에 시달리고 있다!") }
             if f(s).alive, x.yawn > 0 { mod(s) { $0.yawn -= 1 }; if f(s).yawn == 0 { inflict(s, .sleep, from: t, loud: false) } }

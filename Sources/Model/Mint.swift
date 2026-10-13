@@ -13,6 +13,7 @@ extension Walk {
         let shiny: Bool? = Int.random(in: 0..<Walk.chainShinyOdds(chain), using: &r) == 0 ? true : nil
         var m = Mon.wild(l ?? s.dex, level: level, shiny: shiny, perfect: max(l == nil ? 0 : 3, Walk.chainPerfectIVs(chain)), &r)
         if l == nil { m.female = s.female }
+        if Content.gen6, l == nil, hiddenAbility[m.dex] > 0, Double.random(in: 0..<1, using: &r) < Walk.chainHiddenOdds(chain) { m.ability = 2 }   // 5.0 (plan 18 §4)
         return (m, l != nil)
     }
     /// After a catch or a KO at chain length `chain`: does the grass rustle again?

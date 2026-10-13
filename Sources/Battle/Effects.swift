@@ -17,6 +17,7 @@ extension Battle {
             mod(t) { $0.seeded = true }; say(t, josa(nm(t), "에게", "에게") + " 씨앗을 심었다!")
         case "yawn": if f(t).status == nil, f(t).yawn == 0 { mod(t) { $0.yawn = 2 }; say(t, josa(nm(t), "의", "의") + " 졸음을 유도했다!") } else if loud { say(t, "그러나 실패했다!") }
         case "nightmare": if f(t).status == .sleep, !f(t).nightmare { mod(t) { $0.nightmare = true }; say(t, josa(nm(t), "은", "는") + " 악몽을 꾸기 시작했다!") } else if loud { say(t, "그러나 실패했다!") }
+        case "torment" where f(t).has(165), "disable" where f(t).has(165), "heal-block" where f(t).has(165): if loud { say(t, josa(nm(t), "은", "는") + " 아로마베일로 보호받고 있다!") }   // (5.0)
         case "torment": mod(t) { $0.torment = true }; say(t, josa(nm(t), "은", "는") + " 트집을 잡혔다!")
         case "disable":
             guard f(t).lastMove != 0, f(t).disable == 0 else { if loud { say(t, "그러나 실패했다!") }; return }
@@ -34,7 +35,7 @@ extension Battle {
     }
     mutating func attract(_ t: Side, from s: Side, loud: Bool) {
         let a = f(s).mon, b = f(t).mon
-        guard genderRate[a.dex] >= 0, genderRate[b.dex] >= 0, a.female != b.female, !f(t).attracted, !f(t).has(12) else { if loud { say(t, "그러나 실패했다!") }; return }
+        guard genderRate[a.dex] >= 0, genderRate[b.dex] >= 0, a.female != b.female, !f(t).attracted, !f(t).has(12), !f(t).has(165) else { if loud { say(t, "그러나 실패했다!") }; return }
         mod(t) { $0.attracted = true }; say(t, josa(nm(t), "은", "는") + " 헤롱헤롱해졌다!")
         if holds(t, "빨간실"), f(s).alive, !f(s).attracted, !f(s).has(12) { mod(s) { $0.attracted = true }; say(s, "빨간실 때문에 " + josa(nm(s), "도", "도") + " 헤롱헤롱해졌다!") }
     }
@@ -43,13 +44,13 @@ extension Battle {
         func fail() { say(s, "그러나 실패했다!") }
         switch m.cat {
         case 1 where id == 477: _ = gen6Status(s, t, m); return                                      // 텔레키네시스 (5.0)
-        case 1: if f(t).sub > 0 && m.onFoe && m.ailment != "perish-song" && !piercesSub(m) { fail() } else { ailment(m.onSelf ? s : t, m.ailment, from: s, loud: true, move: m) }; return
+        case 1: if f(t).sub > 0 && m.onFoe && m.ailment != "perish-song" && !piercesSub(m, by: s) { fail() } else { ailment(m.onSelf ? s : t, m.ailment, from: s, loud: true, move: m) }; return
         case 2:
             if gen6StatRule(s, t, m) { return }                                                          // (5.0: 베놈트랩, 자기장조작, 일구기)
             let who = m.onSelf ? s : t
             if id == 445, genderRate[f(s).mon.dex] < 0 || genderRate[f(t).mon.dex] < 0 || f(s).mon.female == f(t).mon.female { fail(); return }
             let sun = Content.gen6 && id == 74 && weatherOn == .sun ? 2 : 1                                // Gen V+: 성장 +2 in the sun
-            for k in stride(from: 0, to: m.stats.count, by: 2) { boost(who, m.stats[k] - 1, m.stats[k + 1] * sun, from: s, pierce: piercesSub(m)) }
+            for k in stride(from: 0, to: m.stats.count, by: 2) { boost(who, m.stats[k] - 1, m.stats[k + 1] * sun, from: s, pierce: piercesSub(m, by: s)) }
             if id == 107 { mod(s) { $0.minimized = true } }; if id == 111 { mod(s) { $0.curled = true } }
             if id == 268 { mod(s) { $0.charge = 2 }; say(s, josa(n, "은", "는") + " 충전했다!") }                    // its next turn's Electric move
             gen6StatAfter(s, m)                                                                          // (5.0: 바디퍼지, 막말내뱉기)
@@ -62,7 +63,7 @@ extension Battle {
             if f(s).hp == f(s).maxHP { say(s, josa(n, "의", "의") + " HP는 가득하다!"); return }
             restore(s, f(s).maxHP * p / 100, josa(n, "은", "는") + " 체력을 회복했다!"); return
         case 5:
-            if f(t).sub > 0, !piercesSub(m) { fail(); return }
+            if f(t).sub > 0, !piercesSub(m, by: s) { fail(); return }
             for k in stride(from: 0, to: m.stats.count, by: 2) { boost(t, m.stats[k] - 1, m.stats[k + 1], from: s) }
             confuse(t, from: s, loud: true); return
         default: break
@@ -90,7 +91,7 @@ extension Battle {
             }
         case 114: for x in [Side.me, .it] { mod(x) { $0.stage = Array(repeating: 0, count: 8) } }; say(s, "모든 능력 변화가 원래대로 돌아왔다!")
         case 156:
-            guard f(s).hp < f(s).maxHP, f(s).status != .sleep, !f(s).has(15), !f(s).has(72), !(Content.gen6 && weatherOn == .sun && f(s).has(102)) else { fail(); return }   // Gen V+: 리프가드 in the sun
+            guard f(s).hp < f(s).maxHP, f(s).status != .sleep, !f(s).has(15), !f(s).has(72), !f(s).has(175), !(Content.gen6 && weatherOn == .sun && f(s).has(102)) else { fail(); return }   // Gen V+: 리프가드 in the sun
             setStatus(s, .sleep, josa(n, "은", "는") + " 잠들어 체력을 회복했다!"); mod(s) { $0.sleep = 3 }; restore(s, f(s).maxHP, "")   // asleep 2 turns
         case 116: guard !f(s).focus else { fail(); return }; mod(s) { $0.focus = true }; say(s, josa(n, "은", "는") + " 의욕이 넘치고 있다!")
         case 164:
@@ -150,7 +151,7 @@ extension Battle {
             guard let i = nextAlive(s) else { fail(); return }
             say(s, josa(n, "은", "는") + " 바통을 넘겼다!"); switchIn(s, i, baton: true)
         case 227:
-            guard f(t).lastMove != 0, f(t).encore == 0, ![227, 102, 165, 118].contains(f(t).lastMove), let lk = f(t).moves.firstIndex(of: f(t).lastMove), f(t).pp[lk] > 0 else { fail(); return }
+            guard f(t).lastMove != 0, f(t).encore == 0, !f(t).has(165), ![227, 102, 165, 118].contains(f(t).lastMove), let lk = f(t).moves.firstIndex(of: f(t).lastMove), f(t).pp[lk] > 0 else { fail(); return }
             let k = Content.gen6 ? (f(t).movedThisTurn ? 4 : 3) : 4 + roll(5); mod(t) { $0.encore = k; $0.encoreMove = $0.lastMove }; say(t, josa(tn, "은", "는") + " 앙코르를 받았다!")   // Gen V+: 3 of its turns
         case 244: let st = f(t).stage; mod(s) { $0.stage = st }; say(s, josa(n, "은", "는") + " " + josa(tn, "의", "의") + " 능력 변화를 복사했다!")
         case 248, 353:
@@ -161,7 +162,7 @@ extension Battle {
         case 262:
             hurt(s, f(s).hp, ""); boost(t, 1, -2, from: s); boost(t, 3, -2, from: s)
         case 269:
-            guard f(t).taunt == 0, !(Content.gen6 && dAb(t, 12, by: s)) else { fail(); return }                // Gen VI: 둔감 doesn't fall for it
+            guard f(t).taunt == 0, !(Content.gen6 && dAb(t, 12, by: s)), !f(t).has(165) else { fail(); return }                // Gen VI: 둔감 doesn't fall for it
             let k = Content.gen6 ? (f(t).movedThisTurn ? 4 : 3) : 3 + roll(3); mod(t) { $0.taunt = k }; say(t, josa(tn, "은", "는") + " 도발에 넘어갔다!")   // Gen V+: 3 of its turns
         case 272: let a = f(t).ability; guard !(Content.gen6 ? [0, 25, 36, 59, 121, 122, 149, 150, 161, 176] : [0, 25, 36]).contains(a) else { fail(); return }; mod(s) { $0.abilityOver = a }; say(s, josa(n, "은", "는") + " " + josa(abilityNames[a]!, "을", "를") + " 복사했다!")
         case 273: guard sides[si(s)].wish == 0 else { fail(); return }; sides[si(s)].wish = 2; sides[si(s)].wishHP = f(s).maxHP / 2; say(s, josa(n, "은", "는") + " 희망사항을 빌었다!")

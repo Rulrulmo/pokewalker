@@ -123,6 +123,8 @@ struct Walk: Codable, Equatable {
         let i = here.items[0].item; _ = keep(i); return i
     }
     /// IVs sure to be 31 at chain length `chain` (like Gen VII's SOS chains, scaled to how rarely a chain here gets long): 3 → 1, 5 → 2, 7 → 3, 9 → 4.
+    /// 5.0 (content5, plan 18 §4): the radar's find has its hidden ability 10 % from a chain of 5, 25 % from 10 (not a legend course's legend).
+    static func chainHiddenOdds(_ chain: Int) -> Double { chain >= 10 ? 0.25 : chain >= 5 ? 0.10 : 0 }
     static func chainPerfectIVs(_ chain: Int) -> Int { chain >= 9 ? 4 : chain >= 7 ? 3 : chain >= 5 ? 2 : chain >= 3 ? 1 : 0 }
     /// 1/128 at the start, x(1 + n/2) better per link, capped at 10 links (1/21). 1/(128/(2n+1)) handed out 이로치 far too easily.
     static func chainShinyOdds(_ chain: Int) -> Int { let better: Double = 1 + 0.5 * Double(min(chain, 10)); return Int(Double(shinyOdds) / better) }
