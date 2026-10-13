@@ -1132,7 +1132,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if run.mega, won, let stone = run.boss.item,
            megaOdds.isEmpty ? Int(rng.next() % 100) < MegaRaid.stoneOdds[max(0, min(4, run.tier - 1))] : megaOdds.removeFirst() {
             let had = rows[key]?.walk.flatMap(Cloud.walk).map { MegaRaid.stonesHad($0).contains(stone) } ?? false
-            giveMail(key, "raid", from: "메가 레이드", title: had ? "\(stone) 대신 BP" : "\(stone)를 얻었다!", had ? [.bp(amount: MegaRaid.duplicateBP(run.tier))] : [.items(name: stone, count: 1)])
+            giveMail(key, "raid", from: "메가 레이드", title: MegaRaid.mailTitle(stone, had: had), had ? [.bp(amount: MegaRaid.duplicateBP(run.tier))] : [.items(name: stone, count: 1)])
         }
         let wins = raidRuns[key]!.filter(\.won).count
         if won, let r = RaidRules.weekly.first(where: { $0.wins == wins }) { giveMail(key, "raid", from: "레이드", title: "레이드 이번 주 \(wins)승 보상", r.gifts) }
