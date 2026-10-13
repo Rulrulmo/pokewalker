@@ -18,7 +18,7 @@ import Foundation
         s.total = 5250; s.today = 1234; s.history = [3000, 0, 4521, 812, 2210]; s.seen = [19, 150, 243]; s.dex()
         return s
     }
-    func still(_ v: Walker, _ who: String, _ dex: Int) { v.animOn = (who, dex, T - 60) }                // its entry animation long done
+    func still(_ v: Walker, _ who: String, _ art: Int) { v.animOn = (who, art, T - 60) }                // its entry animation long done
     func into(_ bs: [Beat], _ i: Int, _ u: Double) -> Date { T - (bs[..<i].map(\.length).reduce(0, +) + u) }
     func wildFight(_ v: Walker) -> (b: Battle, from: Battle, beats: [Beat]) {
         var r = Seeded(s: 5), b = Battle(wild: Mon.wild(6, level: 30, &r), companion: v.state.companion, chain: 0); let from = b
@@ -166,6 +166,9 @@ import Foundation
         let mgb = Battle(wild: cross, companion: zard); var both = mgb; both.mine[0].mega = 1; both.theirs[0].mega = 1; both.megaUsed = [true, true]
         take("battle_mega_toggle_on") { v in v.state.companion = zard; v.megaOn = true; v.fight = mgb; v.screen = .moves(mgb, sel: 4) }   // 메가진화 (§9.6)
         take("battle_mega_after") { v in v.state.companion = zard; v.fight = both; v.screen = .battle(both, sel: 0) }
+        let frog = Mon(dex: 658, level: 40, female: false), xb = Battle(wild: Mon(dex: 716, level: 50, female: false), companion: frog)   // 5.0's pictures (hg-engine, §9.1)
+        take("battle_gen6") { v in v.state.companion = frog; still(v, "foe 0", 716); v.fight = xb; v.screen = .battle(xb, sel: 0) }
+        take("dex_form_vivillon") { v in v.state.owned = [6, 25, 666]; v.dexForm = (666, 4); v.screen = .dex(666, filter: 0, detail: true) }   // the entry page's forms (§9.6)
     }
     take("battle_size3", size: 3) { v in let f = wildFight(v); still(v, "foe 0", 6); v.screen = .battle(f.b, sel: 0) }
     return n

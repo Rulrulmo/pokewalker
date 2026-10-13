@@ -183,7 +183,7 @@ extension FB {
     }
     /// A Pokémon on the shows' spot (its feet on dot (48, 49)), scaled about its middle; tint = a silhouette in that colour.
     mutating func showMon(_ m: Mon, scale s: Double = 1, alpha: Double = 1, tint: UInt32? = nil, bob: Int = 0, anim u: Double? = nil) {
-        let mid = Double(80 - spriteTop(m.dex)) / 4                                                      // its middle, in dots above its feet
+        let mid = Double(80 - spriteTop(m.art)) / 4                                                      // its middle, in dots above its feet
         sprite(m, 32, 17 - Int((mid * (1 - s)).rounded()), bob: bob, tint: tint.map { (0, $0) }, floor: 50, anim: u)   // a wing's swing stays off the message row
         sprites[sprites.count - 1].scale = s; sprites[sprites.count - 1].alpha = alpha
     }
@@ -222,7 +222,7 @@ extension FB {
             pic("w.glow|burst", ex, cy, scale: min(1, 0.35 + (u - 2.6) / 0.15 * 0.65)) { glowPic(96, 46, glow, hot: true) }   // the burst of light, up to the stage's edges
         }
         if u >= 2.95 {                                                                               // out of the light: a white shape growing, then its colours
-            let g = min(1, (u - 2.95) / 0.45), s = 0.3 + 0.7 * (1 - (1 - g) * (1 - g)), top = spriteTop(m.dex)
+            let g = min(1, (u - 2.95) / 0.45), s = 0.3 + 0.7 * (1 - (1 - g) * (1 - g)), top = spriteTop(m.art)
             if u < 3.9 { stageGlow("born", ex, 98 - (80 - top) / 2, 40, 36, glow, hot: true, alpha: min(1, (3.9 - u) / 0.6)) }
             showMon(m, scale: s, bob: u > 3.8 ? bob : 0, anim: u > 3.8 ? u - 3.8 : nil)             // out of the light: its own HGSS animation
             if u < 3.75 { showMon(m, scale: s, alpha: min(1, (3.75 - u) / 0.4), tint: rgb(255, 255, 255)) }
@@ -236,13 +236,13 @@ extension FB {
                 if y < 94 { pic("w.shell|\(i % 3)", Int(x), Int(y), scale: 2, alpha: d < 0.7 ? 1 : max(0, (1 - d) / 0.3), angle: (i % 2 == 0 ? 1 : -1) * d * 600) { shellPics[i % 3] } }
             }
         }
-        if u > 3.3 { let top = spriteTop(m.dex); sparkles(u - 3.3, 96, 98 - (80 - top) / 2, Double(80 - top) / 2 + 14, n: m.shiny == true ? 8 : 6, big: m.shiny == true || u < 4.6) }
+        if u > 3.3 { let top = spriteTop(m.art); sparkles(u - 3.3, 96, 98 - (80 - top) / 2, Double(80 - top) / 2 + 14, n: m.shiny == true ? 8 : 6, big: m.shiny == true || u < 4.6) }
     }
     /// 진화 (6.5 s): lights down and it glows white (to 1.2 s); the two shapes take turns, the old shrinking as the new grows, faster and faster,
     /// with motes of light spiralling in (to 4.0 s); a white flash (to 4.4 s); the new form, sparkling. The message row is the caller's.
     mutating func evolveFX(_ from: Mon, _ to: Mon, _ u: Double, bob: Int) {
         pic("w.dark|stage", 96, 50, alpha: min(1, u / 0.7), behind: true) { panelPic(192, 100, rgb(18, 22, 42)) }
-        let mid = { (m: Mon) in 98 - (80 - spriteTop(m.dex)) / 2 }                                     // a form's middle, half-dots
+        let mid = { (m: Mon) in 98 - (80 - spriteTop(m.art)) / 2 }                                     // a form's middle, half-dots
         if u < 4.0 {
             let on = min(1, max(0, (u - 0.5) / 0.7))
             stageGlow("evo", 96, mid(from), 54, 50, rgb(70, 120, 230), hot: false, alpha: on * (0.65 + 0.15 * sin(u * 7)))

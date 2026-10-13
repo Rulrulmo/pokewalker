@@ -154,11 +154,11 @@ extension Walker {
             let alive = s == .me ? b.mine[b.me].alive : b.theirs[b.it].alive                         // only a fainting one sinks behind its pad; a lunge isn't clipped
             let plain = s == .it && alive && shot?.glow == nil && !v.flash && { if case .ball = p { return false }; return true }()   // out and standing: HGSS plays its own animation once
             fb.sprite(s == .me ? mineLook : foeLook, a.x + v.dx, a.y + v.dy, back: s == .me, bob: s == .me ? f - 1 : f, flash: v.flash, floor: alive ? 64 : a.y + 32,
-                      anim: plain ? animT("foe \(b.it)", foeLook.dex, now) : nil)   // ours bobs down: its cut-off back never lifts
+                      anim: plain ? animT("foe \(b.it)", foeLook.art, now) : nil)   // ours bobs down: its cut-off back never lifts
             if let g = shot?.glow, shot?.side == s { fb.glow(g) }                                     // going into / coming out of a ball
         }
         if case .idle = p, foe.shiny == true, shown[.it]!.on {                                      // sparkles around it, from its head down
-            let top = at[.it]!.y + 32 - (80 - spriteTop(foeLook.dex)) / 2, h = at[.it]!.y + 32 - top          // a sprite pixel is half a dot
+            let top = at[.it]!.y + 32 - (80 - spriteTop(foeLook.art)) / 2, h = at[.it]!.y + 32 - top          // a sprite pixel is half a dot
             for (k, (sx, sy)) in [(-2, 2), (26, h / 4), (12, -3), (28, h * 3 / 4)].enumerated() where (Int(t * 4) + k) % 3 == 0 { fb.draw(spark, at[.it]!.x + sx, max(0, top + sy), sparkPal) }
         }
         if let (bt, u) = beat { moveFX(&fb, bt, u, b, at) }                                         // a move's effect over the fighters

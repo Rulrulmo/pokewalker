@@ -216,7 +216,7 @@ extension Canvas {
                 if i == 4 { pixelArt(gem, gemPal, CGPoint(x: rc.midX, y: rc.minY + x(15)), 3 * K); c.say("도구 \(n)", rc.midX, rc.maxY - x(7), font(8, .bold), Ink.sub, 0.5); hits.append((rc, 4510)) }
                 else if let e = g.party[safe: i] {
                     let lift = on && g.bob ? K : 0
-                    c.image(iconImage(e.dex), CGRect(x: snap(rc.midX - 16 * K), y: snap(rc.minY - x(3) - lift), width: 32 * K, height: 32 * K), alpha: walker?.drag?.from == 4500 + i ? 0.3 : 1)   // (carried away: faded)
+                    c.image(iconImage(e.pic), CGRect(x: snap(rc.midX - 16 * K), y: snap(rc.minY - x(3) - lift), width: 32 * K, height: 32 * K), alpha: walker?.drag?.from == 4500 + i ? 0.3 : 1)   // (carried away: faded)
                     c.say(i == 0 ? "함께" : "Lv.\(e.level)", rc.midX, rc.maxY - x(7), font(8, .bold), i == 0 ? Ink.red : Ink.sub, 0.5)
                     if e.shiny { c.say("★", rc.maxX - x(5), rc.minY + x(6), font(7, .bold), Ink.gold, 1) }
                     hits.append((rc, 4500 + i))
@@ -237,7 +237,7 @@ extension Canvas {
             if e.look == 0 { c.say(String(format: "%03d", e.dex), cell.midX, cell.midY, font(8, .medium), Ink.faint, 0.5) }
             else {
                 let lift = k == g.sel && g.bob ? K : 0                                                    // the pick hops a pixel, twice a second
-                c.image(iconImage(e.dex, shadow: e.look == 1), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: walker?.drag?.from == 10000 + g.first + k ? 0.3 : 1)
+                c.image(iconImage(e.pic, shadow: e.look == 1), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: walker?.drag?.from == 10000 + g.first + k ? 0.3 : 1)
             }
             if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
             if e.held { pixelArt(gem, gemPal, CGPoint(x: cell.maxX - x(6), y: cell.maxY - x(6)), 1.4 * K) }   // 3.7: it holds an item
@@ -251,7 +251,7 @@ extension Canvas {
         pager("\(g.page) / \(g.pages)", top + 198, prev: g.pages > 1, next: g.pages > 1)   // the last page's ▶ goes round to #1
         if let w = walker, let d = w.drag, let ref = w.dragRef(d.from), let m = w.state.mon(ref) {     // a drag: where it would land ringed red, the Pokémon under the pointer
             if let t = drops.first(where: { $0.0.contains(d.at) }), w.canDrop(d.from, t.1) { c.stroke(.rounded(t.0.insetBy(dx: 1 * K, dy: 1 * K), 10 * K), Ink.red, width: 2 * K) }
-            c.image(iconImage(m.dex), CGRect(x: snap(d.at.x - 16 * K), y: snap(d.at.y - 20 * K), width: 32 * K, height: 32 * K), alpha: 0.85)
+            c.image(iconImage(m.art), CGRect(x: snap(d.at.x - 16 * K), y: snap(d.at.y - 20 * K), width: 32 * K, height: 32 * K), alpha: 0.85)
         }
     }
     /// A pill track of tabs, the picked one solid red.
@@ -291,6 +291,13 @@ extension Canvas {
             c.say(label, x(X0 + 2), y(yy + 10), font(9, .medium), Ink.sub)
             for (j, v) in vals.prefix(n).enumerated() { c.say(v, x(X0 + 58), y(yy + 10 + CGFloat(j) * 14), font(10, .medium), Ink.ink, maxW: x(X1 - X0 - 60)) }
             yy += CGFloat(n) * 14 + 6
+        }
+        if let f = d.form {                                                                        // 5.0: its forms, one at a time (the LCD's ● too)
+            let rc = r(X0, yy, X1 - X0, 26); tile(rc, 9, on: false); hits.append((rc, 4160))
+            c.say("폼", x(X0 + 6), rc.midY, font(9, .medium), Ink.sub, 0)
+            c.say(f, x(X0 + 58), rc.midY, font(10, .semibold), Ink.ink, 0, maxW: x(X1 - X0 - 136))
+            c.say(d.formAt, x(X1 - 50), rc.midY, font(9, .medium), Ink.sub, 1)
+            c.say("다음 ▶", x(X1 - 6), rc.midY, font(9, .bold), Ink.red, 1)
         }
     }
 
@@ -465,7 +472,7 @@ extension Canvas {
     func drawStatus(_ s: StatusModel) {
         var yy: CGFloat = 200
         let scale = c.scale, snap = { (v: CGFloat) in (v * scale).rounded() / scale }
-        c.image(iconImage(s.dex), CGRect(x: snap(x(X0 - 1)), y: snap(y(yy)), width: 32 * K, height: 32 * K), alpha: 1)
+        c.image(iconImage(s.art), CGRect(x: snap(x(X0 - 1)), y: snap(y(yy)), width: 32 * K, height: 32 * K), alpha: 1)
         let tx = X0 + 36
         var w = c.say(s.name, x(tx), y(yy + 8), font(11, .bold), Ink.ink)
         if !s.sex.isEmpty { w += x(2) + c.say(s.sex, x(tx) + w + x(2), y(yy + 8.5), font(10, .bold), s.female ? Ink.pink : Ink.blue) }
@@ -599,7 +606,7 @@ extension Page {
         let scale = c.scale, snap = { (v: CGFloat) in (v * scale).rounded() / scale }, hint = font(8, .semibold)
         for (i, p) in m.party.enumerated() {
             let rc = r(X0, 220 + CGFloat(i) * 27.5, X1 - X0, 25); c.fill(.rounded(rc, 9 * K), Ink.tile)
-            c.image(iconImage(p.dex), CGRect(x: snap(rc.minX + x(2)), y: snap(rc.midY - 16 * K - x(2)), width: 32 * K, height: 32 * K), alpha: 1)
+            c.image(iconImage(p.art ?? p.dex), CGRect(x: snap(rc.minX + x(2)), y: snap(rc.midY - 16 * K - x(2)), width: 32 * K, height: 32 * K), alpha: 1)
             let hw = c.say("바꾸기", rc.maxX - x(9), rc.midY, hint, Ink.faint, 1)
             let nw = c.say(p.name, rc.minX + x(38), rc.midY, font(10, .bold), Ink.ink); if p.shiny { c.say("★", rc.minX + x(40) + nw, rc.midY, font(8, .bold), Ink.gold) }   // 이로치, as the box marks it
             c.say(p.level != Walk.towerLevel ? "Lv.\(p.level)→\(Walk.towerLevel)" : "Lv.\(p.level)", rc.maxX - x(9) - hw - x(8), rc.midY, font(9, .semibold), Ink.sub, 1)   // fights as Lv.50
@@ -787,7 +794,7 @@ extension Page {
             if k == m.picked || m.marks.contains(k) { let p = Path.rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K); c.fill(p, Ink.redTint); c.stroke(p, Ink.red, width: 1.5 * K) }
             else if k == m.sel { c.stroke(.rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K), Ink.faint, width: 1 * K) }
             let lift = k == m.picked && m.bob ? K : 0
-            c.image(iconImage(e.dex, shadow: e.look == 1), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: e.look == 1 ? 0.6 : 1)
+            c.image(iconImage(e.pic, shadow: e.look == 1), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: e.look == 1 ? 0.6 : 1)
             if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
             if e.v3 {
                 let cx = cell.minX + x(6), cy = cell.maxY - x(6), rr = 2.4 * K
@@ -897,7 +904,7 @@ extension Page {
         let top = max(0, min(m.sel - 2, m.rows.count - 6))
         for (i, row) in m.rows.enumerated() where i >= top && i < top + 6 {
             let rc = r(X0, 216 + CGFloat(i - top) * 29, X1 - X0, 26); tile(rc, 9, on: i == m.sel, row.take ? Ink.tint(Ink.blue, 0.08) : nil)
-            if let d = row.dex { c.image(iconImage(d, shadow: row.why != nil), CGRect(x: rc.minX + x(14) - 14 * K, y: rc.midY - 15 * K, width: 28 * K, height: 28 * K), alpha: 1) }   // 5.0: a Pokémon's row
+            if let d = row.dex { c.image(iconImage(artIndex(d, row.form), shadow: row.why != nil), CGRect(x: rc.minX + x(14) - 14 * K, y: rc.midY - 15 * K, width: 28 * K, height: 28 * K), alpha: 1) }   // 5.0: a Pokémon's row
             else { pixelArt(gem, gemPal, CGPoint(x: rc.minX + x(14), y: rc.midY), 2.5 * K) }
             var cw: CGFloat = row.dex != nil ? 0 : row.take ? c.say("빼기", rc.maxX - x(9), rc.midY, font(9, .bold), Ink.blue, 1) : c.say("×\(row.count)", rc.maxX - x(9), rc.midY, font(10, .semibold), row.why == nil ? Ink.ink : Ink.faint, 1)
             if !row.take, row.dex == nil {                                                          // 3.8.5: 쓰기 (on it) or 지니기
@@ -914,9 +921,9 @@ extension Page {
     }
     // MARK: 3.8's picks in order (14 §4–5): the strip (who goes, in order), a duel's other six, ours numbered, the button
     /// One Pokémon in a slot or cell: its icon (snapped), ★ for 이로치.
-    func monIcon(_ dex: Int, shiny: Bool, _ cell: CGRect, side: CGFloat, lift: CGFloat = 0, shadow: Bool = false) {
+    func monIcon(_ art: Int, shiny: Bool, _ cell: CGRect, side: CGFloat, lift: CGFloat = 0, shadow: Bool = false) {
         let scale = c.scale, snap = { (v: CGFloat) in (v * scale).rounded() / scale }
-        c.image(iconImage(dex, shadow: shadow), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: shadow ? 0.6 : 1)
+        c.image(iconImage(art, shadow: shadow), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: shadow ? 0.6 : 1)
         if shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
     }
     /// A row of slots (3 or 6): each numbered, its Pokémon and level, or empty; a click on a filled one = code + i.
@@ -927,7 +934,7 @@ extension Page {
             c.fill(.rounded(rc, 9 * K), s == nil ? Ink.board : Ink.tile)
             c.say("\(i + 1)", rc.minX + x(5), rc.minY + x(6.5), font(7.5, .bold), s == nil ? Ink.faint : Ink.red)
             guard let s else { continue }
-            monIcon(s.dex, shiny: s.shiny, CGRect(x: rc.minX, y: rc.minY, width: rc.width, height: rc.height - x(8)), side: min(28, h - 6) * K)
+            monIcon(s.art ?? s.dex, shiny: s.shiny, CGRect(x: rc.minX, y: rc.minY, width: rc.width, height: rc.height - x(8)), side: min(28, h - 6) * K)
             c.say(s.level, rc.midX, rc.maxY - x(6), font(7, .semibold), Ink.sub, 0.5)
             if let code { hits.append((rc, code + i)) }
         }
@@ -938,7 +945,7 @@ extension Page {
         for (i, s) in slots.enumerated() {
             let rc = r(X0 + CGFloat(i) * (sw + gap), top, sw, 42); tile(rc, 10, on: false, s == nil ? Ink.board : nil)
             guard let s else { c.say("\(i + 1)", rc.midX, rc.midY, font(10, .bold), Ink.faint, 0.5); continue }
-            monIcon(s.dex, shiny: s.shiny, CGRect(x: rc.minX, y: rc.minY - x(3), width: rc.width, height: x(36)), side: side)
+            monIcon(s.art ?? s.dex, shiny: s.shiny, CGRect(x: rc.minX, y: rc.minY - x(3), width: rc.width, height: x(36)), side: side)
             c.say(s.level, rc.midX, rc.maxY - x(7), font(8, .bold), Ink.sub, 0.5)
             let d = x(11), b = CGRect(x: rc.minX + x(2), y: rc.minY + x(2), width: d, height: d); c.fill(.oval(b), Ink.red); c.say("\(i + 1)", b.midX, b.midY, font(7, .bold), .white, 0.5)
             hits.append((rc, 8740 + i))
@@ -949,11 +956,11 @@ extension Page {
         if let o = order {
             let p = Path.rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K); c.fill(p, Ink.redTint); c.stroke(p, Ink.red, width: 1.5 * K)
             if looked { c.stroke(.rounded(cell.insetBy(dx: 0.5 * K, dy: 0.5 * K), 9 * K), Ink.ink, width: 1 * K) }
-            monIcon(e.dex, shiny: false, cell, side: 32 * K)
+            monIcon(e.pic, shiny: false, cell, side: 32 * K)
             let d = x(11), b = CGRect(x: cell.minX + x(2), y: cell.minY + x(2), width: d, height: d); c.fill(.oval(b), Ink.red); c.say("\(o)", b.midX, b.midY, font(7, .bold), .white, 0.5)
         } else {
             if looked { c.stroke(.rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K), Ink.faint, width: 1 * K) }
-            monIcon(e.dex, shiny: false, cell, side: 32 * K, shadow: e.look == 1)                  // 1: can't be picked here (as the 도구 picker's)
+            monIcon(e.pic, shiny: false, cell, side: 32 * K, shadow: e.look == 1)                  // 1: can't be picked here (as the 도구 picker's)
         }
         if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
         if e.held { pixelArt(gem, gemPal, CGPoint(x: cell.maxX - x(6), y: cell.maxY - x(6)), 1.4 * K) }
@@ -970,7 +977,7 @@ extension Page {
         if let t = m.theirs {                                                                       // a duel: the other's six (species only), my six to pick from
             c.say("상대 대전 파티", x(X0 + 2), y(268), font(9, .semibold), Ink.sub)
             let theirs = r(X0, 276, X1 - X0, 33); c.fill(.rounded(theirs, 11 * K), Ink.tint(Ink.red, 0.06))
-            for (k, e) in t.prefix(6).enumerated() { monIcon(e.dex, shiny: e.shiny, r(X0 + CGFloat(k) * 33, 276, 33, 33), side: 32 * K) }
+            for (k, e) in t.prefix(6).enumerated() { monIcon(e.pic, shiny: e.shiny, r(X0 + CGFloat(k) * 33, 276, 33, 33), side: 32 * K) }
             c.say(m.boxTitle, x(X0 + 2), y(322), font(9, .semibold), Ink.sub, maxW: x(X1 - X0 - 4))
             let board = r(X0, 330, X1 - X0, 33); c.fill(.rounded(board, 11 * K), Ink.board)
             for (k, e) in m.cells.prefix(6).enumerated() {

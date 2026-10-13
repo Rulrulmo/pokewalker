@@ -159,7 +159,7 @@ extension Walker {
     }
     func duelHubPane(_ tab: Int, _ sel: Int, _ now: Date) -> PaneContent {
         let rec = "\(state.duelWins ?? 0)승 \(state.duelLosses ?? 0)패 · 이기면 +3BP"
-        let six = duelSix, slots = (0..<6).map { six[safe: $0].map { SquadModel.Slot(dex: $0.dex, shiny: $0.shiny == true, level: "Lv.\(Walk.towerLevel)") } }
+        let six = duelSix, slots = (0..<6).map { six[safe: $0].map { SquadModel.Slot(dex: $0.dex, shiny: $0.shiny == true, level: "Lv.\(Walk.towerLevel)", art: $0.art) } }
         var m = DuelHubModel(tabs: Walker.duelHubTabs, tab: tab, note: rec, party: slots, partyNote: six.count >= 3 ? "대전 파티 · \(six.count)마리" : "대전 파티를 정해 주세요 (3~6마리)",
                              friends: [], recs: [], first: 0, count: 0, sel: sel, go: nil, hint: "", empty: "")
         if tab == 0 {
@@ -188,7 +188,7 @@ extension Walker {
             return
         }
         let six = duelSix
-        if let f = six.first { fb.mon(f, half, 0, 2, anim: animT("hub", f.dex, now)) } else { fb.mon(state.companion, half, 0, 2, anim: animT("hub", state.companion.dex, now)) }
+        if let f = six.first { fb.mon(f, half, 0, 2, anim: animT("hub", f.art, now)) } else { fb.mon(state.companion, half, 0, 2, anim: animT("hub", state.companion.art, now)) }
         let friends = duelFriends.prefix(3).map(\.name), stop = min(sel, duelHubStops - 1)
         let label = stop == 0 ? (six.count >= 3 ? "랜덤 매칭" : "파티 정하기") : stop <= friends.count ? friends[stop - 1] + "에게" : stop == friends.count + 1 ? "대전 파티" : "전적 보기"
         fb.text(six.count >= 3 ? "파티 \(six.count)마리" : "파티 없음", 94, 15, 2, right: true, small: true)
@@ -250,7 +250,7 @@ extension Walker {
         if case .hub(let tab, let sel) = s { duelHubLCD(&fb, tab, sel, now); return }
         let half = Int(now.timeIntervalSinceReferenceDate * 2) % 2, dots = String(repeating: ".", count: Int(now.timeIntervalSinceReferenceDate * 2) % 4)
         fb.text(s == .queued ? "랜덤 매칭" : "실시간 대전", 2, 0); fb.fill(0, 12, 96, 1, 2)
-        fb.mon(duelSix.first ?? state.companion, half, 0, 2, anim: animT("duel", (duelSix.first ?? state.companion).dex, now))
+        fb.mon(duelSix.first ?? state.companion, half, 0, 2, anim: animT("duel", (duelSix.first ?? state.companion).art, now))
         let who: String = { switch s { case .invite(_, let f): f; case .waitAccept(_, let t): t; default: "" } }()
         if !who.isEmpty { fb.text("vs", 94, 15, 2, right: true, small: true); fb.text(who, 94, 26, 3, right: true, small: true) }
         if let l = duelLeft(now) { fb.text("\(l)초", 94, 37, 2, right: true, small: true) }

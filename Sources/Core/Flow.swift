@@ -120,6 +120,12 @@ extension Walker {
     /// 5.0 (docs/plans/18 §9.6): a Mon's own form in words, for its pages (히트로토무, 어택폼, 영물폼, 안농 "B", 꽃밭의 모양 ...): a kept or a
     /// look's form — its name stays the species' everywhere, as the games keep it; nil for the species' own.
     func formName(_ m: Mon) -> String? { Forms.of(m.dex, m.form).flatMap { $0.kind == .stored || $0.kind == .look ? $0.name : nil } }
+    /// 5.0 (docs/plans/18 §9.6): the 도감 entry page's forms (content5, once seen): how many, the one on show (nil = the species), the next (nil: past the last).
+    func dexForms(_ d: Int) -> Int { Content.gen6 && seenList.contains(d) ? monForms[d]?.count ?? 0 : 0 }
+    func dexFormOn(_ d: Int) -> Int? { dexForm.flatMap { $0.dex == d && $0.n > 0 && $0.n <= dexForms(d) ? $0.n : nil } }
+    func dexNextForm(_ d: Int) -> Int? { let n = (dexFormOn(d) ?? 0) + 1; return n <= dexForms(d) ? n : nil }
+    /// A form as the 도감 names it: its own name where it has the species' (히트로토무, 메가리자몽X), else after it (안농 B, 깝질무 동쪽바다).
+    func dexFormLabel(_ d: Int, _ n: Int?) -> String { Forms.of(d, n).map { $0.name.contains(monNames[d]) ? $0.name : monNames[d] + " " + $0.name } ?? monNames[d] }
     /// 5.0: a course's 지방 by its `region` (하나 494-649, 칼로스 650-721).
     func regionName(_ r: ClosedRange<Int>) -> String { dexRegions(721).first { $0.range.contains(r.lowerBound) }?.name ?? "" }
     /// 5.0 (docs/plans/18 §9.6): the 도감's regions up to `last` (관동 ... 신오, then with content5 하나 · 칼로스).
@@ -236,7 +242,7 @@ extension Walker {
             return
         }
         switch screen {
-        case .home: if k == 1 { emote = (1, now.addingTimeInterval(2)); animOn = ("home", state.companion.dex, now) }   // ● pats the companion (♥, its animation); the menu is the 메뉴 key's
+        case .home: if k == 1 { emote = (1, now.addingTimeInterval(2)); animOn = ("home", state.companion.art, now) }   // ● pats the companion (♥, its animation); the menu is the 메뉴 key's
         case .menu(let g, let i):
             let names = menuNames(g)
             if k != 1 { screen = .menu(group: g, sel: (i + (k == 0 ? names.count - 1 : 1)) % names.count); return }   // ◀ ▶ go round the page's tiles
@@ -349,8 +355,9 @@ extension Walker {
         case .squad(let s): squadPress(k, s, now)
         case .mail(let s): mailPress(k, s, now)
         case .say(_, let next, _): screen = next
-        case .dex(let n, let f, let detail):                                                     // ● = the entry page and back (not on an empty tab)
-            if k == 1 { if dexList(f).contains(n) { screen = .dex(n, filter: f, detail: !detail) } } else { gridStep(k == 0 ? -1 : 1, wrap: true) }
+        case .dex(let n, let f, let detail):                                                     // ● = the entry page, its forms in turn (5.0), and back (not on an empty tab)
+            if k == 1 { if dexList(f).contains(n) { if detail, let next = dexNextForm(n) { dexForm = (n, next) } else { dexForm = nil; screen = .dex(n, filter: f, detail: !detail) } } }
+            else { gridStep(k == 0 ? -1 : 1, wrap: true) }
         case .items(let sel):                                                                     // ◀ ▶ a row, ● its use
             let n = state.inventory.count
             guard n > 0 else { return }
@@ -453,7 +460,7 @@ extension Walker {
     func pairWith(_ uid: Int, back: Screen, _ now: Date, quietly: Bool = false, next: Screen = .home) {
         act(.mon(op: .pair(uid: uid)), back: back, now) { [weak self] _, now in
             guard let self else { return nil }
-            if quietly { emote = (1, now.addingTimeInterval(2)); animOn = ("home", state.companion.dex, now); return back }
+            if quietly { emote = (1, now.addingTimeInterval(2)); animOn = ("home", state.companion.art, now); return back }
             return .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: next, since: now)
         }
     }

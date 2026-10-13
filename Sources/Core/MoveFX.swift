@@ -181,9 +181,9 @@ func fxPic(_ a: FXShape, _ tone: String, _ k: Int) -> Pic {
     }
 }
 /// A fighter's sprite as a see-through overlay: one tint, or (stripes: phase 0-5) HGSS's stat streaks, bands 12 pixels apart.
-func fxMask(_ dex: Int, back: Bool, _ c: UInt32, stripes k: Int?) -> Pic {
+func fxMask(_ art: Int, back: Bool, _ c: UInt32, stripes k: Int?) -> Pic {
     var p = Pic(w: 80, h: 80)
-    for y in 0..<80 { for x in 0..<80 where spritePixel(dex, back: back, x, y, shiny: false) != 0 {
+    for y in 0..<80 { for x in 0..<80 where spritePixel(art, back: back, x, y, shiny: false) != 0 {
         p.set(x, y, k.map { (y + $0 * 2) % 12 < 5 ? c : c & 0xFF_FFFF | 0x3800_0000 } ?? c)
     } }
     return p
@@ -230,9 +230,9 @@ extension Walker {
         let low = at[.me]!.y == 22 ? 100.0 : 128                                                // the stage's bottom (the old HUD's message row below)
         /// A fighter's body now, in half-dots: its centre across, head, middle, feet; its sprite run, if drawn (dash, shake and bob included).
         func body(_ s: Side) -> (x: Double, top: Double, y: Double, feet: Double, run: SpriteRun?) {
-            let run = fb.sprites.last { $0.back == (s == .me) }, a = at[s]!, dex = (s == .me ? b.mine[b.me] : b.theirs[b.it]).mon.dex
+            let run = fb.sprites.last { $0.back == (s == .me) }, a = at[s]!, look = (s == .me ? b.mine[b.me] : b.theirs[b.it]).body, art = artIndex(look.dex, look.form)
             let rx: Int = run?.x ?? a.x, ry: Int = run?.y ?? a.y, bob: Int = run?.bob ?? 0      // (typed in steps: the ?? arithmetic in one go cost seconds to type-check)
-            let x = Double((rx + 16) * 2), feet = Double((ry + 32) * 2 - bob), top: Double = feet - Double(80 - spriteTop(dex, back: s == .me))
+            let x = Double((rx + 16) * 2), feet = Double((ry + 32) * 2 - bob), top: Double = feet - Double(80 - spriteTop(art, back: s == .me))
             return (x, top, (top + min(feet, low)) / 2, feet, run)
         }
         func mouth(_ s: Side) -> P {                                                            // where a move leaves its user
@@ -247,7 +247,7 @@ extension Walker {
         /// A sprite-shaped overlay on s: a tint, or stat streaks (phase 0-5); only while its sprite is drawn.
         func mask(_ s: Side, _ name: String, _ c: UInt32, stripes k: Int? = nil, alpha: Double) {
             guard let r = body(s).run, alpha > 0 else { return }
-            fb.pic("fx|mask|\(r.dex)|\(r.back)|\(name)|\(k ?? -1)", (r.x + 16) * 2, (r.y + 32) * 2 - 40 - r.bob, alpha: min(1, alpha)) { fxMask(r.dex, back: r.back, c, stripes: k) }
+            fb.pic("fx|mask|\(r.art)|\(r.back)|\(name)|\(k ?? -1)", (r.x + 16) * 2, (r.y + 32) * 2 - 40 - r.bob, alpha: min(1, alpha)) { fxMask(r.art, back: r.back, c, stripes: k) }
         }
         func heading(_ dx: Double, _ dy: Double) -> Int { (Int((atan2(dy, dx) / (.pi / 4)).rounded()) + 8) % 8 }
         /// A particle's frame: heading shapes point their way, flames flicker, the rest vary by i.
@@ -391,7 +391,7 @@ extension Walker {
             if m.physical && m.contact {                                                        // the lunge (movePose); its afterimages
                 if (0.45...0.72).contains(u), let r = body(s).run { for (i, w) in [0.55, 0.3].enumerated() {
                     let back = Double((i + 1) * 4) * (s == .me ? -1 : 1)
-                    fb.pic("fx|mask|\(r.dex)|\(r.back)|ghost|-1", (r.x + 16) * 2 + Int(back * 2), (r.y + 32) * 2 - 40 - r.bob, alpha: w, behind: true) { fxMask(r.dex, back: r.back, rgb(255, 255, 255), stripes: nil) }
+                    fb.pic("fx|mask|\(r.art)|\(r.back)|ghost|-1", (r.x + 16) * 2 + Int(back * 2), (r.y + 32) * 2 - 40 - r.bob, alpha: w, behind: true) { fxMask(r.art, back: r.back, rgb(255, 255, 255), stripes: nil) }
                 } }
                 return
             }

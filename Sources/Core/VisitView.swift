@@ -34,7 +34,7 @@ extension Walker {
         let all = visitsOut + guests
         fb.text("맡겨 키우기", 2, 0); fb.fill(0, 12, 96, 1, 2)
         guard let v = all[safe: min(sel, max(0, all.count - 1))] else { fb.text("맡긴 포켓몬이 없다", 0, 30, 2, center: true); return }
-        fb.mon(v.mon, Int(now.timeIntervalSinceReferenceDate * 2) % 2, 0, 2, anim: animT("visit \(v.id)", v.mon.dex, now))
+        fb.mon(v.mon, Int(now.timeIntervalSinceReferenceDate * 2) % 2, 0, 2, anim: animT("visit \(v.id)", v.mon.art, now))
         fb.text(trainerID(v.owner)?.key == trainerID(myName)?.key ? "→ " + v.host : v.owner, 94, 15, 3, right: true, small: true)
         fb.text("\(v.steps.formatted())걸음", 94, 26, 2, right: true, small: true)
     }
@@ -60,7 +60,7 @@ extension Walker {
     func visitPickPane(_ p: ItemOn, _ now: Date) -> PaneContent {
         let refs = visitRefs, per = TradePickModel.perPage, at = min(p.at, max(0, refs.count - 1)), first = at / per * per
         let cells = refs[min(first, refs.count)..<min(refs.count, first + per)].compactMap { r -> GridModel.Cell? in
-            state.mon(r).map { GridModel.Cell(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil) }
+            state.mon(r).map { GridModel.Cell(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil, art: $0.art) }
         }
         let m = p.pick.flatMap { state.mon($0) }
         let mine = m.map { TradeSlot(label: "맡길 포켓몬", dex: $0.dex, level: $0.level, shiny: $0.shiny == true, name: monNames[$0.dex], v: $0.perfectIVs) } ?? TradeSlot(label: "맡길 포켓몬", name: "골라 주세요")
@@ -73,7 +73,7 @@ extension Walker {
     func visitPickLCD(_ fb: inout FB, _ p: ItemOn, _ now: Date) {
         guard let r = visitRefs[safe: min(p.at, max(0, visitRefs.count - 1))], let m = state.mon(r) else { return }
         fb.text((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)", 2, 0); fb.fill(0, 12, 96, 1, 2)
-        fb.mon(m, Int(now.timeIntervalSinceReferenceDate * 2) % 2, 0, 2, anim: animT("vpick \(r)", m.dex, now))
+        fb.mon(m, Int(now.timeIntervalSinceReferenceDate * 2) % 2, 0, 2, anim: animT("vpick \(r)", m.art, now))
         fb.text("→ " + p.item, 94, 15, 2, right: true, small: true)
         fb.text(p.pick == r ? "● 맡기기" : "● 고르기", 94, 52, 2, right: true, small: true)
     }
@@ -118,7 +118,7 @@ extension Walker {
         let t = now.timeIntervalSinceReferenceDate
         for (k, p) in guestPlaces(now).enumerated() {
             let hop = Int(t * 2 + Double(k)) % 4 == 0 ? 2 : 0
-            fb.stuck("nb|visit|\(p.0.mon.dex)|" + tone, p.x, p.y - hop) { lcdReady(sticker(iconPic(p.0.mon.dex), night: night)) }
+            fb.stuck("nb|visit|\(p.0.mon.art)|" + tone, p.x, p.y - hop) { lcdReady(sticker(iconPic(p.0.mon.art), night: night)) }
         }
     }
     /// A tap on a guest: the 맡기기 tab (3.8.1: no 인사).

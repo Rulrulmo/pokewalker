@@ -52,7 +52,7 @@ extension Walker {
         guard let r = megaLobby, let b = r.bosses[safe: tab] else { fb.text("메가 레이드", 2, 0); fb.fill(0, 12, 96, 1, 2); fb.text(cloud?.online == false ? "연결되면 볼 수 있다" : "불러오는 중...", 0, 30, 2, center: true); return }
         let m = megaMon(b)
         fb.text(megaName(b), 2, 0); fb.fill(0, 12, 96, 1, 2)
-        fb.mon(m, half, 0, 2, anim: animT("mega raid \(tab)", m.dex, now))
+        fb.mon(m, half, 0, 2, anim: animT("mega raid \(tab)", m.art, now))
         fb.text(b.had == true ? "스톤 ✓" : "메가 레이드", 94, 15, 2, right: true, small: true)
         fb.text(raidLeft(r.ends, now), 94, 26, 2, right: true, small: true)
         fb.text((megaLeftToday ?? 0) == 0 ? "내일 다시" : "오늘 \(megaLeftToday ?? 0)판", 94, 37, (megaLeftToday ?? 0) > 0 ? 3 : 1, right: true, small: true)

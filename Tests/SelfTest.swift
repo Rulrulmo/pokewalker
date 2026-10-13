@@ -631,7 +631,10 @@ import AppKit                                                                   
     w = Walk(); w.earned = 999_999; check(w.unlocked(19) && !w.unlocked(20), "event course needs the dex, not watts")
     w.owned = Array(1...10); check(w.unlocked(20) && courses[20].name == "노란 숲", "10 caught -> 노란 숲")
     check(monNames.count == 722 && monTypes.count == 722 && monNames[25] == "피카츄", "721 names + types (494-721 with content5 only)")
-    check(hgssData.count == 493 * 6490, "hgss.bin in the bundle")
+    let arts = monNames.count - 1 + monForms.values.reduce(0) { $0 + $1.count }                 // 5.0: 721 species, then every form (docs/plans/18 §9.5)
+    func archived(_ a: Data) -> Int { a.count < 4 ? 0 : (Int(a[0]) | Int(a[1]) << 8 | Int(a[2]) << 16 | Int(a[3]) << 24) / 4 - 1 }
+    check(hgssData.count == arts * 6490 && spriteCount == arts && iconData.count == arts * 557 && archived(animData) == arts && archived(walkData) == arts,
+          "hgss.bin · icons.bin · anims.bin · walk.bin: a picture for each of the 721 species and every form (gen.py's art list = artIndex's)", "\(spriteCount) of \(arts)")
     func hex(_ s: String) -> Data { let c = Array(s); return Data(stride(from: 0, to: c.count, by: 2).map { UInt8(String(c[$0...$0 + 1]), radix: 16)! }) }
     var lcg = 1, ab: [UInt8] = []; for _ in 0..<256 { lcg = (lcg * 1103515245 + 12345) & 0x7fffffff; ab.append(lcg >> 16 & 1 == 0 ? 97 : 98) }   // a's and b's: zlib picks a dynamic block
     check(inflate(hex("010a00f5ff506f6b6557616c6b6572")) == Array("PokeWalker".utf8) && inflate(hex("cb48cdc9c957c840903a0ae58939d9a9458a00")) == Array("hello hello hello, walker!".utf8)
@@ -642,21 +645,26 @@ import AppKit                                                                   
     let raw = [ab, Array(String(repeating: "피카츄 이브이 리자몽 ", count: 40).utf8), (0..<5000).map { UInt8(truncatingIfNeeded: $0 * $0 / 7) }].map { Data($0) }
     check(raw.allSatisfy { p in (try? (p as NSData).compressed(using: .zlib)).map { inflate($0 as Data) == [UInt8](p) } == true }, "inflate: NSData's own DEFLATE round-trips")
     var blocks = 0, differ: [String] = []
-    for (f, a) in [("anims", animData), ("walk", walkData)] { for d in 1...493 { if let b = block(a, d) {
+    for (f, a) in [("anims", animData), ("walk", walkData)] { for d in 1...spriteCount { if let b = block(a, d) {
         blocks += 1; let ns = (try? (b as NSData).decompressed(using: .zlib)).map { [UInt8]($0 as Data) }
         if ns == nil || inflate(b) != ns { differ.append("\(f) \(d)") }
     } } }
-    check(blocks > 0 && differ.isEmpty, "inflate: every species' anims.bin and walk.bin block unpacks as NSData does", "\(blocks) blocks, differ \(differ)")
+    check(blocks > 0 && differ.isEmpty, "inflate: every picture's anims.bin and walk.bin block unpacks as NSData does", "\(blocks) blocks, differ \(differ)")
     #endif
-    check(iconData.count == 493 * 557 && (1...493).allSatisfy { d in (0..<1024).filter { iconPixel(d, $0 % 32, $0 / 32) != 0 }.count >= 20 }, "icons.bin: a box icon for every species")
+    check((1...spriteCount).allSatisfy { d in (0..<1024).filter { iconPixel(d, $0 % 32, $0 / 32) != 0 }.count >= 20 }, "icons.bin: a box icon for every species and form")
     func opaque(_ d: Int, back: Bool) -> [(x: Int, y: Int)] { (0..<80).flatMap { y in (0..<80).map { (x: $0, y: y) } }.filter { spritePixel(d, back: back, $0.x, $0.y, shiny: false) != 0 } }
-    var off: [Int] = []                                                                    // every frame stands on row 79; every shiny differs on 5%+ of it (422/423: PokeAPI's copies)
-    for d in 1...493 { for back in [false, true] {
+    var off: [Int] = []                                                                    // every frame stands on row 79; every shiny differs on 5%+ of it (422/423: PokeAPI's copies;
+    for d in 1...spriteCount { for back in [false, true] {                                 // 레시라무 · 비비용 · 꽁어름: theirs differ a little, as in the games)
         var n = 0, diff = 0, bottom = -1
         for y in 0..<80 { for x in 0..<80 { let c = spritePixel(d, back: back, x, y, shiny: false); if c != 0 { n += 1; bottom = y; if c != spritePixel(d, back: back, x, y, shiny: true) { diff += 1 } } } }
-        if bottom != 79 || diff * 20 < n { off.append(d) }
+        if bottom != 79 || diff * 20 < n && ![643, 666, 712].contains(d) { off.append(d) }
     } }
     check(off.isEmpty, "every sprite stands on its bottom row and has its own shiny colours", "\(off)")
+    let heat = artIndex(479, 1), differs = { (a: Int, b: Int) in (0..<6400).contains { spritePixel(a, back: false, $0 % 80, $0 / 80, shiny: false) != spritePixel(b, back: false, $0 % 80, $0 / 80, shiny: false) } }
+    check(heat == (formArt[479] ?? 0) + 1 && heat > 721 && artIndex(479, nil) == 479 && artIndex(479, 0) == 479 && artIndex(479, 6) == 479 && artIndex(25, 1) == 25
+          && (1...5).allSatisfy { differs(artIndex(479, $0), 479) } && differs(artIndex(6, 1), artIndex(6, 2)) && differs(artIndex(201, 1), 201)
+          && walkSprite(heat) != nil && walkSprite(artIndex(6, 1)) == nil && walkSprite(650) != nil && anim(artIndex(212, 1)) != nil && anim(494) != nil && anim(658) == nil,
+          "5.0's pictures (hg-engine): a form's own (히트로토무, 메가리자몽X · Y, 안농 B), walking where it walks (no Mega), BW's animation where it fits the picture (핫삼 Mega, 비크티니; not 개굴닌자's)")
     check(!opaque(25, back: true).isEmpty, "피카츄 has a back sprite")
     let blank = Set(courses.flatMap { $0.slots.map(\.dex) } + [25]).filter { opaque($0, back: false).count < 50 || opaque($0, back: true).count < 50 }
     check(blank.isEmpty, "every course Pokémon has front and back sprites", "\(blank)")
@@ -798,7 +806,7 @@ import AppKit                                                                   
     check(toGrid && gs { onMenu($0, "도감") }, "↩: the entry page → the grid → the menu")
     gv.state.owned = [1, 4, 7, 25, 94]; gv.screen = .dex(7, filter: 0, detail: false); gv.gridTap(4102)
     check(gv.paneContent(Date()).grid.map { $0.cells.isEmpty && $0.sel == nil && $0.empty == "모두 잡았다!" } == true && gv.compose(Date()).runs.contains { $0.s == "모두 잡았다!" }, "an empty tab says so, on the pane and the LCD")
-    // 5.0 (docs/plans/18 §9.6): with content5 the 도감 runs to 721 and a row of regions picks one; past the bundle's pictures nothing is drawn (no crash)
+    // 5.0 (docs/plans/18 §9.6): with content5 the 도감 runs to 721 and a row of regions picks one; 494-721 drawn (hg-engine's)
     let keep = (gv.state.owned, gv.screen)
     Content.$testing.withValue(true) {
         gv.state.owned = [1, 4, 25, 495, 650]; gv.dexRegion = 0; gv.screen = .dex(25, filter: 0, detail: false)
@@ -808,16 +816,34 @@ import AppKit                                                                   
         gv.gridTap(4156); let kalos = gv.dexList(1) == [650] && gv.paneContent(Date()).grid?.region == 6
         gv.gridTap(4150)
         check(g5?.regions == ["전국", "관동", "성도", "호연", "신오", "하나", "칼로스"] && g5?.pages == 25 && gv.dexList(1) == [1, 4, 25, 495, 650] && unova && caughtHere && kalos
-              && spritePixel(650, back: false, 40, 79, shiny: false) == 0 && iconPixel(650, 16, 16) == 0 && anim(650) == nil && walkSprite(650) == nil
+              && (0..<80).contains { spritePixel(650, back: false, $0, 79, shiny: false) != 0 } && (0..<1024).contains { iconPixel(650, $0 % 32, $0 / 32) != 0 } && walkSprite(650) != nil
               && gs { if case .dex(650, 1, false) = $0 { return true }; return false } && !gv.compose(Date()).sprites.isEmpty,
-              "content5: 도감 to 721 (25 pages), its regions (하나 494-649 · the tab kept · 칼로스), the pictures past 493 blank, not a crash")
+              "content5: 도감 to 721 (25 pages), its regions (하나 494-649 · the tab kept · 칼로스), the pictures past 493 (hg-engine's)")
+        // its entry page's forms (docs/plans/18 §9.6): ● turns them (its picture, name, types, stats), past the last back to the grid; the pane's row goes round
+        gv.state.owned = [6, 25, 479]; gv.dexForm = nil; gv.screen = .dex(479, filter: 0, detail: false); gv.press(1)
+        let base = gv.paneContent(Date()).dex?.form, art0 = gv.compose(Date()).sprites.first?.art
+        gv.press(1); let heatOn = gv.dexFormOn(479) == 1 && gv.compose(Date()).sprites.first?.art == artIndex(479, 1) && gv.paneContent(Date()).dex?.form == "히트로토무" && gv.paneContent(Date()).dex?.formAt == "2/6"
+        for _ in 0..<4 { gv.press(1) }; let last = gv.dexFormOn(479) == 5; gv.press(1)
+        let closed = gs { if case .dex(479, 0, false) = $0 { return true }; return false } && gv.dexForm == nil
+        gv.press(1); gv.gridTap(4160); gv.gridTap(4160); let tapped = gv.dexFormOn(479) == 2
+        for _ in 0..<4 { gv.gridTap(4160) }; let round = gv.dexFormOn(479) == nil && gs { if case .dex(479, 0, true) = $0 { return true }; return false }
+        gv.screen = .dex(6, filter: 0, detail: true); gv.dexForm = nil; gv.press(1)
+        let megaX = gv.dexFormOn(6) == 1 && gv.paneContent(Date()).dex?.stats == Forms.of(6, 1)?.stats && gv.paneContent(Date()).dex?.form == "메가리자몽X" && gv.paneContent(Date()).dex?.formAt == "2/3"
+        gv.screen = .dex(25, filter: 0, detail: true); gv.press(1); let pikachu = gs { if case .dex(25, 0, false) = $0 { return true }; return false } && gv.paneContent(Date()).dex == nil
+        check(base == "기본 모습" && art0 == 479 && heatOn && last && closed && tapped && round && megaX && pikachu,
+              "content5: the 도감 entry page's forms — ● 히트로토무 … 커트로토무, then back to the grid; the pane's 다음 ▶ goes round; 메가리자몽X's stats; 피카츄 (none): ● closes")
+        gv.dexForm = nil
         gv.dexRegion = 0
     }
     (gv.state.owned, gv.screen) = keep
-    check(gv.paneContent(Date()).grid?.regions == nil && gv.dexList(0) == Array(1...493) && spriteCount == 493, "content5 off: no regions, 1-493 as in 4.1")
+    let shown = gv.screen; gv.screen = .dex(479, filter: 0, detail: true); gv.press(1)
+    check(gv.paneContent(Date()).dex == nil && gs { if case .dex(479, 0, false) = $0 { return true }; return false }, "content5 off: no forms on the 도감 page (● closes it as in 4.1)")
+    gv.screen = shown
+    check(gv.paneContent(Date()).grid?.regions == nil && gv.dexList(0) == Array(1...493), "content5 off: no regions, 1-493 as in 4.1")
     let pan = evolutions.first { $0.from == 674 }, goo = evolutions.first { $0.from == 705 }
-    check(Content.$testing.withValue(true) { evolutions.first { $0.from == 674 }.map(gv.evoText) == "Lv.32 · 악타입 보유" && evolutions.first { $0.from == 705 }.map(gv.evoText) == "Lv.50 · 날씨 비" } && pan == nil && goo == nil,
-          "5.0's evolution lines: 판짱 (a Dark type) · 미끄네일 (rain); none with content5 off")
+    check(Content.$testing.withValue(true) { evolutions.first { $0.from == 674 }.map(gv.evoText) == "Lv.32 · 악타입 보유" && evolutions.first { $0.from == 705 }.map(gv.evoText) == "Lv.50 · 날씨 비"
+                                               && evolutions.first { $0.to == 700 }.map(gv.evoText) == "친밀도(함께 1만 걸음) · 페어리 기술" } && pan == nil && goo == nil,
+          "5.0's evolution lines: 판짱 (a Dark type) · 미끄네일 (rain) · 님피아 (a Fairy move); none with content5 off")
     gv.press(1); check(gs { if case .dex(_, 2, false) = $0 { return true }; return false } && gv.paneContent(Date()).dex == nil, "● on an empty tab: no entry page for a pick that isn't on it")
     gv.openFeature("포켓몬"); let openedOn = gs { if case .box(-1, nil, false, false) = $0 { return true }; return false }; gv.gridStep(GridModel.columns)
     check(openedOn && gv.boxOrder == [1, 0, 2] && gs { if case .box(1, nil, false, false) = $0 { return true }; return false }, "포켓몬 opens on the companion; a row down goes into the box, 번호순 (then the higher level)")

@@ -2,7 +2,8 @@ import Foundation
 // Home: the companion's HGSS walking sprite goes along the course picture while steps come in (the faster they come, the faster),
 // turning at the ends; when they stop it turns to face us.
 
-/// The HGSS following Pokémon (tools/gen.py walk.bin): n + 1 uint32 offsets (n = 493; species d = off[d - 1] ..< off[d]; empty = none), then per species a
+/// The following Pokémon (tools/gen.py walk.bin: HGSS's, hg-engine's past 493): n + 1 uint32 offsets (n: the pictures, Pixels' artIndex; art a = off[a - 1] ..< off[a];
+/// empty = none: a Mega, a fight's form), then per picture a
 /// raw-DEFLATE block: size (32, or 64 for the big ones), 15 normal + 15 shiny RGB, then left, right, down x 4 frames, size x size at 4 bpp.
 let walkData = resource("walk.bin") ?? Data()
 struct WalkSprite {
@@ -18,16 +19,16 @@ struct WalkSprite {
     }
 }
 @MainActor var walkCache: [Int: WalkSprite?] = [:]
-/// A species' walking sprite (nil = none), unpacked the first time it's wanted.
-@MainActor func walkSprite(_ dex: Int) -> WalkSprite? {
-    if let w = walkCache[dex] { return w }
+/// A species' (or a form's: artIndex) walking sprite (nil = none), unpacked the first time it's wanted.
+@MainActor func walkSprite(_ art: Int) -> WalkSprite? {
+    if let w = walkCache[art] { return w }
     if walkCache.count >= 8 { walkCache.removeAll() }
     var w: WalkSprite? = nil
-    if let u = block(walkData, dex).flatMap(inflate) {
+    if let u = block(walkData, art).flatMap(inflate) {
         let size = Int(u.first ?? 0)
         if size > 0, u.count >= 91 + 12 * size * size / 2 { w = WalkSprite(size: size, bytes: u) }
     }
-    walkCache[dex] = w; return w
+    walkCache[art] = w; return w
 }
 
 extension Walker {
@@ -52,11 +53,12 @@ extension Walker {
     /// when it stands; at = its middle (half-dots) when it isn't home's stroll (then it stands). Returns its feet (half-dots).
     @discardableResult func walker(_ fb: inout FB, _ m: Mon, _ now: Date, box: (x: Int, y: Int, w: Int, h: Int) = courseBox, at: Int? = nil) -> (x: Int, y: Int) {
         let feet = (x: at ?? Int(strollX.rounded()), y: 2 * (box.y + box.h) - 7)
-        guard let w = walkSprite(m.dex) else { return feet }
+        let art = walkSprite(m.art) == nil ? m.dex : m.art                                     // a form with none of its own: its species'
+        guard let w = walkSprite(art) else { return feet }
         let t = now.timeIntervalSinceReferenceDate, moving = at == nil && strolling(now) && !animating, dir = moving ? (strollRight ? 1 : 0) : 2
         let frame = moving ? Int(t * min(12, 6 + stepRate / 2)) % 4 : Int(t / 0.6) % 2 == 0 ? 0 : 1 // HGSS's step cycle; standing, a slow shuffle
         let scale = w.size > 32 ? 0.5 : 1.0, shiny = m.shiny == true
-        fb.pic("walk|\(m.dex)|\(dir)|\(frame)|\(shiny)", feet.x, feet.y - Int(Double(w.size) * scale / 2), scale: scale, behind: true,
+        fb.pic("walk|\(art)|\(dir)|\(frame)|\(shiny)", feet.x, feet.y - Int(Double(w.size) * scale / 2), scale: scale, behind: true,
                clip: [2 * box.x + 3, 2 * box.y + 3, 2 * box.w - 6, 2 * box.h - 6]) { w.pic(dir, frame, shiny: shiny) }
         return feet
     }

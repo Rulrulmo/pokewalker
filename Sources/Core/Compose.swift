@@ -205,28 +205,28 @@ extension Walker {
             fb.text("×\(state.count(n))" + (state.items.contains(n) ? " · 워커 \(state.items.filter { $0 == n }.count)" : ""), 12, 28, 2, small: true)
             fb.text(ItemKind.of(n).summary.replacingOccurrences(of: "지니게 하기: ", with: ""), 2, 40, 2, small: true)
             fb.text("\(min(sel, rows.count - 1) + 1)/\(rows.count)", 94, 52, 1, right: true, small: true)
-        case .dex(let d, let f, _):
-            let list = dexList(f), owned = (state.owned ?? []).contains(d)
+        case .dex(let d, let f, let detail):
+            let list = dexList(f), owned = (state.owned ?? []).contains(d), form = detail ? dexFormOn(d) : nil, forms = detail ? dexForms(d) : 0   // 5.0: a form on show
             guard list.contains(d) else { fb.text("도감", 2, 0); fb.fill(0, 12, 96, 1, 2); fb.text(f == 2 ? "모두 잡았다!" : "없음", 0, 30, 2, center: true); break }   // an empty tab
             guard seenList.contains(d) else {                                                                // 전체 / 이 코스 show the ones not met yet: no picture, no name
                 fb.text(String(format: "No.%03d ???", d), 2, 0); fb.fill(0, 12, 96, 1, 2)
                 fb.text("아직 만나지 못했다", 0, 30, 2, center: true); fb.text("\((list.firstIndex(of: d) ?? 0) + 1)/\(list.count)", 94, 52, 1, right: true, small: true); break
             }
-            fb.text(String(format: "No.%03d ", d) + monNames[d], 2, 0)
+            fb.text(form == nil ? String(format: "No.%03d ", d) + monNames[d] : dexFormLabel(d, form), 2, 0)
             if owned { fb.draw(ball, 88, 2, ballPal) }
             fb.fill(0, 12, 96, 1, 2)
-            let m = Mon(dex: d, level: 1, female: false)
+            var m = Mon(dex: d, level: 1, female: false); m.form = form
             let shinyNow = (state.shinyOwned ?? []).contains(d) && Int(t / 2) % 2 == 1                        // caught as 이로치: both colours, 2 s each
-            let u = animT("dex", d, now)
-            if owned { fb.mon(Mon(dex: d, level: 1, female: false, shiny: shinyNow ? true : nil), half, 0, 2, anim: u) } else { fb.mon(m, 0, 0, 2, tint: (3, rgb(70, 74, 84)), anim: u) }   // only seen: a shadow
+            let u = animT("dex", m.art, now)
+            if owned { var s = m; s.shiny = shinyNow ? true : nil; fb.mon(s, half, 0, 2, anim: u) } else { fb.mon(m, 0, 0, 2, tint: (3, rgb(70, 74, 84)), anim: u) }   // only seen: a shadow
             if shinyNow { fb.text("★이로치", 94, 32, 3, right: true, small: true) }
-            fb.text(monTypes[d].map { typeKo[$0] ?? $0 }.joined(separator: "·"), 94, 16, 2, right: true, small: true)
-            fb.text(owned ? "잡음" : "봤음", 94, 42, 2, right: true, small: true)
+            fb.text((Forms.of(d, form)?.types ?? monTypes[d]).map { typeKo[$0] ?? $0 }.joined(separator: "·"), 94, 16, 2, right: true, small: true)
+            fb.text(forms == 0 ? (owned ? "잡음" : "봤음") : "폼 \((form ?? 0) + 1)/\(forms + 1)", 94, 42, 2, right: true, small: true)   // 5.0: ● turns them (1: the species)
             fb.text("\((list.firstIndex(of: d) ?? 0) + 1)/\(list.count)", 94, 52, 1, right: true, small: true)
         case .box(let i, let act, let confirm, let detail):
             guard let m = state.mon(i) else { header("포켓몬"); break }
             header((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)")
-            fb.mon(m, half, 0, 2, anim: animT("box \(i)", m.dex, now))
+            fb.mon(m, half, 0, 2, anim: animT("box \(i)", m.art, now))
             fb.text(i == -1 ? "함께" : i < -1 ? "워커 \(-1 - i)" : "상자 \((boxOrder.firstIndex(of: i) ?? 0) + 1)/\(state.box.count)", 94, 15, 2, right: true, small: true)   // where it is
             if genderRate[m.dex] >= 0 || formName(m) != nil { fb.text([genderRate[m.dex] >= 0 ? (m.female ? "암컷" : "수컷") : nil, formName(m).map { $0.replacingOccurrences(of: monNames[m.dex], with: "").trimmingCharacters(in: .whitespaces) }].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "), 94, 26, 2, right: true, small: true) }   // 5.0: its form (히트 · 어택폼 ...); vLabel(m, 36)   // genderless: nothing (the games show no symbol)
             if let a = act {
@@ -269,7 +269,7 @@ extension Walker {
             let parts = [e.level > 0 ? "Lv.\(e.level)" : nil, when, sex, place, e.item.map { $0 + " 소지" }, e.party.map { monNames[$0] + " 보유" },
                          e.partyType.map { (typeKo[$0] ?? $0) + "타입 보유" }, e.weather.flatMap(Weather.init(rawValue:)).map { "날씨 " + $0.name }].compactMap { $0 }   // 5.0: 판짱 · 미끄네일
             return parts.isEmpty ? "레벨 업" : parts.joined(separator: " · ")
-        case .friend: return (["친밀도(함께 1만 걸음)"] + [when].compactMap { $0 }).joined(separator: " · ")
+        case .friend: return (["친밀도(함께 1만 걸음)"] + [when, e.moveType.map { (typeKo[$0] ?? $0) + " 기술" }].compactMap { $0 }).joined(separator: " · ")   // 5.0: 님피아
         case .item: return e.item! + " 사용" + (sex.map { " · " + $0 } ?? "")
         case .trade: return "교환" + (e.item.map { " · " + $0 + " 소지" } ?? "")              // at a real trade (12 §3), at its new trainer; the item from the giver's bag
         }
@@ -293,7 +293,9 @@ extension Walker {
             evos = mine.map(\.to).reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } }.map { to in "→ " + monNames[to] + " · " + mine.filter { $0.to == to }.map(evoText).joined(separator: " / ") }
             if evos.count > 2 { let n = evos.count - 1; evos = [evos[0], "외 \(n)갈래"] }
         }
-        return DexModel(num: d, status: st, stats: st > 0 ? baseStats[d] : [], found: found, evos: evos)
+        let form = dexFormOn(d), forms = dexForms(d)                                              // 5.0: the form on show (● or its row turns them)
+        return DexModel(num: d, status: st, stats: st > 0 ? Forms.of(d, form)?.stats ?? baseStats[d] : [], found: found, evos: evos,
+                        form: forms > 0 ? Forms.of(d, form)?.name ?? "기본 모습" : nil, formAt: "\((form ?? 0) + 1)/\(forms + 1)")
     }
     /// The 도감 / 상자 grid page (and through their messages: 놓아주기's); nil elsewhere.
     func gridModel(_ now: Date) -> GridModel? {
@@ -310,9 +312,9 @@ extension Walker {
         case .box(let i, _, _, false):                                                              // 포켓몬: the companion and the walker's over the box
             let o = boxOrder, b = state.box, at = o.firstIndex(of: i), p = page(o.count, at ?? 0), party = [state.companion] + state.caught
             return GridModel(tabs: ["번호순", "레벨순", "V순", "최근"], tab: boxSort,
-                             cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3, held: b[$0].item != nil) },
+                             cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3, held: b[$0].item != nil, art: b[$0].art) },
                              first: p.first, sel: at.map { $0 - p.first }, page: p.page, pages: p.pages, empty: "상자가 비어 있다", bob: bob,
-                             party: party.map { .init(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil) }, partySel: i < 0 ? -1 - i : nil, items: state.items.count + state.bag.count)
+                             party: party.map { .init(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil, art: $0.art) }, partySel: i < 0 ? -1 - i : nil, items: state.items.count + state.bag.count)
         default: return nil
         }
     }
@@ -334,6 +336,7 @@ extension Walker {
             screen = .dex(n, filter: f, detail: n == pick)
         case (.dex(let d, _, _), 4100...4103):
             let f = code - 4100, l = dexList(f); screen = .dex(l.contains(d) ? d : l.first ?? d, filter: f, detail: false)   // the pick stays if it's on the new tab
+        case (.dex(let d, _, true), 4160): dexForm = (d, dexNextForm(d) ?? 0)                         // 5.0: the entry page's next form (round to the species)
         case (.dex(let d, let f, _), 4150...4156):                                                   // 5.0: a region (0 = 전국), the tab kept
             dexRegion = code - 4150; let l = dexList(f); screen = .dex(l.contains(d) ? d : l.first ?? d, filter: f, detail: false)
         case (.box(let pick, _, _, _), 10000...):                                                  // the same: picked first, its page on a second click
@@ -418,7 +421,7 @@ extension Walker {
             _ = p
             let party = state.party()
             return PaneContent(tower: TowerModel(run: towerRun, streak: state.towerStreak ?? 0, best: state.towerBest ?? 0, bp: state.bp ?? 0, fee: Walk.towerFee,
-                                                 party: party.map { .init(dex: $0.mon.dex, name: monNames[$0.mon.dex], level: $0.mon.level, shiny: $0.mon.shiny == true) }, custom: state.towerPick != nil,
+                                                 party: party.map { .init(dex: $0.mon.dex, name: monNames[$0.mon.dex], level: $0.mon.level, shiny: $0.mon.shiny == true, art: $0.mon.art) }, custom: state.towerPick != nil,
                                                  rewards: towerStrip,
                                                  next: towerNextReward.map { "다음 보상 \($0.wins)연승 · " + $0.gifts.map(giftName).joined(separator: " + ") + ($0.wins > Tower.rewards.last!.wins ? " (이후 \(Tower.endless.every)연승마다)" : "") } ?? "연승 보상을 모두 받았어요",
                                                  tycoon: towerRun ? Tower.tycoonPrint(afterWins: state.towerStreak ?? 0) : nil))
@@ -570,7 +573,7 @@ extension Walker {
         if case .evolve(let from, _, let since) = screen, from.uid == m.uid, Date().timeIntervalSince(since) < 4.4 { m = from }   // no spoiler before the LCD's reveal (the companion's own)
         let t = expTable[growthRate[m.dex]], lv = max(1, min(100, m.level)), lo = t[lv], hi = t[min(100, lv + 1)]   // (4.0: a raid boss fights above 100)
         let exp: CGFloat = m.level >= 100 || hi <= lo ? 1 : CGFloat(m.points - lo) / CGFloat(hi - lo)
-        return StatusModel(dex: m.dex, name: (m.shiny == true ? "★ " : "") + monNames[m.dex], sex: sexMark(m).trimmingCharacters(in: .whitespaces), level: "Lv.\(m.level)",
+        return StatusModel(art: m.art, name: (m.shiny == true ? "★ " : "") + monNames[m.dex], sex: sexMark(m).trimmingCharacters(in: .whitespaces), level: "Lv.\(m.level)",
                            toNext: m.level >= 100 ? "최고 레벨" : "\((hi - m.points).formatted()) EXP", nature: "\(m.natureName) · \(m.abilityName)", female: m.female, v: m.perfectIVs, exp: exp,
                            numbers: [.init(key: "오늘 걸음", value: state.today.formatted()), .init(key: "와트", value: "\(state.watts.formatted())W"), .init(key: "누적 걸음", value: state.total.formatted())],
                            rows: [.init(key: "알", value: state.egg.map { $0.left > 0 ? "앞으로 \($0.left.formatted())걸음" : "곧 태어난다!" } ?? "없음"),

@@ -24,7 +24,7 @@ struct ShopModel: Equatable {
 /// The status sheet (home's page, and any screen without one of its own): the companion, today, then the rest.
 struct StatusModel: Equatable {
     struct Row: Equatable { var key, value: String }
-    var dex: Int; var name, sex, level, toNext, nature: String; var female: Bool; var v: Int; var exp: CGFloat; var numbers: [Row]; var rows: [Row]
+    var art: Int; var name, sex, level, toNext, nature: String; var female: Bool; var v: Int; var exp: CGFloat; var numbers: [Row]; var rows: [Row]
 }
 /// 메뉴: the LCD's pages as tiles, the one on the LCD picked.
 struct MenuModel: Equatable {
@@ -36,11 +36,12 @@ struct MenuModel: Equatable {
 struct DexModel: Equatable {
     var num: Int; var status: Int                                      // 0 not met, 1 seen, 2 caught
     var stats: [Int]; var found: [String]; var evos: [String]          // up to 3 places, 2 evolutions: a line each
+    var form: String? = nil, formAt = ""                               // 5.0: the form on show (nil = none to show) and where it is in them (2/3: 1 the species)
 }
 /// The 도감 / 포켓몬 grid: tabs, a page of box icons (the pick bobbing), the pager; 포켓몬's has the companion and the walker's in a row above.
 struct GridModel: Equatable {
     static let perPage = 30, columns = 6                               // 6 x 5
-    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false; var level = 0; var held = false }   // held: it holds an item (3.7)   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box
+    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false; var level = 0; var held = false; var art: Int? = nil; var pic: Int { art ?? dex } }   // held: it holds an item (3.7)   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box   // art (5.0): a form's picture (Mon.art)
     var tabs: [String]; var tab: Int
     var cells: [Cell]; var first: Int; var sel: Int?                   // this page's cells; first = cells[0]'s place in the whole list; sel = the pick's cell
     var page, pages: Int; var empty: String; var bob: Bool
@@ -103,7 +104,7 @@ struct RelearnModel: Equatable {
 }
 /// 배틀 타워's lobby: the run, the party, the button.
 struct TowerModel: Equatable {
-    struct Member: Equatable { var dex: Int; var name: String; var level: Int; var shiny = false }
+    struct Member: Equatable { var dex: Int; var name: String; var level: Int; var shiny = false; var art: Int? = nil }
     var run: Bool; var streak, best, bp, fee: Int; var party: [Member]; var custom = false   // custom = the player's party, not the recommended one (3.8.3: picked on the 포켓몬 menu's grid)
     struct Reward: Equatable { var wins: Int; var short: String; var got: Bool; var more = false }   // 3.9 (15 §6 E): the streak rewards — got = mailed (Walk.towerRewards); more: 4.1's every 50 from 150 (its next one)
     var rewards: [Reward] = []; var next = ""; var tycoon: String? = nil                       // next: the next reward in words; tycoon: 은 / 금 when the next fight is the tycoon's
@@ -193,7 +194,7 @@ struct VisitsModel: Equatable {
 /// 3.8 (14 §4–5): picking several in order — the strip (who goes, in order; a click drops one), a duel's other six (species only), ours
 /// (a page of 6 × 4, each picked one numbered), the button (nil: the hint; goSel: the cursor's on it).
 struct SquadModel: Equatable {
-    struct Slot: Equatable { var dex: Int; var shiny: Bool; var level: String }
+    struct Slot: Equatable { var dex: Int; var shiny: Bool; var level: String; var art: Int? = nil }
     static let perPage = 24                                                                        // 6 × 4, as the 포켓몬 menu's cells (3.8.3)
     var title, note: String; var strip: [Slot?]; var theirs: [GridModel.Cell]?
     var tabs: [String]?; var tab: Int                                                              // the 포켓몬 menu's sort (none: a duel's six)
@@ -256,7 +257,7 @@ extension PaneContent {
     static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
     static let home: CGFloat = 406                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size)
     var height: CGFloat {
-        login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 472 : grid?.regions != nil ? 448 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 472 : dex != nil ? 390 : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
+        login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 472 : grid?.regions != nil ? 448 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 472 : dex != nil ? (dex!.form != nil ? 420 : 390) : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
             : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil || raidTier != nil || raidBalls != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446 : mailList != nil || mailOpen != nil || mailPick != nil ? 466
             : radar != nil ? 327 : card != nil ? (card!.title != nil || card!.deco != nil ? 254 : 230) : learn != nil ? 444 : tower != nil ? 400 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
     }

@@ -88,7 +88,7 @@ extension Walker {
             let list = marketPickList(p), per = TradePickModel.perPage, at = min(p.at, max(0, list.count - 1)), first = at / per * per
             let used = p.side == 0 ? marketUsed : []
             let cells = list[min(first, list.count)..<min(list.count, first + per)].map { m in
-                p.side == 1 ? GridModel.Cell(dex: m.dex, look: (state.owned ?? []).contains(m.dex) ? 2 : 1) : GridModel.Cell(dex: m.dex, look: used.contains(m.uid ?? -1) ? 1 : 2, shiny: m.shiny == true, v3: m.perfectIVs >= 3, level: m.level)
+                p.side == 1 ? GridModel.Cell(dex: m.dex, look: (state.owned ?? []).contains(m.dex) ? 2 : 1) : GridModel.Cell(dex: m.dex, look: used.contains(m.uid ?? -1) ? 1 : 2, shiny: m.shiny == true, v3: m.perfectIVs >= 3, level: m.level, art: m.art)
             }
             let mine = p.give.flatMap { u in state.box.first { $0.uid == u } }
             func slot(_ label: String, _ m: Mon?, _ none: String) -> TradeSlot {
@@ -124,7 +124,7 @@ extension Walker {
         func head(_ t: String) { fb.text(t, 2, 0); fb.fill(0, 12, 96, 1, 2) }
         func show(_ m: Mon, _ key: String, _ lines: [String]) {
             head((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)")
-            fb.mon(m, half, 0, 2, anim: animT(key, m.dex, now))
+            fb.mon(m, half, 0, 2, anim: animT(key, m.art, now))
             for (k, l) in lines.enumerated() { fb.text(l, 94, 15 + 11 * k, 2, right: true, small: true) }
             if m.perfectIVs > 0 { let w = fb.text("\(m.perfectIVs)V", 94, 15 + 11 * lines.count, m.perfectIVs >= 3 ? 3 : 2, right: true, small: true); if m.perfectIVs >= 3 { fb.draw(vDiamond, 94 - w - 7, 17 + 11 * lines.count, vPal) } }
         }
@@ -144,7 +144,7 @@ extension Walker {
             let list = marketPickList(p)
             guard let m = list[safe: min(p.at, max(0, list.count - 1))] else { head(p.side == 0 ? "내 상자" : "원하는 포켓몬"); fb.text("비어 있다", 0, 30, 2, center: true); return }
             if p.side == 1 {
-                head(String(format: "No.%03d ", m.dex) + monNames[m.dex]); fb.mon(m, half, 0, 2, anim: animT("wish \(m.dex)", m.dex, now))
+                head(String(format: "No.%03d ", m.dex) + monNames[m.dex]); fb.mon(m, half, 0, 2, anim: animT("wish \(m.dex)", m.art, now))
                 fb.text(p.wish.contains(m.dex) ? "원해요 ✓" : "● 고르기", 94, 52, 2, right: true, small: true); return
             }
             let used = marketUsed.contains(m.uid ?? -1), pick = p.give == m.uid

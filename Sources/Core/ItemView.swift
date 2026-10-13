@@ -49,7 +49,7 @@ extension Walker {
         let refs = itemRefs, per = TradePickModel.perPage, at = min(p.at, max(0, refs.count - 1)), first = at / per * per
         let cells = refs[min(first, refs.count)..<min(refs.count, first + per)].compactMap { r -> GridModel.Cell? in
             guard let m = state.mon(r) else { return nil }
-            return GridModel.Cell(dex: m.dex, look: itemNot(p.item, r) == nil ? 2 : 1, shiny: m.shiny == true, v3: m.perfectIVs >= 3, level: m.level)
+            return GridModel.Cell(dex: m.dex, look: itemNot(p.item, r) == nil ? 2 : 1, shiny: m.shiny == true, v3: m.perfectIVs >= 3, level: m.level, art: m.art)
         }
         let m = p.pick.flatMap { state.mon($0) }, why = p.pick.flatMap { itemNot(p.item, $0) }
         let mine = m.map { TradeSlot(label: p.pick == -1 ? "동료" : (p.pick ?? 0) < -1 ? "워커" : "상자", dex: $0.dex, level: $0.level, shiny: $0.shiny == true, name: monNames[$0.dex], v: $0.perfectIVs) }
@@ -66,7 +66,7 @@ extension Walker {
         let refs = itemRefs, half = Int(now.timeIntervalSinceReferenceDate * 2) % 2
         guard let r = refs[safe: min(p.at, max(0, refs.count - 1))], let m = state.mon(r) else { return }
         fb.text((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)", 2, 0); fb.fill(0, 12, 96, 1, 2)
-        fb.mon(m, half, 0, 2, anim: animT("itemon \(r)", m.dex, now))
+        fb.mon(m, half, 0, 2, anim: animT("itemon \(r)", m.art, now))
         let line: String = {
             switch ItemKind.of(p.item) {
             case .vitamin(let k, _): return statNames[k] + " \((m.evs ?? [])[safe: k] ?? 0)"
@@ -148,7 +148,7 @@ extension Walker {
     func holdLCD(_ fb: inout FB, _ ref: Int, _ sel: Int, _ now: Date) {
         guard let m = state.mon(ref) else { return }
         fb.text("도구 주기", 2, 0); fb.fill(0, 12, 96, 1, 2)
-        fb.mon(m, Int(now.timeIntervalSinceReferenceDate * 2) % 2, 0, 2, anim: animT("hold \(ref)", m.dex, now))
+        fb.mon(m, Int(now.timeIntervalSinceReferenceDate * 2) % 2, 0, 2, anim: animT("hold \(ref)", m.art, now))
         fb.text(m.item ?? "없음", 94, 15, m.item == nil ? 1 : 3, right: true, small: true)
         if let r = holdRows(ref)[safe: min(sel, max(0, holdRows(ref).count - 1))] { fb.text(r.take ? "→ 빼기" : "→ " + r.name, 94, 52, r.why == nil ? 2 : 1, right: true, small: true) }
     }

@@ -84,7 +84,7 @@ extension Walker {
             let list = pickList(p), per = TradePickModel.perPage, at = min(p.at, max(0, list.count - 1)), first = at / per * per
             let offered = p.side == 0 ? offeredUIDs : [], pick = p.side == 0 ? p.give : p.want
             let cells = list[min(first, list.count)..<min(list.count, first + per)].map { m in
-                GridModel.Cell(dex: m.dex, look: offered.contains(m.uid ?? -1) ? 1 : 2, shiny: m.shiny == true, v3: m.perfectIVs >= 3, level: m.level)
+                GridModel.Cell(dex: m.dex, look: offered.contains(m.uid ?? -1) ? 1 : 2, shiny: m.shiny == true, v3: m.perfectIVs >= 3, level: m.level, art: m.art)
             }
             let (mine, theirs) = picked(p), answering = p.offer != nil, offer = p.offer.flatMap(tradeOffer)
             func slot(_ label: String, _ m: Mon?, _ none: String) -> TradeSlot {
@@ -117,7 +117,7 @@ extension Walker {
         }
         func show(_ m: Mon, _ key: String, _ lines: [String]) {
             head((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)")
-            fb.mon(m, half, 0, 2, anim: animT(key, m.dex, now))
+            fb.mon(m, half, 0, 2, anim: animT(key, m.art, now))
             for (k, l) in lines.enumerated() { fb.text(l, 94, 15 + 11 * k, 2, right: true, small: true) }
             vLabel(m, 15 + 11 * lines.count)
         }
@@ -326,7 +326,7 @@ extension FB {
     /// white-out, it comes out with sparkles. The message row is the caller's.
     mutating func tradeFX(_ gave: Mon, _ got: Mon, _ u: Double, bob: Int) {
         pic("w.dark|stage", 96, 50, alpha: min(1, u / 0.7), behind: true) { panelPic(192, 100, rgb(18, 22, 42)) }
-        let mid = { (m: Mon) in 98 - (80 - spriteTop(m.dex)) / 2 }
+        let mid = { (m: Mon) in 98 - (80 - spriteTop(m.art)) / 2 }
         if u < 1.4 { showMon(gave, bob: bob) }
         else if u < 1.9 { let k = (u - 1.4) / 0.5; showMon(gave, scale: 1 - 0.85 * k, tint: rgb(238, 84, 72)) }
         if (1.75..<2.6).contains(u) { let k = max(0, (u - 1.9) / 0.7); pic("ball 0 0", 96 + Int(k * 130), 76 - Int(sin(k * .pi) * 34)) { ballPic(0, 0) } }

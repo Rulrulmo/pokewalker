@@ -91,7 +91,7 @@ extension Walker {
         let c = r.card, half = Int(now.timeIntervalSinceReferenceDate * 2) % 2
         let nw = fb.text(c.name, 2, 0); fb.fill(0, 12, 96, 1, 2)
         if let d = c.deco { fb.draw(medalArt, min(88, nw + 5), 2, d == "gold" ? goldPal : silverPal) }                         // 3.9: its medal
-        fb.mon(c.companion, half, 0, 2, anim: animT("team", c.companion.dex, now))
+        fb.mon(c.companion, half, 0, 2, anim: animT("team", c.companion.art, now))
         fb.text("Lv.\(c.companion.level)", 94, 16, 2, right: true, small: true)
         if isMe(c) { fb.text("나", 94, 30, 2, right: true, small: true) } else { fb.text(Walker.walkingNow(c) ? "걷는 중" : ago(c.idle), 94, 30, Walker.walkingNow(c) ? 3 : 2, right: true, small: true) }
         if c.companion.shiny == true { fb.text("★이로치", 94, 42, 3, right: true, small: true) }

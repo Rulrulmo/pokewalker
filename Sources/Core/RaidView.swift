@@ -126,7 +126,7 @@ extension Walker {
             var boss = Mon(dex: dex, level: t.level, female: false); if raidMega { boss.form = megaLobby?.bosses[safe: raidMegaBoss]?.form }
             let tname = raidMega ? megaLobby?.bosses[safe: raidMegaBoss].map(megaName) ?? monNames[boss.dex] : monNames[boss.dex]   // 5.0: its Mega's name
             fb.text(tname + " Lv.\(t.level)", 2, 0); fb.fill(0, 12, 96, 1, 2)
-            fb.mon(boss, half, 0, 2, anim: animT("raid tier", boss.dex, now))
+            fb.mon(boss, half, 0, 2, anim: animT("raid tier", boss.art, now))
             fb.text(String(repeating: "★", count: t.tier), 94, 15, 3, right: true, small: true)
             fb.text("\(t.perfect)V", 94, 28, 2, right: true, small: true)
             if t.level > 100 { fb.text("잡히면 Lv.100", 94, 40, 2, right: true, small: true) }      // (a boss above 100 is caught at 100)
@@ -136,7 +136,7 @@ extension Walker {
         }
         guard let r = raidLobby else { fb.text("레이드", 2, 0); fb.fill(0, 12, 96, 1, 2); fb.text(cloud?.online == false ? "연결되면 볼 수 있다" : "불러오는 중...", 0, 30, 2, center: true); return }
         fb.text(monNames[r.boss.dex], 2, 0); fb.fill(0, 12, 96, 1, 2)
-        fb.mon(r.boss, half, 0, 2, anim: animT("raid", r.boss.dex, now))
+        fb.mon(r.boss, half, 0, 2, anim: animT("raid", r.boss.art, now))
         let left = raidLeftToday ?? 0
         fb.text("레이드", 94, 15, 2, right: true, small: true)
         fb.text(raidLeft(r.ends, now), 94, 26, 2, right: true, small: true)

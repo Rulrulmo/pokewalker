@@ -27,20 +27,20 @@ extension Walker {
         let n = min(3, state.caught.count) + (state.egg == nil ? 0 : 1), u = t.truncatingRemainder(dividingBy: 9), who = Int(t / 9) % max(1, n)
         func hop(_ k: Int) -> Int { k == who && u < 0.45 ? Int((sin(u / 0.45 * .pi) * 4).rounded()) : 0 }   // now and then one of them pops
         for (k, m) in state.caught.prefix(3).enumerated() {                                    // the walker's catches along the bottom, a little staggered
-            fb.stuck("nb|icon|\(m.dex)|" + tone, 4 + 30 * k, 90 - 3 * (k % 2) - hop(k)) { lcdReady(sticker(iconPic(m.dex), night: night)) }
+            fb.stuck("nb|icon|\(m.art)|" + tone, 4 + 30 * k, 90 - 3 * (k % 2) - hop(k)) { lcdReady(sticker(iconPic(m.art), night: night)) }
         }
         if let e = state.egg {                                                                   // close to hatching it rocks
             let k = min(3, state.caught.count), tau = t.truncatingRemainder(dividingBy: 1.6), ang = e.left < 500 && tau < 0.5 ? 12 * sin(tau / 0.25 * 2 * .pi) * (1 - tau / 0.5) : 0
             fb.pic("nb|egg|" + tone, 20 + 30 * k + Int((11 * sin(ang * .pi / 180)).rounded()), 123 - hop(k) - Int((11 * cos(ang * .pi / 180)).rounded()), angle: ang, behind: true) { lcdReady(sticker(miniEgg, night: night)) }   // about its foot
         }
-        if rimDex != me.dex { rimDex = me.dex; dropPics("nb|me|") }
-        let a = animT("home", me.dex, now, start: false), f = a.flatMap { anim(me.dex)?.frame(at: $0) }, an = f.flatMap { _ in anim(me.dex) }
+        if rimDex != me.art { rimDex = me.art; dropPics("nb|me|") }
+        let a = animT("home", me.art, now, start: false), f = a.flatMap { anim(me.art)?.frame(at: $0) }, an = f.flatMap { _ in anim(me.art) }
         let bob = now.timeIntervalSince(lastStep) < 3 ? Int(t * 2) % 2 : Int(t) % 2                // steps coming in => breathes twice as fast
         if let f, let an {                                                                       // the rim round this frame of its animation
-            fb.stuck("nb|me|\(me.dex)|\(f)|\(night)", fx - 42 + an.x, fy - 82 + an.y) { sticker(animFramePic(an, f), night: night, rimOnly: true) }   // (a rim: the same on any LCD style)
-        } else { fb.stuck("nb|me|\(me.dex)|s|\(night)", fx - 42, fy - 82 - bob) { sticker(spritePic(me.dex), night: night, rimOnly: true) } }
+            fb.stuck("nb|me|\(me.art)|\(f)|\(night)", fx - 42 + an.x, fy - 82 + an.y) { sticker(animFramePic(an, f), night: night, rimOnly: true) }   // (a rim: the same on any LCD style)
+        } else { fb.stuck("nb|me|\(me.art)|s|\(night)", fx - 42, fy - 82 - bob) { sticker(spritePic(me.art), night: night, rimOnly: true) } }
         fb.sprite(me, fx / 2 - 16, fy / 2 - 32, bob: bob, anim: a)
-        if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { fb.pic("nb|bubble|\(e.kind)", fx - 18, max(10, fy - 84 + spriteTop(me.dex))) { bubblePic(e.kind) } }   // by its head
+        if let e = emote, now < e.until, Int(t * 3) % 3 != 0 { fb.pic("nb|bubble|\(e.kind)", fx - 18, max(10, fy - 84 + spriteTop(me.art))) { bubblePic(e.kind) } }   // by its head
         drawGuests(&fb, now, night: night, tone: tone)                                           // 3.8: the ones I'm raising walk along (Core/VisitView.swift)
     }
 }
@@ -151,8 +151,8 @@ func sticker(_ src: Pic, night: Bool, rimOnly: Bool = false) -> Pic {
     if !rimOnly { p.paste(src, 2, 2) }
     return p
 }
-@MainActor func spritePic(_ dex: Int) -> Pic { var p = Pic(w: 80, h: 80); for k in 0..<6400 { p.px[k] = spritePixel(dex, back: false, k % 80, k / 80, shiny: false) }; return p }
-func iconPic(_ dex: Int) -> Pic { var p = Pic(w: 32, h: 32); for k in 0..<1024 { p.px[k] = iconPixel(dex, k % 32, k / 32) }; return p }
+@MainActor func spritePic(_ art: Int) -> Pic { var p = Pic(w: 80, h: 80); for k in 0..<6400 { p.px[k] = spritePixel(art, back: false, k % 80, k / 80, shiny: false) }; return p }
+func iconPic(_ art: Int) -> Pic { var p = Pic(w: 32, h: 32); for k in 0..<1024 { p.px[k] = iconPixel(art, k % 32, k / 32) }; return p }
 /// Frame f of an animation, its own box.
 func animFramePic(_ a: Anim, _ f: Int) -> Pic { var p = Pic(w: a.w, h: a.h); for y in 0..<a.h { for x in 0..<a.w { p.px[y * a.w + x] = a.pixel(f, x, y, shiny: false) } }; return p }
 

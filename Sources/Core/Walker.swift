@@ -17,6 +17,7 @@ import Foundation
     var lastInput = Date(), lastStep = Date.distantPast, lastSave = Date()
     var boxSort = 0                                                        // the 상자 grid's order: 번호순 / 레벨순 / V순 / 최근
     var dexRegion = 0                                                      // 5.0 (content5): the 도감 grid's region, 0 = 전국 (dexRegions)
+    var dexForm: (dex: Int, n: Int)? = nil                                 // 5.0: the 도감 entry page's form on show (● turns them; nil = the species)
     var raidMega = false, raidMegaBoss = 0                                 // 5.0 (docs/plans/18 §6.4): the raid screens are the Mega raid's; its boss (the week's 0 / 1)
     var megaOn = false                                                     // 5.0 (docs/plans/18 §9.6): 메가진화 ticked on the move screen: the move goes as .megaFight
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
@@ -27,7 +28,7 @@ import Foundation
     var growthThen: Screen? = nil                                      // where a fight's end goes once home's news have played (settle): the lobby
     var sideOn = false                                                     // the pane carries the battle's text (the app; not --selftest): the LCD shows the stage only
     var emote: (kind: Int, until: Date)? = nil                             // ♪ ♥ ! bubble over the companion
-    var animOn: (who: String, dex: Int, since: Date)? = nil                // the entry animation playing (Anim.swift): home's companion or a page's Pokémon
+    var animOn: (who: String, art: Int, since: Date)? = nil                // the entry animation playing (Anim.swift): home's companion or a page's Pokémon
     lazy var rewarded = dexCount                                           // dex count already celebrated (no fanfare for old progress)
     var dexCount: Int { (state.owned ?? []).count }
     var rng = Seeded(s: .random(in: .min ... .max))

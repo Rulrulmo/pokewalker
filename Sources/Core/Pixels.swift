@@ -7,38 +7,51 @@ let hgssData: Data = {
     guard let d = resource("hgss.bin"), d.count >= 493 * 6490, d.count % 6490 == 0 else { return Data(count: 493 * 6490) }
     return d
 }()
-/// The species with pictures in the bundle (493 until 5.0's, docs/plans/18 §9.5): one past them (content5's 494-721 meanwhile) draws nothing.
+/// The pictures in the bundle ("art", 5.0's docs/plans/18 §9.5): the species 1...721, then every form of monForms in (species, form) order
+/// (tools/gen.py); one past them (an older bundle) draws nothing.
 let spriteCount = hgssData.count / 6490
-/// 0 = transparent, else 0xFFRRGGBB.
-func spritePixel(_ dex: Int, back: Bool, _ x: Int, _ y: Int, shiny: Bool) -> UInt32 {
-    guard (1...spriteCount).contains(dex) else { return 0 }
-    let o = (dex - 1) * 6490, b = hgssData[o + 90 + (back ? 3200 : 0) + y * 40 + x / 2], i = Int(x % 2 == 0 ? b >> 4 : b & 15)
+/// A form's picture number (hgss.bin, icons.bin, anims.bin, walk.bin): its species' own (nil or 0, or none in this bundle: the species').
+func artIndex(_ dex: Int, _ form: Int?) -> Int {
+    guard let f = form, f > 0, let b = formArt[dex], f <= monForms[dex]?.count ?? 0, b + f <= spriteCount else { return dex }
+    return b + f
+}
+/// Each species' forms' pictures start after this one (the first is formArt[dex] + 1).
+let formArt: [Int: Int] = {
+    var b: [Int: Int] = [:], next = monNames.count                                                  // 722: after the species
+    for d in monForms.keys.sorted() { b[d] = next - 1; next += monForms[d]?.count ?? 0 }
+    return b
+}()
+extension Mon { var art: Int { artIndex(dex, form) } }
+/// 0 = transparent, else 0xFFRRGGBB. art: a species, or a form's (artIndex).
+func spritePixel(_ art: Int, back: Bool, _ x: Int, _ y: Int, shiny: Bool) -> UInt32 {
+    guard (1...spriteCount).contains(art) else { return 0 }
+    let o = (art - 1) * 6490, b = hgssData[o + 90 + (back ? 3200 : 0) + y * 40 + x / 2], i = Int(x % 2 == 0 ? b >> 4 : b & 15)
     guard i > 0 else { return 0 }
     let p = o + (shiny ? 45 : 0) + (i - 1) * 3
     return rgb(hgssData[p], hgssData[p + 1], hgssData[p + 2])
 }
 /// The first opaque row of a frame (gen.py stands every frame on row 79), for what sits over its head.
 @MainActor var spriteTops: [Int: Int] = [:]
-@MainActor func spriteTop(_ dex: Int, back: Bool = false) -> Int {
-    if let t = spriteTops[dex * 2 + (back ? 1 : 0)] { return t }
-    let t: Int = (0..<80).first(where: { y in (0..<80).contains { spritePixel(dex, back: back, $0, y, shiny: false) != 0 } }) ?? 79
-    spriteTops[dex * 2 + (back ? 1 : 0)] = t; return t
+@MainActor func spriteTop(_ art: Int, back: Bool = false) -> Int {
+    if let t = spriteTops[art * 2 + (back ? 1 : 0)] { return t }
+    let t: Int = (0..<80).first(where: { y in (0..<80).contains { spritePixel(art, back: back, $0, y, shiny: false) != 0 } }) ?? 79
+    spriteTops[art * 2 + (back ? 1 : 0)] = t; return t
 }
 /// A sprite laid over the dots at 1 pt per pixel (x 1.5 / x 2 on the bigger sizes): its 80x80 frame (40x40 dots) stands on (x + 16, y + 32); `floor` = the dot row it sinks behind.
 /// scale (about the feet) and alpha: growing out of / shrinking into a ball; frame = one of its animation's (Anim.swift; nil = the static sprite).
-struct SpriteRun: Equatable { var dex: Int; var shiny, back: Bool; var x, y, bob: Int; var tint: UInt32?, tintShade: UInt8; var floor: Int; var inverted = false; var scale = 1.0, alpha = 1.0; var frame: Int? = nil }
+struct SpriteRun: Equatable { var art: Int; var shiny, back: Bool; var x, y, bob: Int; var tint: UInt32?, tintShade: UInt8; var floor: Int; var inverted = false; var scale = 1.0, alpha = 1.0; var frame: Int? = nil }
 @MainActor var spriteCache: [String: Bitmap] = [:]
 /// The sprite as the LCD shows it: its colours, or on a grey screen 4 shades by brightness (white = the blank screen, like the walker's own art); a tint = a silhouette.
 /// Inverted (a full-screen flash) = the grey shades flipped, on any screen, as the dots are.
 @MainActor func spriteImage(_ r: SpriteRun, _ l: LCD) -> Bitmap {
-    let key = "\(r.dex) \(r.shiny) \(r.back) \(l.name) \(r.tint ?? 0) \(r.tintShade) \(r.inverted) \(r.frame ?? -1)"
+    let key = "\(r.art) \(r.shiny) \(r.back) \(l.name) \(r.tint ?? 0) \(r.tintShade) \(r.inverted) \(r.frame ?? -1)"
     if let i = spriteCache[key] { return i }
     if spriteCache.count > 64 { spriteCache.removeAll() }                                   // ponytail: drop all at 64, an LRU if browsing ever stutters
     let shades = l.shades.map { s in rgb(UInt8(s.red * 255), UInt8(s.green * 255), UInt8(s.blue * 255)) }
     let a = playing(r), w = a?.w ?? 80, h = a?.h ?? 80                                         // an animation frame: its own box
     var px = [UInt32](repeating: 0, count: w * h)
     for y in 0..<h { for x in 0..<w {
-        let c = a.map { $0.pixel(r.frame!, x, y, shiny: r.shiny) } ?? spritePixel(r.dex, back: r.back, x, y, shiny: r.shiny)
+        let c = a.map { $0.pixel(r.frame!, x, y, shiny: r.shiny) } ?? spritePixel(r.art, back: r.back, x, y, shiny: r.shiny)
         guard c != 0 else { continue }
         let lum = (0.299 * Double(c >> 16 & 255) + 0.587 * Double(c >> 8 & 255) + 0.114 * Double(c & 255)) / 255
         let shade = Int(r.tint != nil ? r.tintShade : lum > 0.78 ? 0 : lum > 0.5 ? 1 : lum > 0.25 ? 2 : 3)
@@ -123,17 +136,17 @@ let iconData: Data = {
     guard let d = resource("icons.bin"), d.count >= 493 * 557, d.count % 557 == 0 else { return Data(count: 493 * 557) }
     return d
 }()
-func iconPixel(_ dex: Int, _ x: Int, _ y: Int) -> UInt32 {
-    guard (1...iconData.count / 557).contains(dex) else { return 0 }                         // (none yet: blank)
-    let o = (dex - 1) * 557, b = iconData[o + 45 + y * 16 + x / 2], i = Int(x % 2 == 0 ? b >> 4 : b & 15)
+func iconPixel(_ art: Int, _ x: Int, _ y: Int) -> UInt32 {
+    guard (1...iconData.count / 557).contains(art) else { return 0 }                         // (none: blank)
+    let o = (art - 1) * 557, b = iconData[o + 45 + y * 16 + x / 2], i = Int(x % 2 == 0 ? b >> 4 : b & 15)
     return i > 0 ? rgb(iconData[o + (i - 1) * 3], iconData[o + (i - 1) * 3 + 1], iconData[o + (i - 1) * 3 + 2]) : 0
 }
 @MainActor var iconCache: [Int: Bitmap] = [:]                                            // at most 2 small images a species
-/// A species' box icon in colour, or (shadow) as a pale silhouette: seen, not caught.
-@MainActor func iconImage(_ dex: Int, shadow: Bool = false) -> Bitmap {
-    if let i = iconCache[dex * 2 + (shadow ? 1 : 0)] { return i }
-    let px = (0..<1024).map { k -> UInt32 in let c = iconPixel(dex, k % 32, k / 32); return c == 0 ? 0 : shadow ? rgb(196, 200, 208) : c }
-    let i = image(px, 32); iconCache[dex * 2 + (shadow ? 1 : 0)] = i; return i
+/// A species' (or a form's: artIndex) box icon in colour, or (shadow) as a pale silhouette: seen, not caught.
+@MainActor func iconImage(_ art: Int, shadow: Bool = false) -> Bitmap {
+    if let i = iconCache[art * 2 + (shadow ? 1 : 0)] { return i }
+    let px = (0..<1024).map { k -> UInt32 in let c = iconPixel(art, k % 32, k / 32); return c == 0 ? 0 : shadow ? rgb(196, 200, 208) : c }
+    let i = image(px, 32); iconCache[art * 2 + (shadow ? 1 : 0)] = i; return i
 }
 func dim(_ c: UInt32, _ k: Double) -> UInt32 { rgb(UInt8(Double(c >> 16 & 255) * k), UInt8(Double(c >> 8 & 255) * k), UInt8(Double(c & 255) * k)) }
 func rgb(_ r: UInt8, _ g: UInt8, _ b: UInt8) -> UInt32 { 0xFF00_0000 | UInt32(r) << 16 | UInt32(g) << 8 | UInt32(b) }
@@ -205,8 +218,8 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
     }
     /// anim = seconds into its entry animation (nil, < 0 or past its end: the static sprite); while a frame shows it doesn't bob.
     mutating func sprite(_ m: Mon, _ x: Int, _ y: Int, back: Bool = false, bob: Int = 0, flash: Bool = false, tint: (UInt8, UInt32)? = nil, floor: Int = 64, anim u: Double? = nil) {
-        let t = tint ?? (flash ? (2, rgb(238, 84, 72)) : nil), f = back ? nil : u.flatMap { anim(m.dex)?.frame(at: $0) }
-        sprites.append(SpriteRun(dex: m.dex, shiny: m.shiny == true, back: back, x: x, y: y, bob: f == nil ? bob : 0, tint: t?.1, tintShade: t?.0 ?? 0, floor: floor, frame: f))
+        let t = tint ?? (flash ? (2, rgb(238, 84, 72)) : nil), f = back ? nil : u.flatMap { anim(m.art)?.frame(at: $0) }
+        sprites.append(SpriteRun(art: m.art, shiny: m.shiny == true, back: back, x: x, y: y, bob: f == nil ? bob : 0, tint: t?.1, tintShade: t?.0 ?? 0, floor: floor, frame: f))
     }
     /// A picture at sprite resolution centred on (x, y) in half-dots; `make` draws it the first time its key is seen (keys: a finite set).
     mutating func pic(_ key: String, _ x: Int, _ y: Int, scale: Double = 1, alpha: Double = 1, angle: Double = 0, behind: Bool = false, clip: [Int] = [], _ make: () -> Pic) {

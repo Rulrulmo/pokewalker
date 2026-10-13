@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Regenerates Sources/Data/{Data,BattleData}.swift + Resources/{hgss,icons,frames,anims,walk}.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
+(`python3 tools/gen.py art`: the pictures only; `data`: the tables only)
 
 Sources (cached in tools/.cache, not committed; every URL is in SRC below — README "그림 · 데이터 출처" has the same list):
   - PokeAPI sprites (raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/...):
@@ -11,11 +12,15 @@ Sources (cached in tools/.cache, not committed; every URL is in SRC below — RE
   - Pokémon Showdown trainer sprites: play.pokemonshowdown.com/sprites/trainers/<name>.png (Gen IV rips) -> frames.bin (tower trainers)
   - HGSS following Pokémon (overworld walking, 4 frames a direction): github.com/teobz/pkmn-hgss-animated-overworld-sprites,
       APNG/by-direction/{left,right,down,up}/{regular,shiny}/{nnn}_{shiny_}{dir}.png (dex 3 digits) -> walk.bin
+  - 5.0 (plan 18 §9): the forms of 1-493 by PokeAPI's own names in the folders above (10008.png = 히트로토무, 201-b.png, 479-wash_down.png);
+      494-721, every Mega and primal, the forms past 493 from github.com/BluRosie/hg-engine at HGE (data/graphics/sprites/<name>/: male/front.png
+      (its palette the normal), male/back.png (the shiny), icon.png, overworld.png + overworld-tsure_poke1.pal) -> hgss.bin, icons.bin, walk.bin;
+      their animations: play.pokemonshowdown.com/sprites/gen5ani/<name>.gif (BW's; Smogon's past 649), where one lies on the picture -> anims.bin
   - Serebii's Pokéwalker course page: per course 6 Pokémon (groups A/B/C x 2) + 10 items, with min steps and chances.
   - PokeAPI CSVs (raw.githubusercontent.com/PokeAPI/pokeapi/master/data/v2/csv/): Korean names, Gen IV types (pokemon_types_past overrides
       the Fairy retcon), moves, abilities, natures, evolutions, stats... (the list is in SRC).
-  New species beyond 493 (5.0, plan 18): the tables go to N = 721; the pictures stay at N4 = 493 until their sources are picked (the HGSS
-  sets stop at 493). The Gen IV tables are 4.1's exactly (Gen4: 1-493 as HGSS, the new species as Gen VI, never read with content5 off);
+  New species beyond 493 (5.0, plan 18): the tables go to N = 721, and so do the pictures (then every form: the art list below). The Gen IV
+  tables are 4.1's exactly (Gen4: 1-493 as HGSS, the new species as Gen VI, never read with content5 off);
   the Gen VI ones are their changes (Gen6Changes / Gen6Added), applied by Sources/Data/Content.swift behind the content5 switch.
   `python3 tools/gen.py data` writes the tables only.
 
@@ -56,71 +61,149 @@ SRC = {
                                               'pokemon_forms', 'pokemon_form_names', 'item_categories']},
 }
 N = 721   # the national dex through Gen VI (5.0, plan 18): every table below goes to N
-N4 = 493  # HGSS's: the pictures (Resources/*.bin) and every Gen IV table stop here; above it only the Gen VI tables (Sources/Data/Content.swift)
+N4 = 493  # HGSS's: every Gen IV table stops here (and HGSS's own pictures); above it only the Gen VI tables (Sources/Data/Content.swift)
 ARTWORK = 'data' not in sys.argv[1:]
+
+HGE = 'c056eb74d8486ec1b046ed4628ca23821c79dadd'   # BluRosie/hg-engine (2026-10-11): 5.0's pictures past HGSS's (494-721, the Megas, their forms)
+
+def url(name):
+    """Where a cached file comes from: SRC's, else by its folder (the 5.0 pictures, named from the CSVs)."""
+    if name in SRC: return SRC[name]
+    d, f = name.split('/', 1)
+    pa = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/'
+    if d == 'hgss': b, sh, k = re.fullmatch(r'(b?)(s?)(\d.*)\.png', f).groups(); return pa + 'heartgold-soulsilver/' + 'back/' * (b == 'b') + 'shiny/' * (sh == 's') + k + '.png'
+    if d == 'plat': sh, k = re.fullmatch(r'(s?)(\d.*)\.png', f).groups(); return pa + 'platinum/' + 'shiny/' * (sh == 's') + k + '.png'
+    if d == 'icons': return pa + 'icons/' + f
+    if d == 'anim': return pa + 'heartgold-soulsilver/animated/' + f
+    if d == 'ow':
+        dr, v, k = re.fullmatch(r'(\w+)/(shiny_)?(.+)\.png', f).groups()
+        return f'https://raw.githubusercontent.com/teobz/pkmn-hgss-animated-overworld-sprites/main/APNG/by-direction/{dr}/{"shiny" if v else "regular"}/{k}_{v or ""}{dr}.png'
+    if d == 'hge': return f'https://raw.githubusercontent.com/BluRosie/hg-engine/{HGE}/data/graphics/sprites/{f}'
+    if d == 'gen5ani': return 'https://play.pokemonshowdown.com/sprites/gen5ani/' + ('' if f == 'index.html' else f)   # the folder's listing: which exist
+    if d == 'sd': return 'https://play.pokemonshowdown.com/sprites/' + f
+    raise KeyError(name)
 
 def get(name):
     p = os.path.join(CACHE, name)
     if not os.path.exists(p):
         os.makedirs(os.path.dirname(p), exist_ok=True)
-        req = urllib.request.Request(SRC[name], headers={'User-Agent': 'Mozilla/5.0'})
-        open(p, 'wb').write(urllib.request.urlopen(req).read())
+        req = urllib.request.Request(url(name), headers={'User-Agent': 'Mozilla/5.0'})
+        open(p + '.part', 'wb').write(urllib.request.urlopen(req).read()); os.replace(p + '.part', p)
     return p
 
-if ARTWORK:   # `python3 tools/gen.py data`: the tables only (Sources/Data), the Resources/*.bin left as they are
-    # --- hgss.bin: the HGSS battle sprites, drawn one pixel a point. Per species: 15 normal + 15 shiny RGB (index 1...15; 0 = transparent),
-    # then the front and the back, 80x80 at 4 bpp (high nibble = left). 6490 B per species. Each frame is moved down to stand on its bottom
-    # row (PokeAPI keeps the DS's per-species offsets; the walker has no offset table). A colour slot is a (normal, shiny) pair: two DS
-    # slots can share a normal colour and part in the shiny.
+if ARTWORK:   # `python3 tools/gen.py data`: the tables only (Sources/Data), the Resources/*.bin left as they are; `art`: the pictures only
+    from concurrent.futures import ThreadPoolExecutor
     def rgba(name): return Image.open(get(name)).convert('RGBA')
     def dist(a, b): return sum((i - j) ** 2 for i, j in zip(a, b))
+    def rows(name): return list(csv.DictReader(open(get(name))))
+    def pal16(im): p = (im.getpalette() or [])[:48]; p += [0] * (48 - len(p)); return [tuple(p[k:k + 3]) for k in range(0, 48, 3)]
+    def jasc(name): L = open(get(name)).read().split('\n'); n = int(L[2]); return [tuple(map(int, L[3 + k].split())) for k in range(n)] + [(0, 0, 0)] * (16 - n)
+    def indexed(im, pal, box):
+        """A DS frame (palette index 0 = clear) through a palette, as RGBA."""
+        im = im.crop(box); out = Image.new('RGBA', im.size); out.putdata([pal[i] + (255,) if i else (0, 0, 0, 0) for i in im.getdata()]); return out
+
+    # --- the pictures' numbers ("art": Pixels.swift's art(dex, form)): 1-N the species, then every form of the tables' monForms in (species, form)
+    # order (gen.py data's own filter, below: the two must agree, SelfTest counts them). Where each comes from:
+    #   1-493 and their forms (not the Megas): HGSS's as in 4.1 (PokeAPI; teobz's walking); a form by PokeAPI's own name (10008 = 히트로토무, 201-b = 안농 B, 422-east)
+    #   494-721, every Mega and primal, the forms past 493: hg-engine (80x80 DS sprites made as HGSS's: front.png's palette the normal, back.png's
+    #   the shiny; its box icon; its walking sprite, 2 frames a direction), and Showdown's gen5ani (BW's animations, Smogon's in their style) where there's one
+    pkr, spi = {int(r['id']): r for r in rows('pokemon.csv')}, {int(r['id']): r['identifier'] for r in rows('pokemon_species.csv')}
+    ART, forms = [None] + [{'dex': d, 'ident': spi[d], 'kind': None, 'pid': d} for d in range(1, N + 1)], []
+    for r in sorted(rows('pokemon_forms.csv'), key=lambda r: (int(r['pokemon_id']), int(r['form_order']), int(r['id']))):
+        pid, d = int(r['pokemon_id']), int(pkr[int(r['pokemon_id'])]['species_id'])
+        if d > N or int(r['introduced_in_version_group_id']) > 16 or r['identifier'] in {'pichu-spiky-eared', 'floette-eternal'} or d in (25, 493, 649): continue
+        if r['is_default'] == '1' and pid < 10000: continue
+        kind = 'mega' if r['is_mega'] == '1' else 'primal' if r['identifier'].endswith('-primal') else 'battle' if r['is_battle_only'] == '1' else 'stored' if pid > 10000 else 'look'
+        forms.append({'dex': d, 'ident': r['identifier'], 'kind': kind, 'pid': pid})
+    ART += sorted(forms, key=lambda a: a['dex'])                                       # stable: a species' forms in their own order
+    have5 = set(re.findall(r'href="\./([^"/]+)\.gif"', open(get('gen5ani/index.html')).read()))
+    for a in ART[1:]:
+        d, i, k = a['dex'], a['ident'], a['kind']
+        tail = i.split('-', 1)[1] if k else ''
+        a['walks'] = k in (None, 'look', 'stored')                                     # a Mega or a fight's form never walks
+        if d <= N4 and k not in ('mega', 'primal'):
+            a['hgss'] = str(d) if not k else str(a['pid']) if a['pid'] > 10000 else f'{d}-{tail}'
+            a['ow'] = (f'{d:03}' if not k else f'{d:03}-{tail}') if a['walks'] else None
+        else:
+            # hg-engine's folders: mega_charizard_x, flabebe_yellow_flower; its 비비용 is the 얼음 무늬 (the games' first) and 꽃밭 무늬 PokeAPI's
+            a['hge'] = {'vivillon': 'vivillon_meadow', 'vivillon-icy-snow': 'vivillon', 'darmanitan-zen': 'darmanitan_zen_mode'}.get(i) or \
+                (re.sub(r'^(.+)-mega(-[xy])?$', r'mega_\1\2', i) + '_flower' * bool(re.fullmatch(r'(flabebe|floette|florges)-\w+', i))).replace('-', '_')
+            a['sd'] = i.replace('-', '') if not k else i.split('-', 1)[0] + '-' + tail.replace('female', 'f').replace('-', '')   # Showdown's: charizard-megax, pyroar-f
+            a['ani'] = a['sd'] if a['sd'] in have5 else None
+    need = []
+    for a in ART[1:]:
+        if 'hgss' in a: need += [f'hgss/{b}{s}{a["hgss"]}.png' for b in ('', 'b') for s in ('', 's')] + [f'icons/{a["hgss"]}.png', f'anim/{a["hgss"]}.png']
+        if a.get('ow'): need += [f'ow/{dr}/{v}{a["ow"]}.png' for dr in ('left', 'right', 'down') for v in ('', 'shiny_')]
+        if 'hge' in a: need += [f'hge/{a["hge"]}/{f}' for f in ['male/front.png', 'male/back.png', 'icon.png'] + ['overworld.png', 'overworld-tsure_poke1.pal'] * a['walks']]
+        if a.get('ani'): need.append(f'gen5ani/{a["ani"]}.gif')
+    def tryget(name):
+        try: get(name)
+        except Exception: pass                                                          # none there (HGSS's walking misses a few): said below
+    todo = [n for n in need if not os.path.exists(os.path.join(CACHE, n))]
+    if todo: print(f'fetching {len(todo)} files'); list(ThreadPoolExecutor(16).map(tryget, todo))
+    print(f'art: {len(ART) - 1} = {N} species + {len(ART) - 1 - N} forms ({sum(1 for a in ART[1:] if "hge" in a)} from hg-engine, {sum(1 for a in ART[1:] if a.get("ani"))} BW animations)')
+
+    # --- hgss.bin: the battle sprites, drawn one pixel a point. Per picture (art): 15 normal + 15 shiny RGB (index 1...15; 0 = transparent),
+    # then the front and the back, 80x80 at 4 bpp (high nibble = left). 6490 B each. Each frame is moved down to stand on its bottom
+    # row (PokeAPI keeps the DS's per-species offsets; the walker has no offset table). A colour slot is a (normal, shiny) pair: two DS
+    # slots can share a normal colour and part in the shiny.
     hout, over15 = bytearray(), []
-    for dex in range(1, N4 + 1):
-        imgs = [(rgba(f'hgss/{b}{dex}.png'), rgba(f'hgss/{b}s{dex}.png')) for b in ('', 'b')]
-        for a, sh in imgs: assert a.size == (80, 80) == sh.size, (dex, a.size)
+    for art, a in enumerate(ART[1:], 1):
         shiny = lambda p, q: q[:3] if q[3] >= 128 else p[:3]
-        if all(a.tobytes() == sh.tobytes() for a, sh in imgs):
-            # PokeAPI's HGSS shiny 422/423 (West Sea) are copies of the normal files, and so is Platinum's back pair: the normal -> shiny
-            # map comes from Platinum's front pair, its colours snapped to HGSS's; a colour it never shows takes its nearest one's shift
-            normals = {p[:3] for a, _ in imgs for p in a.getdata() if p[3] >= 128}
+        if 'hge' in a:
+            def pic(x): p = get(f'hge/{a["hge"]}/male/{x}.png'); return Image.open(p if os.path.getsize(p) else get(f'hge/{a["hge"]}/female/{x}.png'))
+            f, b = pic('front'), pic('back')
+            assert f.mode == b.mode == 'P' and f.size == b.size == (160, 80), (a['hge'], f.size, b.size)   # (its male one, or the female where that's all: 부리공 · 버랜지나 · 메가캥카 · 냐오닉스 ♀)
+            imgs = [(indexed(x, pal16(f), (0, 0, 80, 80)), indexed(x, pal16(b), (0, 0, 80, 80))) for x in (f, b)]   # frame 1 of its two
+        else:
+            k = a['hgss']; imgs = [(rgba(f'hgss/{b}{k}.png'), rgba(f'hgss/{b}s{k}.png')) for b in ('', 'b')]
+        for x, sh in imgs: assert x.size == (80, 80) == sh.size, (art, x.size)
+        if all(x.tobytes() == sh.tobytes() for x, sh in imgs):
+            # PokeAPI's HGSS shiny 422/423 (West Sea) are copies of the normal files, and so is Platinum's back pair (and hg-engine's 달마모드 has
+            # one palette): the normal -> shiny map comes from another rip's front pair (Platinum's; Showdown's BW), its colours snapped to ours; a
+            # colour it never shows takes its nearest one's shift
+            normals = {p[:3] for x, _ in imgs for p in x.getdata() if p[3] >= 128}
             votes = {}
-            for p, q in zip(rgba(f'plat/{dex}.png').getdata(), rgba(f'plat/s{dex}.png').getdata()):
+            two = [f'plat/{s}{a["hgss"]}.png' for s in ('', 's')] if 'hgss' in a else [f'sd/{s}/{a["sd"]}.png' for s in ('gen5', 'gen5-shiny')]
+            for p, q in zip(rgba(two[0]).getdata(), rgba(two[1]).getdata()):
                 if p[3] >= 128 and q[3] >= 128:
-                    n = min(normals, key=lambda k: dist(k, p[:3])); votes.setdefault(n, {}).setdefault(q[:3], 0); votes[n][q[:3]] += 1
+                    n = min(normals, key=lambda c: dist(c, p[:3])); votes.setdefault(n, {}).setdefault(q[:3], 0); votes[n][q[:3]] += 1
             remap = {n: max(v, key=v.get) for n, v in votes.items()}
             for n in normals - remap.keys():
-                m = min(remap, key=lambda k: dist(k, n)); remap[n] = tuple(max(0, min(255, c + s - o)) for c, s, o in zip(n, remap[m], m))
+                m = min(remap, key=lambda c: dist(c, n)); remap[n] = tuple(max(0, min(255, c + s - o)) for c, s, o in zip(n, remap[m], m))
             shiny = lambda p, q: remap[p[:3]]
         count = {}
-        for a, sh in imgs:
-            for p, q in zip(a.getdata(), sh.getdata()):
-                if p[3] >= 128: k = (p[:3], shiny(p, q)); count[k] = count.get(k, 0) + 1
-        slots = sorted(count, key=lambda k: -count[k])[:15]                     # a DS palette is 15 colours; more (rare) snap to the nearest
-        if len(count) > 15: over15.append(dex)
-        index = {k: slots.index(k) + 1 if k in slots else 1 + min(range(len(slots)), key=lambda i: dist(slots[i][0], k[0]) + dist(slots[i][1], k[1])) for k in count}
+        for x, sh in imgs:
+            for p, q in zip(x.getdata(), sh.getdata()):
+                if p[3] >= 128: c = (p[:3], shiny(p, q)); count[c] = count.get(c, 0) + 1
+        slots = sorted(count, key=lambda c: -count[c])[:15]                     # a DS palette is 15 colours; more (rare) snap to the nearest
+        if len(count) > 15: over15.append(art)
+        index = {c: slots.index(c) + 1 if c in slots else 1 + min(range(len(slots)), key=lambda i: dist(slots[i][0], c[0]) + dist(slots[i][1], c[1])) for c in count}
         for n, _ in slots + [((0, 0, 0), 0)] * (15 - len(slots)): hout += bytes(n)
         for _, s in slots + [(0, (0, 0, 0))] * (15 - len(slots)): hout += bytes(s)
-        for a, sh in imgs:
-            px, qx = list(a.getdata()), list(sh.getdata())
-            drop = 79 - max(y for y in range(80) if any(px[y * 80 + x][3] >= 128 for x in range(80)))   # onto the bottom row
-            cell = lambda x, y: 0 if y < drop or px[(y - drop) * 80 + x][3] < 128 else index[(px[(y - drop) * 80 + x][:3], shiny(px[(y - drop) * 80 + x], qx[(y - drop) * 80 + x]))]
+        for x, sh in imgs:
+            px, qx = list(x.getdata()), list(sh.getdata())
+            drop = 79 - max(y for y in range(80) if any(px[y * 80 + c][3] >= 128 for c in range(80)))   # onto the bottom row
+            cell = lambda c, y: 0 if y < drop or px[(y - drop) * 80 + c][3] < 128 else index[(px[(y - drop) * 80 + c][:3], shiny(px[(y - drop) * 80 + c], qx[(y - drop) * 80 + c]))]
             for y in range(80):
-                for x in range(0, 80, 2): hout.append(cell(x, y) << 4 | cell(x + 1, y))
-    assert len(hout) == N4 * 6490
+                for c in range(0, 80, 2): hout.append(cell(c, y) << 4 | cell(c + 1, y))
+    assert len(hout) == (len(ART) - 1) * 6490
     if over15: print('palette snapped (> 15 colour pairs):', over15)
     open('Resources/hgss.bin', 'wb').write(hout)
 
-    # --- icons.bin: the Gen IV box / party icons (the 도감 and 상자 grids), one pixel a point. Per species: 15 RGB (index 1...15; 0 =
-    # transparent), then 32x32 at 4 bpp (high nibble = left). 557 B per species. A DS icon palette is 16 colours, so 15 opaque always fit.
+    # --- icons.bin: the box / party icons (the 도감 and 상자 grids), one pixel a point. Per picture: 15 RGB (index 1...15; 0 = transparent),
+    # then 32x32 at 4 bpp (high nibble = left). 557 B each. A DS icon palette is 16 colours, so 15 opaque always fit.
     iout = bytearray()
-    for dex in range(1, N4 + 1):
-        a = rgba(f'icons/{dex}.png'); assert a.size == (32, 32), (dex, a.size)
-        px = list(a.getdata()); pal = sorted({p[:3] for p in px if p[3] >= 128})
-        assert 0 < len(pal) <= 15, (dex, len(pal))
+    for art, a in enumerate(ART[1:], 1):
+        if 'hge' in a: im = Image.open(get(f'hge/{a["hge"]}/icon.png')); assert im.mode == 'P' and im.width == 32, (a['hge'], im.size); im = indexed(im, pal16(im), (0, 0, 32, 32))
+        else: im = rgba(f'icons/{a["hgss"]}.png')
+        assert im.size == (32, 32), (art, im.size)
+        px = list(im.getdata()); pal = sorted({p[:3] for p in px if p[3] >= 128})
+        assert 0 < len(pal) <= 15, (art, len(pal))
         for c in pal + [(0, 0, 0)] * (15 - len(pal)): iout += bytes(c)
         cell = lambda p: pal.index(p[:3]) + 1 if p[3] >= 128 else 0
         for k in range(0, 1024, 2): iout.append(cell(px[k]) << 4 | cell(px[k + 1]))
-    assert len(iout) == N4 * 557
+    assert len(iout) == (len(ART) - 1) * 557
     open('Resources/icons.bin', 'wb').write(iout)
 
     # --- frames.bin: other 80x80 frames at one pixel a point: the HGSS egg, then the Battle Tower's trainers (Gen IV sprites, Showdown's rips).
@@ -141,13 +224,15 @@ if ARTWORK:   # `python3 tools/gen.py data`: the tables only (Sources/Data), the
     assert len(fout) == len(FRAMES) * 3245
     open('Resources/frames.bin', 'wb').write(fout)
 
-    # --- anims.bin: the HGSS entry animations (PokeAPI's APNGs: what a species does as it appears in battle, on its summary, when tapped).
-    # Each frame goes onto our grounded 80x80 frame: the rest frame (the last, long-held one) is matched against hgss.bin's front by opaque
-    # mask, which carries the grounding shift. Every colour snaps to the species' normal slots (another rip: RGB a little off, a few more
-    # colours), so shiny and the grey shades work as for the sprite; where two slots share a normal colour, the one the front has there.
-    # Consecutive equal frames merge; the final hold (the APNG's loop pause) is cut to 100 ms. Per species, raw DEFLATE of:
+    # --- anims.bin: the entry animations: what a species does as it appears in battle, on its summary, when tapped. HGSS's (PokeAPI's APNGs) for
+    # 1-493 and their forms; BW's (Showdown's gen5ani GIFs) for hg-engine's pictures, played through once (1-10 s). Each frame goes onto our
+    # grounded 80x80 frame: its rest frame (HGSS: the last, long-held one; BW: the first, its still sprite) is matched against hgss.bin's front by
+    # opaque mask, which carries the grounding shift; hg-engine redrew the big ones to fit 80x80, so a BW one that won't lie on it as it is is
+    # tried smaller (each pixel the colour slot covering most of it). Every colour snaps to the picture's normal slots (another rip: RGB a little
+    # off, a few more colours), so shiny and the grey shades work as for the sprite; where two slots share a normal colour, the one the front has
+    # there. Consecutive equal frames merge; the final hold (the APNG's loop pause) is cut to 100 ms. Per picture, raw DEFLATE of:
     #   x, y (int16: the box's top-left in the 80x80 frame, may be < 0 or past 79), w (even), h, n (uint8), n x uint16 ms, n frames w x h at 4 bpp.
-    # The file: 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none, the static sprite stays), then the blocks.
+    # The file: one uint32 offset a picture and one more (art a = off[a - 1] ..< off[a]; empty = none, the static sprite stays), then the blocks.
     def apng(path):
         """The frames composited, [(RGBA, ms)]: Pillow clears a palette frame to index 0 (opaque black here), not to clear."""
         b, i, ch = open(path, 'rb').read(), 8, []
@@ -172,35 +257,68 @@ if ARTWORK:   # `python3 tools/gen.py data`: the tables only (Sources/Data), the
             if dop == 1 or dop == 2 and k == 0: canvas.paste((0, 0, 0, 0), (x, y, x + w, y + h))
             elif dop == 2: canvas = keep
         return out
+    def gif(path):
+        """A GIF's frames as Pillow composites them, [(RGBA, ms)]."""
+        g, out = Image.open(path), []
+        for k in range(g.n_frames): g.seek(k); out.append((g.convert('RGBA'), g.info.get('duration') or 100))
+        return out
+    def shrink(m, k):
+        """An index image (L: 0 clear, slots 1-15) k times as big: each pixel the slot that covers most of it, clear where it's under half covered."""
+        W, H = max(1, round(m.width * k)), max(1, round(m.height * k))
+        out, best, hist = Image.new('L', (W, H)), Image.new('L', (W, H)), m.histogram()
+        for v in (v for v in range(1, 16) if hist[v]):
+            c = m.point(lambda p, v=v: 255 if p == v else 0).resize((W, H), Image.BOX)
+            out.paste(v, mask=ImageChops.subtract(c, best).point(lambda p: 255 if p else 0)); best = ImageChops.lighter(best, c)
+        out.paste(0, mask=m.point(lambda p: 255 if p else 0).resize((W, H), Image.BOX).point(lambda p: 255 if p < 128 else 0))
+        return out
     nib = lambda at, k: hout[at + k // 2] >> 4 if k % 2 == 0 else hout[at + k // 2] & 15
-    blocks, poor, none = [], [], []
-    for dex in range(1, N4 + 1):
-        o = (dex - 1) * 6490
-        try: frames = apng(get(f'anim/{dex}.png'))
-        except Exception: none.append(dex); blocks.append(b''); continue            # missing / broken: the static sprite stays
+    blocks, poor, none, small, cuts, dropped = [], [], [], [], [], []
+    for art, a in enumerate(ART[1:], 1):
+        o = (art - 1) * 6490
+        try: frames = apng(get(f'anim/{a["hgss"]}.png')) if 'hgss' in a else gif(get(f'gen5ani/{a["ani"]}.gif')) if a.get('ani') else None
+        except Exception: frames = None                                              # missing / broken: the static sprite stays
+        if not frames: (none if 'hgss' in a or a.get('ani') else []).append(art); blocks.append(b''); continue   # (most past 493 have none)
         slot, front = [tuple(hout[o + i * 3:o + i * 3 + 3]) for i in range(15)], [nib(o + 90, k) for k in range(6400)]
         # where the rest frame's canvas sits on our frame: the best mask overlap near where their boxes line up
         smask = Image.frombytes('L', (80, 80), bytes(255 if i else 0 for i in front))
-        rest = frames[-1][0].getchannel('A').point(lambda a: 255 if a >= 128 else 0)
-        sb, rb, ns, nr = smask.getbbox(), rest.getbbox(), smask.histogram()[255], rest.histogram()[255]
-        def iou(x, y): i = ImageChops.multiply(smask, rest.crop((x, y, x + 80, y + 80))).histogram()[255]; return i / (ns + nr - i)
-        cand = {(ax + ex, ay + ey) for ax in {rb[0] - sb[0], rb[2] - sb[2]} for ay in {rb[1] - sb[1], rb[3] - sb[3]} for ex in range(-3, 4) for ey in range(-3, 4)}
-        score, dx, dy = max((iou(x, y), x, y) for x, y in cand)                   # canvas (x, y) = our frame's (x - dx, y - dy)
-        # colours: each of the rip's colours to the slot the front mostly has under it in the rest frame (if they line up), else to the
-        # nearest of the species' own normal colours
+        sb, ns = smask.getbbox(), smask.histogram()[255]
+        def fit(rest, cut=False, reach=3):                                          # cut: only what falls in the 80x80 frame counts
+            rb, nr = rest.getbbox(), rest.histogram()[255]
+            def iou(x, y):
+                w = rest.crop((x, y, x + 80, y + 80)); i = ImageChops.multiply(smask, w).histogram()[255]
+                return i / (ns + (w.histogram()[255] if cut else nr) - i)
+            cand = {(ax + ex, ay + ey) for ax in {rb[0] - sb[0], rb[2] - sb[2]} for ay in {rb[1] - sb[1], rb[3] - sb[3]} for ex in range(-reach, reach + 1) for ey in range(-reach, reach + 1)}
+            return max((iou(x, y), x, y) for x, y in cand)                         # canvas (x, y) = our frame's (x - dx, y - dy)
+        rest = frames[-1 if 'hgss' in a else 0][0].getchannel('A').point(lambda v: 255 if v >= 128 else 0)
+        (score, dx, dy), scale, cut = fit(rest), 1.0, False
+        if 'hge' in a and score < 0.9:
+            # hg-engine redrew the big ones to fit 80x80: drawn smaller (so is its animation), or cut off at the frame (so is its animation: what's
+            # cut counts for nothing, which flatters a little: 0.05 off)
+            tries = [(fit(rest, cut=True, reach=6), 1.0, True)] + [(fit(rest.resize((max(1, round(rest.width * k)), max(1, round(rest.height * k))), Image.BOX).point(lambda v: 255 if v >= 128 else 0)), k, False)
+                                                                   for k in (k / 100 for k in range(99, 49, -1))]
+            (score, dx, dy), scale, cut = max([((score, dx, dy), 1.0, False)] + tries, key=lambda t: t[0][0] - 0.05 * t[2])
+        if 'hge' in a and score - 0.05 * cut < 0.8: dropped.append((art, a['ani'], round(score, 3), scale, cut)); blocks.append(b''); continue   # too far off its picture: it'd jump at the end
+        if scale < 1: small.append((art, scale))
+        if cut: cuts.append(art)
+        # colours: each of the rip's colours to the slot the front mostly has under it in the rest frame (if they line up), else to the nearest
+        # of the picture's own normal colours
         used = sorted((set(front) | {nib(o + 3290, k) for k in range(6400)}) - {0})                   # the slots the front and back use
         of = {slot[i - 1]: [j for j in used if slot[j - 1] == slot[i - 1]] for i in used}   # a normal colour's slots
         shared = {i for s in of.values() if len(s) > 1 for i in s}                # two slots, one normal colour (their shinies part)
-        cols = sorted({c[:3] for im, _ in frames for _, c in im.getcolors(1 << 16) if c[3] >= 128})
-        votes, rp, (W, H) = {}, frames[-1][0].load(), frames[-1][0].size
+        cols = sorted({c[:3] for im, _ in frames for _, c in im.getcolors(1 << 16) if c[3] >= 128}); assert len(cols) <= 256, (art, len(cols))
+        votes, R = {}, frames[-1 if 'hgss' in a else 0][0]
+        if scale < 1: R = R.resize((max(1, round(R.width * scale)), max(1, round(R.height * scale))), Image.NEAREST)   # (its own colours, where they land)
+        rp, (W, H) = R.load(), R.size
         for k, i in enumerate(front):
             X, Y = k % 80 + dx, k // 80 + dy
             if i and 0 <= X < W and 0 <= Y < H and rp[X, Y][3] >= 128: v = votes.setdefault(rp[X, Y][:3], {}); v[i] = v.get(i, 0) + 1
-        to = {c: max(votes[c], key=votes[c].get) if score >= 0.9 and sum(votes.get(c, {}).values()) >= 3 else min(used, key=lambda i: dist(slot[i - 1], c)) for c in cols}
+        to = {c: max(votes[c], key=votes[c].get) if score >= (0.9 if 'hgss' in a else 0.8) and sum(votes.get(c, {}).values()) >= 3 else min(used, key=lambda i: dist(slot[i - 1], c)) for c in cols}
         pal = Image.new('P', (1, 1)); pal.putpalette([v for c in cols + cols[:1] * (256 - len(cols)) for v in c])
         lut = bytes(to[c] for c in cols + cols[:1] * (256 - len(cols)))
         idx = [(Image.composite(Image.frombytes('L', im.size, im.convert('RGB').quantize(palette=pal, dither=Image.Dither.NONE).tobytes().translate(lut)),
-                                Image.new('L', im.size), im.getchannel('A').point(lambda a: 255 if a >= 128 else 0)), ms) for im, ms in frames]
+                                Image.new('L', im.size), im.getchannel('A').point(lambda v: 255 if v >= 128 else 0)), ms) for im, ms in frames]
+        if scale < 1: idx = [(shrink(m, scale), ms) for m, ms in idx]
+        if cut: frame = Image.new('L', idx[0][0].size); frame.paste(255, (dx, dy, dx + 80, dy + 80)); idx = [(Image.composite(m, Image.new('L', m.size), frame), ms) for m, ms in idx]
         bx = [m.getbbox() for m, _ in idx if m.getbbox()]
         b0, b1, b3 = min(b[0] for b in bx), min(b[1] for b in bx), max(b[3] for b in bx)
         w = max(b[2] for b in bx) - b0; w += w % 2; h = b3 - b1; x0, y0 = b0 - dx, b1 - dy
@@ -213,35 +331,48 @@ if ARTWORK:   # `python3 tools/gen.py data`: the tables only (Sources/Data), the
             if out and out[-1][0] == px: out[-1][1] += ms
             else: out.append([px, ms])
         out[-1][1] = min(out[-1][1], 100)
+        while len(out) > 255: out = [[p, m + (out[k + 1][1] if k + 1 < len(out) else 0)] for k, (p, m) in enumerate(out) if k % 2 == 0]   # (none so long yet)
         last = out[-1][0]; at = lambda k: last[(k // 80 - y0) * w + k % 80 - x0] if 0 <= k % 80 - x0 < w and 0 <= k // 80 - y0 < h else 0
         same = sum(at(k) == i for k, i in enumerate(front) if i) / sum(1 for i in front if i)   # the rest frame against the front, index by index
-        if score < 0.95 or same < 0.9: poor.append((dex, round(score, 3), round(same, 3)))
-        assert w < 256 and h < 256 and len(out) < 256, (dex, w, h, len(out))
+        if score < 0.95 or same < 0.9: poor.append((art, round(score, 3), round(same, 3)))
+        assert w < 256 and h < 256, (art, w, h, len(out))
         blk = struct.pack('<hhBBB', x0, y0, w, h, len(out)) + b''.join(struct.pack('<H', min(ms, 65535)) for _, ms in out)
         for px, _ in out: blk += (int.from_bytes(bytes(px[0::2]).translate(bytes(i * 16 & 255 for i in range(256))), 'big') | int.from_bytes(bytes(px[1::2]), 'big')).to_bytes(len(px) // 2, 'big')
         z = zlib.compressobj(9, zlib.DEFLATED, -15); blocks.append(z.compress(blk) + z.flush())
-    off = [4 * (N4 + 1)]
+    off = [4 * len(ART)]
     for b in blocks: off.append(off[-1] + len(b))
     aout = b''.join(struct.pack('<I', v) for v in off) + b''.join(blocks)
     open('Resources/anims.bin', 'wb').write(aout)
-    print(f'anims.bin {len(aout) / 1e6:.2f} MB; no animation: {none}; rest frame off the front (dex, mask IoU, same index):', poor)
+    print(f'anims.bin {len(aout) / 1e6:.2f} MB; no animation: {none}; rest frame off the front (art, mask IoU, same index):', poor)
+    print('BW ones drawn smaller (art, scale):', small, '; cut to the frame:', cuts, '; left out, too far off the picture (art, name, IoU, scale, cut):', dropped)
 
-    # --- walk.bin: the HGSS following Pokémon, walking (the home screen's course picture). Per species, raw DEFLATE of: size (uint8: 32, or 64 for the
-    # big ones), 15 normal + 15 shiny RGB (slot pairs, as in hgss.bin: the shiny files have the same pixels in other colours), then left, right,
-    # down x 4 frames, size x size at 4 bpp. The file: 494 uint32 offsets (species d = off[d - 1] ..< off[d]; empty = none), then the blocks.
+    # --- walk.bin: the following Pokémon, walking (the home screen's course picture): HGSS's (teobz's: 4 frames a direction) for 1-493 and their
+    # forms; hg-engine's (2 a direction, as HGSS's own: teobz's 4 are each of them, then it 1 px up) past them. Per picture, raw DEFLATE of: size
+    # (uint8: 32, or 64 for the big ones), 15 normal + 15 shiny RGB (slot pairs, as in hgss.bin: the shiny files have the same pixels in other
+    # colours), then left, right, down x 4 frames, size x size at 4 bpp. The file: offsets as anims.bin's (empty = none: a Mega, a fight's form).
     wblocks, wover, wnone = [], [], []
-    for dex in range(1, N4 + 1):
+    for art, a in enumerate(ART[1:], 1):
         four = lambda fs: (fs * 4)[:4]                                                   # 4 frames a direction (딱충이 facing us has 3: round again)
-        try: dirs = [(four([f for f, _ in apng(get(f'ow/{d}/{dex:03}.png'))]), four([f for f, _ in apng(get(f'ow/{d}/shiny_{dex:03}.png'))])) for d in ('left', 'right', 'down')]
-        except Exception: wnone.append(dex); wblocks.append(b''); continue
-        size = dirs[0][0][0].size[0]; assert all(len(n) == 4 == len(sh) and all(f.size == (size, size) for f in n + sh) for n, sh in dirs), dex
+        try:
+            if not a['walks']: raise LookupError
+            if 'hge' in a:
+                ow = Image.open(get(f'hge/{a["hge"]}/overworld.png')); size = ow.width; assert ow.mode == 'P' and ow.height == 8 * size, (a['hge'], ow.size)
+                n, s = pal16(ow), jasc(f'hge/{a["hge"]}/overworld-tsure_poke1.pal')
+                fr = [ow.crop((0, size * i, size, size * i + size)) for i in range(8)]       # up up, down down, left left, right right
+                lift = lambda f: f.crop((0, 1, size, size + 1))                             # (the row below its feet: clear)
+                dirs = [[indexed(f, p, (0, 0, size, size)) for f in (lift(fr[j]), fr[j], lift(fr[j + 1]), fr[j + 1])] for j in (4, 6, 2) for p in (n, s)]
+                dirs = list(zip(dirs[0::2], dirs[1::2]))
+            else:
+                dirs = [(four([f for f, _ in apng(get(f'ow/{d}/{a["ow"]}.png'))]), four([f for f, _ in apng(get(f'ow/{d}/shiny_{a["ow"]}.png'))])) for d in ('left', 'right', 'down')]
+        except Exception: wnone.append(art); wblocks.append(b''); continue
+        size = dirs[0][0][0].size[0]; assert all(len(n) == 4 == len(sh) and all(f.size == (size, size) for f in n + sh) for n, sh in dirs), art
         pairs = {}
         for n, sh in dirs:
-            for a, b in zip(n, sh):
-                for p, q in zip(a.getdata(), b.getdata()):
+            for x, y in zip(n, sh):
+                for p, q in zip(x.getdata(), y.getdata()):
                     if p[3] >= 128: pairs.setdefault(p[:3], {}).setdefault(q[:3] if q[3] >= 128 else p[:3], 0); pairs[p[:3]][q[:3] if q[3] >= 128 else p[:3]] += 1
         pal = sorted(pairs, key=lambda c: -sum(pairs[c].values()))
-        if len(pal) > 15: wover.append((dex, len(pal))); pal = pal[:15]
+        if len(pal) > 15: wover.append((art, len(pal))); pal = pal[:15]
         near = lambda c: min(range(len(pal)), key=lambda i: dist(pal[i], c))
         blk = bytearray([size])
         for c in pal + [(0, 0, 0)] * (15 - len(pal)): blk += bytes(c)
@@ -252,11 +383,12 @@ if ARTWORK:   # `python3 tools/gen.py data`: the tables only (Sources/Data), the
                 px = list(f.getdata()); cell = lambda p: (pal.index(p[:3]) if p[:3] in pal else near(p[:3])) + 1 if p[3] >= 128 else 0
                 for k in range(0, size * size, 2): blk.append(cell(px[k]) << 4 | cell(px[k + 1]))
         c = zlib.compressobj(9, zlib.DEFLATED, -15); wblocks.append(c.compress(bytes(blk)) + c.flush())
-    off = [494 * 4]                                                                     # offsets into the file, as anims.bin's
+    off = [4 * len(ART)]                                                                # offsets into the file, as anims.bin's
     for b in wblocks: off.append(off[-1] + len(b))
     wout = b''.join(struct.pack('<I', v) for v in off) + b''.join(wblocks)
     open('Resources/walk.bin', 'wb').write(wout)
-    print(f'walk.bin {len(wout) / 1e6:.2f} MB; none: {wnone}; palette cut to 15:', wover, '; 64 px:', sum(1 for b in wblocks if b and zlib.decompress(b, -15)[0] == 64))
+    print(f'walk.bin {len(wout) / 1e6:.2f} MB; none: {[a for a in wnone if ART[a]["walks"]]}; palette cut to 15:', wover, '; 64 px:', sum(1 for b in wblocks if b and zlib.decompress(b, -15)[0] == 64))
+    if sys.argv[1:] == ['art']: sys.exit()                                              # `python3 tools/gen.py art`: the pictures only
 
 # --- names / types
 ko, en_item, ko_item, types = {}, {}, {}, {}

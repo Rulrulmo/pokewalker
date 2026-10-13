@@ -40,12 +40,27 @@ import AppKit
     let dexed = online({ var s = base(); s.owned = [1, 4, 7, 25, 133]; s.seen = [16, 19]; s.dex(); return s }())
     take("dex_one_click", dexed) { v in v.screen = .dex(25, filter: 0, detail: false); v.gridTap(10003) }
     take("dex_two_clicks", dexed) { v in v.screen = .dex(25, filter: 0, detail: false); v.gridTap(10003); v.gridTap(10003) }
-    // 5.0 (docs/plans/18 §9.6, content5): the 도감's regions, a species past the bundle's pictures (blank until 5.0's), a Fairy move
+    // 5.0 (docs/plans/18 §9.6, content5): the 도감's regions, 5.0's pictures (hg-engine: §9.1), the entry page's forms, a Fairy move
     Content.$testing.withValue(true) {
-        let d5 = online({ var s = base(); s.owned = [1, 4, 7, 25, 133, 495, 501, 650]; s.seen = [16, 19, 494]; s.dex(); return s }())
+        let d5 = online({ var s = base(); s.owned = [1, 4, 6, 7, 25, 133, 479, 495, 501, 650, 666, 716]; s.seen = [16, 19, 494]; s.dex(); return s }())
         take("dex_regions", d5) { v in v.dexRegion = 0; v.screen = .dex(25, filter: 0, detail: false) }
         take("dex_regions_unova", d5) { v in v.dexRegion = 5; v.screen = .dex(495, filter: 0, detail: false) }
-        take("dex_regions_blank", d5) { v in v.dexRegion = 6; v.screen = .dex(650, filter: 0, detail: true) }
+        take("dex_kalos_entry", d5) { v in v.dexRegion = 6; v.screen = .dex(650, filter: 0, detail: true) }
+        take("dex_form_rotom", d5) { v in v.dexRegion = 0; v.dexForm = (479, 1); v.screen = .dex(479, filter: 0, detail: true) }
+        take("dex_form_mega", d5) { v in v.dexForm = (6, 2); v.screen = .dex(6, filter: 0, detail: true) }
+        take("dex_form_vivillon", d5) { v in v.dexForm = (666, 4); v.screen = .dex(666, filter: 0, detail: true) }
+        d5.dexForm = nil
+        var r5 = Seeded(s: 6), frog = Mon.wild(658, level: 40, &r5); frog.known = [57, 98, 400, 92]
+        var vivi = Mon.wild(666, level: 20, &r5); vivi.form = 7; var wash = Mon.wild(479, level: 30, &r5); wash.form = 2
+        let g6 = online({ var s = base(); s.companion = frog; s.caught = [Mon.wild(495, level: 10, &r5), wash]
+                          s.box = [vivi] + [494, 497, 500, 503, 571, 609, 635, 643, 644, 646, 650, 653, 656, 700, 706, 716, 717, 718, 719, 720, 721].map { Mon.wild($0, level: 50, &r5) }; return s }())
+        take("home_gen6", g6) { v in v.screen = .home }
+        take("box_gen6", g6) { v in v.screen = .box(0, act: nil, confirm: false) }
+        take("mon_gen6_form", g6) { v in v.screen = .box(-3, act: nil, confirm: false, detail: true) }
+        let xb = Battle(wild: Mon.wild(716, level: 50, &r5), companion: frog)
+        take("battle_gen6", g6) { v in v.sideOn = true; v.animOn = ("foe 0", 716, Date().addingTimeInterval(-60)); v.fight = xb; v.screen = .battle(xb, sel: 0) }
+        take("battle_gen6_lcd", g6) { v in v.sideOn = false; v.animOn = ("foe 0", 716, Date().addingTimeInterval(-60)); v.fight = xb; v.screen = .battle(xb, sel: 0) }
+        g6.sideOn = false
         var fr = Seeded(s: 5), pixie = Mon.wild(35, level: 30, &fr); pixie.known = [585, 1, 3, 45]
         let fairy = online({ var s = base(); s.companion = pixie; return s }()), fbt = Battle(wild: Mon(dex: 16, level: 30, female: false), companion: pixie)
         take("battle_moves_fairy", fairy) { v in v.sideOn = true; v.fight = fbt; v.screen = .moves(fbt, sel: 0) }

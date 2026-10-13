@@ -403,19 +403,43 @@ Mac 데이터 폴더 `~/Library/Application Support/PokeWalker/`: `state.json`(+
 
 ### 그림 · 데이터 출처
 
-`tools/gen.py`가 받아서 `tools/.cache`에 캐시하고, 결과만 커밋해요(Pillow 필요).
+`tools/gen.py`가 받아서 `tools/.cache`에 캐시하고, 결과만 커밋해요(Pillow 필요: `python3 -m venv tools/.venv && tools/.venv/bin/pip install Pillow`, 가상 환경과 캐시는 커밋하지 않아요). 처음에는 파일 약 8천 개를 받아요. `python3 tools/gen.py art`는 그림만, `data`는 표만 다시 만들어요.
 
 | 무엇 | 어디서 | 결과 |
 |---|---|---|
-| HGSS 배틀 스프라이트(앞 · 뒤, 일반 · 이로치) | PokeAPI sprites `generation-iv/heartgold-soulsilver` | `hgss.bin` |
-| 4세대 박스 아이콘 | PokeAPI sprites `generation-iv/icons` | `icons.bin` |
-| HGSS 등장 애니메이션 | PokeAPI sprites `heartgold-soulsilver/animated` | `anims.bin` |
+| HGSS 배틀 스프라이트(앞 · 뒤, 일반 · 이로치), 1~493과 그 폼 | PokeAPI sprites `generation-iv/heartgold-soulsilver` | `hgss.bin` |
+| 4세대 박스 아이콘, 1~493과 그 폼 | PokeAPI sprites `generation-iv/icons` | `icons.bin` |
+| HGSS 등장 애니메이션, 1~493과 그 폼 | PokeAPI sprites `heartgold-soulsilver/animated` | `anims.bin` |
 | HGSS 알 · 배틀 타워 트레이너 | PokeAPI sprites · Pokémon Showdown trainers | `frames.bin` |
-| HGSS 필드 걷기 도트 | [teobz/pkmn-hgss-animated-overworld-sprites](https://github.com/teobz/pkmn-hgss-animated-overworld-sprites) | `walk.bin` |
+| HGSS 필드 걷기 도트, 1~493과 그 폼 | [teobz/pkmn-hgss-animated-overworld-sprites](https://github.com/teobz/pkmn-hgss-animated-overworld-sprites) | `walk.bin` |
+| 5.0: 494~721 · 메가 · 원시회귀 · 494 이후의 폼 — 배틀 스프라이트, 박스 아이콘, 걷기 도트 | [BluRosie/hg-engine](https://github.com/BluRosie/hg-engine) `data/graphics/sprites` (커밋 `c056eb7` 고정) | `hgss.bin` · `icons.bin` · `walk.bin` |
+| 5.0: 그 그림의 애니메이션(BW 공식 · Smogon 팬 도트, 그림과 맞는 것만) | [Pokémon Showdown](https://play.pokemonshowdown.com/sprites/gen5ani/) `sprites/gen5ani` | `anims.bin` |
 | 코스(포켓몬 · 도구 · 확률) | Serebii — HGSS 포켓워커 코스 | `Data.swift` |
 | 이름 · 타입 · 기술 · 특성 · 성격 · 진화 · 종족값 | PokeAPI CSV | `Data.swift` · `BattleData.swift` |
 | 기술 설명(한국어) | PokeAPI move_flavor_text (X · Y 우선) | `MoveText.swift` |
 | 글꼴 Galmuri9 · Galmuri7 | npm `galmuri`, SIL OFL | `Resources/fonts/` |
+
+그림은 모두 팬이 만든 것이고 포켓몬은 Nintendo · Creatures · GAME FREAK의 것이에요. 이 앱은 돈을 받지 않고 지인끼리만 나눠요.
+
+<details>
+<summary>hg-engine 그림 크레딧(<a href="https://github.com/BluRosie/hg-engine/blob/c056eb74d8486ec1b046ed4628ca23821c79dadd/CREDITS.md">CREDITS.md</a>에서 그림에 해당하는 줄을 그대로)</summary>
+
+> Adcroc1 - helping significantly with sprite formatting
+>
+> HamsterSkull, wolfang62, nintendoplz, Kyle-Dove, 2and2makes5, PokeGirl4Ever, Fernandojl, Silver-Skie, TyranitarDark, Getsuei-H, Milomilotic11, Kyt66, kdiamo11, ChocoSrawloid, StyleDude, Gallanty, Gizamimi-Pichu, Kid1513, princess-phoenix, Ezerart, DarkusShadow, Anarlaurendil, Lasse00, Boonzeet on deviantart - Overworlds
+>
+> MaMe and maple - a lot of mega sprites touched up
+>
+> Mikelan98 - initial graphics compilation, BDHCAM routine, Music tables (trainerclassbattle, maintablescombo, and pokemonbattle)
+>
+> Smogon Sprite Project, TraviS, LennyBitao, MyMarshlands, DarkusShadow, CarmaNekko, kiriaura, Gnomowladny, Krune, n-kin, JaegerLucciano23, joshr691, Jefelin, MultiDiegoDani, onigin_pixelart, Prodigal96, zerudez, leparagon, arinoelle, diegotoon20, gardow, greyenna, conyjams, kingofthe-x-roads, RayquazaFlygon, metalflygon08 on DeviantArt, and MaMe, maple, Layell, SelenaFF, Sopita Yorita, zlolxd - Pokémon Sprites
+>
+> Game Freak - amazing Pokémon games from way back when
+
+hg-engine contributors: Aero, agathaGengar, BluRose, Brioche, BusyBidoof, Charliexox, DavveDP, Dog-Broad, Drayano, FrozenMetroid, hzla, Koekenpann, kumakuma1, lhearachel, maxchristy, Mixone, mozzydippers, PandaPanda-Panda, Pixelstyx, player_null_name, TixoRebel, TurtleIsaac, XiaoFuDieZZZ, YGlitzer, Zedakae
+</details>
+
+BW 애니메이션은 Pokémon Showdown이 모은 것이에요(BW 공식 애니메이션, 6세대 이후와 메가는 Smogon Sprite Project 팬 도트).
 
 ---
 

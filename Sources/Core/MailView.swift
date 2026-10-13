@@ -143,7 +143,7 @@ extension Walker {
         func gift(_ g: Gift?, _ key: String, _ m: Mail) {
             switch g {
             case .mon(let x, _)?:
-                head((x.shiny == true ? "★" : "") + monNames[x.dex] + " Lv.\(x.level)"); fb.mon(x, half, 0, 2, anim: animT(key, x.dex, now))
+                head((x.shiny == true ? "★" : "") + monNames[x.dex] + " Lv.\(x.level)"); fb.mon(x, half, 0, 2, anim: animT(key, x.art, now))
                 fb.text(m.from, 94, 15, 2, right: true, small: true)
             case .deco(let k)?: head(m.title); fb.draw(medalArt, 8, 18, k == "gold" ? goldPal : silverPal, scale: 3); fb.text(k == "gold" ? "금장식" : "은장식", 94, 26, 3, right: true)
             case .title(let n)?: head(m.title); fb.draw(medalArt, 8, 18, goldPal, scale: 3); fb.text(n, 94, 26, 3, right: true, small: true)
@@ -171,7 +171,7 @@ extension Walker {
                 case .pickLegend(let xs, let lv, let shiny):
                     guard let d = xs[safe: min(at, xs.count - 1)] else { continue }
                     let x = Mon(dex: d, level: lv, female: false, shiny: shiny ? true : nil)
-                    head((shiny ? "★" : "") + monNames[d] + " Lv.\(lv)"); fb.mon(x, half, 0, 2, anim: animT("legend \(d)", d, now))
+                    head((shiny ? "★" : "") + monNames[d] + " Lv.\(lv)"); fb.mon(x, half, 0, 2, anim: animT("legend \(d)", x.art, now))
                     fb.text(monTypes[d].map { typeKo[$0] ?? $0 }.joined(separator: "·"), 94, 15, 2, right: true, small: true)
                     if (state.owned ?? []).contains(d) { fb.text("잡음", 94, 26, 2, right: true, small: true) }
                 default: continue

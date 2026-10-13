@@ -61,8 +61,8 @@ extension Walker {
         let picked = squadOf(s), range = squadRange(s.kind), sent = squadSent(s) != nil
         let fifty: Bool = { if case .raid = s.kind { return false }; return true }()
         let page = Array(keys[min(first, n)..<min(n, first + per)])
-        let cells = page.compactMap { k in squadMon(s, k).map { GridModel.Cell(dex: $0.dex, look: squadNoLegend(s, k) ? 1 : 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil) } }
-        let strip = (0..<range.upperBound).map { i in picked[safe: i].flatMap { squadMon(s, $0) }.map { SquadModel.Slot(dex: $0.dex, shiny: $0.shiny == true, level: "Lv.\(fifty ? Walk.towerLevel : $0.level)") } }
+        let cells = page.compactMap { k in squadMon(s, k).map { GridModel.Cell(dex: $0.dex, look: squadNoLegend(s, k) ? 1 : 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil, art: $0.art) } }
+        let strip = (0..<range.upperBound).map { i in picked[safe: i].flatMap { squadMon(s, $0) }.map { SquadModel.Slot(dex: $0.dex, shiny: $0.shiny == true, level: "Lv.\(fifty ? Walk.towerLevel : $0.level)", art: $0.art) } }
         var m = SquadModel(title: "", note: "\(picked.count)/\(range.upperBound)", strip: strip, theirs: nil, tabs: Walker.squadSorts, tab: boxSort, boxTitle: "", cells: cells,
                            order: page.map { k in picked.firstIndex(of: k).map { $0 + 1 } }, sel: s.at < n && s.at >= first ? s.at - first : nil, first: first, count: n,
                            empty: "포켓몬이 없어요", go: nil, goSel: s.at >= n, hint: "")
@@ -93,7 +93,7 @@ extension Walker {
         let title: String = { switch s.kind { case .tower: "타워 파티"; case .duelParty: "대전 파티"; case .raid: "레이드 출전"; case .duelPick: "3마리 고르기" } }()
         guard s.at < keys.count, let m = squadMon(s, keys[s.at]) else {                          // on the button: the first picked, the count, the button
             fb.text(title, 2, 0); fb.fill(0, 12, 96, 1, 2)
-            if let f = picked.first.flatMap({ squadMon(s, $0) }) { fb.mon(f, half, 0, 2, anim: animT("squad", f.dex, now)) }
+            if let f = picked.first.flatMap({ squadMon(s, $0) }) { fb.mon(f, half, 0, 2, anim: animT("squad", f.art, now)) }
             fb.text("\(picked.count)마리", 94, 15, 2, right: true, small: true)
             if case .duelPick = s.kind, let l = duelLeft(now) { fb.text("\(l)초", 94, 26, 2, right: true, small: true) }
             let ok = squadRange(s.kind).contains(picked.count) && squadSent(s) == nil
@@ -101,7 +101,7 @@ extension Walker {
             return
         }
         fb.text((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)", 2, 0); fb.fill(0, 12, 96, 1, 2)
-        fb.mon(m, half, 0, 2, anim: animT("squad \(keys[s.at])", m.dex, now))
+        fb.mon(m, half, 0, 2, anim: animT("squad \(keys[s.at])", m.art, now))
         let i = picked.firstIndex(of: keys[s.at])
         fb.text(title, 94, 15, 2, right: true, small: true)
         if let i { fb.text("\(i + 1)번째", 94, 26, 3, right: true, small: true) }
