@@ -840,13 +840,8 @@ with open('Sources/Data/Data.swift', 'w') as f:
             pre = lambda a, b: next((k for k in range(min(len(a), len(b))) if a[k] != b[k]), min(len(a), len(b)))
             c = [k for k in stones if (k.endswith('-' + xy) if xy else not k[-2:] in ('-x', '-y'))]
             return stones[max(c, key=lambda k: pre(k, base))]
-        SKIP = {'pichu-spiky-eared', 'floette-eternal'}
         forms = {}
-        for r in sorted(csv.DictReader(open(get('pokemon_forms.csv'))), key=lambda r: (int(r['pokemon_id']), int(r['form_order']), int(r['id']))):
-            pid, d = int(r['pokemon_id']), int(pk[int(r['pokemon_id'])]['species_id'])
-            if d > N or int(r['introduced_in_version_group_id']) > 16 or r['identifier'] in SKIP or d in (25, 493, 649): continue
-            if r['is_default'] == '1' and pid < 10000: continue                                # the species itself
-            kind = 'mega' if r['is_mega'] == '1' else 'primal' if r['identifier'].endswith('-primal') else 'battle' if r['is_battle_only'] == '1' else 'stored' if pid > 10000 else 'look'
+        for r, pid, d, kind in form_rows():                                                 # (the pictures number them the same way)
             name = ('원시' + ko[d]) if kind == 'primal' else fko[int(r['id'])]
             x = {'name': s(name), 'kind': '.' + kind}
             if pid > 10000:
