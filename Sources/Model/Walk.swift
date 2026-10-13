@@ -48,7 +48,10 @@ struct Walk: Codable, Equatable {
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.
     var bonus: Bool { companion.typing.contains { here.types.contains($0) } }
     var effSteps: Int { bonus ? courseSteps * 4 / 3 : courseSteps }
-    func unlocked(_ i: Int) -> Bool { earned >= courses[i].watts && (owned ?? []).count >= courses[i].dex }
+    func unlocked(_ i: Int) -> Bool {
+        let c = courses[i]
+        return earned >= c.watts && (c.region.map { r in (owned ?? []).filter { r.contains($0) }.count } ?? (owned ?? []).count) >= c.dex   // (5.0: a region's own count)
+    }
 
     static func key(_ d: Date) -> String { let c = Calendar.current.dateComponents([.year, .month, .day], from: d); return String(format: "%04d-%02d-%02d", c.year!, c.month!, c.day!) }
 

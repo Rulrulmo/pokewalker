@@ -445,3 +445,35 @@ private func formed(_ dex: Int, _ f: Int?, _ level: Int = 50) -> Mon { var m = m
     var w = Engine.fresh(now: t0, starter: firstUID); w.bag = ["유전자쐐기"]; w.box = [Mon(dex: 646, level: 60, female: false), Mon(dex: 643, level: 60, female: false)]
     #expect(w.fuse(0, with: 1) == "유전자쐐기가\n없어요")                                                              // off: no fusing
 }
+
+// MARK: - stage 6: courses, eggs, the tower (plan 18 §6.3 §7 §8)
+@Test func gen6CoursesAndEggs() {
+    gen6 {
+        #expect(courses.count == 44 && courses[35].name == "하나 들판" && courses[41].name == "칼로스 들판" && courses[35].region == 494...649)
+        #expect(courses[35...].allSatisfy { c in c.legends.isEmpty && c.all.allSatisfy { (494...721).contains($0.dex) && !Tower.isLegend($0.dex) } && c.guests.count == 5 })
+        var w = Walk(); #expect(w.unlocked(35) && w.unlocked(41) && !w.unlocked(36) && !w.unlocked(42))         // each region's first: open to all
+        w.owned = Array(1...300); #expect(!w.unlocked(36)); w.owned = Array(494...503); #expect(w.unlocked(36) && !w.unlocked(37))   // 하나's own count
+        #expect(courses[35].all.map(\.level).min()! >= 15 && courses[40].all.map(\.level).max()! <= 62)
+        #expect(eggPool.contains(495) && eggPool.contains(696) && eggPool.count == eggPoolGen4.count + 10)
+    }
+    #expect(courses.count == 35 && !eggPool.contains(495))                                              // off: 4.1's
+}
+
+@Test func gen6TowerFoes() {
+    gen6 {
+        var w = Walk(); var r = Seeded(s: 2026)
+        w.towerStreak = 60
+        for _ in 0..<200 {
+            let f = w.towerFoes(&r)
+            #expect(f.foes[0].item.map { Forms.mega(f.foes[0].dex, holding: $0) != nil } == true && !f.foes.contains { Tower.isLegend($0.dex) })   // a Mega first, no legends
+        }
+        w.towerStreak = 30; #expect((0..<50).allSatisfy { _ in let f = w.towerFoes(&r); return f.foes[0].item.map { Forms.mega(f.foes[0].dex, holding: $0) == nil } ?? true })
+        w.towerStreak = 120; var newOnes = Set<Int>()
+        for _ in 0..<600 { let f = w.towerFoes(&r); #expect(Tower.isLegend(f.foes[2].dex)); if Tower.legendsGen6Added.contains(f.foes[2].dex) { newOnes.insert(f.foes[2].dex) } }
+        #expect(newOnes.count >= 15 && Tower.legendFoes.count == 54 && Tower.isLegend(646) && Tower.legends.count == 35)   // the 100-win pick stays 35
+        w.towerStreak = 49; let silver = w.towerFoes(&r); #expect(silver.foes.map(\.dex) == [464, 80, 249] && silver.foes[1].item == "야도란나이트")
+        w.towerStreak = 99; let gold = w.towerFoes(&r); #expect(gold.foes.map(\.dex) == [149, 248, 486] && gold.foes[1].item == "마기라스나이트")
+        #expect(Tower.megaFoes.count == 42 && RaidRules.signature[643] == 558)
+    }
+    #expect(!Tower.isLegend(646) && Tower.legendFoes.count == 35 && Tower.tycoonTeams[50]![1].dex == 350)   // off
+}

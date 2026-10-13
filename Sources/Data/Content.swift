@@ -19,6 +19,7 @@ let abilitySlotsGen6 = patched(abilitySlotsGen4, abilitySlotsGen6Changes)
 let moveTableGen6 = moveTableGen4.merging(moveTableGen6Changes) { $1 }    // ORAS values; 468-621
 let abilityDescsGen6 = abilityDescsGen4.merging(abilityDescsGen6Changes) { $1 }
 let evolutionsGen6 = evolutionsGen4 + evolutionsGen6Added
+let eggPoolGen6 = eggPoolGen4 + eggPoolGen6Added                         // + the starters and fossils of 하나 · 칼로스
 
 var monTypes: [[String]] { Content.gen6 ? monTypesGen6 : monTypesGen4 }
 var baseStats: [[Int]] { Content.gen6 ? baseStatsGen6 : baseStatsGen4 }
@@ -28,5 +29,6 @@ var moveTable: [Int: MoveInfo] { Content.gen6 ? moveTableGen6 : moveTableGen4 }
 var typeChart: [String: [String: Double]] { Content.gen6 ? typeChartGen6 : typeChartGen4 }
 var abilityDescs: [Int: String] { Content.gen6 ? abilityDescsGen6 : abilityDescsGen4 }
 var evolutions: [Evo] { Content.gen6 ? evolutionsGen6 : evolutionsGen4 }
+var eggPool: [Int] { Content.gen6 ? eggPoolGen6 : eggPoolGen4 }
 /// The highest species number in play: 493, or 721 with content5.
 var dexMax: Int { Content.gen6 ? 721 : 493 }

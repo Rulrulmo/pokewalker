@@ -18,7 +18,12 @@ enum RaidRules {
     static func tier(_ n: Int?) -> RaidTier? { tiers.first { $0.tier == n } }
     /// Each boss's own move (the user, 10-12): 루기아 에어로블라스트, 가이오가 해수스파우팅, 그란돈 분화, 디아루가 시간의포효, 펄기아 공간절단,
     /// 기라티나 섀도다이브 (레쿠쟈 has none in gen 4).
-    static let signature: [Int: Int] = [249: 177, 382: 323, 383: 284, 483: 459, 484: 460, 487: 467]
+    static var signature: [Int: Int] { Content.gen6 ? signatureGen6 : signatureGen4 }
+    static let signatureGen4: [Int: Int] = [249: 177, 382: 323, 383: 284, 483: 459, 484: 460, 487: 467]
+    /// 5.0 (plan 18 §7): the Gen V–VI legends' too (비크티니 V제너레이트, 레시라무 크로스플레임, 제크로무 크로스썬더, 큐레무 얼어붙은세계, 케르디오 신비의칼,
+    /// 메로엣타 옛노래, 게노세크트 테크노버스터, 제르네아스 지오컨트롤, 이벨타르 데스윙, 지가르데 사우전드애로, 디안시 다이아스톰, 후파 이차원홀, 볼케니온 스팀버스트).
+    static let signatureGen6 = signatureGen4.merging([494: 557, 643: 558, 644: 559, 646: 549, 647: 548, 648: 547, 649: 546, 716: 601, 717: 613, 718: 614,
+                                                      719: 591, 720: 593, 721: 592]) { $1 }
     /// A run's boss: the species at the tier's level and V, its four the last it learned by now (as a wild one's) with its own move among them
     /// from the level it learns it (★3 on: 43–50; ★1 · ★2 as they were — plan 16 §3.7). Caught, it keeps them.
     static func boss<R: RandomNumberGenerator>(_ dex: Int, _ t: RaidTier, shiny: Bool, _ r: inout R) -> Mon {

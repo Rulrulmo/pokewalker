@@ -400,7 +400,7 @@ with open('Sources/Data/Data.swift', 'w') as f:
     hab = {r['id']: r['identifier'] for r in csv.DictReader(open(get('pokemon_habitats.csv')))}
     BY_TYPE = {'water': 'sea', 'grass': 'forest', 'bug': 'forest', 'rock': 'mountain', 'ground': 'rough-terrain', 'steel': 'mountain', 'ghost': 'cave',
                'dark': 'urban', 'poison': 'urban', 'normal': 'grassland', 'flying': 'grassland', 'fire': 'rough-terrain', 'ice': 'mountain',
-               'electric': 'urban', 'psychic': 'urban', 'fighting': 'urban', 'dragon': 'mountain'}
+               'electric': 'urban', 'psychic': 'urban', 'fighting': 'urban', 'dragon': 'mountain', 'fairy': 'grassland'}   # (fairy: Gen VI's only)
     HABITATS = {'field': {'grassland'}, 'forest': {'forest'}, 'mountain': {'mountain', 'rough-terrain'}, 'beach': {'sea', 'waters-edge'},
                 'lake': {'waters-edge', 'sea'}, 'town': {'urban', 'grassland'}, 'cave': {'cave'}}
     def habitat(d): return hab.get(sp[d]['habitat_id']) or BY_TYPE[types[d][0]]
@@ -453,7 +453,60 @@ with open('Sources/Data/Data.swift', 'w') as f:
     base_of = lambda d: d if not sp[d]['evolves_from_species_id'] else base_of(int(sp[d]['evolves_from_species_id']))
     reach2 = reach | {d for d in range(1, N4 + 1) if base_of(d) in pool} | set(legends) | set(SHOP) | {292}
     assert reach2 == set(range(1, N4 + 1)), sorted(set(range(1, N4 + 1)) - reach2)
-    f.write('let eggPool: [Int] = [' + ', '.join(map(str, pool)) + ']   // every line not on a course\n')
+    f.write('let eggPoolGen4: [Int] = [' + ', '.join(map(str, pool)) + ']   // every line not on a course\n')
+    # --- 5.0 (content5, plan 18 §8): 하나 6 and 칼로스 3 courses, after the 35. Each a regular course's steps, odds and items (and its slots' level
+    # shape, banded by courseBands) with the region's own: A A B B C C from its first stages by catch rate, 2 more a group, 5 guests, spread so
+    # every first stage walks somewhere; its first course open to all, the rest by that region's Pokédex count. The lines left over hatch from eggs.
+    START, FOSSIL = {495, 498, 501, 650, 653, 656}, {564, 566, 696, 698}
+    REGIONS = [((494, 649), [('하나 들판', 'field', '상쾌한 들판', 0), ('하나 숲', 'forest', '웅성웅성 숲', 10), ('하나 해변', 'beach', '아름다운 해변', 20),
+                            ('하나 거리', 'town', '교외', 35), ('하나 산길', 'mountain', '울퉁불퉁 산길', 50), ('하나 동굴', 'cave', '어둑어둑 동굴', 70)]),
+               ((650, 721), [('칼로스 들판', 'field', '호연 들판', 0), ('칼로스 해안', 'beach', '따뜻한 해변', 10), ('칼로스 산', 'mountain', '얼음 산길', 25)])]
+    region_courses, on_course = [], set()
+    for (lo, hi), plan in REGIONS:
+        wild = [d for d in range(lo, hi + 1) if sp[d]['is_legendary'] == '0' and sp[d]['is_mythical'] == '0' and base_of(d) not in START | FOSSIL and base_of(d) >= lo]   # (not 님피아: 이브이's)
+        firsts = [d for d in wild if not sp[d]['evolves_from_species_id']]
+        rused = {}
+        for ci, (name, art, base, need) in enumerate(plan):
+            rnd = random.Random(1000 * lo + ci)
+            b = by[base]; top = max(sl[1] for sl in b['slots'])
+            home = [d for d in firsts if habitat(d) in HABITATS[art]]
+            score = lambda d: (rused.get(d, 0), 0 if d in home else 1, rnd.random())     # the least walked first, its habitat's next
+            slots, extra = [], []
+            for g in range(3):
+                pick = sorted([d for d in firsts if tier(d) == g and d not in slots], key=score)[:2]
+                if len(pick) < 2: pick += sorted([d for d in firsts if d not in slots + pick], key=score)[:2 - len(pick)]
+                for k, d in enumerate(pick):
+                    rused[d] = rused.get(d, 0) + 1; bs = b['slots'][2 * g + k]
+                    slots.append((d, bs[1], bs[2], bs[3], sp[d]['gender_rate'] == '8' or (sp[d]['gender_rate'] not in ('-1', '0') and rnd.random() < 0.5)))
+            mine = {x[0] for x in slots}
+            for g in range(3):
+                lv = slots[2 * g][1]
+                pick = sorted([d for d in wild if d not in mine and fits_level(d, lv) and (tier(d) == g or stage(d) > 0)], key=lambda d: (rused.get(d, 0), stage(d), 0 if habitat(d) in HABITATS[art] else 1, rnd.random()))[:2]
+                for d in pick:
+                    rused[d] = rused.get(d, 0) + 1; mine.add(d)
+                    extra.append((d, slots[2 * g][1], slots[2 * g][2], slots[2 * g][3], sp[d]['gender_rate'] == '8' or (sp[d]['gender_rate'] not in ('-1', '0') and rnd.random() < 0.5)))
+            assert len(slots) == 6 and len(extra) == 6, (name, slots, extra)
+            guests = sorted([d for d in wild if d not in mine and fits_level(d, top)], key=lambda d: (rused.get(d, 0), stage(d), 0 if habitat(d) in HABITATS[art] else 1, rnd.random()))[:5]
+            for d in guests: rused[d] = rused.get(d, 0) + 1
+            tcount = {}
+            for x in slots:
+                for t in types[x[0]]: tcount[t] = tcount.get(t, 0) + 1
+            ctypes = sorted(tcount, key=lambda t: (-tcount[t], t))[:2]
+            region_courses.append(dict(name=name, watts=0, dex=need, types=ctypes, art=art, slots=slots, extra=extra, guests=guests, items=b['items'], region=(lo, hi)))
+            on_course |= {x[0] for x in slots + extra} | set(guests)
+    reach6 = set(on_course)
+    while True:
+        more = {to for frm, to, *_ in evos if frm in reach6} - reach6
+        if not more: break
+        reach6 |= more
+    eggs6 = [d for d in range(N4 + 1, N + 1) if not sp[d]['evolves_from_species_id'] and d not in reach6 and sp[d]['is_legendary'] == '0' and sp[d]['is_mythical'] == '0']
+    reach6 |= {d for d in range(N4 + 1, N + 1) if base_of(d) in eggs6}
+    reach6 |= {d for d in range(N4 + 1, N + 1) if base_of(d) <= N4}                     # 님피아: 이브이's line, on the 4.1 courses
+    legends6 = {d for d in range(N4 + 1, N + 1) if sp[d]['is_legendary'] == '1' or sp[d]['is_mythical'] == '1'}
+    assert reach6 | legends6 >= set(range(N4 + 1, N + 1)), sorted(set(range(N4 + 1, N + 1)) - reach6 - legends6)
+    assert set(firsts) and all(d in on_course for lo_hi, pl in REGIONS for d in range(lo_hi[0], lo_hi[1] + 1) if not sp[d]['evolves_from_species_id'] and sp[d]['is_legendary'] == '0' and sp[d]['is_mythical'] == '0' and d not in START | FOSSIL), 'every first stage walks somewhere'
+    f.write('let eggPoolGen6Added: [Int] = [' + ', '.join(map(str, eggs6)) + ']   // content5: the Gen V-VI lines no course has (starters, fossils ...)\n')
+    print(f'region courses: {len(region_courses)}, eggs added: {len(eggs6)}')
     f.write('let eggCycles: [Int] = [0, ' + ', '.join(sp[i]['hatch_counter'] for i in range(1, N + 1)) + ']   // x 255 steps (Gen IV)\n')
     # --- battles (Gen IV as in HGSS): base stats, base EXP, catch rate, level-up learnsets (damaging moves only — no status conditions here),
     # move data rolled back to HGSS through the changelog (e.g. 10만볼트 95, not today's 90), and the Gen IV type chart (no Fairy; Steel resists Ghost / Dark)
@@ -714,12 +767,17 @@ with open('Sources/Data/Data.swift', 'w') as f:
     for a, row in sorted(chart6.items()): f.write(f'    c[{s(a)}] = [' + ', '.join(f'{s(b)}: {float(v)!r}' for b, v in sorted(row.items())) + ']\n')
     f.write('    return c\n}\n')
     f.write('let rawCourses: [Course] = [\n')   # Model/Course.swift bands its levels into `courses`
-    for c in courses:
+    def course(c):
         f.write(f'    Course(name: {s(c["name"])}, watts: {c["watts"]}, dex: {c["dex"]}, legends: [{", ".join(map(str, c.get("legends", [])))}], types: [{", ".join(s(x) for x in c["types"])}], art: .{c["art"]},\n')
         f.write('           slots: [' + ', '.join(f'Slot(dex: {d}, level: {l}, steps: {st}, chance: {ch:g}, female: {str(fe).lower()})' for d, l, st, ch, fe in c['slots']) + '],\n')
         f.write('           extra: [' + ', '.join(f'Slot(dex: {d}, level: {l}, steps: {st}, chance: {ch:g}, female: {str(fe).lower()})' for d, l, st, ch, fe in c['extra']) + '],\n')
         f.write('           guests: [' + ', '.join(map(str, c['guests'])) + '],\n')
-        f.write('           items: [' + ', '.join(f'Find(item: {s(n)}, steps: {st}, chance: {ch})' for n, st, ch in c['items']) + ']),\n')
+        f.write('           items: [' + ', '.join(f'Find(item: {s(n)}, steps: {st}, chance: {ch})' for n, st, ch in c['items']) + ']'
+                + (f', region: {c["region"][0]}...{c["region"][1]}' if c.get('region') else '') + '),\n')
+    for c in courses: course(c)
+    f.write(']\n')
+    f.write('let rawCoursesGen6Added: [Course] = [\n')   # content5: 하나 6, 칼로스 3 (their dex = that region\'s count)
+    for c in region_courses: course(c)
     f.write(']\n')
 # Every table behind an unoptimised function: -O spent a minute folding these literals into constants, for data read once at launch.
 for path in ['Sources/Data/Data.swift', 'Sources/Data/BattleData.swift']:

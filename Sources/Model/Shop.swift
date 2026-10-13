@@ -311,19 +311,22 @@ extension Walk {
         let legends = Set(courses.flatMap(\.legends) + Walk.legendShop.map(\.dex))           // shop legends too: never a tower foe
         let names = ["엘리트 트레이너", "베테랑", "아가씨", "등산가", "연구원", "격투가", "사이킥", "드래곤 조련사", "모범 소년", "레인저"]
         let he = ["민수", "현우", "도윤", "준호", "태양"], she = ["지은", "서연", "하은", "유나", "보라"]      // a one-sex class gets a name to match (its sprite: trainerFrame)
-        let pool = (1...493).filter { d in !legends.contains(d) && d != 292 && !evolutions.contains { $0.from == d } && (tier < 5 || baseStats[d].reduce(0, +) >= 450) }   // fully evolved
+        func legend(_ d: Int) -> Bool { Content.gen6 ? Tower.isLegend(d) : legends.contains(d) }  // (5.0: Gen V–VI's legends aren't on courses, nor in the shop)
+        let pool = (1...dexMax).filter { d in !legend(d) && d != 292 && !evolutions.contains { $0.from == d } && (tier < 5 || baseStats[d].reduce(0, +) >= 450) }   // fully evolved
         // 3.1.2 (the user: "초반엔 1승도 힘들어"): the first 7 wins' trainers bring ones about as strong as ours (any stage, base stats within
         // 60 of our party's mean) with what they'd know at Lv.25 — still Lv.50. Simulated first-trainer wins: 0 → 32 % for a Lv.15 party, 6 → 62 % at Lv.25.
         let ours = party().map { baseStats[$0.mon.dex].reduce(0, +) }, mean = ours.isEmpty ? 400 : ours.reduce(0, +) / ours.count
-        let near = (1...493).filter { d in !legends.contains(d) && d != 292 && abs(baseStats[d].reduce(0, +) - mean) <= 60 }
+        let near = (1...dexMax).filter { d in !legend(d) && d != 292 && abs(baseStats[d].reduce(0, +) - mean) <= 60 }
         func make(_ d: Int) -> Mon {
             let phys = baseStats[d][1] >= baseStats[d][3]                                           // 물리형 or 특수형
             var m = Mon.wild(d, level: lv, perfect: [0, 0, 0, 3, 5, 6][tier], &r)
+            if Content.gen6, d == 646 { m.form = [nil, 1, 2].randomElement(using: &r)! }              // 큐레무: 블랙 · 화이트 too (plan 18 §5.1)
             if (1...2).contains(tier) { m.ivs = (0..<6).map { _ in Int.random(in: 15...31, using: &r) } }
             if tier >= 2 { var ev = [0, 0, 0, 0, 0, 0]; ev[phys ? 1 : 3] = 252; ev[5] = 252; if tier >= 3 { ev[0] = 6 }; m.evs = ev }
             if tier >= 3 {
                 m.nature = (phys ? [3, 13] : [15, 10]).randomElement(using: &r)!                 // 고집 · 명랑 / 조심 · 겁쟁이
                 m.known = m.withSignature(m.towerMoves())                                           // (its own move: only a legend has one, RaidRules.signature)
+                if d == 646, let f = m.form { m.known = m.known?.map { $0 == 549 ? (f == 2 ? 554 : 553) : $0 } }   // 화이트 콜드플레어, 블랙 프리즈볼트
             }
             return m
         }
@@ -332,6 +335,8 @@ extension Walk {
             return make(pool.randomElement(using: &r)!)
         }
         if Tower.legendFight(afterWins: towerStreak ?? 0) { foes[2] = make(Tower.legendFoes.randomElement(using: &r)!) }   // 4.1 (plan 17): from the 101st, its last a legend
+        let mega = Content.gen6 && (towerStreak ?? 0) + 1 >= Tower.megaFrom ? Tower.megaFoes.randomElement(using: &r) : nil   // 5.0: its first a Mega
+        if let x = mega { foes[0] = make(x.dex) }
         let cls = names.randomElement(using: &r)!, given = cls == "아가씨" ? she : ["등산가", "연구원", "드래곤 조련사", "모범 소년"].contains(cls) ? he : he + she
         let who = cls + " " + given.randomElement(using: &r)!
         var used = Set<String>()                                                                    // held items from 14 wins on (3.8, the user), one of each (the tower's rule)
@@ -341,6 +346,7 @@ extension Walk {
                                  : ["자뭉열매", "오랭열매", "리샘열매", "먹다남은음식"]
             if let i = pool.filter({ !used.contains($0) }).randomElement(using: &r) { foes[k].item = i; used.insert(i) }
         }
+        if let x = mega { foes[0].item = x.stone }                                                // (the stone, not another item)
         return (who, foes)
     }
     /// One of the tycoon's: Lv.50, 6V, 252/252, its nature and item, the tower's good four (a legend's own move among them, plan 17).

@@ -84,7 +84,7 @@ private func towerSim(_ path: String) throws {
     }
     w.towerStreak = 120
     var rows: [(String, Double)] = []
-    for d in Tower.legends {
+    for d in Tower.legendFoes {                                                                    // (5.0: the 54)
         let x = rates { var f = w.towerFoes(&r); while f.foes[2].dex != d { f = w.towerFoes(&r) }; return (f.trainer, f.foes) }
         rows.append((show("101+ \(monNames[d])", x), x.reduce(0, +) / Double(x.count)))
     }
