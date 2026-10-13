@@ -13,7 +13,11 @@ extension Battle {
     func holdsFor(_ s: Side, _ i: String) -> Bool { holds(s, i) && f(s).form == nil && Held.species[i]?.contains(f(s).mon.dex) == true }
     /// Its item can't be taken or swapped: 점착 (틀깨기 walks past it), 아르세우스's plate, 기라티나's 백금옥.
     func keeps(_ t: Side, by s: Side) -> Bool { dAb(t, 60, by: s) || fixedItem(t) }
-    func fixedItem(_ s: Side) -> Bool { let x = f(s); return x.item.map { Held.plates[$0] != nil && x.mon.dex == 493 || $0 == "백금옥" && x.mon.dex == 487 } == true }
+    func fixedItem(_ s: Side) -> Bool {
+        let x = f(s)
+        if Content.gen6, let i = x.item, Forms.mega(x.mon.dex, holding: i) != nil || x.mon.dex == 649 && Held.drives[i] != nil { return true }   // 5.0: its stone / orb, 게노세크트's drive
+        return x.item.map { Held.plates[$0] != nil && x.mon.dex == 493 || $0 == "백금옥" && x.mon.dex == 487 } == true
+    }
     /// s's item is used up (eaten, a herb, 기합의띠, thrown): 리사이클 remembers it; its own is gone after a wild fight.
     mutating func useUp(_ s: Side) {
         mod(s) { x in
@@ -176,6 +180,7 @@ extension Battle {
             }
         }
         if id == 363, f(s).item.flatMap({ Held.gift[$0] }) != nil { useUp(s) }                       // 자연의은혜: the berry's gone
+        if Content.gen6 { gen6ItemsAfterHit(s, t, m, dealt: dealt) }                                  // (Gen6Items.swift)
         if dealt > 0, f(s).alive, holds(s, "조개껍질방울") { restore(s, max(1, dealt / 8), josa(n, "은", "는") + " 조개껍질방울로 체력을 조금 회복했다!") }
         if dealt > 0, f(s).alive, holds(s, "생명의구슬"), !f(s).has(98), !sheerForce(s, m) { hurt(s, max(1, f(s).maxHP / 10), josa(n, "은", "는") + " 생명이 조금 깎였다!") }
     }

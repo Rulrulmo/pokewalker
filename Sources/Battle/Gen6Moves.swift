@@ -12,7 +12,7 @@ extension Battle {
     var wonderRoomOn: Bool { (wonderRoom ?? 0) > 0 }
     /// A fighter's weight, 바디퍼지 taken off (100 kg each, 0.1 kg at least).
     func weight(_ s: Side) -> Double {                                                          // (헤비메탈 x2, 라이트메탈 x1/2)
-        let x = f(s), w = weightKg[(x.form ?? x.mon).dex] * (x.has(134) ? 2 : x.has(135) ? 0.5 : 1)
+        let x = f(s), w = x.body.weight * (x.has(134) ? 2 : x.has(135) ? 0.5 : 1) * (holds(s, "가벼운돌") ? 0.5 : 1)
         return max(0.1, w - 100 * Double(x.lighter ?? 0))
     }
 
@@ -72,6 +72,7 @@ extension Battle {
             if let i = f(t).item, i.hasSuffix("열매"), !keeps(t, by: s) { takeItem(t); say(t, josa(tn + "의 " + i, "은", "는") + " 불타 버렸다!") }
         case 565 where dealt > 0 && !f(t).alive: boost(s, 1, 2, from: s)                               // 마지막일침: a KO, 공격 +2
         case 515: hurt(s, f(s).hp, "")                                                                  // 목숨걸기: all its HP, gone
+        case 547 where dealt > 0: relicSong(s)                                                          // 옛노래 (Gen6Forms.swift)
         case 509, 525: if dealt > 0, !subTook, f(t).alive, f(s).alive { blowAway(s, t, loud: false) }   // 배대뒤치기 · 드래곤테일
         default: break
         }
@@ -119,7 +120,7 @@ extension Battle {
             for x in grass { boost(x, 2, 1, from: s) }
         case 470, 471:                                                                                   // 가드셰어 · 파워셰어: the two stats averaged
             let ks = id == 470 ? [2, 4] : [1, 3]
-            var a = f(s).statOver ?? (f(s).form ?? f(s).mon).stats, b = f(t).statOver ?? (f(t).form ?? f(t).mon).stats
+            var a = f(s).statOver ?? f(s).body.stats, b = f(t).statOver ?? f(t).body.stats
             for k in ks { let v = (a[k] + b[k]) / 2; a[k] = v; b[k] = v }
             mod(s) { $0.statOver = a }; mod(t) { $0.statOver = b }; say(s, id == 470 ? "서로의 가드를 나누었다!" : "서로의 파워를 나누었다!")
         case 576:                                                                                        // 뒤집어엎기

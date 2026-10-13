@@ -63,25 +63,32 @@ struct Fighter: Equatable, Codable {
     // 5.0 (content5, Battle/Gen6Moves.swift): 킹실드 & co. (the protecting move), 떨어뜨리기, 텔레키네시스 turns, 가드셰어 / 파워셰어's stats,
     // 바디퍼지 times, 송전, 분진, 핼러윈 / 숲의저주's third type. Optionals: fights saved before 5.0 decode.
     var shield: Int? = nil, smackedDown: Bool? = nil, telekinesis: Int? = nil, statOver: [Int]? = nil, lighter: Int? = nil
+    var mega: Int? = nil, battleForm: Int? = nil                       // a Mega / primal form (to the fight's end), a form for now (스텝폼 블레이드폼 달마모드: gone on switching)
     var electrified: Bool? = nil, powdered: Bool? = nil, addedType: String? = nil
 
     init(_ m: Mon) { mon = m; hp = m.stats[0]; moves = m.moves; pp = m.moves.map { moveTable[$0]?.pp ?? 5 }; item = m.item }
     var maxHP: Int { mon.stats[0] }
     var alive: Bool { hp > 0 }
     var typeList: [String] {
-        let t = (types ?? plateType.map { [$0] } ?? monTypes[(form ?? mon).dex]).filter { !(roosted && $0 == "flying") }
+        let t = (types ?? plateType.map { [$0] } ?? body.typing).filter { !(roosted && $0 == "flying") }
         guard let a = addedType, !t.contains(a) else { return t }; return t + [a]
     }
     /// 멀티타입: 아르세우스 takes its plate's type.
-    var plateType: String? { (form ?? mon).dex == 493 && ability == 121 ? item.flatMap { Held.plates[$0] } : nil }
-    var ability: Int { abilityOver ?? (form ?? mon).abilityID }
+    var plateType: String? { body.dex == 493 && ability == 121 ? item.flatMap { Held.plates[$0] } : nil }
+    var ability: Int { abilityOver ?? body.abilityID }
+    /// What it fights as: 변신's copy, else its Mon in its Mega / battle form (5.0) — or 오리진폼 while 기라티나 holds 백금옥.
+    var body: Mon {
+        if let f = form { return f }
+        guard let k = mega ?? battleForm ?? (Content.gen6 && mon.dex == 487 && item == "백금옥" ? 1 : nil) else { return mon }
+        var m = mon; m.form = k; return m
+    }
     func has(_ a: Int) -> Bool { ability == a }
     /// Back to the start: what switching out clears (Baton Pass keeps some of it, see there).
     mutating func clearVolatile() {
         let (m, h, st, sl, mv, p, d, om, op, transformed) = (mon, hp, status, sleep, moves, pp, down, ownMoves, ownPP, form != nil)
-        let (it, sp, so) = (item, spent, spentOwn)
+        let (it, sp, so, mg) = (item, spent, spentOwn, mega)
         self = Fighter(m); hp = h; status = st; toxic = st == .toxic ? 1 : 0; sleep = sl; down = d    // 맹독's count starts over
-        item = it; spent = sp; spentOwn = so                                         // what it holds stays as it is
+        item = it; spent = sp; spentOwn = so; mega = mg                              // what it holds stays as it is; a Mega stays one
         guard let om, let op else { moves = mv; pp = p; return }                                   // PP stays spent
         moves = om; pp = om.indices.map { k in !transformed && k < mv.count && mv[k] == om[k] ? p[k] : op[k] }   // 변신 / 흉내내기 wear off: its own moves back (after 흉내내기, the PP the others spent since)
     }
@@ -91,7 +98,9 @@ struct SideState: Equatable, Codable {
     var stickyWeb: Bool? = nil, lastFaint: Int? = nil                 // 5.0: 끈적끈적네트; the turn one of this side's fainted (원수갚기)
 }
 
-enum Move: Equatable, Codable { case fight(Int), capture, item(ItemUse), swap(Int), run }
+enum Move: Equatable, Codable { case fight(Int), capture, item(ItemUse), swap(Int), run
+    case megaFight(Int)                                                // 5.0: Mega Evolve, then this move (docs/plans/18 §14.4)
+}
 /// A bag item used in battle (the UI picks it and takes it out of the bag).
 enum ItemUse: Equatable, Codable {
     case heal(Int)                                   // HP (999 = all)
@@ -116,6 +125,8 @@ enum Beat: Equatable, Codable {
     case thrown(shakes: Int), broke, caught          // the ball rocks `shakes` times, then breaks open or clicks
     case gained(exp: Int, level: Int?, foe: Int, to: Int)   // after a KO, for each of ours that faced it (mine[to]); level if it went up; foe = the EV yield's species
     case fled, ran, won, lost
+    case mega(Side, form: Int, text: String)        // 5.0: a Mega Evolution or 원시회귀 — that side's one is that form (monForms) to the fight's end
+    case reform(Side, form: Int, text: String)      // 5.0: a form for now (스텝폼, 블레이드폼, 달마모드; 0 = back to its own)
     var ends: Bool { [.caught, .fled, .ran, .won, .lost].contains(self) }
     var length: Double {                             // seconds on screen
         switch self {
@@ -128,6 +139,7 @@ enum Beat: Equatable, Codable {
         case .fainted, .won, .lost: 1.4
         case .gained(_, let l, _, _): l == nil ? 1.2 : 1.8
         case .retype: 0
+        case .mega: 2.4
         default: 1.3
         }
     }

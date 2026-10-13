@@ -240,8 +240,8 @@ extension SaveDB {
             if case .replace(let i)? = d.planB, b.foeMustReplace == true { beats += b.replaceFoe(i) }
         } else {
             var mine: Move = .fight(165)
-            switch d.planA { case .fight(let slot)?: mine = .fight(b.forcedMove(.me) ?? b.f(.me).moves[safe: slot] ?? 165); case .swap(let i)?: mine = .swap(i); default: break }
-            switch d.planB { case .fight(let slot)?: b.foePlan = .fight(b.forcedMove(.it) ?? b.f(.it).moves[safe: slot] ?? 165); case .swap(let i)?: b.foePlan = .swap(i); default: b.foePlan = .fight(165) }
+            switch d.planA { case .fight(let slot)?: mine = .fight(b.forcedMove(.me) ?? b.f(.me).moves[safe: slot] ?? 165); case .megaFight(let slot)?: mine = .megaFight(b.forcedMove(.me) ?? b.f(.me).moves[safe: slot] ?? 165); case .swap(let i)?: mine = .swap(i); default: break }
+            switch d.planB { case .fight(let slot)?: b.foePlan = .fight(b.forcedMove(.it) ?? b.f(.it).moves[safe: slot] ?? 165); case .megaFight(let slot)?: b.foePlan = .megaFight(b.forcedMove(.it) ?? b.f(.it).moves[safe: slot] ?? 165); case .swap(let i)?: b.foePlan = .swap(i); default: b.foePlan = .fight(165) }
             if case .fight(let id) = mine, b.usable(.me).isEmpty, b.forcedMove(.me) == nil, id != 165 { mine = .fight(165) }   // nothing it may use: 발버둥
             beats = b.turn(mine, &g)
             b.foePlan = nil

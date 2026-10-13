@@ -14,6 +14,7 @@ struct Mon: Codable, Equatable {
     var ot: String? = nil                // 어버이: the first trainer that traded it away (docs/plans/12 §3.2); nil = never traded
     var mint: Int? = nil                 // 민트: the nature its stats go by (its own nature stays): docs/plans/13
     var item: String? = nil              // 지닌 도구 (docs/plans/13 ⑤): out of the bag while held; used up in a fight = gone (Battle/Holding.swift)
+    var form: Int? = nil                 // 5.0 (content5, docs/plans/18 §5): its form, monForms' number (1...; nil = the species' own)
 
     var points: Int { exp ?? expTable[growthRate[dex]][max(1, min(100, level))] }   // (a raid boss fights above 100: docs/plans/16)
     static func level(dex: Int, exp: Int) -> Int { let t = expTable[growthRate[dex]]; return (1...100).last { t[$0] <= exp } ?? 1 }
@@ -39,12 +40,20 @@ extension Mon {
         m.ability = Int.random(in: 0..<abilitySlots[dex].count, using: &r); m.nature = Int.random(in: 0..<25, using: &r)
         m.ivs = (0..<6).map { _ in Int.random(in: 0...31, using: &r) }
         if perfect > 0 { for k in Array(0..<6).shuffled(using: &r).prefix(perfect) { m.ivs![k] = 31 } }
+        if Content.gen6, monForms[dex] != nil { m.form = Forms.wildForm(dex, female: m.female, &r) }  // 5.0: 안농's letter, 깝질무's sea, 바스라오's stripe, 호바귀's size ...
         return m
     }
     var abilityID: Int {                                                                       // the slot survives evolution, like the games
-        if ability == 2, Content.gen6, hiddenAbility[dex] > 0 { return hiddenAbility[dex] }       // 5.0: 2 = the hidden one (plan 18 §4)
-        let s = abilitySlots[dex]; return s[min(ability ?? 0, s.count - 1)]
+        let f = formInfo
+        if ability == 2, Content.gen6 { let h = f?.hidden ?? hiddenAbility[dex]; if h > 0 { return h } }   // 5.0: 2 = the hidden one (plan 18 §4)
+        let s = f?.abilities ?? abilitySlots[dex]; return s[min(ability ?? 0, s.count - 1)]
     }
+    /// 5.0: its form's data (nil with content5 off, or for the species' own) — what it changes: types, stats, abilities, weight, moves.
+    var formInfo: MonForm? { Content.gen6 ? Forms.of(dex, form) : nil }
+    var typing: [String] { formInfo?.types ?? monTypes[dex] }
+    var baseStat: [Int] { formInfo?.stats ?? baseStats[dex] }
+    var learnset: [Int] { formInfo?.learnset ?? learnsets[dex] }
+    var weight: Double { formInfo?.weight ?? weightKg[dex] }
     var abilityName: String { abilityNames[abilityID] ?? "" }
     var natureName: String { natures[nature ?? 0].name }
     /// The IVs battles use: its own (15 if never rolled), with the 특훈 ones at 31.
@@ -53,7 +62,7 @@ extension Mon {
     var perfectIVs: Int { effectiveIVs.filter { $0 == 31 }.count }
     /// HP Atk Def SpA SpD Spe: the Gen IV formula with those IVs, its EVs and nature.
     var stats: [Int] {
-        let b = baseStats[dex], l = level, iv = effectiveIVs, ev = evs ?? Array(repeating: 0, count: 6), n = natures[mint ?? nature ?? 0]
+        let b = baseStat, l = level, iv = effectiveIVs, ev = evs ?? Array(repeating: 0, count: 6), n = natures[mint ?? nature ?? 0]
         return (0..<6).map { k in
             let core = (2 * b[k] + iv[k] + ev[k] / 4) * l / 100
             if k == 0 { return dex == 292 ? 1 : core + l + 10 }                                    // 껍질몬: always 1
@@ -62,22 +71,22 @@ extension Mon {
         }
     }
     /// The moves it knows: chosen ones, or (never chosen yet) the last four it learned by now.
-    var moves: [Int] { known.map { $0.filter(Moves.supported) }.flatMap { $0.isEmpty ? nil : $0 } ?? Mon.defaultMoves(dex, level) }
-    static func defaultMoves(_ dex: Int, _ level: Int) -> [Int] {
+    var moves: [Int] { known.map { $0.filter(Moves.supported) }.flatMap { $0.isEmpty ? nil : $0 } ?? Mon.defaultMoves(dex, level, learnset) }
+    static func defaultMoves(_ dex: Int, _ level: Int, _ learnset: [Int]? = nil) -> [Int] {
         var out: [Int] = []
-        let ls = learnsets[dex]
+        let ls = learnset ?? learnsets[dex]
         for k in stride(from: 0, to: ls.count, by: 2) where ls[k] <= level && Moves.supported(ls[k + 1]) && !Moves.itemMoves.contains(ls[k + 1]) { out.removeAll { $0 == ls[k + 1] }; out.append(ls[k + 1]) }
         return out.isEmpty ? [33] : Array(out.suffix(4))
     }
     /// Moves it learns on reaching levels (from, to], that it doesn't know yet.
     func newMoves(from a: Int, to b: Int) -> [Int] {
-        let ls = learnsets[dex]; var out: [Int] = []
+        let ls = learnset; var out: [Int] = []
         for k in stride(from: 0, to: ls.count, by: 2) where ls[k] > a && ls[k] <= b && Moves.supported(ls[k + 1]) && !moves.contains(ls[k + 1]) && !out.contains(ls[k + 1]) { out.append(ls[k + 1]) }
         return out
     }
     /// 기술 바꾸기: every move it could know now — its level-up ones up to its level (in the order it learns them), then any it knows from elsewhere.
     var relearnable: [Int] {
-        let ls = learnsets[dex]; var out: [Int] = []
+        let ls = learnset; var out: [Int] = []
         for k in stride(from: 0, to: ls.count, by: 2) where ls[k] <= level && Moves.supported(ls[k + 1]) && !out.contains(ls[k + 1]) { out.append(ls[k + 1]) }
         return out + moves.filter { !out.contains($0) }
     }
@@ -86,7 +95,7 @@ extension Mon {
     /// level up to its level.
     func towerMoves() -> [Int] {
         let skip: Set<Int> = [120, 153, 264, 138, 173, 387, 248, 353, 252, 255, 256, 364]           // 자폭 대폭발 힘껏펀치 꿈먹기 코골기 비장의무기 미래예지 파멸의소원 속이기: only now and then; 토해내기 · 꿀꺽 need 비축하기, 페인트 only through 방어
-        let all = relearnable.compactMap { moveTable[$0] }.filter { !skip.contains($0.id) }, types = monTypes[dex]
+        let all = relearnable.compactMap { moveTable[$0] }.filter { !skip.contains($0.id) }, types = typing
         let attacks = all.filter { !$0.isStatus }.sorted { towerScore($0) > towerScore($1) }, status = all.filter(\.isStatus)
         let ailments: Set<String> = ["sleep", "paralysis", "burn", "poison", "confusion", "yawn", "leech-seed"]   // not 금제 · 꿰뚫어보기 · 헤롱헤롱 … (nothing here)
         var out = attacks.filter { types.contains($0.type) }.prefix(2).map(\.id)
@@ -98,11 +107,11 @@ extension Mon {
     /// An attack's worth to the tower's pick: power (0 = 60, as the trainer AI counts 카운터, 지구던지기, 안다리걸기 …) x accuracy, x1.5 for its
     /// own type, x0.5 off its side (물리 / 특수) and for a charge or a recharge.
     func towerScore(_ m: MoveInfo) -> Double {
-        let phys = baseStats[dex][1] >= baseStats[dex][3]
-        return Double(m.power > 0 ? m.power : 60) * Double(m.accuracy == 0 ? 100 : m.accuracy) / 100 * (monTypes[dex].contains(m.type) ? 1.5 : 1) * (m.physical == phys ? 1 : 0.5) * (m.recharge || m.charges ? 0.5 : 1)
+        let b = baseStat, phys = b[1] >= b[3]
+        return Double(m.power > 0 ? m.power : 60) * Double(m.accuracy == 0 ? 100 : m.accuracy) / 100 * (typing.contains(m.type) ? 1.5 : 1) * (m.physical == phys ? 1 : 0.5) * (m.recharge || m.charges ? 0.5 : 1)
     }
     /// The level it learns move id at (nil = not by level).
-    func learnLevel(_ id: Int) -> Int? { let ls = learnsets[dex]; return stride(from: 0, to: ls.count, by: 2).first { ls[$0 + 1] == id }.map { ls[$0] } }
+    func learnLevel(_ id: Int) -> Int? { let ls = learnset; return stride(from: 0, to: ls.count, by: 2).first { ls[$0 + 1] == id }.map { ls[$0] } }
     /// Move id into slot s (s = its move count: a new one in the free slot); one it already knows elsewhere swaps places with what's there.
     mutating func setMove(_ id: Int, at s: Int) {
         var ms = moves

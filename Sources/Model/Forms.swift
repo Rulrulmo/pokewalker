@@ -24,6 +24,36 @@ enum Forms {
         guard let item, let fs = monForms[dex], let i = fs.firstIndex(where: { ($0.kind == .mega || $0.kind == .primal) && $0.item == item }) else { return nil }
         return (i + 1, fs[i])
     }
+    /// Forms by the Pokémon's sex: 탱그릴 · 탱탱겔 · 화염레오 (a look), 냐오닉스 (its own moves and hidden ability too).
+    static let genderForm: [Int: Int] = [592: 1, 593: 1, 668: 1, 678: 1]
+    /// Forms a wild one gets at random: 안농's letter, 깝질무 · 트리토돈's sea, 바스라오's stripe, 비비용's pattern, 플라베베's flower, 호바귀's size.
+    static let randomForms: Set<Int> = [201, 422, 423, 550, 666, 669, 670, 671, 710, 711]
+    /// A newly met one's form (Mon.wild, content5 only).
+    static func wildForm<R: RandomNumberGenerator>(_ dex: Int, female: Bool, _ r: inout R) -> Int? {
+        if let g = genderForm[dex] { return female ? g : nil }
+        guard randomForms.contains(dex), let n = monForms[dex]?.count else { return nil }
+        let k = Int.random(in: 0...n, using: &r); return k == 0 ? nil : k
+    }
+    /// The radar's find, by where and when it's met (0 = the species' own; nil = no such rule): 사철록 · 바라철록 by the walk's season,
+    /// 도롱충이 · 도롱마담 by the course (cave · mountain 모래땅, town 슈레, else 초목), and the sex forms again (its sex is the slot's).
+    static func placeForm(_ m: Mon, season: Season, art: Art) -> Int? {
+        if let g = genderForm[m.dex] { return m.female ? g : 0 }
+        switch m.dex {
+        case 585, 586: return season.rawValue
+        case 412, 413: return art == .cave || art == .mountain ? 1 : art == .town ? 2 : 0
+        default: return nil
+        }
+    }
+    /// The form it has after evolving into `to`: the same one where both have it (도롱마담 트리토돈 바라철록 플라엣테 플라제스 펌킨인),
+    /// the sex form, 비비용's pattern (fixed by who it is).
+    static func evolved(_ m: Mon, into to: Int) -> Int? {
+        if let g = genderForm[to] { return m.female ? g : nil }
+        if to == 666 { let k = (m.uid ?? m.walked ?? 0) % 20; return k == 0 ? nil : k }
+        guard let f = m.form, f > 0, let n = monForms[to]?.count, f <= n else { return nil }
+        return f
+    }
+    /// Whose stone (or orb) it is.
+    static func stoneFor(_ item: String) -> String? { monForms.first { $0.value.contains { $0.item == item } }.map { monNames[$0.key] } }
     /// Every Mega stone and primal orb (47 + 2): what the Mega raid gives.
     static let stones: [String] = monForms.keys.sorted().flatMap { d in monForms[d]!.compactMap { $0.kind == .mega || $0.kind == .primal ? $0.item : nil } }
 }

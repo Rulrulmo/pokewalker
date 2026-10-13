@@ -22,6 +22,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
     var raidTier: Int? = nil                         // 4.0 (docs/plans/16): a raid run's tier — its bars pay a fifth of a wild KO's EXP, EVs on the first only
     var terrain: Terrain? = nil, terrainLeft: Int? = nil, wonderRoom: Int? = nil, magicRoom: Int? = nil   // 5.0 (content5, Gen6Moves.swift): fields and rooms,
     var ionDeluge: Int? = nil, fairyLock: Int? = nil                                                       // 플라스마샤워's turn, 페어리록's (the next)
+    var megaUsed: [Bool]? = nil, extreme: Int? = nil                 // 5.0 (Gen6Forms.swift): each side's Mega used; 시작의바다 · 끝의대지 · 델타스트림 on
     var wild: Mon { theirs[it].mon }
 
     init(wild: Mon, companion: Mon, chain: Int = 0) { self.init(wild: wild, party: [companion], chain: chain) }
@@ -44,9 +45,11 @@ struct Battle: Equatable, Codable {                                 // Codable: 
     /// Replays one beat onto HP / status / who's out (the UI shows it happening mid-turn).
     mutating func apply(_ b: Beat) {
         switch b {
-        case .sendOut(.me, let i): mine[me].types = nil; mine[me].form = nil; me = i         // the one going back loses its 변신 / new types
-        case .sendOut(.it, let i): theirs[it].types = nil; theirs[it].form = nil; it = i
+        case .sendOut(.me, let i): mine[me].types = nil; mine[me].form = nil; mine[me].battleForm = nil; me = i         // the one going back loses its 변신 / new types
+        case .sendOut(.it, let i): theirs[it].types = nil; theirs[it].form = nil; theirs[it].battleForm = nil; it = i
         case .retype(let s, let t): mod(s) { $0.types = t }
+        case .mega(let s, let n, _): mod(s) { $0.mega = n }
+        case .reform(let s, let n, _): mod(s) { $0.battleForm = n == 0 ? nil : n }
         case .hit(let s, _, let d, _, _), .hurt(let s, let d, _): mod(s) { $0.hp = max(0, $0.hp - d) }
         case .heal(let s, let n, _): mod(s) { $0.hp = min($0.maxHP, $0.hp + n) }
         case .status(let s, let st, _): mod(s) { $0.status = st; if st != .sleep { $0.nightmare = false } }   // any wake ends 악몽
@@ -65,13 +68,13 @@ struct Battle: Equatable, Codable {                                 // Codable: 
         out.append(.heal(s, amount: h, text: text)); apply(out.last!)
     }
     /// After the engine changed a fighter's types: a beat, so the replay (and the panel's type badges) follow.
-    mutating func retyped(_ s: Side) { let x = f(s); out.append(.retype(s, x.types ?? monTypes[(x.form ?? x.mon).dex])) }
+    mutating func retyped(_ s: Side) { let x = f(s); out.append(.retype(s, x.types ?? x.body.typing)) }
     mutating func setStatus(_ s: Side, _ st: Status?, _ text: String) { out.append(.status(s, st, text: text)); apply(out.last!) }
 
     // MARK: stats, speed, accuracy
     func mult(_ n: Int) -> Double { n >= 0 ? Double(2 + n) / 2 : 2 / Double(2 - n) }
     func accMult(_ n: Int) -> Double { let n = max(-6, min(6, n)); return n >= 0 ? Double(3 + n) / 3 : 3 / Double(3 - n) }
-    func base(_ s: Side, _ k: Int) -> Int { let x = f(s); return k == 0 ? x.maxHP : (x.statOver ?? (x.form ?? x.mon).stats)[k] }   // (가드셰어 · 파워셰어: statOver)
+    func base(_ s: Side, _ k: Int) -> Int { let x = f(s); return k == 0 ? x.maxHP : (x.statOver ?? x.body.stats)[k] }   // (가드셰어 · 파워셰어: statOver)
     func speed(_ s: Side) -> Double {
         let x = f(s); var v = Double(base(s, 5)) * mult(x.stage[5])
         if x.status == .paralysis { v *= x.has(95) ? 1 : 0.25 }
@@ -84,7 +87,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
     }
     func grounded(_ s: Side) -> Bool {
         let x = f(s)
-        return gravity > 0 || x.ingrain || x.item == "검은철구" || x.smackedDown == true || !(x.typeList.contains("flying") || x.has(26) || x.magnetRise > 0 || (x.telekinesis ?? 0) > 0)
+        return gravity > 0 || x.ingrain || x.item == "검은철구" || x.smackedDown == true || !(x.typeList.contains("flying") || x.has(26) || x.magnetRise > 0 || (x.telekinesis ?? 0) > 0 || (Content.gen6 && held(s) == "풍선"))
     }
 
     // MARK: status and stat changes

@@ -169,17 +169,20 @@ struct EngineRun<R: RandomNumberGenerator> {
         let x = b.mine[b.me], locked = josa(b.nm(.me), "은", "는") + "\n기술을 쓰는 중이다!"
         var beats: [Beat]
         switch c {
-        case .fight(let slot):
-            if let id = b.forced ?? (b.usable(.me).isEmpty ? 165 : nil) { beats = b.turn(.fight(id), &r) }   // nothing it may pick: 발버둥
+        case .fight(let slot), .megaFight(let slot):
+            let mega = { if case .megaFight = c { return true }; return false }()
+            if mega, !b.canMega(.me) { return "메가진화할 수\n없다!" }
+            if let id = b.forced ?? (b.usable(.me).isEmpty ? 165 : nil) { beats = b.turn(mega ? .megaFight(id) : .fight(id), &r) }   // nothing it may pick: 발버둥
             else {
                 guard x.moves.indices.contains(slot) else { return "그 기술은 없어요" }
                 let id = x.moves[slot]
                 if x.pp[slot] == 0 { return "기술의 남은\nPP가 없다!" }
                 if x.disable > 0, x.disabledMove == id { return "사용할 수 없게\n되어 있다!" }
                 if x.taunt > 0, moveTable[id]?.isStatus == true { return "도발당해서\n쓸 수 없다!" }
+                if moveTable[id]?.isStatus == true, b.holds(.me, "돌격조끼") { return "돌격조끼 때문에\n변화 기술은 못 쓴다!" }   // (5.0)
                 if x.torment, id == x.lastMove { return "트집 때문에 같은\n기술은 못 쓴다!" }
                 if let c = b.choiceLock(.me), id != c { return josa(x.item ?? "구애", "으로", "로") + "\n" + josa(moveTable[c]?.name ?? "", "만", "만") + " 쓸 수 있다!" }   // 3.7: 구애 lock
-                beats = b.turn(.fight(id), &r)
+                beats = b.turn(mega ? .megaFight(id) : .fight(id), &r)
             }
         case .ball:
             guard b.trainer == nil else { return "트레이너의 포켓몬은\n잡을 수 없다" }

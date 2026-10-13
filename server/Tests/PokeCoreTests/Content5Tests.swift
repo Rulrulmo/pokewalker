@@ -347,3 +347,80 @@ private func with(_ b: Battle, _ s: Side, _ a: Int) -> Battle { var x = b; x.mod
         var imp = duel(ditto, mon(143, 50)); _ = imp.begin(weather: nil, &r); #expect(imp.f(.me).form?.dex == 143)   // 괴짜: 메타몽 comes out 변신
     }
 }
+
+// MARK: - stage 5: forms, Mega, 원시회귀, the Gen V–VI items (plan 18 §2.4 §5 §6; Model/Forms.swift, Battle/Gen6Forms.swift, Gen6Items.swift)
+private func holding(_ m: Mon, _ i: String) -> Mon { var x = m; x.item = i; return x }
+private func formed(_ dex: Int, _ f: Int?, _ level: Int = 50) -> Mon { var m = mon(dex, level); m.form = f; return m }
+
+@Test func gen6StoredForms() {
+    let heat = formed(479, 1)
+    #expect(both { heat.typing }.gen4 == ["electric", "ghost"] && both { heat.typing }.gen6 == ["electric", "fire"])   // off: no forms
+    gen6 {
+        #expect(formed(386, 1).baseStat == [50, 180, 20, 180, 20, 150] && formed(386, 1).learnset != learnsets[386])   // 테오키스 어택폼
+        #expect(abilityNames[formed(646, 1).abilityID] == "테라볼티지" && formed(646, 1).stats[1] > mon(646).stats[1])   // 블랙큐레무
+        var r = Seeded(s: 1)
+        let letters = Set((0..<300).map { _ in Mon.wild(201, level: 10, &r).form ?? 0 }); #expect(letters.count > 20)   // 안농: a letter each
+        let cats = (0..<100).map { _ in Mon.wild(678, level: 30, &r) }; #expect(cats.allSatisfy { $0.form == ($0.female ? 1 : nil) })   // 냐오닉스 ♀
+        #expect(Forms.placeForm(mon(585), season: .winter, art: .field) == 3 && Forms.placeForm(mon(412), season: .spring, art: .cave) == 1)
+        var east = formed(422, 1, 30); east.uid = 7; #expect(Forms.evolved(east, into: 423) == 1)                           // 깝질무 동쪽바다 → 트리토돈 동쪽바다
+        var burmy = formed(412, 1); burmy.female = true; #expect(Forms.evolved(burmy, into: 413) == 1)
+        #expect(formed(413, 1).typing == ["bug", "ground"] && Forms.evolved(burmy, into: 414) == nil)                     // 모래땅 도롱마담; 나메일 none
+    }
+    var r = Seeded(s: 1); #expect(Mon.wild(201, level: 10, &r).form == nil)                                              // off: never rolled
+}
+
+@Test func gen6MegaEvolution() {
+    gen6 {
+        var b = trainerFight([holding(mon(6, 50, moves: [53]), "리자몽나이트Y"), mon(25, 50)], [mon(143, 50)]); var r = Seeded(s: 3)
+        #expect(b.canMega(.me) && b.megaForm(.me)?.n == 2)
+        _ = b.turn(.megaFight(53), &r)
+        #expect(b.f(.me).mega == 2 && b.f(.me).typeList == ["fire", "flying"] && b.f(.me).ability == 70 && b.sky == .sun && !b.canMega(.me))
+        #expect(b.out.contains { if case .mega(.me, 2, let t) = $0 { return t.contains("메가리자몽Y") }; return false })
+        b.switchIn(.me, 1); b.switchIn(.me, 0); #expect(b.f(.me).mega == 2)                                  // a Mega stays one
+        var x = trainerFight([holding(mon(6, 50, moves: [53]), "리자몽나이트X")], [mon(143, 50)]); _ = x.turn(.megaFight(53), &r)
+        #expect(x.f(.me).typeList == ["fire", "dragon"] && abilityNames[x.f(.me).ability] == "단단한발톱")
+        var foe = trainerFight([mon(143, 50, moves: [33])], [holding(mon(248, 50), "마기라스나이트")]); _ = foe.turn(.fight(33), &r)
+        #expect(foe.f(.it).mega == 1 && foe.sky == .sand)                                                     // the trainer's first turn
+        var wild = duel(mon(143, 50, moves: [33]), holding(mon(248, 50), "마기라스나이트")); _ = wild.turn(.fight(33), &r)
+        #expect(wild.f(.it).mega == nil)                                                                      // a wild one never
+        var ko = duel(mon(68, 50, moves: [282]), holding(mon(6, 50), "리자몽나이트X")); ko.execute(.me, 282, called: true); #expect(ko.f(.it).item == "리자몽나이트X")   // its stone stays
+    }
+    var off = trainerFight([holding(mon(6, 50, moves: [53]), "리자몽나이트Y")], [mon(143, 50)]); #expect(!off.canMega(.me))
+}
+
+@Test func gen6PrimalAndBattleForms() {
+    gen6 {
+        var r = Seeded(s: 4)
+        var p = trainerFight([holding(mon(382, 60, moves: [57]), "쪽빛구슬"), mon(25, 50)], [mon(6, 50, moves: [53])]); _ = p.begin(weather: nil, &r)
+        #expect(p.f(.me).mega == 1 && p.extreme == 189 && p.sky == .rain)
+        var fire = p; fire.execute(.it, 53, called: true); #expect(fire.f(.me).hp == fire.f(.me).maxHP)          // 시작의바다: no Fire attack
+        p.switchIn(.me, 1); #expect(p.extreme == nil && p.sky == .clear)                                         // its bringer gone
+        var ray = trainerFight([mon(384, 70, moves: [620])], [mon(144, 50, moves: [58])]); _ = ray.turn(.megaFight(620), &r)
+        #expect(ray.f(.me).mega == 1 && ray.extreme == 191 && ray.typeEff("ice", .me, by: .it) == 2)           // 델타스트림: Flying's weakness gone (Dragon's stays)
+        var aegis = duel(mon(681, 50, moves: [33, 588]), mon(143, 50)); aegis.execute(.me, 33, called: true)
+        #expect(aegis.f(.me).battleForm == 1 && aegis.base(.me, 1) > aegis.base(.me, 2)); aegis.execute(.me, 588, called: true); #expect(aegis.f(.me).battleForm == nil)
+        var z = mon(555, 50); z.ability = 2; var zen = duel(z, mon(143, 50));                                // 달마모드: its hidden ability
+        zen.mod(.me) { $0.hp = $0.maxHP / 3 }; zen.endOfTurn(); #expect(zen.f(.me).battleForm == 1 && zen.f(.me).typeList == ["fire", "psychic"])
+        var meloetta = duel(mon(648, 50, moves: [547]), mon(143, 50)); meloetta.execute(.me, 547, called: true); #expect(meloetta.f(.me).typeList == ["normal", "fighting"])
+        let origin = duel(holding(mon(487, 70), "백금옥"), mon(143, 50)); #expect(origin.f(.me).ability == 26)      // 기라티나 오리진폼: 부유
+    }
+}
+
+@Test func gen6HeldItems() {
+    gen6 {
+        var av = duel(holding(mon(143, 50, moves: [33, 156]), "돌격조끼"), mon(19)); #expect(av.usable(.me) == [33])
+        let plain = duel(mon(25, 50, moves: [85]), mon(143, 100)); #expect(dmg(plain, 85) * 2 >= dmg(duel(mon(25, 50, moves: [85]), holding(mon(143, 100), "돌격조끼")), 85) * 3 - 3)
+        var wp = duel(mon(68, 50, moves: [7]), holding(mon(143, 100), "약점보험")); wp.mod(.it) { $0.types = ["grass"] }; wp.execute(.me, 7, called: true)
+        #expect(wp.f(.it).stage[1] == 2 && wp.f(.it).stage[3] == 2 && wp.f(.it).item == nil)
+        var bal = duel(mon(76, 50, moves: [89, 33]), holding(mon(143, 50), "풍선")); #expect(dmg(bal, 89) == 0); bal.execute(.me, 33, called: true); #expect(bal.f(.it).item == nil && dmg(bal, 89) > 0)
+        var helm = duel(mon(68, 50, moves: [33]), holding(mon(143, 100), "울퉁불퉁멧")); let hp = helm.f(.me).hp; helm.execute(.me, 33, called: true); #expect(helm.f(.me).hp == hp - helm.f(.me).maxHP / 6)
+        var red = duel(holding(mon(143, 100), "레드카드"), mon(19, 30, moves: [33])); red.execute(.it, 33, called: true); #expect(red.over)   // the wild one's sent off
+        var ej = trainerFight([holding(mon(143, 100), "탈출버튼"), mon(25)], [mon(19, 30, moves: [33])]); ej.execute(.it, 33, called: true); #expect(ej.me == 1)
+        let gem = holding(mon(25, 50, moves: [85]), "전기주얼"); var g = duel(gem, mon(143, 100)); let d1 = dmg(g, 85); g.execute(.me, 85, called: true)
+        #expect(d1 * 10 >= dmg(plain, 85) * 12 && g.f(.me).item == nil)
+        #expect(dmg(duel(mon(68, 50, moves: [33]), holding(mon(92, 50), "겨냥표적")), 33) > 0)                         // 겨냥표적: 고스트 takes a Normal hit
+        let evio = duel(mon(68, 50, moves: [33]), holding(mon(133, 50), "진화의휘석")); #expect(dmg(evio, 33) * 3 <= dmg(duel(mon(68, 50, moves: [33]), mon(133, 50)), 33) * 2 + 3)
+        #expect(Walk.heldBP.contains { $0.item == "돌격조끼" } && !Walk.heldBP.contains { Forms.stones.contains($0.item) } && Held.summary("리자몽나이트X") == "리자몽 메가진화")
+    }
+    #expect(!Walk.heldBP.contains { $0.item == "돌격조끼" })                                                    // off: 4.1's shop
+}

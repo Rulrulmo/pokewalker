@@ -22,6 +22,13 @@ enum Held {
         "오카열매": "fire", "꼬시개열매": "water", "초나열매": "electric", "린드열매": "grass", "플카열매": "ice", "로플열매": "fighting", "으름열매": "poison",
         "슈캐열매": "ground", "바코열매": "flying", "야파열매": "psychic", "리체열매": "bug", "루미열매": "rock", "수불열매": "ghost", "하반열매": "dragon",
         "마코열매": "dark", "바리비열매": "steel", "카리열매": "normal",
+        "로셀열매": "fairy",                                                                             // 5.0
+    ]
+    /// 5.0 (content5): the 주얼, ×1.3 for one move of their type, then gone.
+    static let gems: [String: String] = [
+        "불꽃주얼": "fire", "물주얼": "water", "전기주얼": "electric", "풀주얼": "grass", "얼음주얼": "ice", "격투주얼": "fighting", "독주얼": "poison",
+        "땅주얼": "ground", "비행주얼": "flying", "에스퍼주얼": "psychic", "벌레주얼": "bug", "바위주얼": "rock", "고스트주얼": "ghost", "악주얼": "dark",
+        "강철주얼": "steel", "드래곤주얼": "dragon", "노말주얼": "normal", "페어리주얼": "fairy",
     ]
     /// At 1/4 HP (먹보: 1/2): +1 to that stat. 랑사 = 급소율, 스타 = a random one +2, 미클 = the next move's accuracy, 애슈 = moves first once.
     static let pinch: [String: Int] = ["치리열매": 1, "용아열매": 2, "캄라열매": 5, "야타비열매": 3, "규살열매": 4]
@@ -73,6 +80,9 @@ enum Held {
 
     /// One line on what it does when held (the bag, the shops, a Pokémon's page); nil = not something to hold.
     static func summary(_ i: String) -> String? {
+        if let t = gems[i] { return "\(typeKo[t] ?? t) 기술 한 번 위력 1.3배 · 쓰면 사라짐" }
+        if let t = drives[i] { return "게노세크트: 테크노버스터가 \(typeKo[t] ?? t) 타입으로" }
+        if Forms.stones.contains(i) { return Forms.stoneFor(i).map { "\($0) 메가진화" + (i.hasSuffix("구슬") ? " · 원시회귀" : "") } ?? "메가진화" }
         if let t = plates[i] { return "\(typeKo[t] ?? t) 기술 위력 1.2배 · 아르세우스는 \(typeKo[t] ?? t) 타입으로" }
         if let t = typeBoost[i] { return "\(typeKo[t] ?? t) 기술 위력 1.2배" }
         if let t = resist[i] { return t == "normal" ? "노말 기술 한 번 위력 반감" : "효과가 굉장한 \(typeKo[t] ?? t) 기술 한 번 위력 반감" }
@@ -97,6 +107,11 @@ enum Held {
             "순결의부적": "효과 없음 (이 게임엔 야생 조우가 없어요)", "순결의향로": "효과 없음 (이 게임엔 야생 조우가 없어요)",
             "전기구슬": "피카츄: 공격·특수공격 2배", "굵은뼈": "탕구리·텅구리: 공격 2배", "심해의이빨": "진주몽: 특수공격 2배 · 진화 도구",
             "심해의비늘": "진주몽: 특수방어 2배 · 진화 도구", "금속파우더": "메타몽: 방어 2배", "스피드파우더": "메타몽: 스피드 2배",
+            "돌격조끼": "특수방어 1.5배 · 변화 기술을 못 씀", "진화의휘석": "진화할 수 있으면 방어·특수방어 1.5배", "약점보험": "효과가 굉장한 기술을 맞으면 공격·특수공격 +2",
+            "풍선": "땅 기술을 받지 않음 · 공격받으면 터짐", "울퉁불퉁멧": "접촉한 상대 HP 1/6 깎음", "조임밴드": "조이기 같은 기술의 데미지 1/6",
+            "구근": "물 기술을 맞으면 특수공격 +1", "충전지": "전기 기술을 맞으면 공격 +1", "빛이끼": "물 기술을 맞으면 특수방어 +1", "눈덩이": "얼음 기술을 맞으면 공격 +1",
+            "방진고글": "날씨 데미지·가루 기술을 받지 않음", "가벼운돌": "무게 절반", "겨냥표적": "타입 상성으로 막던 기술도 맞음",
+            "레드카드": "공격받으면 상대를 교체시킴", "탈출버튼": "공격받으면 다음 포켓몬과 교체", "악키열매": "물리 기술을 맞으면 방어 +1", "타라프열매": "특수 기술을 맞으면 특수방어 +1",
             "마음의물방울": "라티아스·라티오스: 특수공격·특수방어 1.5배", "금강옥": "디아루가: 드래곤·강철 기술 1.2배", "백옥": "펄기아: 드래곤·물 기술 1.2배",
             "백금옥": "기라티나: 드래곤·고스트 기술 1.2배", "럭키펀치": "럭키: 급소율 +2", "대파": "파오리: 급소율 +2",
             "과사열매": "PP가 0이 된 기술 PP 10 회복", "오랭열매": "HP 1/2 이하에서 HP 10 회복", "자뭉열매": "HP 1/2 이하에서 HP 1/4 회복",

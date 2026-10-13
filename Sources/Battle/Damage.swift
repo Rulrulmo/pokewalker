@@ -56,6 +56,7 @@ extension Battle {
             if x == 0, dt == "ghost", type == "normal" || type == "fighting", f(s).has(113) || f(t).identified { x = 1 }
             if x == 0, dt == "dark", type == "psychic", f(t).miracleEye { x = 1 }
             if x == 0, dt == "flying", type == "ground", grounded(t) { x = 1 }                           // 중력, 뿌리박기
+            if Content.gen6 { if x == 0, held(t) == "겨냥표적" { x = 1 }; if extreme == 191, dt == "flying", x > 1 { x = 1 } }   // 5.0: 겨냥표적, 델타스트림
             e *= x
         }
         if type == "ground", !grounded(t), !(breaksMold(s) && f(t).has(26) && f(t).magnetRise == 0 && !f(t).typeList.contains("flying")) { e = 0 }
@@ -77,6 +78,7 @@ extension Battle {
         if crit { aS = max(0, aS); dS = min(0, dS) }
         if dAb(t, 109, by: s) { aS = 0 }; if a.has(109) || [498, 533].contains(m.id) { dS = 0 }       // (야금야금 · 성스러운칼 past its stages)
         A *= mult(aS) * itemAttack(s, physical: phys); D *= mult(dS) * itemDefense(t, physical: onDef)
+        if Content.gen6 { D *= gen6ItemDefense(t, physical: onDef) }                                  // 돌격조끼, 진화의휘석
         if Content.gen6 { let g = gen6StatMods(s, t, physical: onDef); A *= g.attack; D *= g.defense }   // 무기력 퍼코트 풀모피
         if phys, m.id != 492 {
             if a.has(37) || a.has(74) { A *= 2 }; if a.has(55) { A *= 1.5 }; if a.has(62), a.status != nil { A *= 1.5 }
@@ -146,6 +148,7 @@ extension Battle {
         let id = m.id, n = nm(s), tn = nm(t)
         subTook = false
         var (type, power) = moveType(s, m)
+        if Content.gen6, extremeFizzles(s, type: type) { return }                                   // 시작의바다 · 끝의대지 (5.0)
         // immunity abilities first
         if !type.isEmpty {
             if (type == "water" && (dAb(t, 11, by: s) || dAb(t, 87, by: s))) || (type == "electric" && dAb(t, 10, by: s)) {
@@ -236,6 +239,7 @@ extension Battle {
         default: break
         }
         if id != 205 && id != 301 { mod(s) { $0.rollout = 0 } }
+        if Content.gen6, gem(s, m, type: type) { power = power * 13 / 10 }                          // a 주얼 (5.0)
         // hits
         var count = 1
         if m.maxHits > 1 {

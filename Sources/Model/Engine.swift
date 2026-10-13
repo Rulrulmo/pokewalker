@@ -33,7 +33,9 @@ enum Act: Codable, Equatable {
     case duelQueue, duelQueueCancel, duelPick(id: Int, slots: [Int])   // 3.8 (14 §5.2–3): random matching; the 3 of my 6 for this duel (in order)
     case mailClaim(id: Int, pick: Int? = nil), mailClaimAll      // 3.9 (docs/plans/15 §2): a mail's gifts (pick: which of a 고르기); every one without a pick
 }
-enum BattleCmd: Codable, Equatable { case fight(slot: Int), ball, item(name: String, on: Int? = nil), swap(to: Int), replace(to: Int), run, forfeit }   // item on: a party slot (nil = the one out; 3.6)
+enum BattleCmd: Codable, Equatable { case fight(slot: Int), ball, item(name: String, on: Int? = nil), swap(to: Int), replace(to: Int), run, forfeit
+    case megaFight(slot: Int)                                          // 5.0: Mega Evolve, then this move (docs/plans/18 §14.4)
+}   // item on: a party slot (nil = the one out; 3.6)
 /// Pokémon by uid (their places move): 함께 걷기, 상자로, 워커로, 놓아주기, 중복 놓아주기, 기술 바꾸기, the waiting move (nil = 배우지 않는다), 통신 진화.
 enum MonOp: Codable, Equatable {
     case pair(uid: Int), store(uid: Int), fetch(uid: Int), release(uid: Int), releaseDupes(dex: Int)

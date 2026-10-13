@@ -30,12 +30,19 @@ extension Battle {
         }
         faints()
         guard f(s).alive, !over else { return }
+        if Content.gen6 { primalReversion(s); if held(s) == "풍선" { say(s, josa(n, "은", "는") + " 풍선으로 떠 있다!") } }   // (5.0)
+        entryAbility(s)
+        heldCheck(s); heldCheck(t)                                                                   // (위협 → 하양허브; 독압정 → a berry)
+    }
+    /// What its ability does as it comes out (and, 5.0, as it Mega Evolves).
+    mutating func entryAbility(_ s: Side) {
+        let t = other(s), n = nm(s)
         switch f(s).ability {
         case 22: say(s, josa(n, "의", "의") + " 위협!"); boost(t, 1, -1, from: s)
-        case 2: sky = .rain; skyTurns = abilitySkyTurns(s, "축축한바위"); say(s, josa(n, "의", "의") + " 잔비로 비가 내리기 시작했다!")
-        case 70: sky = .sun; skyTurns = abilitySkyTurns(s, "뜨거운바위"); say(s, josa(n, "의", "의") + " 가뭄으로 햇살이 강해졌다!")
-        case 45: sky = .sand; skyTurns = abilitySkyTurns(s, "보송보송바위"); say(s, josa(n, "의", "의") + " 모래날림으로 모래바람이 불기 시작했다!")
-        case 117: sky = .hail; skyTurns = abilitySkyTurns(s, "차가운바위"); say(s, josa(n, "의", "의") + " 눈퍼뜨리기로 싸라기눈이 내리기 시작했다!")
+        case 2 where extreme == nil: sky = .rain; skyTurns = abilitySkyTurns(s, "축축한바위"); say(s, josa(n, "의", "의") + " 잔비로 비가 내리기 시작했다!")
+        case 70 where extreme == nil: sky = .sun; skyTurns = abilitySkyTurns(s, "뜨거운바위"); say(s, josa(n, "의", "의") + " 가뭄으로 햇살이 강해졌다!")
+        case 45 where extreme == nil: sky = .sand; skyTurns = abilitySkyTurns(s, "보송보송바위"); say(s, josa(n, "의", "의") + " 모래날림으로 모래바람이 불기 시작했다!")
+        case 117 where extreme == nil: sky = .hail; skyTurns = abilitySkyTurns(s, "차가운바위"); say(s, josa(n, "의", "의") + " 눈퍼뜨리기로 싸라기눈이 내리기 시작했다!")
         case 88 where f(t).alive: boost(s, base(t, 2) < base(t, 4) ? 1 : 3, 1, from: s)
         case 36 where f(t).alive: let a = f(t).ability; if !(Content.gen6 ? [0, 36, 121, 59, 122, 149, 150, 161, 176] : [0, 36, 121]).contains(a) { mod(s) { $0.abilityOver = a }; say(s, josa(n, "은", "는") + " " + monNames[f(t).mon.dex] + "의 " + josa(abilityNames[a]!, "을", "를") + " 트레이스했다!") }
         case 46: say(s, josa(n, "은", "는") + " 프레셔를 발휘하고 있다!")
@@ -45,10 +52,12 @@ extension Battle {
         case 108 where f(t).alive: if let best = f(t).moves.max(by: { (moveTable[$0]?.power ?? 0) < (moveTable[$1]?.power ?? 0) }) { say(s, josa(monNames[f(t).mon.dex] + "의 " + moveTable[best]!.name, "을", "를") + " 꿰뚫어 보았다!") }
         case 150 where f(t).alive: statusMove(s, t, moveTable[144]!)                                // 괴짜: 변신 on coming out (5.0)
         case 119 where f(t).alive: if let i = f(t).item { say(s, josa(n, "은", "는") + " " + josa(nm(t) + "의 " + i, "을", "를") + " 통찰했다!") }   // 통찰
+        case 189: sky = .rain; skyTurns = 0; extreme = 189; say(s, "강한 비가 내리기 시작했다!")                   // 시작의바다 (5.0)
+        case 190: sky = .sun; skyTurns = 0; extreme = 190; say(s, "햇살이 아주 강해졌다!")                        // 끝의대지
+        case 191: sky = .clear; skyTurns = 0; extreme = 191; say(s, "수수께끼의 난기류가 비행 포켓몬을 지킨다!")      // 델타스트림
         default: break
         }
         forecast()
-        heldCheck(s); heldCheck(t)                                                                   // (위협 → 하양허브; 독압정 → a berry)
     }
     /// An ability's weather: for good in Gen IV, 5 turns in Gen VI (8 with its rock). The course's own weather always lasts.
     func abilitySkyTurns(_ s: Side, _ rock: String) -> Int { Content.gen6 ? (holds(s, rock) ? 8 : 5) : 0 }
@@ -67,6 +76,7 @@ extension Battle {
         mod(s) { $0.clearVolatile() }
         out.append(.sendOut(s, i)); apply(out.last!)
         if s == .me { faced.insert(i) } else { faced = [me] }
+        if Content.gen6 { extremeWeatherCheck() }                                                  // (5.0: its bringer gone)
         if baton { mod(s) { $0.stage = keep.stage; $0.sub = keep.sub; $0.confused = keep.confused; $0.seeded = keep.seeded; $0.focus = keep.focus; $0.cursed = keep.cursed; $0.ingrain = keep.ingrain; $0.aquaRing = keep.aquaRing; $0.perish = keep.perish; $0.magnetRise = keep.magnetRise
             $0.trapped = keep.trapped; $0.lockOn = keep.lockOn; $0.healBlock = keep.healBlock; $0.embargo = keep.embargo; if keep.abilityOver == 0 { $0.abilityOver = 0 } } }
         entry(s)
@@ -83,7 +93,8 @@ extension Battle {
         for s in [Side.me, .it] { mod(s) { $0.protected = false; $0.endure = false; $0.flinch = false; $0.hitThisTurn = false; $0.movedThisTurn = false; $0.magicCoat = false; $0.turnsOut += 1
             if $0.shield != nil { $0.shield = nil }; if $0.electrified != nil { $0.electrified = nil }; if $0.powdered != nil { $0.powdered = nil } } }   // (5.0: this turn's only)
         let live = pvp == true, (mi, ti) = (me, it)
-        var foe = live ? (forcedMove(.it) ?? { if case .fight(let id)? = foePlan { return id }; return usable(.it).first ?? 165 }()) : foeChoice()
+        var foe = live ? (forcedMove(.it) ?? { if case .fight(let id)? = foePlan { return id }; if case .megaFight(let id)? = foePlan { return id }; return usable(.it).first ?? 165 }()) : foeChoice()
+        let foeMega = live ? { if case .megaFight? = foePlan { return true }; return false }() : trainer != nil   // 5.0: a trainer Mega Evolves as soon as it can
         planned = [0, foe]
         if live, case .swap(let i)? = foePlan {                                                   // the other player switches: before any move, and doesn't act
             say(.it, josa(trainer ?? "상대", "은", "는") + " " + josa(monNames[f(.it).mon.dex], "을", "를") + " 돌아오게 했다!"); switchIn(.it, i); planned[1] = 0
@@ -99,12 +110,15 @@ extension Battle {
         case .capture: if throwBall(ball) { return }
         case .item(let u): useItem(u)
         case .swap(let i): switchIn(.me, i)
-        case .fight(let id):
+        case .fight(let id), .megaFight(let id):
             planned[0] = id
-            if moveFirst(id, foe) { act(.me, id, mi); act(.it, foe, ti) } else { act(.it, foe, ti); act(.me, id, mi) }
+            let first = moveFirst(id, foe)                                                           // (Gen VI: the order as it was before any Mega)
+            if Content.gen6 { megas(ours: { if case .megaFight = m { return true }; return false }(), theirs: foeMega) }
+            if first { act(.me, id, mi); act(.it, foe, ti) } else { act(.it, foe, ti); act(.me, id, mi) }
             if !over { endOfTurn() }
             return
         }
+        if Content.gen6 { megas(ours: false, theirs: foeMega) }
         act(.it, foe, ti)
         if !over { endOfTurn() }
     }
@@ -194,6 +208,7 @@ extension Battle {
         let second = f(s).charging == id
         mod(s) { $0.charging = 0; $0.semi = 0 }
         if !called && !second && f(s).lock == 0 && f(s).bide == 0 { deductPP(s, id) }           // a rampage's / 참기's later turns are free
+        if Content.gen6 { stanceChange(s, m) }                                                      // 배틀스위치 (5.0)
         out.append(.use(s, move: id))
         if Content.gen6 { protean(s, m) }                                                              // 변환자재 (5.0)
         if !called { mod(s) { $0.metronome = $0.lastMove == id ? ($0.metronome ?? 0) + 1 : nil; $0.lastMove = id } }   // (메트로놈's streak)

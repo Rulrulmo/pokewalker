@@ -99,6 +99,7 @@ extension Walker {
         case .heal(let s, _, _): return .show(s, dx: 0, dy: s == .me ? 0 : Int(-4 * arc(0.2, 0.4)), flash: false, visible: u > 0.3 || blink)   // ours stays down: its back is cut off
         case .status(let s, _, _): return .show(s, dx: 0, dy: 0, flash: u < 0.4 && blink, visible: true)
         case .note(let s, _), .retype(let s, _): return .show(s, dx: 0, dy: 0, flash: false, visible: true)
+        case .mega(let s, _, _), .reform(let s, _, _): return .show(s, dx: 0, dy: 0, flash: u < 0.6 && blink, visible: true)   // 5.0: a flash for now (mac's A3)
         case .fainted(let s): return u < 0.35 ? .show(s, dx: 0, dy: 0, flash: false, visible: blink) : .show(s, dx: 0, dy: Int(34 * min(1, (u - 0.35) / 0.6)), flash: false, visible: true)   // sinks behind its pad
         case .sendOut(.it, let k) where raidOn && k > 0:                                           // 4.0 (16 §8-3): a raid's next bar — it gets up again where it stood (no ball), quickly
             return .show(.it, dx: 0, dy: Int(14 * pow(1 - min(1, u / 0.35), 2)), flash: u < 0.35 && blink, visible: true)
@@ -226,6 +227,7 @@ extension Walker {
         case .ran: return raidOn ? "후퇴했다!" : "무사히 도망쳤다!"
         case .won: return raidOn ? "\(b.theirs.count)줄을 모두 깼다! 볼 +\(RaidRules.winBalls)" : b.trainer.map { josa($0, "과", "와") + "의 승부에서 이겼다!" } ?? "승리!"
         case .lost: return "눈앞이 캄캄해졌다..."
+        case .mega(_, _, let t), .reform(_, _, let t): return t                                        // 5.0 (server: plan 18 §14.4; the show is mac's A3)
         }
     }
 

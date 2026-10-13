@@ -46,7 +46,7 @@ struct Walk: Codable, Equatable {
 
     var here: Course { courses[course] }
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.
-    var bonus: Bool { monTypes[companion.dex].contains { here.types.contains($0) } }
+    var bonus: Bool { companion.typing.contains { here.types.contains($0) } }
     var effSteps: Int { bonus ? courseSteps * 4 / 3 : courseSteps }
     func unlocked(_ i: Int) -> Bool { earned >= courses[i].watts && (owned ?? []).count >= courses[i].dex }
 
@@ -191,7 +191,7 @@ struct Walk: Codable, Equatable {
         if let t = e.time, (t == "day") != isDay { return false }
         if let i = e.item, !(bag + items).contains(i), m.item != i { return false }                   // (3.7: or held)
         if let p = e.party, !(caught + box).contains(where: { $0.dex == p }) { return false }
-        if let t = e.partyType, !(caught + box).contains(where: { monTypes[$0.dex].contains(t) }) { return false }
+        if let t = e.partyType, !(caught + box).contains(where: { $0.typing.contains(t) }) { return false }
         if let w = e.weather, (weather ?? .sunny).rawValue != w { return false }
         if let p = e.place { switch p { case "cave": if here.art != .cave { return false }; case "forest": if here.art != .forest { return false }; default: if here.name != "얼음 산길" { return false } } }
         return true
@@ -211,6 +211,7 @@ struct Walk: Codable, Equatable {
         guard var m = mon(ref) else { return }
         if let i = e.item { if m.item == i { m.item = nil } else if let k = bag.firstIndex(of: i) { bag.remove(at: k) } else if let k = items.firstIndex(of: i) { items.remove(at: k) } }   // a held one first
         if m.known == nil { m.known = m.moves }                                                    // its moves stay (the new form's defaults would replace them)
+        if Content.gen6 { m.form = Forms.evolved(m, into: e.to) }                                 // 5.0: 사철록's season, 깝질무's sea, 냐오닉스 ♀ ...
         m.dex = e.to; setMon(ref, m); own(e.to, shiny: m.shiny)
         queueMoves(ref, from: m.level - 1)                                                         // the new form's move at this level
         if e.to == 291, shed { var g = SystemRandomNumberGenerator(); _ = keep(Walk.shedinja(from: m, &g)) }   // 토중몬 -> 아이스크 leaves a 껍질몬 behind

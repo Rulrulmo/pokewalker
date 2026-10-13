@@ -104,7 +104,7 @@ extension Battle {
         case 144:
             guard f(t).form == nil else { fail(); return }
             let src = f(t)
-            mod(s) { if $0.ownMoves == nil { $0.ownMoves = $0.moves; $0.ownPP = $0.pp }; $0.form = src.form ?? src.mon; $0.types = src.typeList; $0.stage = src.stage; $0.moves = src.moves; $0.pp = src.moves.map { _ in 5 }; $0.abilityOver = src.ability }; retyped(s)
+            mod(s) { if $0.ownMoves == nil { $0.ownMoves = $0.moves; $0.ownPP = $0.pp }; $0.form = src.body; $0.types = src.typeList; $0.stage = src.stage; $0.moves = src.moves; $0.pp = src.moves.map { _ in 5 }; $0.abilityOver = src.ability }; retyped(s)
             say(s, josa(n, "은", "는") + " " + josa(monNames[src.mon.dex], "으로", "로") + " 변신했다!")
         case 102:
             guard f(t).lastMove != 0, !f(s).moves.contains(f(t).lastMove), let k = f(s).moves.firstIndex(of: 102) else { fail(); return }
@@ -136,7 +136,7 @@ extension Battle {
         case 194: mod(s) { $0.destinyBond = true }; say(s, josa(n, "은", "는") + " 상대를 길동무로 삼으려 하고 있다!")
         case 201, 240, 241, 258:
             let sk: Sky = [201: .sand, 240: .rain, 241: .sun, 258: .hail][id]!
-            guard sky != sk else { fail(); return }
+            guard sky != sk, extreme == nil else { fail(); return }                                   // (5.0: 원시's weathers stay)
             sky = sk; skyTurns = holds(s, [201: "보송보송바위", 240: "축축한바위", 241: "뜨거운바위", 258: "차가운바위"][id]!) ? 8 : 5; forecast()
             say(s, [201: "모래바람이 불기 시작했다!", 240: "비가 내리기 시작했다!", 241: "햇살이 강해졌다!", 258: "싸라기눈이 내리기 시작했다!"][id]!)
         case 215, 312:
