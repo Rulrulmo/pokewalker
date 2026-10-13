@@ -77,9 +77,10 @@ extension SaveDB {
         switch act {
         case .marketList(let give, let wish, let note):
             guard let r = w.ref(uid: give), r >= 0, let mon = w.mon(r) else { return "상자의 포켓몬만\n올릴 수 있어요" }
+            if let why = SaveDB.fusedWhy(w, give) { return why }                                  // (5.0: 큐레무 합체)
             guard try !onMarket(key, give) else { return "이미 올리거나\n제안한 포켓몬이에요" }
             guard try listings("key = :k AND state = 'open'", ["k": .text(key)]).count < listingsMax else { return "올린 글이\n너무 많아요 (\(listingsMax)개)" }
-            let wished = Array(wish.filter { (1...493).contains($0) }.prefix(3))
+            let wished = Array(wish.filter { (1...dexMax).contains($0) }.prefix(3))
             try db.rows("INSERT INTO listings (key, name, uid, mon, wish, state, at, note) VALUES (:k, :n, :u, :m, :w, 'open', :now, :note)",
                         ["k": .text(key), "n": .text(name), "u": .int(give), "m": .text(try text(mon)), "w": .text(try text(wished)), "now": .int(now),
                          "note": SaveDB.note(note).map(SQLValue.text) ?? .null])
@@ -96,6 +97,7 @@ extension SaveDB {
             guard l.key != key else { return "내 글에는\n제안할 수 없어요" }
             guard isTestID(l.key) == isTestID(key) else { return "그 글은 이제\n없어요" }
             guard let r = w.ref(uid: give), r >= 0, let mon = w.mon(r) else { return "상자의 포켓몬만\n제안할 수 있어요" }
+            if let why = SaveDB.fusedWhy(w, give) { return why }
             guard try !onMarket(key, give) else { return "이미 올리거나\n제안한 포켓몬이에요" }
             guard try bids("listing = :l AND key = :k AND state = 'open'", ["l": .int(id), "k": .text(key)]).isEmpty else { return "이 글에는 이미\n제안했어요" }
             guard try bids("key = :k AND state = 'open'", ["k": .text(key)]).count < bidsMax else { return "걸어 둔 제안이\n너무 많아요 (\(bidsMax)개)" }

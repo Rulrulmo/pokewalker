@@ -1057,3 +1057,43 @@ extension SaveDB {
     }
     #expect(MegaRaid.stoneOdds == [3, 5, 8, 10, 20])
 }
+
+// MARK: - 5.0 stage 7: the server's part (docs/plans/18 §10)
+@Test func content5Server() async throws {
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let s = try await newTrainer(db, "앨리스")
+    #expect(try await db.content5() == false)
+    _ = try await db.setContent5(true); #expect(try await db.content5() == true); _ = try await db.setContent5(false)
+    // a 5.0 app plays with content5 on: the trainer's oldest becomes 5.0 (an older app elsewhere gets 426 at the gate)
+    #expect(try await db.needAppFor("앨리스") != "5.0")
+    _ = try reply(await db.act(ActReq(id: "앨리스", session: s, seq: 1, steps: 5, act: .steps, app: "5.0"), now: base.addingTimeInterval(10)))
+    #expect(try await db.needAppFor("앨리스") != "5.0")                                                  // off: nothing raised
+    try await Content.$testing.withValue(true) {
+        _ = try reply(await db.act(ActReq(id: "앨리스", session: s, seq: 2, steps: 5, act: .steps, app: "5.0"), now: base.addingTimeInterval(20)))
+        #expect(try await db.needAppFor("앨리스") == "5.0")
+    }
+    // the updater's report and the hint
+    try await db.recordUpdateReport(UpdateReq(app: "5.0", platform: "mac", trainer: "앨리스", staged: "5.0.1", blocked: "translocated", failed: ["5.0.1"], place: "downloads"), now: 100)
+    let v = try await db.versionsReport(now: 200)
+    #expect(v.contains("앨리스") && v.contains("translocated") && v.contains("downloads") && v.contains("content5 off"))
+    _ = try await db.setUpdateHint(urgent: true, installBy: "2026-11-01T00:00:00+09:00")
+    let h = try await db.updateHint(); #expect(h.urgent && h.installBy == "2026-11-01T00:00:00+09:00")
+    let where_ = try JSONDecoder().decode(UpdateReq.self, from: Data(#"{"app":"5.0","platform":"windows","where":"applications"}"#.utf8))
+    #expect(where_.place == "applications")
+}
+
+@Test func content5SaveChecks() {
+    var w = Walk(); var heat = Mon(dex: 479, level: 30, female: false); heat.form = 1; w.box = [heat]
+    #expect(SaveCheck.values(w).contains("form 1 of #479"))                                              // off: no forms
+    Content.$testing.withValue(true) {
+        #expect(!SaveCheck.values(w).contains { $0.hasPrefix("form") })
+        var k = Mon(dex: 646, level: 60, female: false); k.form = 1; var z = Mon(dex: 644, level: 60, female: false); z.uid = 7; k.fused = [z]; k.uid = 6
+        var v = Walk(); v.box = [k]; v.lastUID = 9
+        #expect(SaveCheck.values(v).isEmpty && SaveCheck.mons(v).contains { $0.uid == 7 })              // the one inside counts (the ledger too)
+        k.form = 2; v.box = [k]; #expect(SaveCheck.values(v).contains("fused into #646"))                 // 화이트 with 제크로무: no
+        var big = Walk(); big.box = [Mon(dex: 700, level: 30, female: false)]; #expect(!SaveCheck.values(big).contains { $0.hasPrefix("species") })
+        #expect(SaveCheck.knownItems.contains("리자몽나이트X") && SaveCheck.knownItems.contains("유전자쐐기") && SaveCheck.knownItems.contains("돌격조끼"))
+        #expect(SaveDB.fusedWhy(v, 6) == "합체를 먼저\n풀어 주세요" && SaveDB.fusedWhy(v, 99) == nil)
+    }
+    #expect(!SaveCheck.knownItems.contains("리자몽나이트X"))
+}

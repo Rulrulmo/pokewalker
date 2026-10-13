@@ -31,6 +31,9 @@ let usage = """
       raid-log [<n>]                     the last raid runs: who, the tier, the boss (★ shiny), bars down, won, balls left, caught (default 30)
       tower-reset [--yes]                4.1 (docs/plans/17), once: every tower streak, best and first-time reward back to zero, runs ended
                                          (without --yes: who, nothing changed; with it: stop the service first)
+      content5 [on|off]                  5.0 (docs/plans/18): the Gen V–VI switch (the running server takes it within 10 s; the app at its next login)
+      versions                           5.0: each trainer's app as last seen, its oldest allowed, what its updater said last
+      update-hint urgent|calm [<iso>]    5.0: /v1/update's hint outside the signed manifest — urgent (and install by when)
     --db: else $DB_PATH, else /var/lib/pokewalker/pokewalker.db
     """
 
@@ -363,6 +366,14 @@ public func run(_ arguments: [String]) async -> Int32 {
         let out: String
         switch (command, rest.count) {
         case ("list", 0): out = try await db.list()
+        case ("content5", 0): out = "content5 " + ((try await db.content5()) ? "on" : "off")
+        case ("content5", 1):
+            guard ["on", "off"].contains(rest[0]) else { return fail("content5: on | off") }
+            out = try await db.setContent5(rest[0] == "on")
+        case ("versions", 0): out = try await db.versionsReport(now: unixNow())
+        case ("update-hint", 1), ("update-hint", 2):
+            guard ["urgent", "calm"].contains(rest[0]) else { return fail("update-hint: urgent | calm [<iso time>]") }
+            out = try await db.setUpdateHint(urgent: rest[0] == "urgent", installBy: rest.count > 1 ? rest[1] : nil)
         case ("show", 1): out = try await db.show(rest[0])
         case ("walk", 1): out = try await db.walkText(rest[0])
         case ("walk", 3):

@@ -52,6 +52,7 @@ extension SaveDB {
         case .tradeOffer(let raw, let give, let want):
             guard let to = trainerID(raw), to.key != key, let them = try trainer(to.key), knows(them.app, "3.0"), let theirs = them.walk.flatMap(decodeWalk) else { return "교환할 수 없는\n트레이너예요" }
             guard let r = w.ref(uid: give), r >= 0, let mon = w.mon(r) else { return "상자의 포켓몬만\n교환할 수 있어요" }
+            if let why = SaveDB.fusedWhy(w, give) { return why }                                  // (5.0: 큐레무 합체)
             var wanted: Mon? = nil
             if let want { guard let r2 = theirs.ref(uid: want), r2 >= 0 else { return "상대 상자에\n없는 포켓몬이에요" }; wanted = theirs.mon(r2) }
             let open = try tradeRows("from_key = :k AND state = 'open'", ["k": .text(key)])
@@ -76,6 +77,7 @@ extension SaveDB {
         case .tradeAccept(let id, let giveRaw):
             guard let t = try tradeRows("id = :i AND state = 'open'", ["i": .int(id)]).first, t.to == key else { return "그 교환은 이제\n없어요" }
             guard let give = t.want ?? giveRaw, let r = w.ref(uid: give), r >= 0 else { return t.want == nil ? "줄 포켓몬을\n골라 주세요" : "그 포켓몬이\n상자에 없어요" }
+            if let why = SaveDB.fusedWhy(w, give) { return why }
             guard let them = try trainer(t.from), var theirs = them.walk.flatMap(decodeWalk), let r2 = theirs.ref(uid: t.give), r2 >= 0 else {
                 try close(t, "failed", now: now)
                 try post(.tradeClosed(id: id, with: name, why: "포켓몬이 상자에 없어요"), to: t.from, from: key, fromName: name, app: tradeApp, now: now)

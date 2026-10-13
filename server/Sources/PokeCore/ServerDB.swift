@@ -117,7 +117,7 @@ actor SaveDB {
         guard create || FileManager.default.fileExists(atPath: path) else { throw ServerError(description: "\(path): no database (pokeserver init makes it)") }
         let c = try SQLite(path: path, create: create)
         try c.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000; PRAGMA max_page_count = 2621440;")   // 4 KiB × 2621440 = 10 GiB
-        if create || FileManager.default.fileExists(atPath: path) { try c.exec(schema); try c.exec(mintSchema); try c.exec(playSchema); try c.exec(teamSchema); try c.exec(tradeSchema); try c.exec(raidSchema); try c.exec(friendsSchema); try c.exec(marketSchema); try c.exec(duelSchema)
+        if create || FileManager.default.fileExists(atPath: path) { try c.exec(schema); try c.exec(mintSchema); try c.exec(playSchema); try c.exec(teamSchema); try c.exec(tradeSchema); try c.exec(raidSchema); try c.exec(appReportsSchema); try c.exec(friendsSchema); try c.exec(marketSchema); try c.exec(duelSchema)
             for col in ["min_app TEXT", "walk INTEGER NOT NULL DEFAULT 0"] { try? c.exec("ALTER TABLE inbox ADD COLUMN \(col)") }   // M2's (already there: an error, ignored)
             try? c.exec("ALTER TABLE play ADD COLUMN sent_rev INTEGER")
             try c.exec(claimSchema); try c.exec(visitSchema)                                               // 3.8 (docs/plans/14)
@@ -209,6 +209,7 @@ actor SaveDB {
                 if let token { reply["trust"] = .s(token) }
                 if pinNeeded { reply["pin_needed"] = .b(true) }
                 reply["tower"] = .b(try runCarries(id.key))                                          // plan 11: a tower run between fights goes on in this session
+                if Content.gen6 { reply["content5"] = .b(true) }                                     // 5.0 (plan 18 §14.4): the app sets Content.on by it
                 return Reply(200, reply,
                              note: t.device != nil && t.device != r.device ? "login from \(r.device_name.prefix(64)), took it from \(t.lastDevice ?? "?")" : nil)
             }

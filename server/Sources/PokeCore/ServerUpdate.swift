@@ -5,7 +5,13 @@ import Hummingbird
 // signature; GET /v1/download/<mac|windows|windows-setup> the file it names (3.9.x: the Windows installer too) — both with the app key. The app checks the signature with releaseKey and the zip
 // against the manifest itself: this server only mirrors what `pokeserver verify-release` passed (publish.sh), so it can't make an update up.
 
-struct UpdateReq: Codable, Sendable { let app: String?; let platform: String? }
+struct UpdateReq: Codable, Sendable {
+    let app: String?; let platform: String?
+    // 5.0 (plan 18 §9.8, §10.3): what the app says of itself — who, what it has staged, why it can't put one in (translocated · readonly · dev),
+    // the versions that failed, where it lives (applications · downloads · other)
+    var trainer: String? = nil, staged: String? = nil, blocked: String? = nil, failed: [String]? = nil, place: String? = nil
+    enum CodingKeys: String, CodingKey { case app, platform, trainer, staged, blocked, failed, place = "where" }
+}
 
 /// RELEASE_DIR's signed files: manifest.json, manifest.sig and the files the manifest names (the zips; from the installer release on, the Windows
 /// installer as windowsSetup — the zip stays for the apps that update by it).
@@ -65,11 +71,14 @@ func userAgentApp(_ r: Request) -> (app: String, platform: String)? {
 
 func hasAppKey(_ r: Request, _ appKey: String) -> Bool { r.headers.first(where: { $0.name.canonicalName == "x-app-key" })?.value == appKey }
 
-func addUpdates(_ router: Router<BasicRequestContext>, _ files: ReleaseFiles, appKey: String) {
+func addUpdates(_ router: Router<BasicRequestContext>, _ files: ReleaseFiles, appKey: String, db: SaveDB? = nil) {
     post(router, "/v1/update", appKey: appKey, id: { (_: UpdateReq) in "" }) { r in
         if brokenWindowsUpdater(app: r.app, platform: r.platform) { return Reply(200, ["manifest": .null, "sig": .null]) }   // (see brokenWindowsUpdater)
+        if let db { try? await db.recordUpdateReport(r, now: unixNow()) }                    // 5.0: what it says of itself (pokeserver versions)
         guard let m = files.manifestText, let s = files.signature else { return Reply(200, ["manifest": .null, "sig": .null]) }   // nothing signed yet
-        return Reply(200, ["manifest": .s(m), "sig": .s(s)])
+        var reply: [String: JSON] = ["manifest": .s(m), "sig": .s(s)]
+        if let db, let h = try? await db.updateHint() { reply["urgent"] = .b(h.urgent); if let by = h.installBy { reply["installBy"] = .s(by) } }   // outside the signed manifest
+        return Reply(200, reply)
     }
     router.get("/v1/download/:kind") { request, context -> Response in
         guard hasAppKey(request, appKey) else { return respond(.error(401, "app_key")) }

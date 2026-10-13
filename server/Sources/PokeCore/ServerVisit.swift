@@ -42,6 +42,7 @@ extension SaveDB {
             guard try visitRows("owner = :k AND host = :h AND state = 'on'", ["k": .text(key), "h": .text(to.key)]).isEmpty else { return josa(host.name, "에게", "에게") + " 이미\n맡긴 포켓몬이 있어요" }
             guard let ref = w.ref(uid: uid) else { return "그 포켓몬은\n없어요" }
             guard ref != -1 else { return "동료는 보낼 수 없어요" }
+            if let why = SaveDB.fusedWhy(w, uid) { return why }                                   // (5.0: 큐레무 합체)
             guard try visitRows("host = :k AND state = 'on'", ["k": .text(to.key)]).count < visitGuests else { return josa(host.name, "은", "는") + " 이미\n\(visitGuests)마리를 맡고 있어요" }
             guard let m = w.mon(ref) else { return "그 포켓몬은\n없어요" }
             if ref <= -2 { w.caught.remove(at: -2 - ref) } else { w.box.remove(at: ref) }

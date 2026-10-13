@@ -12,7 +12,8 @@ func respond(_ r: Reply) -> Response {
 }
 
 /// A POST route: the app key, the body (4 MiB at most), the request's JSON, then `handle`; a reply's note is logged with the trainer's key.
-func post<R: Decodable & Sendable>(_ router: Router<BasicRequestContext>, _ path: String, appKey: String, id: @escaping @Sendable (R) -> String,
+/// 5.0 (plan 18 §10.2): with db, a trainer's route refuses an app (the User-Agent's version) older than its oldest allowed — 426, as login does.
+func post<R: Decodable & Sendable>(_ router: Router<BasicRequestContext>, _ path: String, appKey: String, db: SaveDB? = nil, id: @escaping @Sendable (R) -> String,
                                    _ handle: @escaping @Sendable (R) async -> Reply) {
     router.post(RouterPath(path)) { request, context -> Response in
         guard hasAppKey(request, appKey) else { return respond(.error(401, "app_key")) }
@@ -22,6 +23,10 @@ func post<R: Decodable & Sendable>(_ router: Router<BasicRequestContext>, _ path
         catch let e as any HTTPResponseError where e.status == .contentTooLarge { return respond(.error(413, "too_big")) }   // NIOTooManyBytesError or HTTPError, by version
         catch { return respond(.error(400, "bad_request")) }
         guard let r = try? JSONDecoder().decode(R.self, from: Data(body.readableBytesView)) else { return respond(.error(400, "bad_request")) }
+        if let db, let key = trainerID(id(r))?.key, let app = userAgentApp(request)?.app, let need = try? await db.needAppFor(key), verCmp(app, need) ?? 0 < 0 {
+            context.logger.info("\(path) \(key): 426 app \(app) < \(need)")
+            return respond(.error(426, "old_app", ["need": .s(need)]))
+        }
         let reply = await handle(r)
         if let note = reply.note { context.logger.info("\(path) \(trainerID(id(r))?.key ?? "-"): \(reply.status) \(note)") }
         return respond(reply)
@@ -32,29 +37,32 @@ func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?, release: 
     let router = Router()
     router.addMiddleware { LogRequestsMiddleware(.info) }
     if let site { addDownloadPage(router, site) }                                         // GET / (ServerPage.swift); none without DOWNLOAD_PASSWORD
-    addUpdates(router, ReleaseFiles(dir: release), appKey: appKey)                        // the app's updates (ServerUpdate.swift)
+    addUpdates(router, ReleaseFiles(dir: release), appKey: appKey, db: db)                // the app's updates (ServerUpdate.swift)
+    await db.syncContent()                                                                 // 5.0: the content5 switch, now and every few seconds
+    let content = Task { while !Task.isCancelled { try? await Task.sleep(for: .seconds(content5Every)); await db.syncContent() } }
+    defer { content.cancel() }
     router.get("/v1/ping") { _, _ in respond(Reply(200, ["ok": .b(true)])) }
-    post(router, "/v1/login", appKey: appKey, id: { (r: LoginReq) in r.id }) { r in await db.login(r, now: unixNow()) }
+    post(router, "/v1/login", appKey: appKey, db: db, id: { (r: LoginReq) in r.id }) { r in await db.login(r, now: unixNow()) }
     post(router, "/v1/create", appKey: appKey, id: { (r: CreateReq) in r.id }) { r in await db.create(r, now: unixNow()) }
-    post(router, "/v1/save", appKey: appKey, id: { (r: SaveReq) in r.id }) { r in
+    post(router, "/v1/save", appKey: appKey, db: db, id: { (r: SaveReq) in r.id }) { r in
         if let early = SaveDB.precheck(r) { return early }
         return await db.save(r, now: unixNow())
     }
-    post(router, "/v1/legacy", appKey: appKey, id: { (r: LegacyReq) in r.id }) { r in await db.legacy(r, now: unixNow()) }
-    post(router, "/v1/pin", appKey: appKey, id: { (r: PinReq) in r.id }) { r in await db.setPIN(r, now: unixNow()) }
-    post(router, "/v1/radar", appKey: appKey, id: { (r: RadarReq) in r.id }) { r in await db.radar(r, now: unixNow()) }           // 10 §4: the server's Pokémon
-    post(router, "/v1/radar/result", appKey: appKey, id: { (r: ResultReq) in r.id }) { r in await db.radarResult(r, now: unixNow()) }
-    post(router, "/v1/hatch", appKey: appKey, id: { (r: HatchReq) in r.id }) { r in await db.hatch(r, now: unixNow()) }
-    post(router, "/v1/buy", appKey: appKey, id: { (r: BuyReq) in r.id }) { r in await db.buy(r, now: unixNow()) }
-    post(router, "/v1/evolve", appKey: appKey, id: { (r: EvolveReq) in r.id }) { r in await db.evolve(r, now: unixNow()) }
-    post(router, "/v2/act", appKey: appKey, id: { (r: ActReq) in r.id }) { r in await db.act(r, now: Date()) }   // plan 11 (3.0): ServerPlay.swift
-    post(router, "/v2/team", appKey: appKey, id: { (r: TeamReq) in r.id }) { r in await db.team(r, now: Date()) }   // plan 12 M1: ServerTeam.swift
-    post(router, "/v2/trades", appKey: appKey, id: { (r: TeamReq) in r.id }) { r in await db.trades(r, now: Date()) }   // plan 12 M2: ServerTrade.swift
-    post(router, "/v2/box", appKey: appKey, id: { (r: BoxReq) in r.id }) { r in await db.box(r, now: Date()) }
-    post(router, "/v2/raid", appKey: appKey, id: { (r: RaidReq) in r.id }) { r in await db.raidLobby(r, now: Date()) }   // plan 12 M3, 16 (4.0's runs): ServerRaid.swift
-    post(router, "/v2/market", appKey: appKey, id: { (r: MarketReq) in r.id }) { r in await db.market(r, now: Date()) }
-    post(router, "/v2/mail", appKey: appKey, id: { (r: MailReq) in r.id }) { r in await db.mailList(r, now: Date()) }        // plan 15: ServerMail.swift    // plan 12 §3.3: ServerMarket.swift
-    post(router, "/v2/duel", appKey: appKey, id: { (r: DuelReq) in r.id }) { r in                                       // plan 12 §5: ServerDuel.swift
+    post(router, "/v1/legacy", appKey: appKey, db: db, id: { (r: LegacyReq) in r.id }) { r in await db.legacy(r, now: unixNow()) }
+    post(router, "/v1/pin", appKey: appKey, db: db, id: { (r: PinReq) in r.id }) { r in await db.setPIN(r, now: unixNow()) }
+    post(router, "/v1/radar", appKey: appKey, db: db, id: { (r: RadarReq) in r.id }) { r in await db.radar(r, now: unixNow()) }           // 10 §4: the server's Pokémon
+    post(router, "/v1/radar/result", appKey: appKey, db: db, id: { (r: ResultReq) in r.id }) { r in await db.radarResult(r, now: unixNow()) }
+    post(router, "/v1/hatch", appKey: appKey, db: db, id: { (r: HatchReq) in r.id }) { r in await db.hatch(r, now: unixNow()) }
+    post(router, "/v1/buy", appKey: appKey, db: db, id: { (r: BuyReq) in r.id }) { r in await db.buy(r, now: unixNow()) }
+    post(router, "/v1/evolve", appKey: appKey, db: db, id: { (r: EvolveReq) in r.id }) { r in await db.evolve(r, now: unixNow()) }
+    post(router, "/v2/act", appKey: appKey, db: db, id: { (r: ActReq) in r.id }) { r in await db.act(r, now: Date()) }   // plan 11 (3.0): ServerPlay.swift
+    post(router, "/v2/team", appKey: appKey, db: db, id: { (r: TeamReq) in r.id }) { r in await db.team(r, now: Date()) }   // plan 12 M1: ServerTeam.swift
+    post(router, "/v2/trades", appKey: appKey, db: db, id: { (r: TeamReq) in r.id }) { r in await db.trades(r, now: Date()) }   // plan 12 M2: ServerTrade.swift
+    post(router, "/v2/box", appKey: appKey, db: db, id: { (r: BoxReq) in r.id }) { r in await db.box(r, now: Date()) }
+    post(router, "/v2/raid", appKey: appKey, db: db, id: { (r: RaidReq) in r.id }) { r in await db.raidLobby(r, now: Date()) }   // plan 12 M3, 16 (4.0's runs): ServerRaid.swift
+    post(router, "/v2/market", appKey: appKey, db: db, id: { (r: MarketReq) in r.id }) { r in await db.market(r, now: Date()) }
+    post(router, "/v2/mail", appKey: appKey, db: db, id: { (r: MailReq) in r.id }) { r in await db.mailList(r, now: Date()) }        // plan 15: ServerMail.swift    // plan 12 §3.3: ServerMarket.swift
+    post(router, "/v2/duel", appKey: appKey, db: db, id: { (r: DuelReq) in r.id }) { r in                                       // plan 12 §5: ServerDuel.swift
         var reply = await db.duel(r, now: Date())
         guard r.wait == true, let seen = r.version, let key = trainerID(r.id)?.key else { return reply }
         for _ in 0..<50 {                                                                      // a long poll: until the battle moves past what it saw (25 s at most)

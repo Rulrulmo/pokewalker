@@ -8,14 +8,16 @@ enum SaveCheck {
     static let stepsPerSecond = 15, daySteps = 100_000, awaySlack = 3_000
     static let secondsPerLink = 20, secondsPerTowerFight = 30, maxBPPerWin = 4, stepsPerFind = 150
 
-    static func mons(_ w: Walk) -> [Mon] { [w.companion] + w.caught + w.box }
+    static func mons(_ w: Walk) -> [Mon] { let all = [w.companion] + w.caught + w.box; return all + all.flatMap { $0.fused ?? [] } }   // (5.0: a 큐레무's partner too)
 
     /// Things no play can make (10 §2.1).
     static func values(_ w: Walk) -> [String] {
         var out: [String] = []
         func bad(_ s: String) { if !out.contains(s) { out.append(s) } }
         for m in mons(w) {
-            guard (1...493).contains(m.dex) else { bad("species \(m.dex)"); continue }
+            guard (1...dexMax).contains(m.dex) else { bad("species \(m.dex)"); continue }
+            if let f = m.form, !(Content.gen6 && (1...(monForms[m.dex]?.count ?? 0)).contains(f)) { bad("form \(f) of #\(m.dex)") }   // 5.0
+            if let x = m.fused, !(Content.gen6 && m.dex == 646 && x.count == 1 && [643, 644].contains(x[0].dex) && x[0].fused == nil && m.form == (x[0].dex == 643 ? 2 : 1)) { bad("fused into #\(m.dex)") }
             if !(1...100).contains(m.level) { bad("level \(m.level)") }
             if let iv = m.ivs, iv.count != 6 || iv.contains(where: { !(0...31).contains($0) }) { bad("IVs \(iv)") }
             if let ev = m.evs, ev.count != 6 || ev.contains(where: { !(0...255).contains($0) }) || ev.reduce(0, +) > 510 { bad("EVs \(ev)") }
@@ -36,9 +38,13 @@ enum SaveCheck {
         return out
     }
     /// Every item a save can hold: finds and chain rewards (the courses), the shops, evolution items, and 1.x's balls (1.10 refunded them).
-    static let knownItems: Set<String> = {
-        var s = Set<String>(courses.flatMap { (c: Course) -> [String] in c.items.map(\.item) })
-        s.formUnion(Walk.shop.map(\.item)); s.formUnion(Walk.bpShop.map(\.item)); s.formUnion(evolutions.compactMap(\.item))
+    static var knownItems: Set<String> { Content.gen6 ? knownItemsGen6 : knownItemsGen4 }
+    /// 5.0: the new courses' finds, the catalog, Gen V–VI's held items, the evolution items of Gen V–VI, the stones and orbs, the important ones.
+    static let knownItemsGen6: Set<String> = knownItemsGen4.union(coursesGen6.flatMap { $0.items.map(\.item) }).union(Walk.heldBPGen6.map(\.item)).union(Walk.heldWGen6.map(\.item))
+        .union(evolutionsGen6.compactMap(\.item)).union(Forms.stones).union(ItemKind.keys).union(Held.drives.keys)
+    static let knownItemsGen4: Set<String> = {
+        var s = Set<String>(coursesGen4.flatMap { (c: Course) -> [String] in c.items.map(\.item) })
+        s.formUnion(Walk.shopGen4.map(\.item)); s.formUnion(Walk.bpShop.map(\.item)); s.formUnion(evolutionsGen4.compactMap(\.item))
         s.formUnion(["몬스터볼", "슈퍼볼", "하이퍼볼", "달의돌"])
         return s
     }()
