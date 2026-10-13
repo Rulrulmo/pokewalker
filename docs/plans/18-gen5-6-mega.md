@@ -1008,3 +1008,28 @@ N을 올리면 생기는 gen.py 필터 버그 3개도 같이 고친다:
   - 서버: `raid_runs.kind`(NULL = 지금 레이드, 'mega')와 `mega_picks` 표를 만든다. 서버를 새로 설치해 시작할 때 붙는다(라이브 DB 변경이라 사용자 OK 뒤다).
 - **가방(mac 요청):** `ItemKind.key`(로토무카탈로그 · 유전자쐐기 · 비추는거울 · 그라시데아꽃 · 굴레의항아리)는 팔지 않고 "기타" 탭이다. content5면 "메가스톤" 탭이 생긴다(9탭). Core/Compose.swift의 도구 switch에 `.key`를 더했다.
 - **테스트:** 서버 115개. 메가 레이드는 서버를 거치는 테스트(로비, ★1 한 판, 볼 없음, 천장 고르기, 스톤 · BP 우편)가 있다. 앱 SelfTest(리눅스)는 실패 이름이 HEAD와 같다(4개, 리눅스 전용).
+
+### 14.10 7단계: 서버 막기 · 스위치 · 업데이트 힌트(서버, 10-14, 124efec)
+
+- **content5 스위치:** `pokeserver content5 on|off`(settings 표). 도는 서버는 10초마다 읽는다. 로그인 응답에 `content5: true`가 실린다(꺼지면 없음).
+- **옛 앱 막기(§10.1 · 10.2):**
+  - 트레이너 경로 17곳 모두 User-Agent의 앱 버전이 그 트레이너의 최소 버전보다 낮으면 426(`old_app`, need)이다. `/v1/create` · `/v1/update` · 다운로드는 열려 있다.
+  - 최소 버전 = max(trainers.app, MIN_APP). 지금 라이브는 MIN_APP 3.0이고 모든 트레이너가 3.0이라 막히는 앱이 없다.
+  - content5가 켜진 채 5.0 앱이 act하면 그 트레이너의 최소 버전이 5.0이 된다. 그러면 다른 PC의 옛 앱이 막힌다.
+- **업데이트 힌트(§9.8 · §10.3, mac 요청):**
+  - `/v1/update` 응답에 서명 밖 `urgent`(Bool), `installBy`(ISO 시각)가 실린다. `pokeserver update-hint urgent|calm [<iso>]`로 정한다.
+  - 5.0 앱이 `/v1/update` 본문에 `trainer` · `staged` · `blocked` · `failed`(배열) · `where`를 실으면 app_reports 표에 남는다. `pokeserver versions`가 트레이너마다 마지막 앱 · 최소 버전 · 마지막 보고를 보여 준다.
+- **ServerCheck:** 721종, 폼 번호(content5에서만, 그 종의 폼 수 안), 합체(큐레무 646 안에 레시라무 · 제크로무 하나, 폼과 짝이 맞음), 안에 든 포켓몬도 uid 검사 · 원장(settleLedger)에 들어간다. 아는 도구에 6세대 도구 · 스톤 · 중요한 물건 · 새 코스 도구를 더했다.
+- **합체한 큐레무:** 교환 걸기 · 교환 수락 · 게시판 올리기 · 제안 · 맡기기를 모두 막는다("합체를 먼저\n풀어 주세요").
+- **라이브 DB에 붙는 것(새 서버를 설치하고 시작할 때. 사용자 OK 뒤):** `raid_runs.kind` 열, `mega_picks` · `app_reports` 표. 모두 더하기만 하고 지금 데이터는 바꾸지 않는다.
+
+### 14.11 켜는 날 순서(초안. 배포 방식은 개발이 끝난 뒤 사용자가 정한다)
+
+1. 백업(`pokewalker-backup`)
+2. 새 서버 설치(`server/build.sh install`): 스위치는 꺼진 채라 4.1 그대로 돈다. 표 · 열이 붙는다.
+3. 5.0 앱 릴리스(mac 서명). 꺼진 채라도 5.0 앱은 4.1처럼 돈다.
+4. `pokeserver update-hint urgent <켜는 시각>`, 안내 우편(`pokeserver mail --all`)
+5. `pokeserver versions`로 남은 사람 확인
+6. 켜는 날: MIN_APP 5.0(서버 env, 확인 필요 단계) → 서비스 재시작 → `pokeserver content5 on`
+7. live test, `pokeserver versions`
+- 다 새로 설치하는 방식(사용자 말: "이참에 다 새로 설치")이면 3~5 대신 설치 안내로 바꾼다.
