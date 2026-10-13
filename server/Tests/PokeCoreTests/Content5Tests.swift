@@ -492,3 +492,13 @@ private func formed(_ dex: Int, _ f: Int?, _ level: Int = 50) -> Mon { var m = m
     gen6 { #expect(Walk.bagTab("리자몽나이트X") == "메가스톤" && Walk.bagTab("쪽빛구슬") == "메가스톤" && Walk.bagTabs.count == 9 && Walk.bagTab("돌격조끼") == "지닌 도구") }
     #expect(Walk.bagTabs.count == 8)                                                                     // off: 4.1's eight
 }
+
+@Test func megaRotation() {                                                                      // plan 18 §6.4: from the launch week, across a year's end
+    var cal = Calendar(identifier: .iso8601); cal.timeZone = TimeZone(identifier: "Asia/Seoul")!
+    func at(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 14) -> Date { cal.date(from: DateComponents(year: y, month: m, day: d, hour: h))! }
+    #expect([at(2026, 10, 19, 0), at(2026, 10, 23), at(2026, 10, 25, 23), at(2026, 10, 1)].map { MegaRaid.round($0, cal) } == [0, 0, 0, 0])   // W43 (and before)
+    #expect([at(2026, 10, 26, 0), at(2026, 12, 28), at(2027, 1, 4), at(2027, 4, 5)].map { MegaRaid.round($0, cal) } == [1, 10, 11, 24])       // W53 → 2027-W01: 10, 11
+    let round = (0..<24).flatMap { MegaRaid.week(MegaRaid.round(at(2026, 10, 23).addingTimeInterval(Double($0) * 7 * 86400), cal)) }
+    #expect(round.count == 48 && Set(round.map { "\($0.dex)-\($0.form)" }).count == 48)                 // all 48 once a round
+    #expect(MegaRaid.week(0).map(\.dex) == [3, 6] && MegaRaid.week(24) == MegaRaid.week(0))          // 메가이상해꽃 · 메가리자몽X first
+}

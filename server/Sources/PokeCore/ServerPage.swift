@@ -10,7 +10,8 @@ struct Release: Codable, Sendable {
     let version: String, build: String, commit: String, published: Int
     let mac: Build?, windows: Build?
     var windowsSetup: Build? = nil                                     // the Windows installer (when the release has one: its button, the zip kept for updates)
-    func build(_ kind: String) -> Build? { kind == "mac" ? mac : kind == "windows" ? windows : kind == "windows-setup" ? windowsSetup : nil }
+    var macDmg: Build? = nil                                           // 5.0: the Mac's dmg, the same way
+    func build(_ kind: String) -> Build? { ["mac": mac, "windows": windows, "windows-setup": windowsSetup, "mac-dmg": macDmg][kind] ?? nil }
 }
 
 struct DownloadSite: Sendable {
@@ -74,11 +75,11 @@ func addDownloadPage(_ router: Router<BasicRequestContext>, _ site: DownloadSite
         guard site.authorized(request) else { var h = HTTPFields(); h[.location] = "/"; return Response(status: .seeOther, headers: h) }
         let kind = context.parameters.get("kind") ?? ""
         guard let r = site.release, let b = r.build(kind) else { return html(notFoundPage(), status: .notFound) }
-        let setup = kind == "windows-setup"
+        let name = kind == "windows-setup" ? "PokeWalker-\(r.version)-setup.exe" : kind == "mac-dmg" ? "PokeWalker-\(r.version).dmg" : "PokeWalker-\(r.version)-\(kind).zip"
         var headers = HTTPFields()
-        headers[.contentType] = setup ? "application/vnd.microsoft.portable-executable" : "application/zip"
+        headers[.contentType] = downloadType(kind)
         headers[.contentLength] = String(b.size)
-        headers[.contentDisposition] = setup ? "attachment; filename=\"PokeWalker-\(r.version)-setup.exe\"" : "attachment; filename=\"PokeWalker-\(r.version)-\(kind).zip\""
+        headers[.contentDisposition] = "attachment; filename=\"\(name)\""
         headers[.cacheControl] = "no-store"
         context.logger.info("download \(kind) \(r.version)")
         return Response(status: .ok, headers: headers, body: try await FileIO().loadFile(path: site.dir.appendingPathComponent(b.file).path, context: context))
@@ -330,7 +331,8 @@ extension DownloadSite {
             return "<a class=\"btn\" data-os=\"\(os)\" href=\"/download/\(kind)\">\(label)<small>\(what) · \(String(format: "%.1f", Double(b.size) / 1_048_576)) MB</small></a>"
         }
         let setup = r.windowsSetup != nil                                                            // the installer release on: its button and its steps
-        let buttons = button("mac", "mac", "Mac용 받기", "Apple Silicon · Intel, macOS 13+", r.mac)
+        let dmg = r.macDmg != nil                                                                    // 5.0 on: the Mac's dmg, the zip kept for updates
+        let buttons = (dmg ? button("mac", "mac-dmg", "Mac용 받기", "Apple Silicon · Intel, macOS 13+ · dmg", r.macDmg) : button("mac", "mac", "Mac용 받기", "Apple Silicon · Intel, macOS 13+", r.mac))
             + (setup ? button("windows", "windows-setup", "Windows용 받기", "Windows 10 · 11, x64 · 설치 프로그램", r.windowsSetup)
                      : button("windows", "windows", "Windows용 받기", "Windows 10 · 11, x64", r.windows))
         let front = shot("home", "홈 화면: 몬스터볼 카드 속 스티커 수첩과 피카츄", r.build, cls: "front", lazy: false)
@@ -340,7 +342,8 @@ extension DownloadSite {
             let img = shot(f.shot, f.alt, r.build)
             return "<article class=\"feat\">\(img.isEmpty ? "" : "<div class=\"pic\">\(img)</div>")<div class=\"txt\"><h3>\(f.title)</h3><p>\(f.text)</p></div></article>"
         }.joined()
-        let sums = [("Mac", r.mac), ("Windows 설치 프로그램", r.windowsSetup), ("Windows zip", setup ? r.windows : nil), ("Windows", setup ? nil : r.windows)]
+        let sums = [("Mac dmg", r.macDmg), ("Mac zip", dmg ? r.mac : nil), ("Mac", dmg ? nil : r.mac), ("Windows 설치 프로그램", r.windowsSetup),
+                    ("Windows zip", setup ? r.windows : nil), ("Windows", setup ? nil : r.windows)]
             .compactMap { n, b in b.map { "\(n) \($0.sha256)" } }.joined(separator: "<br>")
         let hero = """
             <header class="hero"><div class="wrap hero-in"><div>\(brandHTML)
@@ -351,8 +354,8 @@ extension DownloadSite {
             <div class="band"></div>
             """
         let about = """
-            <div class="stats"><div><b class="pixel">493</b><span>포켓몬</span></div><div><b class="pixel">35</b><span>코스</span></div>
-            <div><b class="pixel">467</b><span>기술</span></div><div><b class="pixel">123</b><span>특성</span></div></div>
+            <div class="stats"><div><b class="pixel">\(dexMax)</b><span>포켓몬</span></div><div><b class="pixel">\(courses.count)</b><span>코스</span></div>
+            <div><b class="pixel">\(Content.gen6 ? 621 : 467)</b><span>기술</span></div><div><b class="pixel">\(Content.gen6 ? 191 : 123)</b><span>특성</span></div></div>
             <section><p class="eyebrow pixel">GAME</p><h2>이런 게임이에요</h2>
             <p class="sub">원작 포켓워커처럼 걸어서 포켓몬을 만나고, 원작엔 없던 배틀과 육성까지 카드 하나에서 다 해요. 조작은 카드 아래 패널을 클릭하거나 키보드로.</p>
             <div class="features">\(features)</div>
@@ -363,9 +366,11 @@ extension DownloadSite {
             </div></section>
             """
         let start = """
-            <section><p class="eyebrow pixel">START</p><h2>시작하기</h2><p class="sub">\(setup ? "Mac은 압축을 풀어 옮기고, Windows는 설치 프로그램을 실행해요." : "설치 프로그램 없이 압축만 풀면 돼요.") 서명되지 않은 앱이라 처음 한 번만 열어 주는 과정이 있어요.</p>
+            <section><p class="eyebrow pixel">START</p><h2>시작하기</h2><p class="sub">\(setup ? (dmg ? "Mac은 dmg에서 끌어 옮기고" : "Mac은 압축을 풀어 옮기고") + ", Windows는 설치 프로그램을 실행해요." : "설치 프로그램 없이 압축만 풀면 돼요.") 서명되지 않은 앱이라 처음 한 번만 열어 주는 과정이 있어요.</p>
             <div class="steps">
-            <div class="step"><div class="n pixel">1</div><h3>받기</h3><p>맨 위에서 내 컴퓨터에 맞는 파일을 받아요.</p><p><b>Mac</b> 압축을 풀고 PokeWalker.app을 <b>응용 프로그램</b> 폴더로 옮겨요.</p>\(setup
+            <div class="step"><div class="n pixel">1</div><h3>받기</h3><p>맨 위에서 내 컴퓨터에 맞는 파일을 받아요.</p>\(dmg
+                ? "<p><b>Mac</b> 받은 dmg를 열고 PokeWalker를 <b>응용 프로그램</b> 폴더로 끌어 놓아요.</p>"
+                : "<p><b>Mac</b> 압축을 풀고 PokeWalker.app을 <b>응용 프로그램</b> 폴더로 옮겨요.</p>")\(setup
                 ? "<p><b>Windows</b> 받은 설치 프로그램을 실행해요. 설치 위치는 바꾸지 않아도 돼요.</p>"
                 : "<p><b>Windows</b> 압축을 풀고 PokeWalker 폴더를 쓰기 권한이 있는 곳에 둬요.</p>")</div>
             <div class="step"><div class="n pixel">2</div><h3>처음 열기</h3><p><b>Mac</b> 우클릭 → 열기 → 열기. 그래도 막히면 시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기.</p>\(setup
@@ -374,7 +379,8 @@ extension DownloadSite {
             <div class="step"><div class="n pixel">3</div><h3>트레이너 ID와 PIN</h3><p>처음 켜면 트레이너 ID(2~12자)와 숫자 4자리 PIN을 정해요. 다른 PC에서도 같은 ID와 PIN으로 들어오면 이어서 해요.</p></div>
             </div>
             <details class="more"><summary>자세한 설치 방법</summary><div class="cols">
-            <div><h4>Mac</h4><ol><li>다운로드 폴더에서 바로 켜면 <b>자동 업데이트가 안 돼요</b>. 꼭 응용 프로그램 폴더로 옮겨요.</li>
+            <div><h4>Mac</h4><ol><li>다운로드 폴더에서 바로 켜면 <b>자동 업데이트가 안 돼요</b>. 꼭 응용 프로그램 폴더로 옮겨요.</li>\(dmg
+                ? "<li>예전에 zip으로 받아 다운로드 폴더 같은 곳에 둔 PokeWalker는 지워요. 옮긴 뒤 dmg는 꺼내도(⏏) 돼요.</li>" : "")
             <li>Apple 개발자 서명이 없어서 더블클릭하면 막혀요. 처음 한 번만 우클릭 → 열기.</li>
             <li>터미널이 편하면 <code>xattr -dr com.apple.quarantine /Applications/PokeWalker.app</code></li>
             <li>알림 허용을 물으면 허용해요. 메뉴 막대의 몬스터볼을 누르면 카드를 숨기거나 보여요.</li></ol></div>
@@ -384,7 +390,7 @@ extension DownloadSite {
             <li>로그인할 때 자동으로 켜려면 <kbd>Win+R</kbd> → <code>shell:startup</code> 폴더에 바로 가기를 넣어요.</li>
             <li>Windows는 앱이 켜져 있는 동안의 입력만 걸음으로 세요.</li>
             <li>알림 영역의 몬스터볼을 클릭하면 숨기기 / 보이기, 우클릭하면 메뉴예요.</li></ol></div>
-            <div><h4>업데이트와 세이브</h4><ul><li>새 버전은 앱이 알아서 받아서, 다음에 끄거나 켤 때 바꿔요.</li>
+            <div><h4>업데이트와 세이브</h4><ul><li>\(knows(r.version, "5.0") ? "새 버전은 앱이 알아서 받아서, 3분 동안 손을 안 대고 있을 때나 다음에 켤 때 바꿔요." : "새 버전은 앱이 알아서 받아서, 다음에 끄거나 켤 때 바꿔요.")</li>
             <li>바로 바꾸려면 우클릭 → <b>업데이트 확인 · 설치</b>. 한 번에 확인, 받기, 다시 시작까지 해요.</li>
             <li>세이브는 서버에 있어서 다시 받아 설치해도 그대로예요.</li>
             <li>숨기기 단축키: Mac <kbd>⌃⌥P</kbd> · Windows <kbd>Ctrl+Alt+P</kbd></li></ul></div>

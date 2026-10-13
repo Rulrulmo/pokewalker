@@ -84,8 +84,15 @@ enum MegaRaid {
     static let bosses: [MegaBoss] = monForms.keys.sorted().flatMap { d -> [MegaBoss] in
         d == 719 ? [] : monForms[d]!.enumerated().compactMap { k, f in (f.kind == .mega || f.kind == .primal) ? f.item.map { MegaBoss(dex: d, form: k + 1, stone: $0) } : nil }
     }
-    /// An ISO week's two (24 weeks a round).
-    static func week(_ isoWeek: Int) -> [MegaBoss] { [bosses[(2 * isoWeek) % bosses.count], bosses[(2 * isoWeek + 1) % bosses.count]] }
+    /// The rotation's week n's two (24 weeks a round; n: `round`).
+    static func week(_ n: Int) -> [MegaBoss] { [bosses[(2 * n) % bosses.count], bosses[(2 * n + 1) % bosses.count]] }
+    /// The rotation's week: weeks since the launch week (2026-W43, content5 on Friday 10-23 — its two the first), not the ISO week's number,
+    /// which goes 52 → 53 → 1 at a year's end (2026 has 53) and would show some pairs twice and skip others. Before it: 0.
+    static let firstWeek = DateComponents(weekOfYear: 43, yearForWeekOfYear: 2026)
+    static func round(_ now: Date, _ cal: Calendar) -> Int {
+        guard let a = cal.date(from: firstWeek), let s = cal.dateInterval(of: .weekOfYear, for: now)?.start else { return 0 }
+        return max(0, (cal.dateComponents([.day], from: a, to: s).day ?? 0) / 7)
+    }
     static let stoneOdds = [3, 5, 8, 10, 20]                    // % a win, ★1–★5 (the user, 10-13)
     static let pity = 30                                        // wins for one pick
     static func duplicateBP(_ tier: Int) -> Int { 5 * tier }

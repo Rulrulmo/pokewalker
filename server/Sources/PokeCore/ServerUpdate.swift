@@ -14,11 +14,13 @@ struct UpdateReq: Codable, Sendable {
 }
 
 /// RELEASE_DIR's signed files: manifest.json, manifest.sig and the files the manifest names (the zips; from the installer release on, the Windows
-/// installer as windowsSetup — the zip stays for the apps that update by it).
+/// installer as windowsSetup — the zip stays for the apps that update by it; 5.0: the Mac's dmg as macDmg, the same way: the page's, the zip the updates').
 struct ReleaseFiles: Sendable {
     struct Entry: Codable, Sendable { let file: String; let sha256: String; let size: Int }
-    struct Manifest: Codable, Sendable { let build, commit, version: String; let mac, windows: Entry?; var windowsSetup: Entry? = nil
-        var entries: [(kind: String, entry: Entry)] { [("mac", mac), ("windows", windows), ("windows-setup", windowsSetup)].compactMap { k, e in e.map { (k, $0) } } }
+    struct Manifest: Codable, Sendable { let build, commit, version: String; let mac, windows: Entry?; var windowsSetup: Entry? = nil, macDmg: Entry? = nil
+        var entries: [(kind: String, entry: Entry)] {
+            [("mac", mac), ("windows", windows), ("windows-setup", windowsSetup), ("mac-dmg", macDmg)].compactMap { k, e in e.map { (k, $0) } }
+        }
         func entry(_ kind: String) -> Entry? { entries.first { $0.kind == kind }?.entry }
     }
     let dir: URL
@@ -51,6 +53,11 @@ struct ReleaseFiles: Sendable {
             guard hex(sha256(Array(d))) == e.sha256.lowercased() else { throw ServerError(description: "\(kind): \(e.file)'s SHA-256 isn't the manifest's") }
         }
     }
+}
+
+/// A download's Content-Type: the Windows installer, the Mac's dmg (5.0), else a zip.
+func downloadType(_ kind: String) -> String {
+    kind == "windows-setup" ? "application/vnd.microsoft.portable-executable" : kind == "mac-dmg" ? "application/x-apple-diskimage" : "application/zip"
 }
 
 /// Windows apps up to 3.9 update by a zip and a PowerShell swap that never works on Windows (3.9.1's finding: the app quits for the swap, the swap
@@ -89,7 +96,7 @@ func addUpdates(_ router: Router<BasicRequestContext>, _ files: ReleaseFiles, ap
         }
         guard let m = files.manifestText.flatMap(ReleaseFiles.parse), let e = m.entry(kind) else { return respond(.error(404, "no_release")) }
         var headers = HTTPFields()
-        headers[.contentType] = kind == "windows-setup" ? "application/vnd.microsoft.portable-executable" : "application/zip"
+        headers[.contentType] = downloadType(kind)
         headers[.contentLength] = String(e.size)
         headers[.cacheControl] = "no-store"
         context.logger.info("update download \(kind) \(m.version)")

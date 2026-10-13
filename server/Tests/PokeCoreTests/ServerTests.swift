@@ -328,6 +328,16 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     try ReleaseFiles.checkFiles(m, in: dir)
     let bad = try #require(ReleaseFiles.parse(withSetup.replacingOccurrences(of: "\"size\":\(exe.count)", with: "\"size\":99")))
     #expect(throws: (any Error).self) { try ReleaseFiles.checkFiles(bad, in: dir) }
+    // 5.0: the Mac's dmg (macDmg), the same way — the zip stays for the updates
+    let dmg = Data("koly dmg".utf8)
+    try dmg.write(to: dir.appendingPathComponent("PokeWalker-mac.dmg"))
+    let withDmg = withSetup.replacingOccurrences(of: "\"version\":\"3.9.1\"", with: "\"macDmg\":{\"file\":\"PokeWalker-mac.dmg\",\"sha256\":\"\(hex(sha256(Array(dmg))))\",\"size\":\(dmg.count)},\"version\":\"5.0\"")
+    let d = try #require(ReleaseFiles.parse(withDmg))
+    #expect(d.entry("mac-dmg")?.size == dmg.count && d.entry("mac") != nil && d.entries.map(\.kind) == ["mac", "windows-setup", "mac-dmg"])
+    try ReleaseFiles.checkFiles(d, in: dir)
+    try Data("changed!".utf8).write(to: dir.appendingPathComponent("PokeWalker-mac.dmg"))
+    #expect(throws: (any Error).self) { try ReleaseFiles.checkFiles(d, in: dir) }                  // same size, other bytes
+    #expect(downloadType("mac-dmg") == "application/x-apple-diskimage" && downloadType("mac") == "application/zip" && downloadType("windows-setup").contains("portable"))
 }
 
 @Test func downloadPageInstaller() throws {                                                         // the Windows button: the installer when the release has one
@@ -335,9 +345,9 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
     let site = DownloadSite(dir: dir, password: "pw")
-    func release(_ setup: Bool) throws {
+    func release(_ setup: Bool, dmg: Bool = false) throws {
         let b = "{\"file\":\"f\",\"size\":1048576,\"sha256\":\"\(String(repeating: "c", count: 64))\"}"
-        try Data("{\"version\":\"3.9.1\",\"build\":\"40\",\"commit\":\"x\",\"published\":1800000000,\"mac\":\(b),\"windows\":\(b)\(setup ? ",\"windowsSetup\":\(b)" : "")}".utf8)
+        try Data("{\"version\":\"\(dmg ? "5.0" : "3.9.1")\",\"build\":\"40\",\"commit\":\"x\",\"published\":1800000000,\"mac\":\(b),\"windows\":\(b)\(setup ? ",\"windowsSetup\":\(b)" : "")\(dmg ? ",\"macDmg\":\(b)" : "")}".utf8)
             .write(to: dir.appendingPathComponent("release.json"))
     }
     try release(false)
@@ -348,6 +358,15 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     #expect(page.contains("data-os=\"windows\" href=\"/download/windows-setup\"") && page.contains("추가 정보 → 실행") && page.contains("설치 프로그램"))
     #expect(!page.contains("내 문서") && !page.contains("Program Files에 두면") && site.release?.build("windows-setup") != nil)
     #expect(page.contains("예전 zip 폴더는 지워도 돼요") && page.contains("%APPDATA%\\PokeWalker"))
+    #expect(page.contains("data-os=\"mac\" href=\"/download/mac\"") && !page.contains("dmg") && page.contains("다음에 끄거나 켤 때 바꿔요"))
+    #expect(page.contains("pixel\">493<") && page.contains("pixel\">35<") && page.contains("pixel\">467<") && page.contains("pixel\">123<"))   // 4.1's
+    // 5.0: the Mac's button the dmg (the zip kept for updates, its sum shown too); a 5.0 release puts updates in at a lull
+    try release(true, dmg: true)
+    page = site.page()
+    #expect(page.contains("data-os=\"mac\" href=\"/download/mac-dmg\"") && page.contains("dmg를 열고") && page.contains("Mac dmg ") && page.contains("Mac zip "))
+    #expect(page.contains("3분 동안 손을 안 대고") && site.release?.build("mac-dmg") != nil && site.release?.build("mac") != nil && site.release?.build("x") == nil)
+    let on = Content.$testing.withValue(true) { site.page() }
+    #expect(on.contains("pixel\">721<") && on.contains("pixel\">\(Content.$testing.withValue(true) { courses.count })<") && on.contains("pixel\">621<") && on.contains("pixel\">191<"))
 }
 
 @Test func saveChecks() async throws {
