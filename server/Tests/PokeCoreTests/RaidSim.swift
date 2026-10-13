@@ -26,9 +26,10 @@ private func simPick(_ b: Battle) -> Int {
 }
 
 /// One raid fight: (won, bars down, turns).
-private func simFight(_ party: [Mon], boss: Mon, bars: Int, _ r: inout SimRNG) -> (Bool, Int, Int) {
+private func simFight(_ party: [Mon], boss: Mon, bars: Int, mega: Int? = nil, _ r: inout SimRNG) -> (Bool, Int, Int) {
     var b = Battle(wild: boss, party: party); b.seed = r.next(); b.raidTier = 1                  // a run's rules (날려버리기 can't end it)
     b.theirs += Array(repeating: Fighter(boss), count: bars - 1)
+    if let k = mega { for i in b.theirs.indices { b.theirs[i].mega = k }; b.megaUsed = [false, true] }   // 5.0: the Mega raid's boss (as EngineRules.raid)
     _ = b.begin(weather: nil, &r)
     while !b.over, b.turnNo < 400 {
         if b.mustReplace, let n = b.mine.indices.first(where: { b.mine[$0].alive }) { _ = b.replace(n); continue }
@@ -46,7 +47,8 @@ private func raidSim(_ path: String) throws {
     let n = Int(ProcessInfo.processInfo.environment["RAID_SIM_N"] ?? "") ?? 60
     let parties = try JSONDecoder().decode([String: [Mon]].self, from: Data(contentsOf: URL(fileURLWithPath: path)))
     let only = ProcessInfo.processInfo.environment["RAID_SIM_DEX"].flatMap(Int.init)
-    let species = only.map { [$0] } ?? raidRotation, bars = Int(ProcessInfo.processInfo.environment["RAID_SIM_BARS"] ?? "") ?? 10
+    let megas = ProcessInfo.processInfo.environment["RAID_SIM_MEGA"] != nil                       // 5.0 (CONTENT5=1 too): the Mega raid's 48 instead
+    let species = megas ? Array(MegaRaid.bosses.indices) : only.map { [$0] } ?? raidRotation, bars = Int(ProcessInfo.processInfo.environment["RAID_SIM_BARS"] ?? "") ?? 10
     let levels = (ProcessInfo.processInfo.environment["RAID_SIM_LEVELS"] ?? RaidRules.tiers.map { String($0.level) }.joined(separator: ",")).split(separator: ",").compactMap { Int($0) }
     let rel = ProcessInfo.processInfo.environment["RAID_SIM_REL"]                  // "max" / "avg": levels are offsets from the party's top / mean level
     let moves = ProcessInfo.processInfo.environment["RAID_SIM_MOVES"] ?? "raid", split = ProcessInfo.processInfo.environment["RAID_SIM_SPLIT"] != nil
@@ -64,7 +66,7 @@ private func raidSim(_ path: String) throws {
             for dex in species {
                 var dw = 0
                 for _ in 0..<n {
-                    var boss = RaidRules.boss(dex, tier, shiny: false, &r)
+                    var boss = megas ? MegaRaid.boss(MegaRaid.bosses[dex], tier, &r) : RaidRules.boss(dex, tier, shiny: false, &r)
                     switch moves {
                     case "level": boss.known = nil
                     case "tower": boss.known = boss.towerMoves()
@@ -72,7 +74,7 @@ private func raidSim(_ path: String) throws {
                     case "tower+sig": boss.known = boss.withSignature(boss.towerMoves())
                     default: break
                     }
-                    let (w, d, t) = simFight(party, boss: boss, bars: bars, &r)
+                    let (w, d, t) = simFight(party, boss: boss, bars: bars, mega: megas ? MegaRaid.bosses[dex].form : nil, &r)
                     won += w ? 1 : 0; down += d; turns += t; dw += w ? 1 : 0
                 }
                 per[dex, default: ""] += String(format: " | L%d %3.0f%%", step, 100 * Double(dw) / Double(n))
@@ -81,6 +83,6 @@ private func raidSim(_ path: String) throws {
             line += " | " + (rel == nil ? "L" : "Δ") + String(format: "%d %3.0f%% %4.1f줄 %3.0f턴", step, 100 * Double(won) / all, Double(down) / all, Double(turns) / all)
         }
         print(line)
-        if split { for dex in species { print("RAIDSIM   \(name.padding(toLength: 14, withPad: " ", startingAt: 0)) \(monNames[dex])" + per[dex]!) } }
+        if split { for dex in species { print("RAIDSIM   \(name.padding(toLength: 14, withPad: " ", startingAt: 0)) \(megas ? Forms.of(MegaRaid.bosses[dex].dex, MegaRaid.bosses[dex].form)!.name : monNames[dex])" + per[dex]!) } }
     }
 }
