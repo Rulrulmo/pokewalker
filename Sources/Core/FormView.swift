@@ -24,6 +24,15 @@ extension Walker {
                               why: r == -1 ? "함께 걷는 중이에요" : nil, dex: p.dex, form: nil, op: .fuse(uid: u, with: pu))
         }
     }
+    /// 5.0 (the user: 큐레무 합체 · 로토무 모습을 어디서 하는지 몰라서): what this one's page offers straight off — its key item, the page's link,
+    /// the LCD menu's word — while the bag has the item (로토무 + 로토무카탈로그, 큐레무 + 유전자쐐기).
+    func formAction(_ ref: Int) -> (item: String, label: String, short: String)? {
+        guard Content.gen6, let m = state.mon(ref) else { return nil }
+        let has = { (i: String) in (self.state.bag + self.state.items).contains(i) }
+        if m.dex == 479, has("로토무카탈로그") { return ("로토무카탈로그", "모습 바꾸기", "모습") }
+        if m.dex == 646, has("유전자쐐기") { return m.fused == nil ? ("유전자쐐기", "합체하기", "합체") : ("유전자쐐기", "분리하기", "분리") }
+        return nil
+    }
     /// Instead of using it at once: this item asks what next (true = this page is up).
     func keyItemOn(_ item: String, _ ref: Int) -> Bool {
         guard ["로토무카탈로그", "유전자쐐기"].contains(item) else { return false }

@@ -17,14 +17,18 @@ let typeColor: [String: Color] = (["normal": (168, 167, 122), "fire": (238, 129,
     .mapValues { Ink.c($0.0, $0.1, $0.2) }
 @MainActor func font(_ size: CGFloat, _ w: FontSpec.Weight = .regular) -> FontSpec { FontSpec(size: size * K, weight: w) }
 @MainActor func width(_ s: String, _ f: FontSpec) -> CGFloat { fonts.width(s, f) }
+/// 5.0: the biggest of `sizes` that fits s in w (the last one if none does: then `say` cuts it).
+@MainActor func fitFont(_ s: String, _ sizes: [CGFloat], _ w: CGFloat, _ weight: FontSpec.Weight) -> FontSpec { font(sizes.first { width(s, font($0, weight)) <= w } ?? sizes.last!, weight) }
 /// The renders' (Tests/Shots.swift, Windows/WinRender.swift) look-out: each text cut short (…) or off its LCD while drawing (nil: not looking).
 @MainActor var cutTexts: [String]? = nil
 extension Canvas {
     /// Text centred on the row `cy` (by its caps, one baseline for Hangul and digits); align 0 = starts at x, 0.5 = centred on x, 1 = ends at x.
     @discardableResult func say(_ s: String, _ x: CGFloat, _ cy: CGFloat, _ f: FontSpec, _ c: Color, _ align: CGFloat = 0, maxW: CGFloat? = nil) -> CGFloat {
-        var s = s
-        if let maxW, width(s, f) > maxW { cutTexts?.append(s) }
-        if let maxW { while s.count > 1, width(s, f) > maxW { s = String(s.dropLast(2)) + "…" } }
+        var s = s, f = f
+        if let maxW, width(s, f) > maxW {                                                          // 5.0: too long — up to 1.5 pt smaller first, whole; else cut short (…)
+            if let g = [0.5, 1.0, 1.5].lazy.map({ FontSpec(size: f.size - $0 * K, weight: f.weight, face: f.face) }).first(where: { width(s, $0) <= maxW }) { f = g }
+            else { cutTexts?.append(s); f = FontSpec(size: f.size - 1.5 * K, weight: f.weight, face: f.face); while s.count > 1, width(s, f) > maxW { s = String(s.dropLast(2)) + "…" } }
+        }
         let w = width(s, f), m = fonts.metrics(f)
         text(s, CGPoint(x: x - w * align, y: cy - m.ascender + m.capHeight / 2), f, c)
         return w
@@ -315,7 +319,8 @@ extension Canvas {
         var yy = monBody(m, 198) + 4
         rule(y(yy - 2))                                                                            // 진화: how it evolves, a line a target
         c.say("진화", x(X0 + 2), y(yy + 6), font(9, .medium), Ink.sub)                            // 3.7: 진화 on one line, 지닌 도구 under it
-        if let l = m.evos.first { c.say(l + (m.evos.count > 1 && m.evos[1].hasPrefix("→") ? " 외" : ""), x(X0 + 34), y(yy + 6), font(9, .medium), l.hasPrefix("→") ? Ink.ink : Ink.sub, maxW: x(X1 - X0 - 36)) }
+        let fw = m.formAction.map { a -> CGFloat in let w = c.say(a, x(X1 - 2), y(yy + 6), font(8.5, .bold), Ink.red, 1); hits.append((r(X1 - 2 - w / K - 6, yy - 1, w / K + 8, 14), 4411)); return w + x(8) } ?? 0   // 5.0: its form, straight off
+        if let l = m.evos.first { c.say(l + (m.evos.count > 1 && m.evos[1].hasPrefix("→") ? " 외" : ""), x(X0 + 34), y(yy + 6), font(9, .medium), l.hasPrefix("→") ? Ink.ink : Ink.sub, maxW: x(X1 - X0 - 36) - fw) }
         let hr = r(X0, yy + 12, X1 - X0, 14); hits.append((hr, 4410))
         c.say("도구", x(X0 + 2), y(yy + 19), font(9, .medium), Ink.sub)
         if let h = m.held {
@@ -682,7 +687,7 @@ extension Page {
             var xr = rc.maxX - x(9) - c.say(row.value, rc.maxX - x(9), rc.midY, font(9, .semibold), Ink.ink, 1) - x(6)
             if row.walking { xr = pillAt("걷는 중", xr, rc.midY, Ink.tint(Ink.green, 0.18), Ink.green) }
             if row.me { xr = pillAt("나", xr, rc.midY, Ink.tint(Ink.blue, 0.16), Ink.blue) }
-            let nw = c.say((row.shiny ? "★ " : "") + row.name, xl, rc.midY, font(10, .bold), Ink.ink, maxW: xr - xl)
+            let nm = (row.shiny ? "★ " : "") + row.name, nw = c.say(nm, xl, rc.midY, fitFont(nm, [10, 9, 8.5], xr - xl, .bold), Ink.ink, maxW: xr - xl)   // (5.0: a long ID a size smaller, whole)
             var xm = xl + nw + x(4)
             if let d = row.deco, xm + x(10) < xr { pixelArt(medalArt, d == "gold" ? goldPal : silverPal, CGPoint(x: xm + x(4), y: rc.midY), 1.6 * K); xm += x(12) }   // 3.9: its medal, its 칭호 where there's room
             if let t = row.title, xm + width(t, font(7.5, .bold)) + x(10) < xr { titlePill(t, xm, rc.midY, size: 7.5) }
@@ -721,7 +726,7 @@ extension Page {
         let n = CGFloat(perRow), bw = (X1 - X0 - 5 * (n - 1)) / n
         for (i, b) in buttons.enumerated() {
             let rc = r(X0 + CGFloat(i % perRow) * (bw + 5), 380 + CGFloat(i / perRow) * 34 - (rowsN > 1 ? 0 : 0), bw, 30); c.fill(.rounded(rc, 10 * K), b.2)
-            c.say(b.0, rc.midX, rc.midY, font(n > 2 ? 10 : 11, .bold), b.3, 0.5, maxW: rc.width - x(6)); if b.4 { hits.append((rc, b.1)) }
+            c.say(b.0, rc.midX, rc.midY, fitFont(b.0, n > 2 ? [10, 9, 8.5] : [11, 10], rc.width - x(6), .bold), b.3, 0.5, maxW: rc.width - x(6)); if b.4 { hits.append((rc, b.1)) }   // (5.0: a long one a size smaller, whole)
         }
     }
     // MARK: 교환 (docs/plans/12 §3): the open offers, one offer, making or answering one
@@ -1209,8 +1214,9 @@ extension Page {
             var xr = rc.maxX - x(8)
             if let p = row.pill { let good = p == "잡음" || p == "승"; xr = pillAt(p, xr, rc.midY, good ? Ink.tint(Ink.green, 0.18) : Ink.board, good ? Ink.green : Ink.sub) }
             xr -= c.say(row.value, xr, rc.midY, font(8.5 + big, .semibold), m.tab == 0 && m.ranks ? Ink.ink : Ink.sub, 1) + x(6)
-            c.say(row.name, xl, rc.midY, font(9.5 + big, .bold), Ink.ink, maxW: xr - xl)
+            c.say(row.name, xl, rc.midY, fitFont(row.name, [9.5 + big, 8.5 + big, 8], xr - xl, .bold), Ink.ink, maxW: xr - xl)   // (5.0: a long ID a size smaller, whole)
         }
+        if let rule = m.rule { c.say(rule, x(Layout.w / 2), y(414), font(9, .semibold), Ink.c(132, 64, 196), 0.5, maxW: x(X1 - X0 - 4)) }   // 5.0: the Mega raid's in a line
         let rc = r(X0, 428, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.go == nil ? Ink.tile : Ink.red)
         c.say(m.go ?? m.hint, rc.midX, rc.midY, font(m.go == nil ? 10 : 11, .bold), m.go == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.go != nil { hits.append((rc, 7010)) }
     }

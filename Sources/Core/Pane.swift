@@ -61,6 +61,7 @@ struct MonModel: Equatable {
     var evos: [String] = [], evoAction: String? = nil                  // how it evolves (a line a target); the companion's: what evolves it right now
     var sel: Int?                                                      // the LCD's pick (함께 / 놓아주기 / 닫기, or 아니오 / 예): what ● does is red
     var held: String? = nil, heldNote: String? = nil                   // 3.7: its 지닌 도구 and what it does (the line under 진화; a click: 지니게 하기)
+    var formAction: String? = nil                                      // 5.0: 모습 바꾸기 · 합체하기 · 분리하기 (its key item in the bag): a link on the 진화 line
 }
 /// 지니게 하기 (docs/plans/13 ⑤): who, what it holds now, the bag's holdable items (빼기 first while it holds one), the pick's line, the button.
 struct HoldModel: Equatable {
@@ -225,7 +226,8 @@ struct RaidModel: Equatable {
     var tabs: [String]; var tab: Int; var rows: [Row]; var empty: String
     var go: String?; var hint: String
     var ranks = true                                                   // 5.0: false = the Mega raid's (its tabs are bosses: no rank column)
-    var roomy = false                                                  // 5.0: four rows, bigger (the Mega raid's runs), not five
+    var roomy = false                                                  // 5.0: bigger rows (the Mega raid's runs, three)
+    var rule: String? = nil                                            // 5.0: how it goes, a line over the button (the Mega raid's stones)
 }
 /// The tier to fight at (16 §8-5): a row a tier (★, the boss's level, its 31s, the BP a win pays), the pick, the button.
 struct RaidTierModel: Equatable {

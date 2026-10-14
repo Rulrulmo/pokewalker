@@ -276,7 +276,7 @@ func put<T>(_ s: String, _ field: inout T) {
         guard let k = page.hits.first(where: { $0.0.contains(p) })?.1 else { drag(); return }    // not on a button: drag the whole card
         if n == 1, walker.dragsFrom(k) { downOn = pageKind; gridPress = (k, p); _ = SetCapture(hwnd); return }   // 포켓몬's grid: decided at the release (a click) or as it moves (a drag)
         if n == 1 { downOn = pageKind } else if c.battle != nil || c.shop?.ask != nil || c.mon != nil || c.tower != nil && !(5440...5441).contains(k) || c.relearn != nil && !(5540...5541).contains(k) || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened: ignored
-        if k >= 5000, k < 10000 { walker.pageTap(k) } else if k >= 4000 { walker.gridTap(k) } else if k >= 3000 { walker.menuTap(k - 3000) } else if k >= 2000 { walker.shopTap(k) } else { walker.sidePick(k) }
+        walker.paneTap(k)
     }
     func drag() { _ = ReleaseCapture(); _ = SendMessageW(hwnd, UINT(WM_NCLBUTTONDOWN), WPARAM(HTCAPTION), 0) }
     /// The pointer over the page while a grid press is held: past a hand's wobble it carries the Pokémon (the page draws it there).

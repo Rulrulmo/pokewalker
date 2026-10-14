@@ -64,6 +64,7 @@ final class JSONSettings: Settings {
     walker.awaySteps(counter: c.counter(), boot: c.boot())                                       // a new launch only baselines: steps while it was closed can't be seen
     if case .updated(let v) = launch { walker.announceUpdate(v) }
     walker.lookForOldApps()                                                                      // 5.0: once, a zip's old folder may go
+    walker.tipsOn = walker.persist; walker.tipBits = settings.int("tips5", 0)                   // 5.0: the first-time tips (Tips.swift)
     walker.save()
     walker.refreshPane(Date(), force: true)                                                      // the page it opens on (the status sheet)
     c.open(); settings.set("hidden", false)                                                      // a launch always shows it

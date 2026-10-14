@@ -48,6 +48,7 @@ import Foundation
     var notedAt: Date? = nil                                               // 5.0: when the staged one's banner last showed (a day: again)
     var updateWaits: String? = nil                                         // 5.0: a staged update's version (the tick's stagedUpdate): home's NEW tag
     var oldApps: [String] = []                                             // 5.0: older PokeWalker.app copies on this Mac (OldApps.swift: the menu's row)
+    var tipsOn = false, tipBits = 0                                        // 5.0: the first-time tips (Tips.swift): the app's walker only; which were said
     var relaunchAfterQuit = false, notedUpdate: String? = nil, updateNotices = 0   // the menu's 업데이트 설치: the quit starts the new version; the version a banner said was ready
     var installWhenStaged = false, installAt: Date? = nil                  // 업데이트 확인 · 설치 clicked: what it finds goes in; the install's moment (after the LCD says so)
     /// What the quit runs to put a staged update in (relaunch: start it after); the self-test's stub records it instead.
@@ -115,6 +116,7 @@ import Foundation
         settle(now)                                                                                // … and at home its news, then where a fight was going on to
         if now.timeIntervalSince(lastSave) > 60 { save() }
         updater?.tick(now) { [unowned self] in updateReport }; updateTick(now)
+        tipTick(now)                                                                               // 5.0: a first-time tip, at home
     }
     /// Fights, shows and animations play at 30 fps; the rest (the walking sprite too: HGSS steps it every 0.15 s) at the tick's 10.
     var busy: Bool { switch screen { case .beats, .hatch, .evolve, .radar, .traded: true; default: animating || waiting != nil } }   // (an act out: its dots)

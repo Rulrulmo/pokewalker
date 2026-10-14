@@ -53,10 +53,10 @@ extension Walker {
                 fb.text(e == 0 ? "×" : e > 1 ? "▲" : e < 1 ? "▼" : "", x + 46, y, 2, right: true, small: true)
                 if k == sel { fb.invert(x, y - 1, max(w + 3, 47), 11) }
             }
-            if b.canMega(.me) {                                                                       // 5.0: 메가진화 over the moves (◀ ▶ to it, ● ticks it)
-                let l = (megaOn ? "●" : "○") + "메가진화", w = textWidth(l, small: true) + 4
-                fb.fill(96 - w, 25, w, 12, 0); fb.fill(96 - w, 25, 1, 12, 2); fb.text(l, 94, 26, 3, right: true, small: true)
-                if sel == ms.count { fb.invert(96 - w, 25, w, 12) }
+            if b.canMega(.me) {                                                                       // 5.0: 메가 on a tab over the moves, between the two (◀ ▶ to it, ● ticks it): clear of the foe
+                let l = (megaOn ? "●" : "○") + "메가", w = textWidth(l, small: true) + 6, x0 = 50 - w / 2
+                fb.fill(x0, 27, w, 10, 0); fb.fill(x0, 27, w, 1, 2); fb.fill(x0, 27, 1, 10, 2); fb.fill(x0 + w - 1, 27, 1, 10, 2); fb.text(l, x0 + 3, 27, 3, small: true)
+                if sel == ms.count { fb.invert(x0, 27, w, 10) }
             }
         case .party(let b, let sel):
             stage(&fb, b, now, .idle)
@@ -330,6 +330,8 @@ extension Walker {
         guard case .say(_, let next, _) = screen else { return }
         switch next { case .menu, .shop, .shopConfirm, .dex, .box, .tower, .items, .card, .course, .train, .relearn, .trade, .raid, .market, .team, .itemOn, .duel, .hold, .visitPick, .squad, .mail: screen = next; default: break }
     }
+    /// A click on the side panel, by its code (Page.hits): the Mac's and Windows' one way in (5.0: the checks press each through it).
+    func paneTap(_ k: Int) { if k >= 5000, k < 10000 { pageTap(k) } else if k >= 4000 { gridTap(k) } else if k >= 3000 { menuTap(k - 3000) } else if k >= 2000 { shopTap(k) } else { sidePick(k) } }
     func gridTap(_ code: Int) {
         guard !frozen, waiting == nil else { return }
         throughSay()
@@ -359,6 +361,7 @@ extension Walker {
         case (.box(let i, _, _, true), 4402): screen = .box(i, act: nil, confirm: false, detail: true)
         case (.box(let i, _, true, true), 4403): screen = .box(i, act: 1, confirm: true, detail: true); press(1)
         case (.box(let i, _, _, true), 4409): screen = .relearn(ref: i, slot: 0, at: nil)                                          // 기술 바꾸기
+        case (.box(let i, _, _, true), 4411): if let f = formAction(i) { _ = keyItemOn(f.item, i) }                                // 5.0: its form, straight from its page
         case (.box(let i, _, _, true), 4410): screen = .hold(ref: i, sel: 0)                                                       // 3.7: 지니게 하기 · 빼기
         case (.box(let i, _, true, true), 4408) where state.box.indices.contains(i): askReleaseDupes(state.box[i].dex)            // 중복 n마리: asks (who stays) first
         case (_, 4200), (_, 4201): gridStep(code == 4200 ? -GridModel.perPage : GridModel.perPage, ends: true)
@@ -505,6 +508,7 @@ extension Walker {
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }
         guard case .box(let i, let act, let confirm, true) = sc, let m = state.mon(i) else { return nil }
         var p = monPage(m, act: act, confirm: confirm); p.place = i == -1 ? 0 : i < -1 ? 1 : 2
+        p.formAction = formAction(i)?.label                                                          // 5.0: 모습 바꾸기 · 합체하기 · 분리하기 on its page
         p.fetch = i >= 0 && state.caught.count < 3; p.dupes = i >= 0 ? state.duplicates(of: state.box[i].dex).count : 0; p.sel = act.flatMap { $0 < boxActs(i).count - 1 ? $0 : nil }   // the LCD's pick = a button (닫기 has none)
         let mine = evolutions.filter { $0.from == m.dex }, targets = mine.map(\.to).reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } }
         p.evos = targets.map { to in "→ " + monNames[to] + " · " + mine.filter { $0.to == to }.map { e in evoText(e).replacingOccurrences(of: " 소지", with: "") + (e.item.map { state.count($0) > 0 ? " (있음)" : " (없음)" } ?? "") }.joined(separator: " / ") }
@@ -517,7 +521,10 @@ extension Walker {
         return p
     }
     /// The ● menu on a Pokémon's page (the LCD's row; the pane's buttons are the same, less 닫기): what it can do from where it is.
-    func boxActs(_ i: Int) -> [String] { i < -1 ? ["함께", "상자로", "닫기"] : i >= 0 ? ["함께"] + (state.caught.count < 3 ? ["워커로"] : []) + ["놓아주기", "닫기"] : [] }
+    func boxActs(_ i: Int) -> [String] {                                                        // (5.0: 모습 · 합체 · 분리 where the bag has its item: formAction)
+        let form = formAction(i).map { [$0.short] } ?? []
+        return i < -1 ? ["함께", "상자로"] + form + ["닫기"] : i >= 0 ? ["함께"] + (state.caught.count < 3 ? ["워커로"] : []) + ["놓아주기"] + form + ["닫기"] : form.isEmpty ? [] : form + ["닫기"]
+    }
     /// What would evolve the companion right now from its page: a stone in the bag (a trade evolution: a real trade, 12 §3).
     func companionEvolution() -> Evo? { state.stoneEvolutions(Date()).first }
     /// 도구: every kind carried, the pick's use and a line about it.
@@ -627,7 +634,7 @@ extension Walker {
                                                  owned: state.owned(w), can: state.canBuy(w, bp: bp) > 0, once: w.once) }
         let cost = (w?.price ?? 0) * (qty ?? 0)
         let hint = said ?? w.map { w in
-            w.once && state.owned(w) > 0 ? "이미 가지고 있어요" : state.canBuy(w, bp: bp) == 0 ? "\(unit)가 부족해요 · \(w.price.formatted())\(unit) 필요" : "클릭하거나 ●를 누르면 몇 개 살지 정해요"
+            w.once && state.owned(w) > 0 ? "이미 가지고 있어요" : state.canBuy(w, bp: bp) == 0 ? "\(unit)가 부족해요 · \(w.price.formatted())\(unit) 필요" : w.once ? "클릭하거나 ●를 누르면 살지 물어봐요" : "클릭하거나 ●를 누르면 몇 개 살지 정해요"
         } ?? ""
         let spend = ask != nil ? w?.price ?? 0 : cost
         return ShopModel(title: bp ? "BP 교환소" : "상점", rows: rows, sel: ids.firstIndex(of: sel) ?? 0, qty: qty, most: w.map { max(1, state.canBuy($0, bp: bp)) } ?? 1,

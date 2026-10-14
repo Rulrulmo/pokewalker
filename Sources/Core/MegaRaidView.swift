@@ -26,7 +26,7 @@ extension Walker {
             return PaneContent(raid: RaidModel(boss: "메가 레이드", left: "", todayUsed: 0, todayMax: RaidRules.perDay, todayText: note, power: power, powerText: powerText,
                                                week: [], tabs: ["", ""], tab: tab, rows: [], empty: note, go: nil, hint: note, ranks: false))
         }
-        let rows = r.runs.filter { $0.dex == b.dex }.prefix(4).map { run in
+        let rows = r.runs.filter { $0.dex == b.dex }.prefix(3).map { run in
             RaidModel.Row(rank: nil, dex: run.dex, shiny: false, name: (r.tiers.first { $0.tier == run.tier }.map { "Lv.\($0.level) · " } ?? "") + "\(run.bars)/\(RaidRules.bars)줄",
                           value: ago(max(60, Int(now.timeIntervalSince1970) - run.at)), pill: run.won ? "승" : "패", me: false, art: artIndex(b.dex, b.form))
         }
@@ -40,7 +40,8 @@ extension Walker {
                                            todayText: left == 0 ? "내일 다시" : "\(left)판 남음", power: power, powerText: powerText,
                                            week: ["\(r.mine.runs)판 · \(r.mine.wins)승", "스톤까지 \(min(r.pity, r.pityNeed))/\(r.pityNeed)"],   // (the week's stones: the tabs' ✓)
                                            tabs: r.bosses.map { megaName($0) + ($0.had == true ? " ✓" : "") }, tab: tab, rows: Array(rows),
-                                           empty: "이번 주에 이 보스와 한 판이 없어요", go: go, hint: hint, ranks: false, roomy: true))
+                                           empty: "이번 주에 이 보스와 한 판이 없어요", go: go, hint: hint, ranks: false, roomy: true,
+                                           rule: "이기면 확률로 메가스톤 · 30승마다 하나 골라요"))   // 5.0 (the user: 처음 보는 사람도 바로)
     }
     func megaTierNote(_ t: RaidTier?) -> String {
         guard let t, let r = megaLobby, let b = r.bosses[safe: raidMegaBoss] else { return "" }

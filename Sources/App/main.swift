@@ -120,6 +120,7 @@ walker.state.dex()
 walker.awaySteps(counter: view.counter(), boot: view.boot())    // steps typed while the app was quit (same login) go up to the server
 if case .updated(let v) = launch { walker.announceUpdate(v) }
 walker.lookForOldApps()                                          // 5.0: older copies (Spotlight, off the main thread) for the menu's 예전 앱 row
+walker.tipsOn = walker.persist; walker.tipBits = settings.int("tips5", 0)   // 5.0: the first-time tips (Tips.swift)
 walker.save()
 walker.refreshPane(Date(), force: true)                          // the page it opens on (the status sheet): no jump after it shows
 let size = view.frame.size

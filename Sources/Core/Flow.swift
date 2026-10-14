@@ -391,9 +391,14 @@ extension Walker {
                     if let u = state.id(i) { let name = monNames[state.box[i].dex]
                         self.act(.mon(op: .fetch(uid: u)), back: here, now) { [weak self] _, now in .say([josa(name, "을", "를"), "워커로 데려왔다"], next: .box(-1 - (self?.state.caught.count ?? 1), act: nil, confirm: false), since: now) } }
                 case "놓아주기"?: screen = .box(i, act: 0, confirm: true, detail: detail)
+                case "모습"?, "합체"?, "분리"?: if let f = formAction(i) { _ = keyItemOn(f.item, i) }        // 5.0: its form (FormView.swift)
                 default: screen = here
                 }
-            } else if k == 1, detail, i == -1 { if let e = companionEvolution() { evolveNow(e, back: screen, now) } else { screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷고 있다"], next: screen, since: now) } }
+            } else if k == 1, detail, i == -1 {
+                if let e = companionEvolution() { evolveNow(e, back: screen, now) }
+                else if formAction(-1) != nil { screen = .box(-1, act: 0, confirm: false, detail: true) }      // 5.0: its ● menu (모습 · 합체 · 분리, 닫기)
+                else { screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷고 있다"], next: screen, since: now) }
+            }
             else if k == 1 { screen = .box(i, act: detail ? 0 : nil, confirm: false, detail: true) }   // ● on the grid: its page; on its page: 함께 / 상자로 or 놓아주기 / 닫기
             else { gridStep(k == 0 ? -1 : 1, wrap: true) }
         case .relearn(let r, let s, let at):                                                     // the slots: ◀ ▶ one (round), ● what goes there; then ◀ ▶ a move, ● puts it in
@@ -439,6 +444,7 @@ extension Walker {
         case "메가 레이드":                                                                            // 5.0 (docs/plans/18 §6.4)
             guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: menuFor(name), since: now); return }
             raidMega = true; c.megaRaidDue = true; screen = .raid(.lobby(tab: raidMegaBoss))
+            showTip(.megaRaid, next: screen, now)                                                       // (the first time: how its stones come)
         case "대전": openDuelHub(now)
         case "우편함": openMail(now)
         default: screen = .dex(state.companion.dex, filter: 0, detail: false)

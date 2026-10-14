@@ -24,7 +24,7 @@ final class SideView: NSView {
         guard let k = art.hits.first(where: { $0.0.contains(p) })?.1 else { window?.performDrag(with: e); return }   // not on a button: drag the whole body
         if e.clickCount == 1, walker?.dragsFrom(k) == true { downOn = pageKind; pressed = (k, p); return }   // 포켓몬's grid: decided at the release (a click) or as it moves (a drag)
         if e.clickCount == 1 { downOn = pageKind } else if c.battle != nil || c.shop?.ask != nil || c.mon != nil || c.tower != nil && !(5440...5441).contains(k) || c.relearn != nil && !(5540...5541).contains(k) || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened (a move, 예, 함께 under 아니오, a cell under 메뉴's tile, the tower's picker under its row): ignored
-        if k >= 5000, k < 10000 { walker?.pageTap(k) } else if k >= 4000 { walker?.gridTap(k) } else if k >= 3000 { walker?.menuTap(k - 3000) } else if k >= 2000 { walker?.shopTap(k) } else { walker?.sidePick(k) }
+        walker?.paneTap(k)
     }
     override func mouseDragged(with e: NSEvent) {                                               // a Pokémon carried over the grid: it follows the pointer
         guard let pr = pressed, let w = walker else { return }
