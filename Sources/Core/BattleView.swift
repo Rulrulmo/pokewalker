@@ -116,16 +116,8 @@ extension Walker {
     }
     /// 5.0: the side whose Mega Evolution is still gathering its light (before the burst it shows as it was: name, mark).
     func megaGathering(_ now: Date) -> Side? {
-        guard case .beats = screen, let s = beatState(now), case .mega(let side, _, _) = s.beat, s.u < 0.9 else { return nil }
+        guard case .beats = screen, let s = beatState(now), case .mega(let side, _, _) = s.beat, s.u < MegaFX.reveal else { return nil }
         return side
-    }
-    /// 5.0 (docs/plans/18 §9.6): a Mega Evolution's light, u seconds in — white gathering over it, a burst as it becomes the Mega, stars wheeling round
-    /// it while the white fades.
-    func megaShot(_ s: Side, _ u: Double) -> BallShot {
-        var m = BallShot(); m.side = s
-        m.glow = .init(white: u < 0.9 ? u / 0.9 : max(0, 1 - (u - 0.9) / 0.5))
-        if u >= 0.9 { m.burst = (0, -30, u - 0.9); m.shine = u - 0.9 }
-        return m
     }
     /// The DS layout: theirs front-on at the top right, ours from behind at the bottom left, each on a pad.
     /// beat = the beat playing and how far into it (the move effects' clock); nil between turns.
@@ -136,8 +128,9 @@ extension Walker {
         fb.battleGround(at, art: state.here.art, hour: state.hour, season: state.season, weather: sky, indoor: b.trainer != nil)   // the ground, the pads they stand on
         defer { fb.weatherFX(sky, 0, hud ? 12 : 0, 96, hud ? 38 : 64, t) }   // over the fighters, under the HUD (the tower is indoors)
         let foe = b.theirs[b.it].mon, mine = b.mine[b.me].mon                                          // the HUD: who it is (its own name, level, shine)
-        func look(_ f: Fighter) -> Mon { var m = f.mon; let x = f.body; m.dex = x.dex; m.form = x.form; return m }   // the sprite: 변신 shows what it became; 5.0: a Mega / battle form its own
-        let foeLook = look(b.theirs[b.it]), mineLook = look(b.mine[b.me])
+        let veiled: Side? = { if let (bt, u) = beat, case .mega(let s, _, _) = bt, u < MegaFX.reveal { return s }; return nil }()   // 5.0: still its old form, in its light
+        func look(_ f: Fighter, _ s: Side) -> Mon { var m = f.mon; let x = f.body; if veiled != s { m.dex = x.dex; m.form = x.form }; return m }   // the sprite: 변신 shows what it became; 5.0: a Mega / battle form its own
+        let foeLook = look(b.theirs[b.it], .it), mineLook = look(b.mine[b.me], .me)
         let up: [Side: Bool] = [.it: b.theirs[b.it].alive || pending.contains(.it), .me: b.mine[b.me].alive || pending.contains(.me)]   // fainted = gone, once its faint has played
         var shown: [Side: (dx: Int, dy: Int, flash: Bool, on: Bool)] = [.it: (0, 0, false, up[.it]!), .me: (0, 0, false, up[.me]!)]
         var shot: BallShot? = nil
@@ -148,20 +141,24 @@ extension Walker {
             let s = ballShot(bt, u, b, ball: usedItem); shot = s
             shown[s.side] = (s.glow.map { $0.x / 2 } ?? 0, s.glow.map { $0.y / 2 } ?? 0, false, up[s.side]! && s.glow != nil)   // in the ball / not out yet = off the stage
         }
-        if let (bt, u) = beat, case .mega(let s, _, _) = bt { shot = megaShot(s, u) }                // 5.0: the light round a Mega Evolution
+        var mega: (side: Side, u: Double, dex: Int, form: Int)? = nil                               // 5.0: a Mega Evolution's light (MegaFX)
+        if let (bt, u) = beat, case .mega(let s, let n, _) = bt { mega = (s, u, (s == .me ? b.mine[b.me] : b.theirs[b.it]).mon.dex, n) }
         for s in [Side.it, .me] where shown[s]!.on {                                                // theirs first: ours is nearer
-            let v = shown[s]!, a = at[s]!
+            var v = shown[s]!; let a = at[s]!
+            if let m = mega { v.dx += MegaFX.shake(m.u) }                                              // the flash shakes the stage
             let alive = s == .me ? b.mine[b.me].alive : b.theirs[b.it].alive                         // only a fainting one sinks behind its pad; a lunge isn't clipped
-            let plain = s == .it && alive && shot?.glow == nil && !v.flash && { if case .ball = p { return false }; return true }()   // out and standing: HGSS plays its own animation once
+            let plain = s == .it && alive && shot?.glow == nil && !v.flash && { if case .ball = p { return false }; return true }() && (mega.map { $0.side != s || $0.u > MegaFX.reveal + 0.3 } ?? true)   // out and standing: HGSS plays its own animation once (a Mega: once it shows)
             fb.sprite(s == .me ? mineLook : foeLook, a.x + v.dx, a.y + v.dy, back: s == .me, bob: s == .me ? f - 1 : f, flash: v.flash, floor: alive ? 64 : a.y + 32,
                       anim: plain ? animT("foe \(b.it)", foeLook.art, now) : nil)   // ours bobs down: its cut-off back never lifts
             if let g = shot?.glow, shot?.side == s { fb.glow(g) }                                     // going into / coming out of a ball
+            if let m = mega, m.side == s, let k = MegaFX.cocoon(m.u, MegaFX.colours(m.dex, m.form)) { fb.megaTint(k.tint, k.amount, floor: hud ? 50 : 64) }   // its cocoon of light
         }
         if case .idle = p, foe.shiny == true, shown[.it]!.on {                                      // sparkles around it, from its head down
             let top = at[.it]!.y + 32 - (80 - spriteTop(foeLook.art)) / 2, h = at[.it]!.y + 32 - top          // a sprite pixel is half a dot
             for (k, (sx, sy)) in [(-2, 2), (26, h / 4), (12, -3), (28, h * 3 / 4)].enumerated() where (Int(t * 4) + k) % 3 == 0 { fb.draw(spark, at[.it]!.x + sx, max(0, top + sy), sparkPal) }
         }
         if let (bt, u) = beat { moveFX(&fb, bt, u, b, at) }                                         // a move's effect over the fighters
+        if let m = mega { fb.megaFX(m.side, m.u, dex: m.dex, form: m.form, at: at, top: 80 - spriteTop((m.side == .me ? mineLook : foeLook).art, back: m.side == .me), stage: hud ? [0, 24, 192, 76] : []) }   // (the LCD's HUD and message strip kept clear)
         if raidOn, let (bt, u) = beat, Walker.isShinyReveal(bt) {                                  // 4.0 (16 §8-2): a shiny boss — light bursting from it, stars wheeling round
             var s = BallShot(); s.burst = (0, -30, u * 0.8); s.shine = u * 0.55; shot = s
         }
@@ -218,6 +215,15 @@ extension Walker {
         let m = beatLine(beat, u, b)
         return raidOn ? m.replacingOccurrences(of: "야생 ", with: "") : m
     }
+    /// A line the LCD can't hold even small (96 dots), as two halves split at the space nearest its middle; else the line.
+    static func lcdHalves(_ l: String) -> [String] {
+        guard textWidth(l, small: true) > 94 else { return [l] }
+        let words = l.components(separatedBy: " "), mid = l.count / 2
+        guard words.count > 1 else { return [l] }
+        var best = 1, at = 0, d = Int.max
+        for k in 1..<words.count { at = words[..<k].joined(separator: " ").count; if abs(at - mid) < d { d = abs(at - mid); best = k } }
+        return [words[..<best].joined(separator: " "), words[best...].joined(separator: " ")]
+    }
     func beatLine(_ beat: Beat, _ u: Double, _ b: Battle) -> String {
         let it = monNames[b.theirs[b.it].mon.dex]
         switch beat {
@@ -249,7 +255,13 @@ extension Walker {
         case .won: return raidOn ? "\(b.theirs.count)줄을 모두 깼다! 볼 +\(RaidRules.winBalls)" : b.trainer.map { josa($0, "과", "와") + "의 승부에서 이겼다!" } ?? "승리!"
         case .lost: return "눈앞이 캄캄해졌다..."
         case .mega(_, _, let t), .reform(_, _, let t):                                                 // 5.0 (plan 18 §14.4): its lines one after the other, over the beat
-            let ls = t.components(separatedBy: "\n"); return ls[min(ls.count - 1, Int(u / max(0.1, beat.length) * Double(ls.count)))]
+            // a Mega's first line while its light gathers, the second once it shows (MegaFX.reveal); a line too long for the LCD in two halves
+            let ls = t.components(separatedBy: "\n"), split = { (l: String) -> [String] in Walker.lcdHalves(l) }
+            if case .mega = beat, ls.count == 2 {
+                let (p, a, b) = u < MegaFX.reveal ? (split(ls[0]), 0.0, MegaFX.reveal) : (split(ls[1]), MegaFX.reveal, beat.length)
+                return p[min(p.count - 1, Int((u - a) / max(0.1, b - a) * Double(p.count)))]
+            }
+            let ps = ls.flatMap(split); return ps[min(ps.count - 1, Int(u / max(0.1, beat.length) * Double(ps.count)))]
         }
     }
 

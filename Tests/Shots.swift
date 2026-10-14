@@ -80,8 +80,19 @@ import AppKit
         take("battle_mega_toggle", mg) { v in v.sideOn = true; v.megaOn = false; v.fight = mgb; v.screen = .moves(mgb, sel: 0) }
         take("battle_mega_toggle_on", mg) { v in v.sideOn = true; v.megaOn = true; v.fight = mgb; v.screen = .moves(mgb, sel: 4) }
         take("battle_mega_lcd", mg) { v in v.sideOn = false; v.megaOn = true; v.fight = mgb; v.screen = .moves(mgb, sel: 4) }
-        take("battle_mega_glow", mg) { v in v.sideOn = true; v.screen = .beats(mgb, [glowBeat], since: Date().addingTimeInterval(-0.6 / v.battleSpeed), from: mgb) }
-        take("battle_mega_burst", mg) { v in v.sideOn = true; v.screen = .beats(mgb, [glowBeat], since: Date().addingTimeInterval(-1.05 / v.battleSpeed), from: mgb) }
+        for (name, u) in [("battle_mega_fx1_stone", 0.3), ("battle_mega_fx2_streaks", 0.85), ("battle_mega_fx3_cocoon", 1.35), ("battle_mega_fx4_flash", 1.6),
+                          ("battle_mega_fx5_symbol", 1.8), ("battle_mega_fx6_shards", 2.05), ("battle_mega_fx7_mega", 2.7)] {   // MegaFX's steps
+            take(name, mg) { v in v.sideOn = true; v.screen = .beats(mgb, [glowBeat], since: Date().addingTimeInterval(-u / v.battleSpeed), from: mgb) }
+        }
+        if ProcessInfo.processInfo.environment["MEGA_FRAMES"] != nil {                                   // MegaFX as frames (a GIF to look at): ours, a foe's, 원시그란돈
+            var don = Mon.wild(383, level: 70, &fr); don.item = "주홍구슬"
+            let pb = Battle(wild: don, companion: zard), cases: [(String, Battle, Beat)] = [
+                ("me", mgb, glowBeat), ("foe", mgb, Beat.mega(.it, form: 1, text: "헤라크로스의 헤라크로스나이트가 빛나기 시작했다!\n헤라크로스는 메가헤라크로스로 메가진화했다!")),
+                ("primal", pb, Beat.mega(.it, form: 1, text: "그란돈의 원시회귀!\n그란돈은 원시회귀하여 원래의 모습을 되찾았다!"))]
+            for (tag, bt, beat) in cases {
+                for k in 0..<44 { take(String(format: "megagif_%@_%02d", tag, k), mg) { v in v.sideOn = false; v.screen = .beats(bt, [beat], since: Date().addingTimeInterval(-Double(k) / 15 / v.battleSpeed), from: bt) } }
+            }
+        }
         var both = mgb; both.mine[0].mega = 1; both.theirs[0].mega = 1; both.megaUsed = [true, true]
         take("battle_mega_after", mg) { v in v.sideOn = true; v.fight = both; v.screen = .battle(both, sel: 0) }
         take("battle_mega_after_lcd", mg) { v in v.sideOn = false; v.fight = both; v.screen = .battle(both, sel: 0) }

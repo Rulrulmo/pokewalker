@@ -89,12 +89,16 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
         let sent = server(mz).0.acts.last == .battle(cmd: .megaFight(slot: 0)) && !mz.megaOn
         var bs: [Beat] = [], from = mb, after: Battle? = nil; if case .beats(let n, let x, _, let f) = mz.screen { bs = x; from = f; after = n }
         let mega = bs.first { if case .mega(.me, 1, _) = $0 { return true }; return false }
-        let lines = mega.map { [mz.message($0, 0.2, from), mz.message($0, 2.0, from)] } ?? []
-        let glow = mega.map { m -> Bool in mz.screen = .beats(from, [m], since: Date().addingTimeInterval(-1.0 / mz.battleSpeed), from: from); let fb = mz.compose(Date())
-            return fb.sprites.contains { $0.tint == rgb(255, 255, 255) } && picStore.keys.contains("ball star") } ?? false
+        let part = mega.map { m in [0.2, 1.3, 1.8, 2.8].map { mz.message(m, $0, from) } } ?? []          // a line the LCD can't hold: its halves in turn
+        let lines = part.count == 4 ? [part[0] == part[1] ? part[0] : part[0] + " " + part[1], part[2] == part[3] ? part[2] : part[2] + " " + part[3]] : []
+        @MainActor func at(_ u: Double) -> FB? { mega.map { m in mz.screen = .beats(from, [m], since: Date().addingTimeInterval(-u / mz.battleSpeed), from: from); return mz.compose(Date()) } }
+        let early = at(0.4), mid = at(1.1), late = at(1.9)                                          // (MegaFX: its stone, the cocoon and streaks, the symbol and the Mega)
+        let glow = early.map { f in f.sprites.contains { $0.art == 6 && $0.back } && f.pics.contains { $0.key.hasPrefix("mega glint") } } == true
+            && mid.map { f in f.sprites.contains { $0.art == 6 && $0.tint != nil } && f.pics.filter { $0.key.hasPrefix("mega streak") }.count >= 6 } == true
+            && late.map { f in f.sprites.contains { $0.art == artIndex(6, 1) && $0.back } && f.pics.contains { $0.key.hasPrefix("mega symbol") } && f.pics.contains { $0.key.hasPrefix("mega shard") } } == true
         let name = after.map { mz.card($0.mine[$0.me], out: true).name }
         if let a = after { mz.screen = .moves(a, sel: 0) }
-        check(offButton && toToggle && ticked && sent && lines.count == 2 && lines[0].hasPrefix("리자몽의 리자몽나이트X") && lines[0].hasSuffix("빛나기 시작했다!")
+        check(offButton && toToggle && ticked && sent && lines.count == 2 && lines[0].hasPrefix("리자몽의 리자몽나이트X") && lines[0].hasSuffix("빛나기 시작했다!") && part.allSatisfy { textWidth($0, small: true) <= 94 }
               && lines[1].hasSuffix("메가진화했다!") && glow && after?.mine[0].mega == 1 && name == "메가리자몽X" && mz.paneContent(Date()).battle.map { $0.mega == nil } == true,
               "5.0 메가진화: the button after the moves, ticked by ●, the move sent as .megaFight; the light, its two lines; 메가리자몽X on the HP box; once a fight; none off",
               "\(offButton) \(toToggle) \(ticked) \(sent) \(lines) \(glow) \(String(describing: after?.mine[0].mega)) \(String(describing: name))")

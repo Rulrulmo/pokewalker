@@ -139,7 +139,7 @@ enum Beat: Equatable, Codable {
         case .fainted, .won, .lost: 1.4
         case .gained(_, let l, _, _): l == nil ? 1.2 : 1.8
         case .retype: 0
-        case .mega: 2.4
+        case .mega: 2.9                               // 5.0: its stone, the cocoon, the flash, the symbol (Core/MegaFX.swift)
         default: 1.3
         }
     }
