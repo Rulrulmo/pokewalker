@@ -154,9 +154,10 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
         calm(cs)
     }
 
-    // 5.0 (docs/plans/18 §6.4 · §9.6): 메가 레이드 — the menu's (content5 only); its lobby (the week's two as tabs, 스톤까지 n/30); ● → its tier (the stone's
-    // odds) → a run (Act.megaRaid: the boss Mega from the start, 10 bars); a win mails its stone (the dice: sure here), said, back to the lobby
-    // (no balls); 30 wins → ● picks one of the week's stones (Act.megaPick) into the bag
+    // 5.0 (docs/plans/18 §6.4 · §9.6): 메가 레이드 — the menu's (content5 only); its lobby (the week's two as tabs, that boss's 스톤까지 n/20); ● → its
+    // tier (the stone's odds) → a run (Act.megaRaid: the boss Mega from the start, 10 bars); a win's drop mails its stone (the dice: sure here),
+    // said on its own card, back to the lobby (no balls; that stone had now: 스톤 보유); the other boss at 19 wins: the 20th (no drop) mails its
+    // stone too (its title and line), its count back to 0
     let menuOff = !menuItems.contains("메가 레이드")
     Content.$testing.withValue(true) {
         let ms = FakeCloud(); ms.megaOdds = [true]; ms.megaWeekNo = 0                                   // the week's two (the rotation's first: 메가거북왕 · 메가프테라)
@@ -167,7 +168,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
         mr.openFeature("메가 레이드"); drain(mr)
         let lobby = mr.paneContent(Date()).raid
         let lobbyOK = menuItems.contains("메가 레이드") && mr.raidMega && lobby?.tabs == wn && lobby?.boss == wn[0]
-            && lobby?.week.contains("스톤까지 0/30") == true && lobby?.go == "도전 · 파워 1칸"
+            && lobby?.week.contains("스톤까지 0/\(MegaRaid.bossWins)") == true && lobby?.go == "도전 · 파워 1칸"
         mr.press(1); let tierUp = { if case .raid(.tier) = mr.screen { return true }; return false }() && mr.paneContent(Date()).raidTier?.note2.contains(wk[0].stone) == true
         mr.raidTier = 1; mr.raidFight(back: .raid(.lobby(tab: 0)), Date()); drain(mr)
         let started = ms.acts.last == .megaRaid(party: nil, tier: 1, boss: 0) && mr.fight.map { $0.theirs.count == RaidRules.bars && $0.theirs.allSatisfy { $0.mega == 1 } } == true
@@ -177,18 +178,30 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
         }
         var said: [String] = []; if case .say(let l, _, _) = mr.screen { said = l }
         let mailed = ms.postBox[mk]?.contains { $0.from == "메가 레이드" && $0.gifts == [.items(name: wk[0].stone, count: 1)] } == true
-        let won = said.first == "\(RaidRules.bars)줄을 모두 깼다!" && said.contains("스톤이 우편함에 왔다!") && mailed && !mr.raidOn
-        mr.press(1); drain(mr)
+        @MainActor func stoneSaid(_ first: String, _ stone: String) -> Bool {
+            if case .say(_, .say(let g, _, _), _) = mr.screen { return g == [first, josa(stone, "을", "를"), "얻었다!", "우편함에서 받아요"] && mr.sayStone?.stone == stone && mr.sayStone?.lines == g }
+            return false
+        }
+        let won = said.first == "\(RaidRules.bars)줄을 모두 깼다!" && mailed && stoneSaid("행운의 메가스톤!", wk[0].stone) && !mr.raidOn
+        mr.calmAt = .distantPast; mr.press(1); mr.calmAt = .distantPast; mr.press(1); drain(mr)
         let backLobby = { if case .raid(.lobby(0)) = mr.screen { return true }; return false }() && mr.megaLobby?.mine.wins == 1
-        ms.raidRuns[mk, default: []] += (0..<29).map { _ in FakeCloud.RaidRun(tier: 1, boss: Mon(dex: 6, level: 20, female: false), day: "2026-10-01", at: 0, won: true, ended: true, mega: true) }
-        mr.cloud!.megaRaidDue = true; for _ in 0..<4 where mr.megaLobby?.pity != 30 { mr.tick(Date()); drain(mr) }
-        let ready = mr.paneContent(Date()).raid?.go == "30승! 스톤 고르기" && mr.megaNote == "스톤을 고를 수 있어요!"
-        mr.calmAt = .distantPast; mr.press(1); let pickUp = { if case .raid(.pick(0)) = mr.screen { return true }; return false }() && mr.paneContent(Date()).hold?.rows.map(\.name) == wk.map(\.stone)
-        mr.pageTap(5981); mr.pageTap(5999); drain(mr)                                                  // (the pane's row and button)
-        let picked = mr.state.bag.contains(wk[1].stone) && ms.megaPity(mk) == 0 && { if case .say(let l, _, _) = mr.screen { return l == [josa(wk[1].stone, "을", "를"), "받았다!"] }; return false }()
-        check(menuOff && lobbyOK && tierUp && started && won && backLobby && ready && pickUp && picked,
-              "5.0 메가 레이드: the menu's (content5), its lobby (two bosses, 스톤까지 0/30), tier (the stone's odds), Act.megaRaid (Mega from the start, 10 bars), a win's stone by mail (said, no balls), 30 wins → a stone picked",
-              "\(menuOff) \(lobbyOK) \(String(describing: lobby?.tabs)) \(tierUp) \(started) \(won) \(said) \(mailed) \(backLobby) \(ready) \(String(describing: mr.megaLobby?.pity)) \(String(describing: mr.paneContent(Date()).raid?.go)) \(pickUp) \(picked)")
+            && mr.paneContent(Date()).raid?.week.contains("스톤 보유") == true                          // (its stone waiting in mail: had)
+        ms.megaWins[mk] = [wk[1].stone: 19]; mr.cloud!.megaRaidDue = true
+        for _ in 0..<4 where mr.megaLobby?.bosses[safe: 1]?.wins != 19 { mr.tick(Date()); drain(mr) }
+        mr.screen = .raid(.lobby(tab: 1))
+        let nineteen = mr.paneContent(Date()).raid?.week.contains("스톤까지 19/\(MegaRaid.bossWins)") == true && mr.megaNote.hasSuffix("스톤까지 19/\(MegaRaid.bossWins)")
+        ms.megaOdds = [false]; mr.raidMegaBoss = 1; mr.raidTier = 1; mr.raidFight(back: .raid(.lobby(tab: 1)), Date()); drain(mr)
+        for _ in 0..<40 {
+            playOut(mr)
+            if case .battle(let b, _) = mr.screen { mr.screen = .moves(b, sel: 0); mr.press(1); drain(mr) } else { break }
+        }
+        let twenty = ms.postBox[mk]?.last.map { $0.title == MegaRaid.winsTitle(wk[1].stone) && $0.body == MegaRaid.winsBody(wk[1]) && $0.gifts == [.items(name: wk[1].stone, count: 1)] } == true
+            && ms.megaWins[mk]?[wk[1].stone] == 0 && stoneSaid("같은 보스 \(MegaRaid.bossWins)승!", wk[1].stone)
+        mr.calmAt = .distantPast; mr.press(1); mr.calmAt = .distantPast; mr.press(1); drain(mr)
+        let both = mr.megaLobby?.bosses.allSatisfy { $0.had == true } == true && mr.megaNote.hasSuffix("스톤 모두 보유")
+        check(menuOff && lobbyOK && tierUp && started && won && backLobby && nineteen && twenty && both,
+              "5.0 메가 레이드: the menu's (content5), its lobby (two bosses, 스톤까지 0/20), tier (the stone's odds), Act.megaRaid (Mega from the start, 10 bars), a drop's stone by mail (its card, no balls, then 스톤 보유), the other boss's 20th win mails its stone (title, line, count back to 0)",
+              "\(menuOff) \(lobbyOK) \(String(describing: lobby?.tabs)) \(String(describing: lobby?.week)) \(tierUp) \(started) \(won) \(said) \(mailed) \(backLobby) \(nineteen) \(String(describing: mr.megaLobby?.bosses)) \(twenty) \(String(describing: ms.postBox[mk]?.last?.title)) \(both) \(mr.megaNote)")
         calm(mr); mr.raidMega = false
     }
 

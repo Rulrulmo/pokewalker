@@ -19,6 +19,7 @@ import Foundation
     var dexRegion = 0                                                      // 5.0 (content5): the 도감 grid's region, 0 = 전국 (dexRegions)
     var dexForm: (dex: Int, n: Int)? = nil                                 // 5.0: the 도감 entry page's form on show (● turns them; nil = the species)
     var raidMega = false, raidMegaBoss = 0                                 // 5.0 (docs/plans/18 §6.4): the raid screens are the Mega raid's; its boss (the week's 0 / 1)
+    var sayStone: (lines: [String], stone: String)? = nil                   // 5.0: the message saying a Mega stone came, and its stone (drawn big on its card: LCDDeco)
     var megaOn = false                                                     // 5.0 (docs/plans/18 §9.6): 메가진화 ticked on the move screen: the move goes as .megaFight
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
     var keyShown: Bool?? = .none                                           // the 메뉴 / 홈 key as last shown (see homeKey)
@@ -210,7 +211,6 @@ import Foundation
         case .mail: return ("우편함", "선물은 받을 때까지 보관")
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
         case .raid(.tier): return (raidMega ? "메가 레이드" : "레이드", "난이도 고르기")
-        case .raid(.pick): return ("메가 레이드", "스톤 고르기")
         case .raid(.balls): return ("레이드", "잡을 기회 · 볼 \(raidStage?.balls ?? 0)개")
         case .raid where raidMega: return ("메가 레이드", megaLobby.map { "다음 주 " + $0.next.map { n in let s = megaName(n); return s.hasPrefix("메가") ? String(s.dropFirst(2)) : s }.joined(separator: " · ") } ?? "")   // (메가 레이드's: 샤크니아 · 앱솔)
         case .raid: return ("레이드", cloud?.raid.map { "다음 주 " + monNames[$0.next] } ?? "")

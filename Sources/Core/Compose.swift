@@ -464,7 +464,7 @@ extension Walker {
         case (.duel, 6300...6351): duelTap(code, Date())
         case (.squad, 8700...8799): squadTap(code, Date())
         case (.mail, 8800...8899): mailTap(code, Date())
-        case (.hold, 5980...5999), (.formPick, 5980...5999), (.raid(.pick), 5980...5999): holdTap(code, Date())   // 5.0: the form's and the 30 wins' pages are 도구 주기's rows
+        case (.hold, 5980...5999), (.formPick, 5980...5999): holdTap(code, Date())                 // 5.0: the form's page is 도구 주기's rows
         case (.visitPick, 8500...8599): visitPickTap(code, Date())
         case (.team(let sel, let tab, true), 6032): if let c = teamRows(tab)[safe: sel]?.card, !isMe(c), Walker.walkingNow(c) { challenge(c.name) }   // 대전 신청
         case (.trade, 6000...6199): tradeTap(code, Date())

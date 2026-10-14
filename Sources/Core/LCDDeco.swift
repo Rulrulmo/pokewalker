@@ -142,7 +142,7 @@ extension Walker {
         case .team, .trade, .market, .duel, .squad: return .social
         case .shop, .shopConfirm, .items: return .shop
         case .tower(nil): return .tower
-        case .raid(.lobby), .raid(.tier), .raid(.pick): return raidMega ? .mega : .raid
+        case .raid(.lobby), .raid(.tier): return raidMega ? .mega : .raid
         case .card: return .card
         case .course: return .course
         default: return nil
@@ -205,17 +205,26 @@ extension Walker {
         fb.pic("deco|glow|\(g.rawValue)" + tone, cx, cy, scale: min(1.3, max(0.6, size / 60)), alpha: 0.7, under: true, clip: clip) { ready(LCDDeco.glow(LCDDeco.tones(g).band)) }
     }
     /// A message: its card fitted to its lines (one too wide for it a size smaller), edged in the colour of what it says, over its place faded.
+    /// A Mega stone that came (sayStone): a reward's card across, the stone big on its left in a glow, the words right of it.
     func decorateNotice(_ fb: inout FB, _ tone: String) {
         let ready = { (p: Pic) -> Pic in lcdReady(p) }
         guard case .say(let lines, _, _) = screen, !fb.runs.isEmpty else { return }
-        for k in fb.runs.indices where fb.runs[k].w > 82 && !fb.runs[k].small {
+        let stone = sayStone.flatMap { $0.lines == lines ? $0.stone : nil }, room = stone == nil ? 82 : 52
+        for k in fb.runs.indices where fb.runs[k].w > room && !fb.runs[k].small {
             let w = textWidth(fb.runs[k].s, small: true); fb.runs[k].small = true; fb.runs[k].w = w; fb.runs[k].x = (96 - w) / 2
         }
+        if stone != nil { for k in fb.runs.indices { fb.runs[k].x = 61 - fb.runs[k].w / 2 } }
         let x0 = fb.runs.map(\.x).min()!, x1 = fb.runs.map { $0.x + $0.w }.max()!, y0 = fb.runs.map(\.y).min()!, y1 = fb.runs.map { $0.y + $0.rows }.max()!
-        let w = min(188, max(112, 2 * (x1 - x0) + 24)) / 2 * 2, h = min(124, 2 * (y1 - y0) + 18) / 2 * 2, k = LCDScenes.kind(lines)
+        let w = stone != nil ? 180 : min(188, max(112, 2 * (x1 - x0) + 24)) / 2 * 2, h = max(stone != nil ? 64 : 0, min(124, 2 * (y1 - y0) + 18)) / 2 * 2
+        let k = stone != nil ? .reward : LCDScenes.kind(lines)
         fb.pic("deco|scene|notice" + tone, 96, 64, under: true) { ready(LCDScenes.scene(.notice)) }
         fb.pic("deco|veil" + tone, 96, 64, under: true) { ready(LCDScenes.veil()) }
         fb.pic("deco|card|\(k)|\(w)|\(h)" + tone, 96, y0 + y1, under: true) { ready(LCDScenes.noticeCard(k, w, h)) }
+        guard let stone, let b = MegaRaid.bosses.first(where: { $0.stone == stone }) else { return }
+        let type = (Forms.of(b.dex, b.form)?.types ?? monTypes[b.dex]).first ?? "normal", t = Date().timeIntervalSinceReferenceDate
+        fb.pic("deco|glow|stone" + tone, 42, y0 + y1, scale: 0.95 + 0.05 * sin(t * 3), under: true) { ready(LCDDeco.glow(rgb(255, 214, 90))) }
+        fb.pic("deco|stone|\(type)" + tone, 42, y0 + y1, under: true) { ready(LCDScenes.stonePic(type)) }
+        if Int(t * 1.5) % 3 == 0 { fb.pic("deco|glint" + tone, 30, y0 + y1 - 14, scale: 0.5 + 0.4 * abs(sin(t * 6)), under: true) { ready(MegaFX.glintPic(rgb(255, 236, 160))) } }
     }
     /// The page's picked rows and lines kept to their panel (or strip), a picked row in the group's colour, its corners round.
     func tidy(_ fb: inout FB, _ g: PageGroup, _ lay: LCDDeco.Layout, band: Bool) {

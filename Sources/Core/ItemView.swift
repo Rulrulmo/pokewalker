@@ -172,7 +172,6 @@ extension Walker {
     }
     func holdTap(_ code: Int, _ now: Date) {
         if case .formPick = screen { formPickTap(code, now); return }                                // 5.0: the same rows
-        if case .raid(.pick) = screen { megaPickTap(code, now); return }                              // 5.0: the Mega raid's stone
         guard case .hold(let ref, let sel) = screen else { return }
         switch code {
         case 5980..<5995: let rows = holdRows(ref), top = max(0, min(sel - 2, rows.count - 6)); screen = .hold(ref: ref, sel: min(rows.count - 1, top + code - 5980))

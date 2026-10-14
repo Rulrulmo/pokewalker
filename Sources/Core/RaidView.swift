@@ -5,7 +5,7 @@ import Foundation
 // given up (raidQuit, asked first). A stage cut off (the app closed, asleep, offline) waits on the server: opening the lobby goes back to it.
 
 /// The raid's pages: the lobby (its two tabs), the tier to fight at, a run's ball stage (RaidPending: Walker.raidStage).
-enum RaidStep: Equatable { case lobby(tab: Int), tier(sel: Int), balls, pick(sel: Int) }   // 5.0: pick — the Mega raid's 30 wins' stone (its lobby's tab = the week's boss)
+enum RaidStep: Equatable { case lobby(tab: Int), tier(sel: Int), balls }
 
 extension Walker {
     static let raidTabs = ["친구 이번 주", "내 판"]
@@ -63,7 +63,6 @@ extension Walker {
         case .lobby(let tab): return raidMega ? megaLobbyPane(tab, now) : raidLobbyPane(tab, now)
         case .tier(let sel): return raidTierPane(sel)
         case .balls: return raidBallsPane()
-        case .pick(let sel): return megaPickPane(sel)
         }
     }
     func raidLobbyPane(_ tab: Int, _ now: Date) -> PaneContent {
@@ -119,7 +118,6 @@ extension Walker {
         let half = Int(now.timeIntervalSinceReferenceDate * 2) % 2
         switch step {
         case .balls: raidBallsLCD(&fb, now); return
-        case .pick(let sel): megaPickLCD(&fb, sel); return
         case .lobby(let tab) where raidMega: megaLCD(&fb, tab, now); return
         case .tier(let sel):
             guard let t = raidTiers[safe: sel], let dex = raidMega ? megaLobby?.bosses[safe: raidMegaBoss]?.dex : raidLobby?.boss.dex else { break }
@@ -149,7 +147,6 @@ extension Walker {
     func raidPress(_ k: Int, _ step: RaidStep, _ now: Date) {
         switch step {
         case .lobby(let tab) where raidMega: megaLobbyPress(k, tab, now)
-        case .pick(let sel): megaPickPress(k, sel, now)
         case .lobby(let tab):
             if k != 1 { screen = .raid(.lobby(tab: 1 - tab)); return }
             guard calm else { return }                                                             // (3.8.6: not the ● that ended the fight's last line)
@@ -191,7 +188,6 @@ extension Walker {
     func raidBack(_ step: RaidStep, _ now: Date) {
         switch step {
         case .lobby: screen = menuFor(raidMega ? "메가 레이드" : "레이드")
-        case .pick: screen = .raid(.lobby(tab: raidMegaBoss))
         case .tier: screen = .raid(.lobby(tab: raidMega ? raidMegaBoss : 0))
         case .balls: raidLeave(home: false, now)
         }
