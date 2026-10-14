@@ -2,9 +2,9 @@ import Foundation
 // 5.0 (the user: "상점 같은것들 … 상단 패널이랑 하단 패널이 결국 보여주는 정보가 같잖아?"): the list pages' LCD as the 도감's — the one picked,
 // big (its picture on the stage, its name, its price or count, what it does, n/N), the list itself on the panel below (its tabs, rows, buttons,
 // the long words). ◀ ▶ still go through it and ● still takes it: nothing needs the panel. 상점 · BP 교환소, 가방, 기술 (배우기 · 바꾸기 ·
-// 떠올리기), 로토무의 모습 · 합체. A prototype behind lcdFocus (the shots' LCD_FOCUS=1) till the user picks which pages.
+// 떠올리기), 로토무의 모습 · 합체, 도구 주기, 우편's items (the user: "ㅇㅇ 훨씬 보기 좋다"). lcdFocus off (the shots' LCD_FOCUS=0): the old lists.
 
-@MainActor var lcdFocus = false
+@MainActor var lcdFocus = true
 
 extension FB {
     /// The page's thing on show (an item's picture, a device colour's): left of its words at the old box's middle; a dressed page moves it to its
@@ -75,6 +75,19 @@ extension Walker {
         fb.text([kind, mv.power > 0 ? "위력 \(mv.power)" : nil, mv.accuracy > 0 ? "명중 \(mv.accuracy)" : "반드시 명중", "PP \(mv.pp)"].compactMap { $0 }.joined(separator: " · "), 2, 25, 2, small: true)
         fb.wrap(moveText(id) ?? "", 2, 34, 92, lines: 2)
         fb.text(foot, 2, 53, 2, small: true); fb.text("\(n)/\(of)", 94, 53, 1, right: true, small: true)
+    }
+    /// 도구 주기: the row picked — its item (or the one held, to take off) on the stage, its name, what it does, what's held now, n/N; the
+    /// Pokémon's name by the title.
+    func holdFocusLCD(_ fb: inout FB, _ m: Mon, _ ref: Int, _ sel: Int) {
+        let rows = holdRows(ref), x = 44
+        fb.text("도구 주기", 2, 0); fb.text(monNames[m.dex], 94, 1, 2, right: true, small: true); fb.fill(0, 12, 96, 1, 2)
+        guard let r = rows[safe: min(sel, max(0, rows.count - 1))] else { fb.text("줄 도구가 없다", 0, 30, 2, center: true); return }
+        let item = r.take ? m.item ?? r.name : r.name
+        fb.focusPic("item|" + item) { itemPic(item) }
+        fb.name(r.take ? "빼기" : r.name, x, 13, 94 - x, r.why == nil ? 3 : 1)
+        fb.wrap(r.take ? josa(item, "을", "를") + " 가방으로" : r.why ?? ItemKind.of(r.name).summary.replacingOccurrences(of: "지니게 하기: ", with: "지니면 "), x, 25, 94 - x, lines: 2, r.why == nil ? 2 : 1)
+        fb.text("지금 " + (m.item ?? "없음"), x, 44, 1, small: true)
+        fb.text("\(min(sel, rows.count - 1) + 1)/\(rows.count)", 94, 53, 1, right: true, small: true)
     }
     /// 로토무의 모습 · 합체: the form the pick would make (its picture on the stage), its name, what comes with it, why not, n/N.
     func formFocusLCD(_ fb: inout FB, _ m: Mon, _ o: [FormOption], _ sel: Int) {

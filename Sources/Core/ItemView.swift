@@ -147,6 +147,7 @@ extension Walker {
     }
     func holdLCD(_ fb: inout FB, _ ref: Int, _ sel: Int, _ now: Date) {
         guard let m = state.mon(ref) else { return }
+        if lcdFocus { holdFocusLCD(&fb, m, ref, sel); return }                                      // 5.0: the row picked, big (FocusView.swift)
         fb.text("도구 주기", 2, 0); fb.fill(0, 12, 96, 1, 2)
         fb.mon(m, Int(now.timeIntervalSinceReferenceDate * 2) % 2, 0, 2, anim: animT("hold \(ref)", m.art, now))
         fb.text(m.item ?? "없음", 94, 15, m.item == nil ? 1 : 3, right: true, small: true)

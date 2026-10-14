@@ -289,7 +289,8 @@ extension Walker {
         @MainActor func page(_ m: Mon, _ s: Screen) -> FB { var st = Walk(); st.companion = m; st.owned = [m.dex]; st.seen = [m.dex]; st.dex(); let w = Walker(state: st); w.persist = false; w.screen = s; return w.compose(Date()) }
         let over = tall.flatMap { m in [page(m, .box(-1, act: nil, confirm: false)), page(m, .dex(m.dex, filter: 0, detail: false))].flatMap(lcdOverlaps) }
         c.append((over.isEmpty, "5.0 LCD: a page's Pokémon (Gyarados, Wailord, Lugia, Rayquaza, Mega Charizard Y …) clear of its words, band and panel" + (over.isEmpty ? "" : " — \(over.prefix(6))")))
-        let shop: FB = { var st = Walk(); st.watts = 5000; let w = Walker(state: st); w.persist = false; w.screen = .shop(bp: false, sel: 2, qty: nil); return w.compose(Date()) }()
+        let shop: FB = { var st = Walk(); st.watts = 5000; let w = Walker(state: st); w.persist = false; w.screen = .shop(bp: false, sel: 2, qty: nil)
+                         let f = lcdFocus; lcdFocus = false; defer { lcdFocus = f }; return w.compose(Date()) }()   // (the shop as a list: its picked row)
         let lit = (0..<96 * 64).filter { i in shop.px[i] == 3 && shop.flips.contains { f in f[3] < 64 && i % 96 >= f[0] && i % 96 < f[0] + f[2] && i / 96 >= f[1] && i / 96 < f[1] + f[3] } }
         let inside = !lit.isEmpty && lit.allSatisfy { ($0 % 96) >= 2 && ($0 % 96) <= 93 && shop.col[$0] == LCDDeco.highlight(.shop) }
         c.append((inside && shop.palette == LCDDeco.palette(.shop), "5.0 LCD: a picked row inside its panel, in its group's colour; the words in its inks"))

@@ -147,6 +147,7 @@ extension Walker {
                 fb.text(m.from, 94, 15, 2, right: true, small: true)
             case .deco(let k)?: head(m.title); fb.draw(medalArt, 8, 18, k == "gold" ? goldPal : silverPal, scale: 3); fb.text(k == "gold" ? "금장식" : "은장식", 94, 26, 3, right: true)
             case .title(let n)?: head(m.title); fb.draw(medalArt, 8, 18, goldPal, scale: 3); fb.text(n, 94, 26, 3, right: true, small: true)
+            case .items(let n, let k)? where lcdFocus: head(m.title); fb.focusPic("item|" + n) { itemPic(n) }; fb.text(giftName(.items(name: n, count: k)), 94, 26, 3, right: true, small: true)   // 5.0: the item itself
             case let g?: head(m.title); fb.draw(giftArt, 8, 18, giftPal, scale: 3); fb.text(giftName(g), 94, 26, 3, right: true, small: true)
             case nil: head(m.title); fb.draw(letterArt, 8, 22, letterPal, scale: 3); fb.text(m.from, 94, 26, 2, right: true, small: true)
             }
@@ -166,8 +167,14 @@ extension Walker {
                 switch g {
                 case .pickItem(let xs):
                     guard let n = xs[safe: at] else { continue }
-                    head(n); fb.draw(gem, 2, 17, gemPal, scale: 2)
-                    for (k, l) in wrapDots(Held.summary(n) ?? "", 80).prefix(3).enumerated() { fb.text(l, 16, 16 + 11 * k, 3, small: true) }
+                    head(n)
+                    if lcdFocus {                                                                    // 5.0: the item itself on the stage, its words by it
+                        fb.focusPic("item|" + n) { itemPic(n) }; fb.wrap(Held.summary(n) ?? "", 44, 15, 50, lines: 3, 3)
+                        if ask == nil { fb.text("\(at + 1)/\(xs.count)", 94, 43, 1, right: true, small: true) }
+                    } else {
+                        fb.draw(gem, 2, 17, gemPal, scale: 2)
+                        for (k, l) in wrapDots(Held.summary(n) ?? "", 80).prefix(3).enumerated() { fb.text(l, 16, 16 + 11 * k, 3, small: true) }
+                    }
                 case .pickLegend(let xs, let lv, let shiny):
                     guard let d = xs[safe: min(at, xs.count - 1)] else { continue }
                     let x = Mon(dex: d, level: lv, female: false, shiny: shiny ? true : nil)

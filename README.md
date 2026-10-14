@@ -417,6 +417,8 @@ Mac 데이터 폴더 `~/Library/Application Support/PokeWalker/`: `state.json`(+
 | HGSS 알 · 배틀 타워 트레이너 | PokeAPI sprites · Pokémon Showdown trainers | `frames.bin` |
 | HGSS 필드 걷기 도트, 1~493과 그 폼 | [teobz/pkmn-hgss-animated-overworld-sprites](https://github.com/teobz/pkmn-hgss-animated-overworld-sprites) | `walk.bin` |
 | 5.0: 494~721 · 메가 · 원시회귀 · 494 이후의 폼 — 배틀 스프라이트, 박스 아이콘, 걷기 도트 | [BluRosie/hg-engine](https://github.com/BluRosie/hg-engine) `data/graphics/sprites` (커밋 `c056eb7` 고정) | `hgss.bin` · `icons.bin` · `walk.bin` |
+| 5.0: 아이템 그림(상점 · 가방 · 도구 주기 · 우편 · 메가 레이드의 병뚜껑) 372개, 기술머신은 HGSS 기술 타입의 디스크 | PokeAPI sprites `items/<이름>.png` (한국어 이름은 PokeAPI CSV `item_names`) | `items.bin` |
+| 5.0: 민트 · 로토무카탈로그 · 순백떡 그림(PokeAPI에 없음) | 앱에서 직접 그림 (`ItemArt.swift`) | — |
 | 5.0: 그 그림의 애니메이션(BW 공식 · Smogon 팬 도트, 그림과 맞는 것만) | [Pokémon Showdown](https://play.pokemonshowdown.com/sprites/gen5ani/) `sprites/gen5ani` | `anims.bin` |
 | 코스(포켓몬 · 도구 · 확률) | Serebii — HGSS 포켓워커 코스 | `Data.swift` |
 | 이름 · 타입 · 기술 · 특성 · 성격 · 진화 · 종족값 | PokeAPI CSV | `Data.swift` · `BattleData.swift` |

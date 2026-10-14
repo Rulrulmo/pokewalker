@@ -48,9 +48,10 @@ private func drawnItem(_ name: String) -> Pic {
                     ".oLdmmmmo...", "..odmmmo....", "..odooo.....", ".od.........", "od.........."], ["o": o, "L": lerpRGB(c, rgb(255, 255, 255), 0.55), "m": c, "d": lerpRGB(c, rgb(0, 0, 0), 0.3)])
     }
     if name == "로토무카탈로그" {
-        return Pic(["oooooooooooooo.", "oRRRRRRRRRRRRoo", "oRRRRRRRRRRRRow", "oRRRRWWRRRRRRow", "oRRRRWWWRRRRRow", "oRRRRRWWWRRRRow", "oRRRRRRWWWRRRow", "oRRRRWWWWWWRRow",
-                    "oRRRRRRRWWRRRow", "oRRRRRRWWRRRRow", "oRRRRRWWRRRRRow", "oRRRRWRRRRRRRow", "oRRRRRRRRRRRRow", "oooooooooooooow", ".wwwwwwwwwwwwww"],
-                   ["o": o, "R": rgb(236, 112, 56), "W": rgb(255, 244, 200), "w": rgb(230, 226, 214)])
+        return Pic(["..oooooooooooooo..", ".goRRRRRRRRRRRRRo..", "gGoRRRRRRRRRRRRRRo.", ".goRRoooooooooRRRo.", "gGoRRowwwwwwwwoRRo.", ".goRRowwBBwwwwoRRo.", "gGoRRowBBwwwwwoRRo.",
+                    ".goRRowwBBBwwwoRRo.", "gGoRRowwwwBBwwoRRo.", ".goRRowwwBBwwwoRRo.", "gGoRRowwBBwwwwoRRo.", ".goRRowwwwwwwwoRRo.", "gGoRRoooooooooRRRo.", ".goRRRRRRRRRRRRRRo.",
+                    "gGoRRRRYYYYYRRRRRo.", ".goRRRRRRRRRRRRRRo.", "gGoRRRRRRRRRRRRRRo.", ".goooooooooooooooo.", "..sssssssssssssss.."],
+                   ["o": o, "R": rgb(236, 112, 56), "w": rgb(255, 250, 236), "B": rgb(70, 140, 236), "Y": rgb(255, 214, 90), "g": rgb(150, 156, 170), "G": rgb(210, 214, 222), "s": argb(70, rgb(40, 40, 50))])   // (its rings, its cover's window: Rotom's bolt)
     }
     if name == "순백떡" {
         return Pic(["....oooooo....", "..ooWWWWWWoo..", ".oWWWWWWWWWWo.", "oWWWWWWWWWWWWo", "oWWWWWPWWWWWSo", "oWWWWWWWWWWSSo", ".oSWWWWWWWSSo.", "GGooSSSSSSooGG", ".GGGooooooGGG.", "...GGGGGGGG..."],
