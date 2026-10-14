@@ -277,7 +277,7 @@ extension Walker {
         case .box(let i, _, _, false):                                                              // 포켓몬: the companion and the walker's over the box
             let o = boxShown, b = state.box, at = o.firstIndex(of: i), p = page(o.count, at ?? 0), party = [state.companion] + state.caught
             return GridModel(tabs: ["번호순", "레벨순", "V순", "최근"], tab: boxSort,
-                             cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3, held: b[$0].item != nil, art: b[$0].art) },
+                             cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3, held: b[$0].item != nil, art: b[$0].art, heldItem: b[$0].item) },
                              first: p.first, sel: at.map { $0 - p.first }, page: p.page, pages: p.pages, empty: boxQuery.isEmpty ? "상자가 비어 있다" : "맞는 포켓몬이 없어요", bob: bob, query: boxQuery,
                              party: party.map { .init(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil, art: $0.art) }, partySel: i < 0 ? -1 - i : nil, items: state.items.count + state.bag.count)
         default: return nil

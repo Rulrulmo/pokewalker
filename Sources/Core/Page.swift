@@ -308,7 +308,7 @@ extension Canvas {
                 c.image(iconImage(e.pic, shadow: e.look == 1), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: walker?.drag?.from == 10000 + g.first + k ? 0.3 : 1)
             }
             if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
-            if e.held { pixelArt(gem, gemPal, CGPoint(x: cell.maxX - x(6), y: cell.maxY - x(6)), 1.4 * K) }   // 3.7: it holds an item
+            if let it = e.heldItem { itemImage(it, CGRect(x: cell.maxX - x(12), y: cell.maxY - x(12), width: x(11), height: x(11))) } else if e.held { pixelArt(gem, gemPal, CGPoint(x: cell.maxX - x(6), y: cell.maxY - x(6)), 1.4 * K) }   // 3.7 (5.0: the item itself): it holds an item
             if e.v3 {                                                                                   // 3V and up: the amber diamond, as on the LCD
                 let cx = cell.minX + x(6), cy = cell.maxY - x(6), rr = 2.4 * K
                 let d = Path.poly([CGPoint(x: cx, y: cy - rr), CGPoint(x: cx + rr, y: cy), CGPoint(x: cx, y: cy + rr), CGPoint(x: cx - rr, y: cy)])
@@ -528,8 +528,10 @@ extension Canvas {
             for (i, row) in m.rows.enumerated() {
                 let rc = r(X0, 225 + CGFloat(i) * step, X1 - X0, h), on = i == m.sel
                 c.fill(.rounded(rc, 10 * K), on ? Ink.red : Ink.tile)
-                c.say(row.name, rc.minX + x(12), rc.minY + x(h * 0.34), font(12, .bold), on ? .white : row.off ? Ink.sub : Ink.ink, maxW: rc.width - x(30))
-                c.say(row.note, rc.minX + x(12), rc.minY + x(h * 0.69), font(9, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(24))
+                let mk = PanelArt.menuMark(row.name), tx: CGFloat = mk == nil ? 12 : 32                 // 5.0: its mark
+                if mk != nil { panelPic("menu|\(row.name)", CGPoint(x: rc.minX + x(18), y: rc.midY), 1.2) { mk! } }
+                c.say(row.name, rc.minX + x(tx), rc.minY + x(h * 0.34), font(12, .bold), on ? .white : row.off ? Ink.sub : Ink.ink, maxW: rc.width - x(tx + 18))
+                c.say(row.note, rc.minX + x(tx), rc.minY + x(h * 0.69), font(9, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(tx + 12))
                 if row.dot { dot(rc, on) }
                 hits.append((rc, 3000 + i))
             }
@@ -541,15 +543,17 @@ extension Canvas {
             defer { c.say("\(i + 1)", rc.maxX - x(7), rc.maxY - x(8), font(8, .bold), on ? Ink.onRed : Ink.faint, 1) }   // 5.0: its number key
             c.fill(.rounded(rc, 9 * K), on ? Ink.red : Ink.tile)
             let fg = on ? Color.white : row.off ? Ink.sub : Ink.ink, sub = on ? Ink.onRed : Ink.sub
+            let mk = PanelArt.menuMark(row.name), tx: CGFloat = mk == nil ? 9 : 24                     // 5.0: its mark by the name
+            if mk != nil { panelPic("menu|\(row.name)", CGPoint(x: rc.minX + x(14), y: rc.minY + x(group ? 11 : 15)), 1) { mk! } }
             if group {                                                                            // 기록 ▸ / 도감 · 트레이너 카드 / a line of how things are
-                c.say(row.name, rc.minX + x(9), rc.minY + x(11), font(10.5, .bold), fg, maxW: rc.width - x(30))
+                c.say(row.name, rc.minX + x(tx), rc.minY + x(11), font(10.5, .bold), fg, maxW: rc.width - x(tx + 21))
                 c.say("▸", rc.maxX - x(row.dot ? 20 : 10), rc.minY + x(11), font(9, .bold), sub, 0.5)
                 let short = [row.items, row.items.replacingOccurrences(of: "배틀 타워", with: "타워"), row.items.replacingOccurrences(of: "배틀 타워", with: "타워").replacingOccurrences(of: "메가 레이드", with: "메가")]
                 let items = short.first { width($0, font(6.5, .semibold)) <= rc.width - x(14) } ?? short.last!   // 5.0: whole (배틀's own 타워 · 메가 say it)
                 c.say(items, rc.minX + x(9), rc.minY + x(23), font(8, .semibold), sub, maxW: rc.width - x(14))
                 c.say(row.note, rc.minX + x(9), rc.minY + x(34), font(8, .medium), sub, maxW: rc.width - x(22))   // (its number key at the end)
             } else {
-                c.say(row.name, rc.minX + x(9), rc.minY + x(15), font(10.5, .bold), fg, maxW: rc.width - x(20))
+                c.say(row.name, rc.minX + x(tx), rc.minY + x(15), font(10.5, .bold), fg, maxW: rc.width - x(tx + 11))
                 c.say(row.note, rc.minX + x(9), rc.minY + x(29), font(8, .medium), sub, maxW: rc.width - x(22))
             }
             if row.dot { dot(rc, on) }
@@ -607,6 +611,13 @@ extension Page {
         guard let p = picStore[key], let img = picImage(PicRun(key: key, x: 0, y: 0), lcds[0]) else { return }
         let k = min(rc.width / CGFloat(p.w), rc.height / CGFloat(p.h)), w = CGFloat(p.w) * k, h = CGFloat(p.h) * k
         c.image(img, CGRect(x: rc.midX - w / 2, y: rc.midY - h / 2, width: w, height: h), alpha: alpha)
+    }
+    /// 5.0: one of the panel's own pictures (PanelArt), centred on o, `scale` points a pixel (x K).
+    func panelPic(_ key: String, _ o: CGPoint, _ scale: CGFloat, _ make: () -> Pic) {
+        let k = "panel|" + key; if picStore[k] == nil { picStore[k] = make() }
+        guard let p = picStore[k], let img = picImage(PicRun(key: k, x: 0, y: 0), lcds[0]) else { return }
+        let w = CGFloat(p.w) * scale * K, h = CGFloat(p.h) * scale * K
+        c.image(img, CGRect(x: o.x - w / 2, y: o.y - h / 2, width: w, height: h), alpha: 1)
     }
     func pixelArt(_ a: [[UInt8?]], _ pal: [UInt32], _ o: CGPoint, _ px: CGFloat) {
         let w = CGFloat(a.first?.count ?? 0) * px, h = CGFloat(a.count) * px
@@ -783,7 +794,7 @@ extension Page {
             if row.me { xr = pillAt("나", xr, rc.midY, Ink.tint(Ink.blue, 0.16), Ink.blue) }
             let nm = (row.shiny ? "★ " : "") + row.name, nw = c.say(nm, xl, rc.midY, fitFont(nm, [10, 9, 8.5], xr - xl, .bold), Ink.ink, maxW: xr - xl)   // (5.0: a long ID a size smaller, whole)
             var xm = xl + nw + x(4)
-            if let d = row.deco, xm + x(10) < xr { pixelArt(medalArt, d == "gold" ? goldPal : silverPal, CGPoint(x: xm + x(4), y: rc.midY), 1.6 * K); xm += x(12) }   // 3.9: its medal, its 칭호 where there's room
+            if let d = row.deco, xm + x(10) < xr { panelPic("medal|\(d == "gold")", CGPoint(x: xm + x(5), y: rc.midY + x(2)), 0.9) { PanelArt.medal(gold: d == "gold") }; xm += x(12) }   // 3.9: its medal, its 칭호 where there's room
             if let t = row.title, xm + width(t, font(7.5, .bold)) + x(10) < xr { titlePill(t, xm, rc.midY, size: 7.5) }
             hits.append((rc, 6010 + i))
         }
@@ -795,7 +806,7 @@ extension Page {
         if m.walking { xr = pillAt("걷는 중", xr, y(206), Ink.tint(Ink.green, 0.18), Ink.green) } else { xr -= c.say(m.when, xr, y(206), font(9, .medium), Ink.sub, 1) + x(6) }
         if m.me { xr = pillAt("나", xr, y(206), Ink.tint(Ink.blue, 0.16), Ink.blue) }
         let tw = c.say(m.name + "의 트레이너 카드", x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: xr - x(X0 + 2) - (m.deco == nil ? 0 : x(14)))
-        if let d = m.deco { pixelArt(medalArt, d == "gold" ? goldPal : silverPal, CGPoint(x: x(X0 + 2) + tw + x(9), y: y(206)), 2 * K) }   // 3.9: its medal by the name
+        if let d = m.deco { panelPic("medal|\(d == "gold")", CGPoint(x: x(X0 + 2) + tw + x(10), y: y(206) + x(2)), 1.1) { PanelArt.medal(gold: d == "gold") } }   // 3.9: its medal by the name
         let cw = (X1 - X0 - 2 * 4) / 3
         for i in 0..<3 {                                                                            // the walker's three
             let rc = r(X0 + CGFloat(i) * (cw + 4), 216, cw, 42); tile(rc, 10, on: false)
@@ -1112,7 +1123,7 @@ extension Page {
     func drawCard(_ m: CardModel) {
         guard m.title != nil || m.deco != nil || m.stones != nil else { tabs(["트레이너 카드", "최근 7일", "알"], m.page, 198, code: 5200); return }
         var xl = x(X0 + 2)
-        if let d = m.deco { pixelArt(medalArt, d == "gold" ? goldPal : silverPal, CGPoint(x: xl + x(8), y: y(208)), 2.2 * K); xl += x(20); xl += c.say(d == "gold" ? "금장식" : "은장식", xl, y(208), font(10, .bold), d == "gold" ? Ink.gold : Ink.sub) + x(8) }
+        if let d = m.deco { panelPic("medal|\(d == "gold")", CGPoint(x: xl + x(9), y: y(208) + x(2)), 1.2) { PanelArt.medal(gold: d == "gold") }; xl += x(20); xl += c.say(d == "gold" ? "금장식" : "은장식", xl, y(208), font(10, .bold), d == "gold" ? Ink.gold : Ink.sub) + x(8) }
         if let t = m.title {
             let w = titlePill(t + (m.titles.isEmpty ? "" : " ▾"), xl, y(208))
             if !m.titles.isEmpty { hits.append((CGRect(x: xl, y: y(208) - x(10), width: w, height: x(20)), 5209)) }   // 5.0: two or more: tap to pick
@@ -1143,11 +1154,11 @@ extension Page {
     func mailIcon(_ i: MailListModel.Icon, _ cx: CGFloat, _ cy: CGFloat) {
         switch i {
         case .mon(let d, let shiny): monIcon(d, shiny: shiny, CGRect(x: cx - x(14), y: cy - x(14), width: x(28), height: x(28)), side: 28 * K)
-        case .gift: pixelArt(giftArt, giftPal, CGPoint(x: cx, y: cy), 2.4 * K)
-        case .letter: pixelArt(letterArt, letterPal, CGPoint(x: cx, y: cy), 2.4 * K)
+        case .gift: panelPic("gift", CGPoint(x: cx, y: cy), 1.5) { PanelArt.gift }                     // 5.0: the panel's own pictures (ItemArt.swift)
+        case .letter: panelPic("letter", CGPoint(x: cx, y: cy), 1.5) { PanelArt.letter }
         case .gem: pixelArt(gem, gemPal, CGPoint(x: cx, y: cy), 3 * K)
         case .item(let n): itemImage(n, CGRect(x: cx - x(12), y: cy - x(12), width: x(24), height: x(24)))
-        case .medal(let gold): pixelArt(medalArt, gold ? goldPal : silverPal, CGPoint(x: cx, y: cy), 2.4 * K)
+        case .medal(let gold): panelPic("medal|\(gold)", CGPoint(x: cx + x(2), y: cy), 1.5) { PanelArt.medal(gold: gold) }
         }
     }
     func drawMailList(_ m: MailListModel) {

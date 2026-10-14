@@ -60,3 +60,39 @@ private func drawnItem(_ name: String) -> Pic {
     return Pic(["...ooo...", "..oHLLo..", ".oHLLMMo.", "oHLLMMMDo", "oLLMMMDDo", ".oMMMDDo.", "..oMDDo..", "...ooo..."],
                ["o": o, "H": rgb(230, 244, 255), "L": rgb(140, 180, 245), "M": rgb(86, 120, 220), "D": rgb(50, 70, 160)])
 }
+
+// MARK: the panel's own pictures (5.0's UI dots): a gift, a letter, a medal, the menu's marks
+enum PanelArt {
+    static let o = rgb(40, 44, 52)
+    /// A present (16 x 15): a red box, its gold ribbon and bow, lit along its top.
+    static let gift = Pic(["...yy....yy.....", "..y..y..y..y....", "...yy.yy.yy.....", "oooooooyyooooooo", "oRRRRRRyyRRRRRRo", "oLLLLLLyyLLLLLLo", "oooooooyyooooooo",
+                           ".oRRRRRyyRRRRRo.", ".oRRRRRyyRRRRRo.", ".oRRRRRyyRRRRRo.", ".oDDDDDyyDDDDDo.", ".oRRRRRyyRRRRRo.", ".oRRRRRyyRRRRRo.", ".oDDDDDYYDDDDDo.", ".oooooooooooooo."],
+                          ["o": o, "R": rgb(226, 66, 58), "L": rgb(248, 120, 108), "D": rgb(176, 40, 36), "y": rgb(250, 206, 70), "Y": rgb(214, 160, 30)])
+    /// A letter (16 x 12): a cream envelope, its flap's lines, a red seal.
+    static let letter = Pic(["oooooooooooooooo", "oWo..........oWo", "oWWo........oWWo", "oWWWo......oWWWo", "oWWWWo....oWWWWo", "oWWWWWo..oWWWWWo", "oWWWWWWrrWWWWWWo",
+                             "oWWWWWWrrWWWWWWo", "oWWWWWWWWWWWWWWo", "oSSSSSSSSSSSSSSo", "oSSSSSSSSSSSSSSo", "oooooooooooooooo"],
+                            ["o": o, "W": rgb(252, 248, 234), ".": rgb(236, 230, 210), "S": rgb(226, 218, 196), "r": rgb(214, 60, 52)])
+    /// A medal (12 x 16): its ribbon (red and blue), the disc in gold or silver, a star on it.
+    static func medal(gold: Bool) -> Pic {
+        let d = gold ? (rgb(250, 206, 70), rgb(214, 150, 30), rgb(255, 240, 170)) : (rgb(214, 220, 232), rgb(150, 158, 176), rgb(250, 252, 255))
+        return Pic(["oRRo..oBBo..", "oRRRooBBBo..", ".oRRRBBBo...", "..oRRBBo....", "...oooo.....", "..oMMMMo....", ".oMHMMMMo...", "oMHMMSMMMo..",
+                    "oMMMSSSMMo..", "oMMMMSMMMo..", "oMMMMMMMDo..", ".oMMMMMDo...", "..oDDDDo....", "...oooo.....", "............", "............"],
+                   ["o": o, "R": rgb(214, 60, 52), "B": rgb(70, 110, 210), "M": d.0, "D": d.1, "H": d.2, "S": d.2])
+    }
+    /// A bush rustling (14 x 14): the 포켓 레이더's tile.
+    static let radar = Pic(["......!.......", "......!.......", "..............", "......!.......", "...oooooooo...", "..oGGGLGGGGo..", ".oGLGGGGLGGGo.",
+                            "oGGGGLGGGGGLGo", "oGLGGGGGLGGGGo", "oGGGGGLGGGGGGo", ".oGGGGGGGGGGo.", "..oooooooooo..", ".dd.d..d.dd.d.", ".............."],
+                           ["o": rgb(40, 80, 40), "G": rgb(96, 178, 80), "L": rgb(150, 214, 110), "!": rgb(214, 60, 52), "d": rgb(150, 120, 80)])
+    /// The menu's mark for a feature or a group's tile (its LCD group's, the radar's bush).
+    static func menuMark(_ name: String) -> Pic? {
+        let g: PageGroup? = switch name {
+        case "포켓 레이더": nil
+        case "코스": .course; case "포켓몬": .pokemon; case "기록", "도감", "도감 업적": .dex; case "트레이너 카드": .card
+        case "배틀", "배틀 타워", "대전": .tower; case "레이드": .raid; case "메가 레이드": .mega
+        case "친구", "교환": .social; case "상점", "BP 교환소": .shop; case "우편함": .mail
+        default: nil
+        }
+        if name == "포켓 레이더" { return radar }
+        return g.map(LCDScenes.mark)
+    }
+}

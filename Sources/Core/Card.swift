@@ -126,8 +126,21 @@ extension Walker {
             let r = CGRect(x: o.x + x * k, y: o.y + y * k, width: w * k, height: h * k), p = Path.rounded(r, 7 * k)
             c.fill(p, Color(white: 1, alpha: 0.92)); c.stroke(p, Ink.ink.withAlphaComponent(0.11), width: 0.5 * k); return r
         }
-        func status(_ st: String, _ x: CGFloat, _ cy: CGFloat) -> CGFloat {
-            let f = font(7, .bold), w = width(st, f) + 7 * k; c.pill(CGRect(x: x, y: cy - 5 * k, width: w, height: 10 * k), Ink.faint); c.say(st, x + w / 2, cy, f, .white, 0.5); return w
+        func status(_ st: String, _ x: CGFloat, _ cy: CGFloat) -> CGFloat {                       // 5.0: in its own colour (HGSS's: 화상 orange, 마비 yellow …)
+            let col: Color = ["화상": Ink.c(232, 108, 52), "마비": Ink.c(214, 170, 30), "독": Ink.c(160, 80, 190), "맹독": Ink.c(120, 50, 150), "잠듦": Ink.c(130, 136, 150), "얼음": Ink.c(80, 170, 220)][st] ?? Ink.faint
+            let f = font(7, .bold), w = width(st, f) + 7 * k; c.pill(CGRect(x: x, y: cy - 5 * k, width: w, height: 10 * k), col); c.say(st, x + w / 2, cy, f, .white, 0.5); return w
+        }
+        func hp(_ x0: CGFloat, _ x1: CGFloat, _ cy: CGFloat, _ fr: CGFloat, h: CGFloat) {            // 5.0: HGSS's bar — its HP tag, a dark frame, the fill lit along its top
+            let tag = CGRect(x: x0, y: cy - h / 2 - 1.5 * k, width: 13 * k, height: h + 3 * k)
+            c.fill(.rounded(tag, 2 * k), Ink.c(52, 56, 66)); c.say("HP", tag.midX, tag.midY, font(5.5, .bold), Ink.c(250, 206, 70), 0.5)
+            let bar = CGRect(x: tag.maxX - 1 * k, y: cy - h / 2 - 1 * k, width: x1 - tag.maxX + 1 * k, height: h + 2 * k)
+            c.fill(.rounded(bar, (h + 2 * k) / 2), Ink.c(52, 56, 66))
+            let inner = bar.insetBy(dx: 1 * k, dy: 1 * k)
+            c.fill(.rounded(inner, inner.height / 2), Ink.c(96, 100, 112))
+            guard fr > 0 else { return }
+            let fill = CGRect(x: inner.minX, y: inner.minY, width: max(inner.height, inner.width * min(1, fr)), height: inner.height), col = Ink.hp(fr)
+            c.fill(.rounded(fill, inner.height / 2), col)
+            c.fill(.rounded(CGRect(x: fill.minX + 1 * k, y: fill.minY + 0.5 * k, width: max(0, fill.width - 2 * k), height: fill.height * 0.35), fill.height * 0.2), Color(white: 1, alpha: 0.35))
         }
         // theirs: [caught] name · Lv on top; its types (and a status) then the HP bar below
         if foeUp {
@@ -142,19 +155,23 @@ extension Walker {
             var bx = f.minX + 6 * k
             for t in m.foe.types { bx += c.typePill(t, bx, f.minY + 23 * k, h: 9 * k, size: 6.5) + 2 * k }
             if let st = m.foe.status { bx += status(st, bx, f.minY + 23 * k) + 2 * k }
-            c.bar(bx + k, f.maxX - 7 * k, f.minY + 23 * k, fr, Ink.hp(fr), h: 4 * k)
+            hp(bx + k, f.maxX - 7 * k, f.minY + 23 * k, fr, h: 4 * k)
         }
         let me = box(98, 86, 90, 38), mr = m.mine.max > 0 ? CGFloat(m.mine.hp) / CGFloat(m.mine.max) : 0
+        if let e = m.mine.exp {                                                                    // 5.0: its EXP, a thin blue line along the box's foot
+            let ex = CGRect(x: me.minX + 7 * k, y: me.maxY - 4 * k, width: me.width - 14 * k, height: 1.6 * k)
+            c.fill(.rounded(ex, ex.height / 2), Ink.c(214, 222, 236)); if e > 0 { c.fill(.rounded(CGRect(x: ex.minX, y: ex.minY, width: ex.width * e, height: ex.height), ex.height / 2), Ink.c(70, 140, 236)) }
+        }
         let lw = c.say("Lv\(m.mine.level)", me.maxX - 7 * k, me.minY + 10 * k, font(8, .semibold), Ink.sub, 1)
         c.say(m.mine.name, me.minX + 7 * k, me.minY + 9.5 * k, font(10, .bold), Ink.ink, maxW: me.width - 17 * k - lw)
-        c.bar(me.minX + 7 * k, me.maxX - 7 * k, me.minY + 19.5 * k, mr, Ink.hp(mr), h: 5 * k)
+        hp(me.minX + 7 * k, me.maxX - 7 * k, me.minY + 18.5 * k, mr, h: 5 * k)
         var ix = me.minX + 7 * k
-        if let st = m.mine.status { ix += status(st, ix, me.minY + 29.5 * k) + 3 * k }
-        let hw = c.say("\(m.mine.hp) / \(m.mine.max)", me.maxX - 7 * k, me.minY + 29.5 * k, font(10, .semibold), Ink.ink, 1)
+        if let st = m.mine.status { ix += status(st, ix, me.minY + 28.5 * k) + 3 * k }
+        let hw = c.say("\(m.mine.hp) / \(m.mine.max)", me.maxX - 7 * k, me.minY + 28.5 * k, font(10, .semibold), Ink.ink, 1)
         if let it = m.mine.item {                                                                  // 3.7: what it holds now, up to the HP (5.0: a stone's long name as 메가스톤)
             let room = me.maxX - 11 * k - hw - ix, f = font(7, .semibold)
             let label = width(it, f) <= room ? it : Forms.stones.contains(it) ? (width("메가스톤", f) <= room ? "메가스톤" : "스톤") : it
-            if room >= width("스톤", f) { c.say(label, ix, me.minY + 29.5 * k, f, Forms.stones.contains(it) ? Ink.c(132, 64, 196) : Ink.blue, maxW: room) }   // (no room even for 스톤: none, not a lone …)
+            if room >= width("스톤", f) { c.say(label, ix, me.minY + 28.5 * k, f, Forms.stones.contains(it) ? Ink.c(132, 64, 196) : Ink.blue, maxW: room) }   // (no room even for 스톤: none, not a lone …)
         }
     }
 }

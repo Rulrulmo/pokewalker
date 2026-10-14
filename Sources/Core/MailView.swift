@@ -148,11 +148,11 @@ extension Walker {
             case .mon(let x, _)?:
                 head((x.shiny == true ? "★" : "") + monNames[x.dex] + " Lv.\(x.level)"); fb.mon(x, half, 0, 2, anim: animT(key, x.art, now))
                 fb.text(m.from, 94, 15, 2, right: true, small: true)
-            case .deco(let k)?: head(m.title); fb.draw(medalArt, 8, 18, k == "gold" ? goldPal : silverPal, scale: 3); fb.text(k == "gold" ? "금장식" : "은장식", 94, 26, 3, right: true)
-            case .title(let n)?: head(m.title); fb.draw(medalArt, 8, 18, goldPal, scale: 3); fb.text(n, 94, 26, 3, right: true, small: true)
+            case .deco(let k)?: head(m.title); fb.focusPic("medal|\(k == "gold")") { PanelArt.medal(gold: k == "gold") }; fb.text(k == "gold" ? "금장식" : "은장식", 94, 26, 3, right: true)   // 5.0: the panel's pictures
+            case .title(let n)?: head(m.title); fb.focusPic("medal|true") { PanelArt.medal(gold: true) }; fb.text(n, 94, 26, 3, right: true, small: true)
             case .items(let n, let k)? where lcdFocus: head(m.title); fb.focusPic("item|" + n) { itemPic(n) }; fb.text(giftName(.items(name: n, count: k)), 94, 26, 3, right: true, small: true)   // 5.0: the item itself
-            case let g?: head(m.title); fb.draw(giftArt, 8, 18, giftPal, scale: 3); fb.text(giftName(g), 94, 26, 3, right: true, small: true)
-            case nil: head(m.title); fb.draw(letterArt, 8, 22, letterPal, scale: 3); fb.text(m.from, 94, 26, 2, right: true, small: true)
+            case let g?: head(m.title); fb.focusPic("gift") { PanelArt.gift }; fb.text(giftName(g), 94, 26, 3, right: true, small: true)
+            case nil: head(m.title); fb.focusPic("letter") { PanelArt.letter }; fb.text(m.from, 94, 26, 2, right: true, small: true)
             }
         }
         switch s {

@@ -4,7 +4,7 @@ import Foundation
 // MARK: - models
 /// The battle: names, HP, types for the LCD's HP boxes; the message and the choices for the page.
 struct SideModel: Equatable {
-    struct Card: Equatable { var name: String; var level, hp, max: Int; var out: Bool; var status: String? = nil; var types: [String] = []; var owned = false; var item: String? = nil }   // types / owned: shown for theirs; item: what it holds now (3.7)
+    struct Card: Equatable { var name: String; var level, hp, max: Int; var out: Bool; var status: String? = nil; var types: [String] = []; var owned = false; var item: String? = nil; var exp: CGFloat? = nil }   // exp (5.0): ours' way to its next level (0…1)   // types / owned: shown for theirs; item: what it holds now (3.7)
     struct MoveBtn: Equatable { var name, type: String; var power: Int; var effect: Double; var pp = 0, maxPP = 0; var status = false; var about = ""; var text: String? = nil }   // about · text: 3.8.2's line under the four
     enum Mode: Equatable { case none, menu([String], Int), moves([MoveBtn], Int), party([Card], Int), items([String], Int), ask(Bool) }   // ask: 아니오 / 예 (true = 예 highlighted)
     var foe: Card; var mine: Card; var message: String; var mode: Mode
@@ -41,7 +41,7 @@ struct DexModel: Equatable {
 /// The 도감 / 포켓몬 grid: tabs, a page of box icons (the pick bobbing), the pager; 포켓몬's has the companion and the walker's in a row above.
 struct GridModel: Equatable {
     static let perPage = 30, columns = 6                               // 6 x 5
-    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false; var level = 0; var held = false; var art: Int? = nil; var pic: Int { art ?? dex } }   // held: it holds an item (3.7)   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box   // art (5.0): a form's picture (Mon.art)
+    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false; var level = 0; var held = false; var art: Int? = nil; var heldItem: String? = nil; var pic: Int { art ?? dex } }   // heldItem (5.0): its picture on the cell   // held: it holds an item (3.7)   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box   // art (5.0): a form's picture (Mon.art)
     var tabs: [String]; var tab: Int
     var cells: [Cell]; var first: Int; var sel: Int?                   // this page's cells; first = cells[0]'s place in the whole list; sel = the pick's cell
     var page, pages: Int; var empty: String; var bob: Bool
