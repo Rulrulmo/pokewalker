@@ -168,10 +168,16 @@ extension Walker {
         if raidOn, let (bt, u) = beat, Walker.isShinyReveal(bt), u < 0.8, Int(u * 5) % 2 == 0 { fb.decoFrame(gold: true) }   // ... and the gold frame, twice
         guard hud else { return }
         // HUD: theirs top-left (name, Lv, bar; a trainer's remaining balls), ours top-right; each on its own plate so the sprite's head can't muddle it
-        let ft = (raidOn && foe.shiny == true ? "★" : "") + monNames[foe.dex] + " \(foe.level)" + (b.theirs[b.it].status.map { " " + $0.badge } ?? ""), mt = "\(monNames[mine.dex]) \(mine.level)" + (b.mine[b.me].status.map { " " + $0.badge } ?? "")
         let gathering = megaGathering(now)                                                           // 5.0: a Mega's mark after its name (both names in full don't fit), once its light bursts
-        let fm = b.theirs[b.it].mega != nil && gathering != .it, mm = b.mine[b.me].mega != nil && gathering != .me
-        let owned = (state.owned ?? []).contains(foe.dex), lw = max(38, textWidth(ft, small: true) + 2 + (owned ? 7 : 0) + (fm ? 7 : 0)) + (b.trainer != nil ? 13 : 0)
+        let fm = b.theirs[b.it].mega != nil && gathering != .it, mm = b.mine[b.me].mega != nil && gathering != .me, owned = (state.owned ?? []).contains(foe.dex)
+        let fn = (raidOn && foe.shiny == true ? "★" : "") + monNames[foe.dex], fs = b.theirs[b.it].status?.badge, ms = b.mine[b.me].status?.badge
+        let marks = 2 + (owned ? 7 : 0) + (fm ? 7 : 0) + (b.trainer != nil ? 13 : 0) + 2 + (mm ? 7 : 0)
+        var ft = "", mt = ""
+        for (lv, st) in [(true, true), (false, true), (true, false), (false, false)] {                // 5.0: both in one row on any font — the levels go first, then the statuses
+            ft = fn + (lv ? " \(foe.level)" : "") + (st ? fs.map { " " + $0 } ?? "" : ""); mt = monNames[mine.dex] + (lv ? " \(mine.level)" : "") + (st ? ms.map { " " + $0 } ?? "" : "")
+            if textWidth(ft, small: true) + textWidth(mt, small: true) + marks <= 95 { break }
+        }
+        let lw = max(38, textWidth(ft, small: true) + 2 + (owned ? 7 : 0) + (fm ? 7 : 0)) + (b.trainer != nil ? 13 : 0)
         let rw = max(38, textWidth(mt, small: true) + 2 + (mm ? 7 : 0))
         for (x0, w) in [(0, lw), (96 - rw, rw)] { for y in 0..<14 { for x in x0..<min(96, x0 + w) { fb.set(x, y, 0) } } }
         fb.text(ft, 1, 0, 3, small: true)

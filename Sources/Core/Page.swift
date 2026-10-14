@@ -498,7 +498,9 @@ extension Canvas {
             if group {                                                                            // 기록 ▸ / 도감 · 트레이너 카드 / a line of how things are
                 c.say(row.name, rc.minX + x(9), rc.minY + x(11), font(10.5, .bold), fg, maxW: rc.width - x(30))
                 c.say("▸", rc.maxX - x(row.dot ? 20 : 10), rc.minY + x(11), font(9, .bold), sub, 0.5)
-                c.say(row.items, rc.minX + x(9), rc.minY + x(23), font(8, .semibold), sub, maxW: rc.width - x(14))
+                let short = [row.items, row.items.replacingOccurrences(of: "배틀 타워", with: "타워"), row.items.replacingOccurrences(of: "배틀 타워", with: "타워").replacingOccurrences(of: "메가 레이드", with: "메가")]
+                let items = short.first { width($0, font(6.5, .semibold)) <= rc.width - x(14) } ?? short.last!   // 5.0: whole (배틀's own 타워 · 메가 say it)
+                c.say(items, rc.minX + x(9), rc.minY + x(23), font(8, .semibold), sub, maxW: rc.width - x(14))
                 c.say(row.note, rc.minX + x(9), rc.minY + x(34), font(8, .medium), sub, maxW: rc.width - x(14))
             } else {
                 c.say(row.name, rc.minX + x(9), rc.minY + x(15), font(10.5, .bold), fg, maxW: rc.width - x(20))

@@ -496,6 +496,45 @@ import AppKit
     }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
+    // 5.0's quality pass (회사: "글자 겹침같은 문제 없게 ui 제대로 확인"): the extremes — the longest names (Pokémon, moves, abilities, forms,
+    // 칭호), 12-character IDs, the biggest numbers, every mark at once (이로치 · ♀ · an item · a hidden ability · a Mega), full and empty lists
+    Content.$testing.withValue(true) {
+        var r = Seeded(s: 404)
+        let longMoves = moveTable.values.filter { $0.id <= 621 && $0.power > 0 }.sorted { ($0.name.count, $0.id) > ($1.name.count, $1.id) }.prefix(4).map(\.id)
+        let longMons = (1...721).sorted { (monNames[$0].count, $0) > (monNames[$1].count, $1) }
+        var big = Mon.wild(6, level: 100, &r); big.form = Forms.mega(6, holding: "리자몽나이트Y")?.n; big.shiny = true; big.female = true; big.item = "리자몽나이트Y"; big.ability = 2; big.known = Array(longMoves)
+        let held = (Walk.heldBP.map(\.item) + Walk.heldWGen6.map(\.item)).sorted { ($0.count, $0) > ($1.count, $1) }
+        let sx = online({ var s = Walk(); s.companion = big; s.watts = 9_999; s.bp = 9_999; s.towerBest = 9_999; s.towerStreak = 999; s.earned = 99_999_999; s.total = 99_999_999; s.today = 99_999
+                          s.titles = ["타워 타이쿤", MegaRaid.master, DexGoals.doctor]; s.deco = "gold"; s.owned = Array(1...721); s.shinyOwned = Array(1...721); s.dex()
+                          s.caught = longMons.prefix(3).map { var m = Mon.wild($0, level: 100, &r); m.shiny = true; m.item = held.first; return m }
+                          s.box = longMons.prefix(40).map { Mon.wild($0, level: 100, &r) }; s.bag = Array(held.prefix(30)) + Walk.mints; s.items = Array(held.prefix(3)); return s }())
+        sx.cloud?.seat.trainerID = "pokewalker12"
+        take("stress_card", sx) { v in v.screen = .card(0) }
+        take("stress_card_titles", sx) { v in v.titlePick = true; v.screen = .card(0) }
+        take("stress_box", sx) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
+        take("stress_box_walker", sx) { v in v.screen = .box(-2, act: nil, confirm: false, detail: true) }
+        take("stress_box_grid", sx) { v in v.screen = .box(-1, act: nil, confirm: false) }
+        take("stress_dex", sx) { v in v.screen = .dex(longMons[0], filter: 0, detail: true) }
+        take("stress_dex_mega", sx) { v in v.dexForm = (6, Forms.mega(6, holding: "리자몽나이트Y")?.n ?? 1); v.screen = .dex(6, filter: 0, detail: true) }
+        take("stress_shop", sx) { v in v.screen = .shop(bp: false, sel: 0, qty: nil) }
+        take("stress_shop_qty", sx) { v in v.screen = .shop(bp: false, sel: 0, qty: 99) }
+        take("stress_bp", sx) { v in v.screen = .shop(bp: true, sel: v.wares(true).count - 1, qty: nil) }
+        take("stress_items", sx) { v in v.screen = .items(0) }
+        take("stress_hold", sx) { v in v.screen = .hold(ref: -1, sel: 3) }
+        take("stress_tower", sx) { v in v.towerRun = true; v.screen = .tower(pick: nil) }
+        take("stress_goals", sx) { v in v.screen = .goals(0) }
+        take("stress_goals_region", sx) { v in v.screen = .goals(5) }
+        take("stress_menu", sx) { v in v.screen = .menu(group: nil, sel: 0) }
+        take("stress_relearn", sx) { v in v.screen = .relearn(ref: -1, slot: 0, at: nil) }
+        var foe = Mon.wild(longMons[1], level: 100, &r); foe.shiny = true; foe.female = true; foe.item = held.first
+        var sb = Battle(wild: foe, party: [big] + sx.state.caught); sb.mine[0].status = .burn; sb.theirs[0].status = .paralysis
+        take("stress_battle", sx) { v in v.sideOn = true; v.fight = sb; v.screen = .battle(sb, sel: 0) }
+        take("stress_battle_lcd", sx) { v in v.sideOn = false; v.fight = sb; v.screen = .battle(sb, sel: 0) }
+        take("stress_moves", sx) { v in v.sideOn = true; v.fight = sb; v.screen = .moves(sb, sel: 3) }
+        take("stress_party", sx) { v in v.sideOn = true; v.fight = sb; v.screen = .party(sb, sel: 2) }
+        let ex = online(Walk())                                                                   // nothing at all
+        for (name, s) in [("stress_empty_items", Screen.items(0)), ("stress_empty_hold", .hold(ref: -1, sel: 0)), ("stress_empty_goals", .goals(0)), ("stress_empty_card", .card(0))] { take(name, ex) { v in v.screen = s } }
+    }
     return n
 }
 #endif

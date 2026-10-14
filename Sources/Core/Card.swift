@@ -153,7 +153,7 @@ extension Walker {
         if let it = m.mine.item {                                                                  // 3.7: what it holds now, up to the HP (5.0: a stone's long name as 메가스톤)
             let room = me.maxX - 11 * k - hw - ix, f = font(7, .semibold)
             let label = width(it, f) <= room ? it : Forms.stones.contains(it) ? (width("메가스톤", f) <= room ? "메가스톤" : "스톤") : it
-            c.say(label, ix, me.minY + 29.5 * k, f, Forms.stones.contains(it) ? Ink.c(132, 64, 196) : Ink.blue, maxW: room)
+            if room >= width("스톤", f) { c.say(label, ix, me.minY + 29.5 * k, f, Forms.stones.contains(it) ? Ink.c(132, 64, 196) : Ink.blue, maxW: room) }   // (no room even for 스톤: none, not a lone …)
         }
     }
 }
