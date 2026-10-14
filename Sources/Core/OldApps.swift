@@ -20,6 +20,14 @@ enum OldApps {
               let p = (try? PropertyListSerialization.propertyList(from: d, format: nil)) as? [String: Any] else { return nil }
         return p["CFBundleShortVersionString"] as? String
     }
+    /// Into the Trash (a Mac's: Windows' Foundation has none to give).
+    static func toTrash(_ u: URL) -> Bool {
+        #if os(macOS)
+        return (try? FileManager.default.trashItem(at: u, resultingItemURL: nil)) != nil
+        #else
+        return false
+        #endif
+    }
     /// Spotlight's apps with this bundle ID (a Mac; none if Spotlight is off). A second or two: called off the main thread.
     static func find(_ bundleID: String) -> [String] {
         #if os(macOS)
@@ -63,7 +71,7 @@ extension Walker {
     var oldAppsRow: MenuItem? {
         oldApps.isEmpty ? nil : MenuItem("예전 앱 휴지통으로 (\(oldApps.count)개)", action: { self.trashOldApps(Date()) })
     }
-    func trashOldApps(_ now: Date, trash: (URL) -> Bool = { (try? FileManager.default.trashItem(at: $0, resultingItemURL: nil)) != nil }) {
+    func trashOldApps(_ now: Date, trash: (URL) -> Bool = OldApps.toTrash) {
         let left = oldApps.filter { !trash(URL(fileURLWithPath: $0)) }
         let moved = oldApps.count - left.count; oldApps = left
         screen = .say(left.isEmpty ? ["예전 앱 \(moved)개를", "휴지통으로 옮겼어요"] : ["예전 앱 \(left.count)개는", "옮기지 못했어요"], next: screen, since: now)
