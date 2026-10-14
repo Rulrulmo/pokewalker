@@ -330,7 +330,11 @@ extension SaveDB {
 
     // MARK: 5.0: the Mega raid (docs/plans/18 §6.4)
     /// This ISO week's two Mega raid bosses (the legend raid's own week number).
-    func megaWeek(_ now: Date) -> [MegaBoss] { var cal = Calendar(identifier: .iso8601); cal.timeZone = .current; return MegaRaid.week(MegaRaid.round(now, cal)) }
+    func megaWeek(_ now: Date) -> [MegaBoss] {                                                // the rotation from content5's first week (MegaRaid.round)
+        var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
+        let since = ((try? content5Since()) ?? nil).map { Date(timeIntervalSince1970: TimeInterval($0)) } ?? now
+        return MegaRaid.week(MegaRaid.round(now, from: since, cal))
+    }
     /// The pick's count: every Mega raid win (any week, boss, tier), 30 off for each stone picked.
     func megaPity(_ key: String) throws -> Int {
         let wins = try db.rows("SELECT count(*) AS n FROM raid_runs WHERE key = :k AND kind = 'mega' AND won = 1", ["k": .text(key)]).first?.int("n") ?? 0

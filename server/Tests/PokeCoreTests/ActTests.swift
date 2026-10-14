@@ -1064,7 +1064,13 @@ extension SaveDB {
     let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
     let s = try await newTrainer(db, "앨리스")
     #expect(try await db.content5() == false)
-    _ = try await db.setContent5(true); #expect(try await db.content5() == true); _ = try await db.setContent5(false)
+    #expect(try await db.content5Since() == nil)
+    _ = try await db.setContent5(true, now: 1_800_000_000); #expect(try await db.content5() == true); _ = try await db.setContent5(false)
+    _ = try await db.setContent5(true, now: 1_900_000_000); _ = try await db.setContent5(false)
+    #expect(try await db.content5Since() == 1_800_000_000)                                               // the first time only: the rotation's week 0 stays
+    let since = Date(timeIntervalSince1970: 1_800_000_000)
+    let w0 = await db.megaWeek(since), w1 = await db.megaWeek(since.addingTimeInterval(7 * 86400))
+    #expect(w0 == MegaRaid.week(0) && w1 == MegaRaid.week(1))
     // a 5.0 app plays with content5 on: the trainer's oldest becomes 5.0 (an older app elsewhere gets 426 at the gate)
     #expect(try await db.needAppFor("앨리스") != "5.0")
     _ = try reply(await db.act(ActReq(id: "앨리스", session: s, seq: 1, steps: 5, act: .steps, app: "5.0"), now: base.addingTimeInterval(10)))

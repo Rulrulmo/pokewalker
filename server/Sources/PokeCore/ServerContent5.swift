@@ -10,10 +10,13 @@ let content5App = "5.0"
 extension SaveDB {
     // MARK: the switch
     func content5() throws -> Bool { try db.rows("SELECT value FROM settings WHERE name = 'content5'").first?.text("value") == "on" }
-    func setContent5(_ on: Bool) throws -> String {
+    func setContent5(_ on: Bool, now: Int = Int(Date().timeIntervalSince1970)) throws -> String {
         try db.rows("INSERT INTO settings (name, value) VALUES ('content5', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(on ? "on" : "off")])
+        if on { try db.rows("INSERT OR IGNORE INTO settings (name, value) VALUES ('content5_since', :v)", ["v": .text(String(now))]) }   // the first time only
         return "content5 " + (on ? "on" : "off") + " — the running server takes it within \(content5Every) s"
     }
+    /// When content5 first went on (unix; nil: never): the Mega raid's rotation counts its weeks from that one (MegaRaid.round).
+    func content5Since() throws -> Int? { try db.rows("SELECT value FROM settings WHERE name = 'content5_since'").first?.text("value").flatMap { Int($0) } }
     /// Content.on from the setting: at start, then every few seconds (pokeserver content5 runs in another process).
     func syncContent() { Content.on = (try? content5()) ?? false }
 

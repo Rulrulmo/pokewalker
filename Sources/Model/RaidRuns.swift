@@ -84,13 +84,42 @@ enum MegaRaid {
     static let bosses: [MegaBoss] = monForms.keys.sorted().flatMap { d -> [MegaBoss] in
         d == 719 ? [] : monForms[d]!.enumerated().compactMap { k, f in (f.kind == .mega || f.kind == .primal) ? f.item.map { MegaBoss(dex: d, form: k + 1, stone: $0) } : nil }
     }
+    /// The rotation (the user, 10-14: "섞자"): 24 weeks of two, fixed. Each week one of the hardest with one of the easiest (10-14's RaidSim, the
+    /// strong teams' ★4: the i-th hardest with the i-th easiest), the six hardest weeks never back to back nor first, a species' X · Y, the two
+    /// primals and 라티아스 · 라티오스 6 weeks apart or more (plan 18 §6.4's table). (dex, form)
+    static let rotation: [(dex: Int, form: Int)] = [
+        (9, 1), (142, 1),               //  1 메가거북왕 · 메가프테라
+        (319, 1), (359, 1),             //  2 메가샤크니아 · 메가앱솔
+        (65, 1), (445, 1),              //  3 메가후딘 · 메가한카리아스
+        (150, 2), (362, 1),             //  4 메가뮤츠Y · 메가얼음귀신
+        (306, 1), (323, 1),             //  5 메가보스로라 · 메가폭타
+        (6, 1), (229, 1),               //  6 메가리자몽X · 메가헬가
+        (115, 1), (475, 1),             //  7 메가캥카 · 메가엘레이드
+        (310, 1), (354, 1),             //  8 메가썬더볼트 · 메가다크펫
+        (127, 1), (376, 1),             //  9 메가쁘사이저 · 메가메타그로스
+        (254, 1), (460, 1),             // 10 메가나무킹 · 메가눈설왕
+        (150, 1), (257, 1),             // 11 메가뮤츠X · 메가번치코
+        (15, 1), (18, 1),               // 12 메가독침붕 · 메가피죤투
+        (181, 1), (380, 1),             // 13 메가전룡 · 메가라티아스
+        (248, 1), (303, 1),             // 14 메가마기라스 · 메가입치트
+        (6, 2), (302, 1),               // 15 메가리자몽Y · 메가깜까미
+        (3, 1), (448, 1),               // 16 메가이상해꽃 · 메가루카리오
+        (130, 1), (383, 1),             // 17 메가갸라도스 · 원시그란돈
+        (212, 1), (260, 1),             // 18 메가핫삼 · 메가대짱이
+        (334, 1), (428, 1),             // 19 메가파비코리 · 메가이어롭
+        (308, 1), (373, 1),             // 20 메가요가램 · 메가보만다
+        (282, 1), (381, 1),             // 21 메가가디안 · 메가라티오스
+        (94, 1), (214, 1),              // 22 메가팬텀 · 메가헤라크로스
+        (208, 1), (531, 1),             // 23 메가강철톤 · 메가다부니
+        (80, 1), (382, 1),              // 24 메가야도란 · 원시가이오가
+    ]
+    static let order: [MegaBoss] = rotation.map { p in bosses.first { $0.dex == p.dex && $0.form == p.form }! }
     /// The rotation's week n's two (24 weeks a round; n: `round`).
-    static func week(_ n: Int) -> [MegaBoss] { [bosses[(2 * n) % bosses.count], bosses[(2 * n + 1) % bosses.count]] }
-    /// The rotation's week: weeks since the launch week (2026-W43, content5 on Friday 10-23 — its two the first), not the ISO week's number,
-    /// which goes 52 → 53 → 1 at a year's end (2026 has 53) and would show some pairs twice and skip others. Before it: 0.
-    static let firstWeek = DateComponents(weekOfYear: 43, yearForWeekOfYear: 2026)
-    static func round(_ now: Date, _ cal: Calendar) -> Int {
-        guard let a = cal.date(from: firstWeek), let s = cal.dateInterval(of: .weekOfYear, for: now)?.start else { return 0 }
+    static func week(_ n: Int) -> [MegaBoss] { [order[(2 * n) % order.count], order[(2 * n + 1) % order.count]] }
+    /// The rotation's week: weeks since the one content5 first went on in (its two the first: settings' content5_since), not the ISO week's
+    /// number, which goes 52 → 53 → 1 at a year's end (2026 has 53) and would show some pairs twice and skip others. Before it: 0.
+    static func round(_ now: Date, from start: Date, _ cal: Calendar) -> Int {
+        guard let a = cal.dateInterval(of: .weekOfYear, for: start)?.start, let s = cal.dateInterval(of: .weekOfYear, for: now)?.start else { return 0 }
         return max(0, (cal.dateComponents([.day], from: a, to: s).day ?? 0) / 7)
     }
     static let stoneOdds = [3, 5, 8, 10, 20]                    // % a win, ★1–★5 (the user, 10-13)

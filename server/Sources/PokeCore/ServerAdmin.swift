@@ -366,7 +366,9 @@ public func run(_ arguments: [String]) async -> Int32 {
         let out: String
         switch (command, rest.count) {
         case ("list", 0): out = try await db.list()
-        case ("content5", 0): out = "content5 " + ((try await db.content5()) ? "on" : "off")
+        case ("content5", 0):
+            let since = try await db.content5Since().map { Date(timeIntervalSince1970: TimeInterval($0)).formatted(.iso8601) }
+            out = "content5 " + ((try await db.content5()) ? "on" : "off") + (since.map { " (first on \($0): the Mega raid's rotation counts from that week)" } ?? "")
         case ("content5", 1):
             guard ["on", "off"].contains(rest[0]) else { return fail("content5: on | off") }
             out = try await db.setContent5(rest[0] == "on")

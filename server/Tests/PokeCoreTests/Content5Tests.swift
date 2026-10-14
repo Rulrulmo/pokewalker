@@ -493,12 +493,21 @@ private func formed(_ dex: Int, _ f: Int?, _ level: Int = 50) -> Mon { var m = m
     #expect(Walk.bagTabs.count == 8)                                                                     // off: 4.1's eight
 }
 
-@Test func megaRotation() {                                                                      // plan 18 §6.4: from the launch week, across a year's end
+@Test func megaRotation() {                                                                      // plan 18 §6.4: fixed and shuffled, from content5's first week
+    #expect(MegaRaid.order.count == 48 && Set(MegaRaid.order.map { "\($0.dex)-\($0.form)" }) == Set(MegaRaid.bosses.map { "\($0.dex)-\($0.form)" }))   // all 48 once
+    let weeks = (0..<24).map(MegaRaid.week)
+    #expect(weeks.allSatisfy { $0[0].dex != $0[1].dex } && MegaRaid.week(24) == weeks[0])            // no species twice a week (리자몽 · 뮤츠 X · Y)
+    func at(_ n: Int, _ d: Int) -> Int { weeks.firstIndex { $0.contains { $0.dex == d && $0.form == n } }! }
+    func apart(_ a: Int, _ b: Int) -> Int { let d = abs(a - b); return min(d, 24 - d) }
+    #expect(apart(at(1, 6), at(2, 6)) >= 6 && apart(at(1, 150), at(2, 150)) >= 6 && apart(at(1, 382), at(1, 383)) >= 6 && apart(at(1, 380), at(1, 381)) >= 6)
+    let hardest: Set<Int> = [115, 373, 383, 382, 445, 460]                                             // 10-14's RaidSim: the strong teams' ★4 ≤ 10 %
+    let hard = weeks.map { w in w.contains { hardest.contains($0.dex) } }
+    #expect(hard.filter { $0 }.count == 6 && weeks.allSatisfy { w in w.filter { hardest.contains($0.dex) }.count <= 1 })
+    #expect(!hard[0] && !hard[1] && (0..<24).allSatisfy { !(hard[$0] && hard[($0 + 1) % 24]) })       // not first, never back to back
+    #expect(weeks[0].map(\.dex) == [9, 142])                                                           // 메가거북왕 · 메가프테라 first
     var cal = Calendar(identifier: .iso8601); cal.timeZone = TimeZone(identifier: "Asia/Seoul")!
-    func at(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 14) -> Date { cal.date(from: DateComponents(year: y, month: m, day: d, hour: h))! }
-    #expect([at(2026, 10, 19, 0), at(2026, 10, 23), at(2026, 10, 25, 23), at(2026, 10, 1)].map { MegaRaid.round($0, cal) } == [0, 0, 0, 0])   // W43 (and before)
-    #expect([at(2026, 10, 26, 0), at(2026, 12, 28), at(2027, 1, 4), at(2027, 4, 5)].map { MegaRaid.round($0, cal) } == [1, 10, 11, 24])       // W53 → 2027-W01: 10, 11
-    let round = (0..<24).flatMap { MegaRaid.week(MegaRaid.round(at(2026, 10, 23).addingTimeInterval(Double($0) * 7 * 86400), cal)) }
-    #expect(round.count == 48 && Set(round.map { "\($0.dex)-\($0.form)" }).count == 48)                 // all 48 once a round
-    #expect(MegaRaid.week(0).map(\.dex) == [3, 6] && MegaRaid.week(24) == MegaRaid.week(0))          // 메가이상해꽃 · 메가리자몽X first
+    func day(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 14) -> Date { cal.date(from: DateComponents(year: y, month: m, day: d, hour: h))! }
+    let on = day(2026, 10, 21)                                                                         // first on a Wednesday: its week is 0
+    #expect([day(2026, 10, 19, 0), day(2026, 10, 25, 23), day(2026, 10, 26, 0), day(2026, 12, 28), day(2027, 1, 4)].map { MegaRaid.round($0, from: on, cal) } == [0, 0, 1, 10, 11])
+    #expect(MegaRaid.round(day(2026, 10, 1), from: on, cal) == 0 && MegaRaid.round(day(2027, 4, 5), from: on, cal) == 24)   // (before it: 0)
 }
