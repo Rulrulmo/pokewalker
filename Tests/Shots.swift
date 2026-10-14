@@ -9,7 +9,8 @@ import AppKit
     if let d = ProcessInfo.processInfo.environment["LCD_DECO"].flatMap(Int.init) { lcdDeco = d != 0 }   // 5.0: the LCD's pages plain (0), as before they were dressed (LCDDeco.swift)
     if let l = ProcessInfo.processInfo.environment["LCD_SCREEN"].flatMap(Int.init) { lcdStyle = min(max(l, 0), lcds.count - 1) }   // ... on another screen (1 원작, 2 백라이트)
     if ProcessInfo.processInfo.environment["LCD_FOCUS"] == "0" { lcdFocus = false }
-    if ProcessInfo.processInfo.environment["FX_V2"] == "1" { fxV2 = true }                         // 5.0: the moves' second look (the prototype: MoveFX2.swift)               // 5.0: the list pages as lists (before the focus LCD: FocusView.swift)
+    if ProcessInfo.processInfo.environment["FX_V2"] == "1" { fxV2 = true }
+    if ProcessInfo.processInfo.environment["HUD_AUDIT"] == "1" { for l in hudOverlaps() { print("hud " + l) } }   // 5.0: every picture against the fight's HP boxes                         // 5.0: the moves' second look (the prototype: MoveFX2.swift)               // 5.0: the list pages as lists (before the focus LCD: FocusView.swift)
     func base() -> Walk { var s = Walk(), r = Seeded(s: 3); s.companion = Mon.wild(25, level: 30, &r); s.caught = [Mon.wild(16, level: 8, &r)]; s.watts = 1234; s.bp = 40; return s }
     func take(_ name: String, _ v: Walker, _ set: (Walker) -> Void) {
         let view = WalkerView(walker: v); set(v)
@@ -78,24 +79,20 @@ import AppKit
         take("box_gen6", g6) { v in v.screen = .box(0, act: nil, confirm: false) }
         take("mon_gen6_form", g6) { v in v.screen = .box(-3, act: nil, confirm: false, detail: true) }
         let xb = Battle(wild: Mon.wild(716, level: 50, &r5), companion: frog)
-        take("battle_gen6", g6) { v in v.sideOn = true; v.animOn = ("foe 0", 716, Date().addingTimeInterval(-60)); v.fight = xb; v.screen = .battle(xb, sel: 0) }
-        take("battle_gen6_lcd", g6) { v in v.sideOn = false; v.animOn = ("foe 0", 716, Date().addingTimeInterval(-60)); v.fight = xb; v.screen = .battle(xb, sel: 0) }
-        g6.sideOn = false
+        take("battle_gen6", g6) { v in v.animOn = ("foe 0", 716, Date().addingTimeInterval(-60)); v.fight = xb; v.screen = .battle(xb, sel: 0) }
         var fr = Seeded(s: 5), pixie = Mon.wild(35, level: 30, &fr); pixie.known = [585, 1, 3, 45]
         let fairy = online({ var s = base(); s.companion = pixie; return s }()), fbt = Battle(wild: Mon(dex: 16, level: 30, female: false), companion: pixie)
-        take("battle_moves_fairy", fairy) { v in v.sideOn = true; v.fight = fbt; v.screen = .moves(fbt, sel: 0) }
-        fairy.sideOn = false
+        take("battle_moves_fairy", fairy) { v in v.fight = fbt; v.screen = .moves(fbt, sel: 0) }
         // 메가진화 (§9.6): the button after the moves (off / ticked), the LCD's, the light gathering and bursting, both sides Mega (the HP boxes' names, the LCD's marks)
         var zard = Mon.wild(6, level: 60, &fr); zard.known = [53, 19, 337, 89]; zard.item = "리자몽나이트X"
         var cross = Mon.wild(214, level: 60, &fr); cross.item = "헤라크로스나이트"
         let mg = online({ var s = base(); s.companion = zard; return s }()), mgb = Battle(wild: cross, companion: zard)
         let glowBeat = Beat.mega(.me, form: 1, text: "리자몽의 리자몽나이트X가 빛나기 시작했다!\n리자몽은 메가리자몽X로 메가진화했다!")
-        take("battle_mega_toggle", mg) { v in v.sideOn = true; v.megaOn = false; v.fight = mgb; v.screen = .moves(mgb, sel: 0) }
-        take("battle_mega_toggle_on", mg) { v in v.sideOn = true; v.megaOn = true; v.fight = mgb; v.screen = .moves(mgb, sel: 4) }
-        take("battle_mega_lcd", mg) { v in v.sideOn = false; v.megaOn = true; v.fight = mgb; v.screen = .moves(mgb, sel: 4) }
+        take("battle_mega_toggle", mg) { v in v.megaOn = false; v.fight = mgb; v.screen = .moves(mgb, sel: 0) }
+        take("battle_mega_toggle_on", mg) { v in v.megaOn = true; v.fight = mgb; v.screen = .moves(mgb, sel: 4) }
         for (name, u) in [("battle_mega_fx1_stone", 0.3), ("battle_mega_fx2_streaks", 0.85), ("battle_mega_fx3_cocoon", 1.35), ("battle_mega_fx4_flash", 1.6),
                           ("battle_mega_fx5_symbol", 1.8), ("battle_mega_fx6_shards", 2.05), ("battle_mega_fx7_mega", 2.7)] {   // MegaFX's steps
-            take(name, mg) { v in v.sideOn = true; v.screen = .beats(mgb, [glowBeat], since: Date().addingTimeInterval(-u / v.battleSpeed), from: mgb) }
+            take(name, mg) { v in v.screen = .beats(mgb, [glowBeat], since: Date().addingTimeInterval(-u / v.battleSpeed), from: mgb) }
         }
         if ProcessInfo.processInfo.environment["MEGA_FRAMES"] != nil {                                   // MegaFX as frames (a GIF to look at): ours, a foe's, 원시그란돈
             var don = Mon.wild(383, level: 70, &fr); don.item = "주홍구슬"
@@ -103,19 +100,17 @@ import AppKit
                 ("me", mgb, glowBeat), ("foe", mgb, Beat.mega(.it, form: 1, text: "헤라크로스의 헤라크로스나이트가 빛나기 시작했다!\n헤라크로스는 메가헤라크로스로 메가진화했다!")),
                 ("primal", pb, Beat.mega(.it, form: 1, text: "그란돈의 원시회귀!\n그란돈은 원시회귀하여 원래의 모습을 되찾았다!"))]
             for (tag, bt, beat) in cases {
-                for k in 0..<44 { take(String(format: "megagif_%@_%02d", tag, k), mg) { v in v.sideOn = false; v.screen = .beats(bt, [beat], since: Date().addingTimeInterval(-Double(k) / 15 / v.battleSpeed), from: bt) } }
+                for k in 0..<44 { take(String(format: "megagif_%@_%02d", tag, k), mg) { v in v.screen = .beats(bt, [beat], since: Date().addingTimeInterval(-Double(k) / 15 / v.battleSpeed), from: bt) } }
             }
         }
         if let list = ProcessInfo.processInfo.environment["MOVE_FRAMES"] {                              // 5.0's quality pass: a move's flight and hit as frames (GIFs to compare): MOVE_FRAMES=53,56,…
             for id in list.split(separator: ",").compactMap({ Int($0) }) where moveTable[id] != nil {
                 let beats: [Beat] = [.use(.me, move: id), .hit(.it, move: id, damage: 20, effect: 2, crit: false)], total = beats.map(\.length).reduce(0, +)
-                for k in 0..<Int(total * 20) + 4 { take(String(format: "movegif_%03d_%03d", id, k), mg) { v in v.sideOn = false; v.screen = .beats(mgb, beats, since: Date().addingTimeInterval(-Double(k) / 20 / v.battleSpeed), from: mgb) } }
+                for k in 0..<Int(total * 20) + 4 { take(String(format: "movegif_%03d_%03d", id, k), mg) { v in v.screen = .beats(mgb, beats, since: Date().addingTimeInterval(-Double(k) / 20 / v.battleSpeed), from: mgb) } }
             }
         }
         var both = mgb; both.mine[0].mega = 1; both.theirs[0].mega = 1; both.megaUsed = [true, true]
-        take("battle_mega_after", mg) { v in v.sideOn = true; v.fight = both; v.screen = .battle(both, sel: 0) }
-        take("battle_mega_after_lcd", mg) { v in v.sideOn = false; v.fight = both; v.screen = .battle(both, sel: 0) }
-        mg.sideOn = false
+        take("battle_mega_after", mg) { v in v.fight = both; v.screen = .battle(both, sel: 0) }
         // A4 (§9.6): 로토무카탈로그's forms, 유전자쐐기's partners, a page with its form and hidden ability, the courses' 하나 page
         var heat = Mon.wild(479, level: 40, &fr); heat.form = 1; heat.ability = 2
         let fm = online({ var s = base(); s.companion = heat; s.bag = ["로토무카탈로그", "유전자쐐기"]
@@ -133,7 +128,7 @@ import AppKit
         msrv.raidRuns[mkey] = (0..<4).map { k in FakeCloud.RaidRun(tier: k % 3 + 1, boss: Mon(dex: MegaRaid.week(0)[0].dex, level: 20, female: false), day: "2026-10-1\(k)", at: msrv.clockNow - 3600 * (k + 1), bars: k == 2 ? 6 : 10, won: k != 2, ended: true, mega: true) }
         mrw.openFeature("메가 레이드"); drain(mrw); drain(mrw)
         take("mega_raid_lobby", mrw) { v in v.screen = .raid(.lobby(tab: 0)) }
-        take("mega_raid_lobby_lcd", mrw) { v in v.sideOn = false; v.screen = .raid(.lobby(tab: 1)) }
+        take("mega_raid_lobby_lcd", mrw) { v in v.screen = .raid(.lobby(tab: 1)) }
         take("mega_raid_tier", mrw) { v in v.raidMegaBoss = 0; v.screen = .raid(.tier(sel: 2)) }
         take("mega_raid_tier5", mrw) { v in v.raidMegaBoss = 0; v.screen = .raid(.tier(sel: RaidRules.tiers.count - 1)) }   // its first ★5 win's 금색병뚜껑 (the row's pill, the LCD's line)
         take("card_mega", mrw) { v in v.state.bag += Array(MegaRaid.stones.sorted().prefix(13)); v.state.titles = ["타워 타이쿤", MegaRaid.master]; v.state.deco = "gold"; v.screen = .card(0) }   // 메가스톤 13/48 by the 칭호
@@ -149,7 +144,7 @@ import AppKit
         if let b = msrv.megaRaidStart(mkey, 3, 0).boss {
             var mb = Battle(wild: b.boss, companion: mew); mb.theirs += Array(repeating: Fighter(b.boss), count: RaidRules.bars - 1); mb.raidTier = 3
             for i in mb.theirs.indices { mb.theirs[i].mega = b.mega }; mb.megaUsed = [false, true]
-            take("mega_raid_fight", mrw) { v in v.raidOn = true; v.sideOn = true; v.fight = mb; v.screen = .battle(mb, sel: 0) }
+            take("mega_raid_fight", mrw) { v in v.raidOn = true; v.fight = mb; v.screen = .battle(mb, sel: 0) }
             mrw.raidOn = false
         }
         mrw.raidMega = false
@@ -245,8 +240,7 @@ import AppKit
         take("raid_shiny_spark", rme) { v in v.raidOn = true; v.screen = .beats(sb, bs, since: Date().addingTimeInterval(-0.75 / v.battleSpeed), from: from) }
         take("raid_shiny_reveal", rme) { v in v.raidOn = true; v.screen = .beats(sb, bs, since: Date().addingTimeInterval(-1.5 / v.battleSpeed), from: from) }
         take("raid_shiny_menu", rme) { v in v.raidOn = true; var b = sb; b.theirs[0].hp = b.theirs[0].maxHP * 2 / 3; v.fight = b; v.screen = .battle(b, sel: 0) }
-        take("raid_shiny_hud", rme) { v in v.sideOn = true; v.raidOn = true; var b = sb; for k in 0..<4 { b.theirs[k].hp = 0 }; b.it = 4; b.theirs[4].hp = b.theirs[4].maxHP / 2; v.fight = b; v.screen = .battle(b, sel: 0) }   // the app's own: the HP boxes
-        rme.sideOn = false
+        take("raid_shiny_hud", rme) { v in v.raidOn = true; var b = sb; for k in 0..<4 { b.theirs[k].hp = 0 }; b.it = 4; b.theirs[4].hp = b.theirs[4].maxHP / 2; v.fight = b; v.screen = .battle(b, sel: 0) }   // the app's own: the HP boxes
     }
     take("raid_won", rme) { v in v.raidOn = false; v.screen = .say(["10줄을 모두 깼다!", "2BP · 볼 5개!", "우편함에 이번 주 보상이 왔다"], next: .raid(.balls), since: Date()) }
     take("raid_balls", rme) { v in v.raidStage = RaidPending(boss: shinyLugia, tier: 3, bars: 10, won: true, balls: 5); v.screen = .raid(.balls) }
@@ -341,8 +335,8 @@ import AppKit
     take("shop_berries", h37) { v in v.screen = .shop(bp: false, sel: v.shopRows(false, v.shopTabs(false).firstIndex(of: "열매") ?? 0).first ?? 0, qty: nil) }
     take("shop_held_bp", h37) { v in v.screen = .shop(bp: true, sel: v.shopRows(true, v.shopTabs(true).firstIndex(of: "지닌 도구") ?? 0).first ?? 0, qty: nil) }
     var hb = Battle(wild: Mon(dex: 130, level: 30, female: false), party: [h37.state.companion] + h37.state.caught); hb.mine[0].item = "생명의구슬"
-    take("battle_held_hud", h37) { v in v.sideOn = true; v.fight = hb; v.screen = .battle(hb, sel: 0) }
-    take("battle_held_party", h37) { v in v.sideOn = true; v.fight = hb; v.screen = .party(hb, sel: 1) }
+    take("battle_held_hud", h37) { v in v.fight = hb; v.screen = .battle(hb, sel: 0) }
+    take("battle_held_party", h37) { v in v.fight = hb; v.screen = .party(hb, sel: 1) }
     // 3.8 (docs/plans/14): 받기 · a post's 한마디 · the 교환 tile's dot, 맡겨 키우기, the 대전 menu, picks in order, 12 tiles
     fsrv.listings[0].l.note = "이브이랑 바꿔요!"; fsrv.listings[2].l.note = "레벨 높은 걸로 부탁해요"
     var r38 = Seeded(s: 91)
@@ -455,7 +449,7 @@ import AppKit
         s.total = 5250; s.today = 1234; s.history = [3000, 0, 4521, 812, 2210]; s.seen = [19, 150, 243]; s.dex()
         return s
     }
-    let heroW = Walker(state: heroBase()); heroW.persist = false; heroW.sideOn = true; heroW.lastStep = .distantPast
+    let heroW = Walker(state: heroBase()); heroW.persist = false; heroW.lastStep = .distantPast
     take("hero_home", heroW) { v in v.screen = .home }
     take("hero_battle", heroW) { v in
         var r = Seeded(s: 5), b = Battle(wild: Mon.wild(6, level: 30, &r), companion: v.state.companion, chain: 0); _ = b.begin(weather: nil, &r)
@@ -490,16 +484,16 @@ import AppKit
     take("reset_friend_card", zme) { v in let i = v.teamRows(0).firstIndex { $0.card.name == "민수" } ?? 0; v.screen = .team(sel: i, tab: 0, card: true) }
     take("reset_tower_lobby", zme) { v in v.towerRun = false; v.screen = .tower(pick: nil) }
     let tyb = Battle(party: dme.state.party().map(\.mon), trainer: Tower.tycoon, foes: Tower.tycoonTeams[Tower.tycoonFights.min()!]!.map { Mon(dex: $0.dex, level: 50, female: $0.dex == 350) })   // its team as it is
-    take("tycoon_intro", dme) { v in v.sideOn = true; v.towerRun = true; v.fight = tyb; v.screen = .beats(tyb, [.sendOut(.it, 0)], since: Date().addingTimeInterval(-0.45), from: tyb) }
-    take("tycoon_fight", dme) { v in v.sideOn = true; v.fight = tyb; v.screen = .battle(tyb, sel: 0) }
+    take("tycoon_intro", dme) { v in v.towerRun = true; v.fight = tyb; v.screen = .beats(tyb, [.sendOut(.it, 0)], since: Date().addingTimeInterval(-0.45), from: tyb) }
+    take("tycoon_fight", dme) { v in v.fight = tyb; v.screen = .battle(tyb, sel: 0) }
     take("tycoon_won", dme) { v in v.screen = .say(["타워 타이쿤을 이겼다!", "\(Tower.tycoonFights.min()!)연승! +20 BP", "우편함에 보상이 왔다"], next: .tower(pick: nil), since: Date()) }
-    take("tycoon_fight_gold", dme) { v in v.state.towerStreak = Tower.tycoonFights.max()! - 1; v.sideOn = true; v.fight = tyb; v.screen = .battle(tyb, sel: 0) }
+    take("tycoon_fight_gold", dme) { v in v.state.towerStreak = Tower.tycoonFights.max()! - 1; v.fight = tyb; v.screen = .battle(tyb, sel: 0) }
     // 4.1: the tycoon's legend (its team as the Model has it, the legend out) and a trainer's from the 101st fight on (its last one a legend, as towerFoes makes it)
     for (name, wins) in [("tycoon_legend", Tower.tycoonFights.min()! - 1), ("tycoon_legend_gold", Tower.tycoonFights.max()! - 1), ("tower_legend_foe", Tower.legendFrom - 1)] {
         var w = dme.state; w.towerStreak = wins; var r = Seeded(s: 41); let f = w.towerFoes(&r)
         var b = Battle(party: dme.state.party().map(\.mon), trainer: f.trainer, foes: f.foes)
         if let i = f.foes.firstIndex(where: { Tower.isLegend($0.dex) }) { for k in 0..<i { b.theirs[k].hp = 0 }; b.it = i }
-        take(name, dme) { v in v.state.towerStreak = wins; v.towerRun = true; v.sideOn = true; v.fight = b; v.screen = .battle(b, sel: 0) }
+        take(name, dme) { v in v.state.towerStreak = wins; v.towerRun = true; v.fight = b; v.screen = .battle(b, sel: 0) }
     }
     take("grid_drag_to_walker", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (10002, CGPoint(x: 150 * K, y: 30 * K)) }
     take("grid_drag_to_box", grid) { v in v.screen = .box(-1, act: nil, confirm: false); v.refreshPane(Date(), force: true); v.drag = (4501, CGPoint(x: 100 * K, y: 120 * K)) }
@@ -535,10 +529,9 @@ import AppKit
         take("stress_relearn", sx) { v in v.screen = .relearn(ref: -1, slot: 0, at: nil) }
         var foe = Mon.wild(longMons[1], level: 100, &r); foe.shiny = true; foe.female = true; foe.item = held.first
         var sb = Battle(wild: foe, party: [big] + sx.state.caught); sb.mine[0].status = .burn; sb.theirs[0].status = .paralysis
-        take("stress_battle", sx) { v in v.sideOn = true; v.fight = sb; v.screen = .battle(sb, sel: 0) }
-        take("stress_battle_lcd", sx) { v in v.sideOn = false; v.fight = sb; v.screen = .battle(sb, sel: 0) }
-        take("stress_moves", sx) { v in v.sideOn = true; v.fight = sb; v.screen = .moves(sb, sel: 3) }
-        take("stress_party", sx) { v in v.sideOn = true; v.fight = sb; v.screen = .party(sb, sel: 2) }
+        take("stress_battle", sx) { v in v.fight = sb; v.screen = .battle(sb, sel: 0) }
+        take("stress_moves", sx) { v in v.fight = sb; v.screen = .moves(sb, sel: 3) }
+        take("stress_party", sx) { v in v.fight = sb; v.screen = .party(sb, sel: 2) }
         let ex = online(Walk())                                                                   // nothing at all
         for (name, s) in [("stress_empty_items", Screen.items(0)), ("stress_empty_hold", .hold(ref: -1, sel: 0)), ("stress_empty_goals", .goals(0)), ("stress_empty_card", .card(0))] { take(name, ex) { v in v.screen = s } }
     }

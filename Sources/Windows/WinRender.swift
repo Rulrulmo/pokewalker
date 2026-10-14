@@ -33,7 +33,7 @@ import Foundation
     /// One shot: the look reset (SIZE size, 몬스터볼, 컬러, smooth text), `set` puts the screen, then the pane and the frame at T, as the app orders them.
     func take(_ name: String, size: CGFloat = 2, lcd: Bool = false, on v0: Walker? = nil, _ set: (Walker) -> Void) {
         SIZE = size; theme = 0; lcdStyle = 0; paperStyle = 0; smoothText = true
-        let v = v0 ?? Walker(state: base()); v.persist = false; v.sideOn = true; v.rng = Seeded(s: 1); v.lastStep = .distantPast
+        let v = v0 ?? Walker(state: base()); v.persist = false; v.rng = Seeded(s: 1); v.lastStep = .distantPast
         cutTexts = []
         set(v); v.refreshPane(T, force: true); let fb = v.compose(T)
         let k: CGFloat = lcd ? 3 : 2, page = Page(); page.walker = v

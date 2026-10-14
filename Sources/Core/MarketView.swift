@@ -62,7 +62,7 @@ extension Walker {
                                      sub: "그 글: " + monLine(l.mon) + " · " + marketLeft(l.at, now), pill: "제안함", tint: 2)
                 default:
                     return .init(dex: l.mon.dex, shiny: l.mon.shiny == true, line: (l.mine ? "내 " : josa(l.from, "의", "의") + " ") + monLine(l.mon),
-                                 sub: (l.note.map { "“" + $0 + "” · " } ?? "") + marketLeft(l.at, now) + " · 원해요 " + wishText(l.wish),
+                                 sub: marketLeft(l.at, now) + " · 원해요 " + wishText(l.wish) + (l.note.map { " · “" + $0 + "”" } ?? ""),   // (the poster's words last: a row too narrow drops them, the post shows them)
                                  pill: l.mine ? (l.bids > 0 ? "제안 \(l.bids)" : "내 글") : mine != nil ? "제안함" : nil, tint: l.mine ? (l.bids > 0 ? 1 : 2) : 2)
                 }
             }

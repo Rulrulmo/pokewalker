@@ -54,8 +54,13 @@ extension Canvas {
     /// Text centred on the row `cy` (by its caps, one baseline for Hangul and digits); align 0 = starts at x, 0.5 = centred on x, 1 = ends at x.
     @discardableResult func say(_ s: String, _ x: CGFloat, _ cy: CGFloat, _ f: FontSpec, _ c: Color, _ align: CGFloat = 0, maxW: CGFloat? = nil) -> CGFloat {
         var s = s, f = f
-        if let maxW, width(s, f) > maxW {                                                          // 5.0: too long — up to 1.5 pt smaller first, whole; else cut short (…)
-            if let g = [0.5, 1.0, 1.5].lazy.map({ FontSpec(size: f.size - $0 * K, weight: f.weight, face: f.face) }).first(where: { width(s, $0) <= maxW }) { f = g }
+        if let maxW, width(s, f) > maxW {                                                          // 5.0: too long — up to 1.5 pt smaller first, whole; then a list (a · b · c) its last parts dropped, whole ones; else cut short (…)
+            let smaller = [0.5, 1.0, 1.5].map { FontSpec(size: f.size - $0 * K, weight: f.weight, face: f.face) }
+            var parts = s.components(separatedBy: " · ")
+            if let g = smaller.first(where: { width(s, $0) <= maxW }) { f = g }
+            else if parts.count > 1, let short: String = {
+                while parts.count > 1 { parts.removeLast(); let t = parts.joined(separator: " · "); if width(t, smaller[2]) <= maxW { return t } }
+                return nil }() { s = short; f = smaller.first { width(short, $0) <= maxW } ?? smaller[2] }
             else { cutTexts?.append(s); f = FontSpec(size: f.size - 1.5 * K, weight: f.weight, face: f.face); while s.count > 1, width(s, f) > maxW { s = String(s.dropLast(2)) + "…" } }
         }
         let w = width(s, f), m = fonts.metrics(f)

@@ -12,17 +12,17 @@ extension Walker {
     func visitTo(_ name: String) -> Visit? { visitsOut.first { trainerID($0.host)?.key == trainerID(name)?.key } }
     func visitLeft(_ v: Visit, _ now: Date = Date()) -> String {
         let s = max(0, v.ends - Int(now.timeIntervalSince1970))
-        return s >= 3600 ? "\(s / 3600)시간 \(s % 3600 / 60)분 남음" : "\(max(1, s / 60))분 남음"
+        return s >= 3600 ? "\(s / 3600)시간 \(s % 3600 / 60)분 남음" : "\(max(1, s / 60))분 남음"   // (a row too narrow: say drops the parts before it — so it comes first there)
     }
 
     // MARK: the 맡기기 tab
     func visitsPane(_ sel: Int, _ now: Date) -> PaneContent {
         var rows: [VisitsModel.Row] = []
         for a in visitsOut {
-            rows.append(.init(dex: a.mon.dex, shiny: a.mon.shiny == true, line: "내 " + monLine(a.mon) + " → " + a.host, sub: "\(a.steps.formatted())걸음 키움 · " + visitLeft(a, now), button: "데려오기", mine: true))
+            rows.append(.init(dex: a.mon.dex, shiny: a.mon.shiny == true, line: "내 " + monLine(a.mon) + " → " + a.host, sub: visitLeft(a, now) + " · \(a.steps.formatted())걸음 키움", button: "데려오기", mine: true))
         }
         for g in guests {
-            rows.append(.init(dex: g.mon.dex, shiny: g.mon.shiny == true, line: josa(g.owner, "의", "의") + " " + monLine(g.mon), sub: "\(g.steps.formatted())걸음 · +\(min(5, g.steps / 2000))BP · " + visitLeft(g, now),
+            rows.append(.init(dex: g.mon.dex, shiny: g.mon.shiny == true, line: josa(g.owner, "의", "의") + " " + monLine(g.mon), sub: visitLeft(g, now) + " · \(g.steps.formatted())걸음 · +\(min(5, g.steps / 2000))BP",
                               button: "돌려보내기", mine: false))
         }
         let note = cloud?.team == nil ? "불러오는 중…" : "보낸 포켓몬 \(visitsOut.count) · 맡은 포켓몬 \(guests.count)/\(Walker.guestsMax)"

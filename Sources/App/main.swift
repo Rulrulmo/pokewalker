@@ -142,7 +142,6 @@ do {                                                                            
     view.anchorTop = top.y
 }
 panel.orderFrontRegardless(); settings.set("hidden", false)                                    // a launch always shows it: a hidden walker whose menu-bar icon is hidden too could never come back
-walker.sideOn = true
 panel.makeFirstResponder(view)
 
 let timer = Timer(timeInterval: 0.1, target: view, selector: #selector(WalkerView.tick(_:)), userInfo: nil, repeats: true)

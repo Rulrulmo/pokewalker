@@ -137,8 +137,8 @@ enum LCDDeco {
 extension Walker {
     /// The page's group, if this screen is one of the LCD's pages (home, a fight, the radar, an evolution, the shows: their own pictures).
     func pageGroup() -> PageGroup? {
-        if case .say(_, let next, _) = screen {                                                       // a message: its card, unless a fight's stage stays under it (sideOn)
-            switch next { case .battle where sideOn, .moves where sideOn, .party where sideOn, .bagBattle where sideOn, .forfeit where sideOn: return nil; default: return .notice }
+        if case .say(_, let next, _) = screen {                                                       // a message: its card, unless a fight's stage stays under it
+            switch next { case .battle, .moves, .party, .bagBattle, .forfeit: return nil; default: return .notice }
         }
         switch screen {
         case .dex, .goals: return .dex

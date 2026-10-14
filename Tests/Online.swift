@@ -80,7 +80,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     var zard = Mon(dex: 6, level: 60, female: false); zard.known = [53, 19, 337, 89]; zard.item = "리자몽나이트X"
     let mz = online({ var s = Walk(); s.companion = zard; return s }(), rng: 11)
     let mb = Battle(wild: Mon(dex: 16, level: 5, female: false), companion: mz.state.companion)
-    mz.sideOn = true; mz.screen = .moves(mb, sel: 0); let offButton = mz.paneContent(Date()).battle.map { $0.mega == nil } == true
+    mz.screen = .moves(mb, sel: 0); let offButton = mz.paneContent(Date()).battle.map { $0.mega == nil } == true
     Content.$testing.withValue(true) {
         fightOn(mz, mb); mz.screen = .moves(mb, sel: 0)
         mz.press(0); let toToggle = { if case .moves(_, 4) = mz.screen { return true }; return false }() && mz.paneContent(Date()).battle?.mega == false
@@ -853,7 +853,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     // 전적: asked with the menu, on its tab
     da.openFeature("대전"); pump([da]); da.pageTap(6321); pump([da])
     let recs = da.paneContent(Date()).duelHub
-    check(recs?.tab == 1 && recs?.recs.first?.won == true && recs?.recs.first?.line == "vs " + bName && recs?.recs.first?.mine == [248, 150, 149] && recs?.recs.first?.theirs.count == 3 && da.cloud!.duelRecord?.wins == 1,
+    check(recs?.tab == 1 && recs?.recs.first?.won == true && recs?.recs.first?.line == bName && recs?.recs.first?.mine == [248, 150, 149] && recs?.recs.first?.theirs.count == 3 && da.cloud!.duelRecord?.wins == 1,
           "전적: the last ones (won or lost, with whom, the three on each side)", "\(String(describing: recs))")
     // 랜덤 매칭: alone it waits (그만두기); two meet → the pick; a minute unpicked → the first three; a minute alone → 상대를 찾지 못했다
     da.screen = .duel(.hub(tab: 0, sel: 0)); da.pageTap(6331); drain(da)

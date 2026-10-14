@@ -54,10 +54,12 @@ import Foundation
         }
         c.append((bad.isEmpty, "5.0 a mail's pick of items: pages of 6 past 7 (21 mints), the pick's row in view, none under the button or past the panel" + (bad.isEmpty ? "" : " — \(bad)")))
     }
+    let hud = hudOverlaps()                                                                       // (the user: "겹침은 해결해주고")
+    c.append((hud.isEmpty, "5.0 a fight's HP boxes clear of every picture: theirs front-on with each animation frame (in its stage), ours from behind (\(spriteCount) pictures)" + (hud.isEmpty ? "" : " — \(hud.prefix(6))")))
     Content.$testing.withValue(true) {
         var r = Seeded(s: 4), zard = Mon.wild(6, level: 60, &r); zard.item = "리자몽나이트X"; zard.known = [53, 19, 337, 89]
         let b = Battle(wild: Mon.wild(214, level: 60, &r), companion: zard)
-        let w = Walker(state: { var s = Walk(); s.companion = zard; return s }()); w.persist = false; w.sideOn = true; w.fight = b
+        let w = Walker(state: { var s = Walk(); s.companion = zard; return s }()); w.persist = false; w.fight = b
         @MainActor func words(_ on: Bool) -> [(s: String, at: CGPoint)] {
             w.megaOn = on; w.screen = .moves(b, sel: 0); w.refreshPane(Date(), force: true)
             let page = Page(); page.walker = w; let k = TextCanvas(); page.draw(on: k); return k.said
@@ -73,7 +75,7 @@ import Foundation
     Content.$testing.withValue(true) {
         var r = Seeded(s: 5)
         let w = Walker(state: { var s = Walk(); s.companion = Mon.wild(479, level: 30, &r); s.box = [Mon.wild(646, level: 60, &r), Mon.wild(643, level: 60, &r)]; s.bag = ["로토무카탈로그", "유전자쐐기"]; return s }())
-        w.persist = false; w.sideOn = true
+        w.persist = false
         @MainActor func formPage() -> (ref: Int, item: String)? { if case .formPick(let r, let i, _) = w.screen { return (r, i) }; return nil }
         w.screen = .box(-1, act: nil, confirm: false, detail: true); w.refreshPane(Date(), force: true)
         let link = w.paneContent(Date()).mon?.formAction == "모습 바꾸기"
@@ -110,7 +112,7 @@ import Foundation
         let fight = Battle(wild: Mon.wild(214, level: 60, &r), companion: zard)
         @MainActor func walker(_ s: Screen, _ setup: @escaping (inout Walk) -> Void = { _ in }) -> () -> Walker {
             { var st = Walk(); st.companion = rotom; st.box = [kyurem, white]; st.bag = ["로토무카탈로그", "유전자쐐기"]; st.watts = 5000; st.owned = [6, 25, 479, 646, 650]; st.seen = st.owned
-              setup(&st); let w = Walker(state: st); w.persist = false; w.sideOn = true; w.fight = fight; w.screen = s; return w }
+              setup(&st); let w = Walker(state: st); w.persist = false; w.fight = fight; w.screen = s; return w }
         }
         let dead: [(String, [Int])] = [
             ("로토무카탈로그", deadHits(walker(.formPick(ref: -1, item: "로토무카탈로그", sel: 0)), skip: [5980, 5981])),   // (row 0: 로토무, the one picked; row 1: itself now… its own form, said)
@@ -125,4 +127,31 @@ import Foundation
         c.append((bad.isEmpty, "5.0 ② every button on 5.0's pages does something (clicked through paneTap, as the Mac's and Windows')" + (bad.isEmpty ? "" : " — dead: \(bad)")))
     }
     return c
+}
+
+/// The fight's HP boxes (Card.drawHUD, half-dots over the LCD: theirs 4…114 × 4…34, ours 98…188 × 86…124) against every picture as it stands
+/// on the stage (theirs front-on at (60, 8) with all its animation's frames, ours from behind at (8, 32)): the art numbers that reach under one.
+@MainActor func hudOverlaps() -> [String] {
+    let boxes: [(String, [Double])] = [("theirs", Walker.hudBoxes[0]), ("ours", Walker.hudBoxes[1])], clip = Walker.foeStage.map(Double.init)
+    func inStage(_ b: [Double]) -> [Double] { [max(b[0], clip[0]), max(b[1], clip[1]), min(b[2], clip[0] + clip[2]), min(b[3], clip[1] + clip[3])] }   // (theirs is drawn in its stage)
+    func hits(_ b: [Double]) -> [String] { boxes.filter { min(b[2], $0.1[2]) - max(b[0], $0.1[0]) > 1 && min(b[3], $0.1[3]) - max(b[1], $0.1[1]) > 1 }.map(\.0) }
+    var out: [String] = []
+    for art in 1...spriteCount {
+        let front = SpriteRun(art: art, shiny: false, back: false, x: 60, y: 8, bob: 1, tint: nil, tintShade: 0, floor: 64, clip: Walker.foeStage)
+        for h in drawnBox(front).map(hits) ?? [] { out.append("#\(art) front × \(h)") }
+        if let a = anim(art) {                                                                   // each animation frame's pixels (a jump or a stretch may leave the 80 x 80)
+            let fx = 2 * Double(60 + 16), fy = 2 * Double(8 + 32)
+            for f in 0..<a.ms.count {
+                var fb = [Double(a.w), Double(a.h), 0, 0]
+                for y in 0..<a.h { for x in 0..<a.w where a.pixel(f, x, y, shiny: false) != 0 { fb = [min(fb[0], Double(x)), min(fb[1], Double(y)), max(fb[2], Double(x + 1)), max(fb[3], Double(y + 1))] } }
+                guard fb[2] > fb[0] else { continue }
+                for h in hits(inStage([fx + Double(a.x) + fb[0] - 40, fy + Double(a.y) + fb[1] - 80, fx + Double(a.x) + fb[2] - 40, min(128, fy + Double(a.y) + fb[3] - 80)])) { out.append("#\(art) anim × \(h)") }
+            }
+        }
+        let back = SpriteRun(art: art, shiny: false, back: true, x: 8, y: 32, bob: 1, tint: nil, tintShade: 0, floor: 64)
+        var bb = [80.0, 80, 0, 0]
+        for y in 0..<80 { for x in 0..<80 where spritePixel(art, back: true, x, y, shiny: false) != 0 { bb = [min(bb[0], Double(x)), min(bb[1], Double(y)), max(bb[2], Double(x + 1)), max(bb[3], Double(y + 1))] } }
+        if bb[2] > bb[0] { let fx = 2 * Double(back.x + 16), fy = 2 * Double(back.y + 32); for h in hits([fx + bb[0] - 40, fy + bb[1] - 80, fx + bb[2] - 40, min(128, fy + bb[3] - 80)]) { out.append("#\(art) back × \(h)") } }
+    }
+    return Array(Set(out)).sorted()
 }

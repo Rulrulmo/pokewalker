@@ -23,59 +23,14 @@ extension Walker {
             if live { hpBar(&fb, box.x, 52, box.w, Int(((1.5 + window - u) * 1000).rounded()), Int(window * 1000)) }   // the time left to pick one
             if chain > 0 { fb.text(u < 1.5 ? "연쇄 \(chain)!" : "연쇄 \(chain)", 2, 1, 3, small: u >= 1.5) }
             if chain > 0, u < 1.5, let n = chainNote { fb.text(n, 0, 51, 2, center: true, small: true) }   // under the picture, where the time bar goes next
-        case .battle(let b, _) where sideOn, .moves(let b, _) where sideOn, .party(let b, _) where sideOn, .bagBattle(let b, _) where sideOn, .forfeit(let b, _) where sideOn:
-            stage(&fb, b, now, .idle, hud: false)                                                   // the side panel carries names, HP, menus
-        case .beats where sideOn:
+        case .battle(let b, _), .moves(let b, _), .party(let b, _), .bagBattle(let b, _), .forfeit(let b, _):
+            stage(&fb, b, now, .idle)                                                   // the side panel carries names, HP, menus
+        case .beats:
             let s = beatState(now)!
-            stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), hud: false, pending: s.pending, beat: (s.beat, s.u))
+            stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), pending: s.pending, beat: (s.beat, s.u))
             if case .hit(_, _, _, _, true) = s.beat, s.u < 0.15 { fb.invert(0, 0, 96, 64) }
             if s.beat == .appear, legendDex.contains(s.from.wild.dex), s.u < 0.5, Int(s.u * 10) % 2 == 0 { fb.invert(0, 0, 96, 64) }
             if s.names.trainer == Tower.tycoon, isIntro(s.beat, s.names), s.u < 0.6, Int(s.u * 10) % 2 == 0 { fb.invert(0, 0, 96, 64) }   // 3.9: the tycoon comes in with flashes
-        case .forfeit(let b, let yes):
-            stage(&fb, b, now, .idle)
-            fb.text("기권할까?", 2, 52, 3, small: true)
-            for (k, o) in ["아니오", "예"].enumerated() { let x = 48 + 24 * k, w = fb.text(o, x + 1, 52, 3, small: true); if (k == 1) == yes { fb.invert(x, 52, w + 2, 12) } }
-        case .battle(let b, _) where duelWait:
-            stage(&fb, b, now, .idle)
-            fb.text("상대를 기다리는 중" + String(repeating: ".", count: Int(now.timeIntervalSinceReferenceDate * 2) % 4), 2, 52, 3, small: true)
-        case .battle(let b, let sel):
-            stage(&fb, b, now, .idle)
-            let opts = battleMenu(b)
-            for (k, r) in menuRanges(opts).enumerated() { fb.text(opts[k], r.lowerBound + 1, 52, 3, small: true); if k == sel { fb.invert(r.lowerBound, 52, r.count, 12) } }
-        case .moves(let b, let sel):
-            stage(&fb, b, now, .idle)
-            let x = b.mine[b.me], ms = x.moves
-            fb.fill(0, 37, 96, 27, 0); for y in 37..<64 { for x in 0..<96 { fb.col[y * 96 + x] = 0 } }; fb.fill(0, 37, 96, 1, 2)
-            let x0 = x
-            for (k, id) in ms.enumerated() {                                                          // 2 x 2: name (dim at 0 PP), then ▲ super effective / ▼ not very / × none
-                let m = moveTable[id]!, x = (k % 2) * 48, y = 39 + (k / 2) * 12, e = b.hint(id, b.moveType(.me, m).type)
-                let w = fb.text(m.name, x + 2, y, x0.pp[k] > 0 ? 3 : 1, small: true)
-                fb.text(e == 0 ? "×" : e > 1 ? "▲" : e < 1 ? "▼" : "", x + 46, y, 2, right: true, small: true)
-                if k == sel { fb.invert(x, y - 1, max(w + 3, 47), 11) }
-            }
-            if b.canMega(.me) {                                                                       // 5.0: 메가 on a tab over the moves, between the two (◀ ▶ to it, ● ticks it): clear of the foe
-                let l = (megaOn ? "●" : "○") + "메가", w = textWidth(l, small: true) + 6, x0 = 50 - w / 2
-                fb.fill(x0, 27, w, 10, 0); fb.fill(x0, 27, w, 1, 2); fb.fill(x0, 27, 1, 10, 2); fb.fill(x0 + w - 1, 27, 1, 10, 2); fb.text(l, x0 + 3, 27, 3, small: true)
-                if sel == ms.count { fb.invert(x0, 27, w, 10) }
-            }
-        case .party(let b, let sel):
-            stage(&fb, b, now, .idle)
-            fb.fill(0, 13, 96, 51, 0); for y in 13..<64 { for x in 0..<96 { fb.col[y * 96 + x] = 0 } }; fb.fill(0, 13, 96, 1, 2)
-            for (k, f) in b.mine.enumerated() {
-                let y = 16 + 15 * k
-                fb.text((k == b.me ? "▶" : "") + monNames[f.mon.dex] + " Lv.\(f.mon.level)" + (f.status.map { " " + $0.badge } ?? ""), 2, y, f.alive ? 3 : 1, small: true)
-                hpBar(&fb, 2, y + 9, 60, f.hp, f.maxHP); fb.text("\(f.hp)/\(f.maxHP)", 94, y + 3, 2, right: true, small: true)
-                if k == sel { fb.invert(0, y - 1, 96, 14) }
-            }
-        case .bagBattle(let b, let sel):
-            stage(&fb, b, now, .idle)
-            fb.fill(0, 13, 96, 51, 0); for y in 13..<64 { for x in 0..<96 { fb.col[y * 96 + x] = 0 } }; fb.fill(0, 13, 96, 1, 2)
-            let list = battleItems(b), top = max(0, min(sel - 2, list.count - 5))                // 5 rows, the pick kept in view
-            for (k, it) in list.enumerated() where k >= top && k < top + 5 {
-                let y = 15 + 10 * (k - top)
-                fb.text(it.name, 2, y, 3, small: true); fb.text("×\(state.count(it.name))", 94, y, 2, right: true, small: true)
-                if k == sel { fb.invert(0, y - 1, 96, 10) }
-            }
         case .shop(let bp, let sel, let qty):
             func fit(_ s: String, _ w: Int) -> String {                                              // cut to w dots, with … (small text)
                 guard textWidth(s, small: true) > w else { return s }
@@ -150,21 +105,12 @@ extension Walker {
                     if k == s { fb.invert(0, y - 1, 96, 10) }
                 }
             }
-        case .beats:
-            let s = beatState(now)!
-            stage(&fb, s.hp, now, pose(s.beat, s.u, s.hp), pending: s.pending, beat: (s.beat, s.u))
-            fb.text(message(s.beat, s.u, s.names), 2, 52)
-            if case .hit(_, _, _, _, true) = s.beat, s.u < 0.15 { fb.invert(0, 0, 96, 64) }           // critical: the whole screen flashes
-            if s.beat == .appear, legendDex.contains(s.from.wild.dex), s.u < 0.5, Int(s.u * 10) % 2 == 0 { fb.invert(0, 0, 96, 64) }   // a legend: two flashes first
         case .tower:
             let nextLine = towerNextReward.map { textWidth("다음 보상 \($0.wins)연승", small: true) < 50 ? "다음 보상 \($0.wins)연승" : "다음 \($0.wins)연승" } ?? "\(state.bp ?? 0)BP"   // 3.9: the next streak reward (BP is on the title row)
             fb.text("배틀 타워", 2, 0); fb.text(nextLine, 94, 1, 2, right: true, small: true); fb.fill(0, 12, 96, 1, 2)
             if towerRun, let p = Tower.tycoonPrint(afterWins: state.towerStreak ?? 0) { fb.decoFrame(gold: p == "금") }   // the tycoon's fight next: its frame
             fb.text(towerRun ? "\(state.towerStreak ?? 0)연승 중 · 최고 \(state.towerBest ?? 0)" : "최고 \(state.towerBest ?? 0)연승", 2, 14, 2, small: true)
-            if sideOn { fb.towerHall(state.party().map(\.mon.dex), t); break }                        // the pane has the list and the buttons: the LCD shows the hall
-            for (k, p) in state.party().enumerated() { fb.text((p.mon.shiny == true ? "★" : "") + monNames[p.mon.dex] +  " Lv.\(p.mon.level)" + (p.mon.level != Walk.towerLevel ? "→\(Walk.towerLevel)" : ""), 2, 24 + 9 * k, 3, small: true) }
-            fb.fill(0, 51, 96, 1, 2)
-            fb.text(towerRun ? "● 다음 상대  ↩ 나가기" : "● 도전 \(Walk.towerFee)W", 0, 53, 3, center: true, small: true)
+            fb.towerHall(state.party().map(\.mon.dex), t)                                             // the pane has the list and the buttons: the LCD shows the hall
         case .team(let sel, let tab, _): teamLCD(&fb, sel, tab, now)
         case .trade(let s): tradeLCD(&fb, s, now)
         case .itemOn(let p): itemOnLCD(&fb, p, now)
@@ -269,8 +215,8 @@ extension Walker {
             fb.text(u < 4.4 ? "어라...? " + josa(monNames[from.dex], "이", "가") + "...!" : josa(monNames[to.dex], "으로", "로") + " 진화했다!", 2, 52)
         case .say(let lines, let next, _):
             switch next {                                                                             // a fight's own message is on the pane: the LCD keeps the stage
-            case .battle(let b, _) where sideOn, .moves(let b, _) where sideOn, .party(let b, _) where sideOn, .bagBattle(let b, _) where sideOn, .forfeit(let b, _) where sideOn:
-                stage(&fb, b, now, .idle, hud: false)
+            case .battle(let b, _), .moves(let b, _), .party(let b, _), .bagBattle(let b, _), .forfeit(let b, _):
+                stage(&fb, b, now, .idle)
             default: for (k, l) in lines.enumerated() { fb.text(l, 0, 32 - lines.count * 7 + 14 * k, center: true) }
             }
         }
@@ -654,7 +600,7 @@ extension Walker {
         default: return nil
         }
         let ws = wares(bp), unit = bp ? "BP" : "W", w = ws[safe: sel], tab = shopTab(bp, sel), ids = shopRows(bp, tab)
-        let rows = ids.map { ws[$0] }.map { w in ShopModel.Row(name: state.wareName(w), note: state.wareNote(w), price: w.once && state.owned(w) > 0 ? "보유" : "\(w.price.formatted())\(unit)",
+        let rows = ids.map { ws[$0] }.map { w in ShopModel.Row(name: state.wareName(w), note: state.wareNote(w).replacingOccurrences(of: "지니게 하기: ", with: "지니면 "), price: w.once && state.owned(w) > 0 ? "보유" : "\(w.price.formatted())\(unit)",
                                                  owned: state.owned(w), can: state.canBuy(w, bp: bp) > 0, once: w.once) }
         let cost = (w?.price ?? 0) * (qty ?? 0)
         let hint = said ?? w.map { w in

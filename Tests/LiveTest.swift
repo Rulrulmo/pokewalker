@@ -684,7 +684,7 @@ import Foundation
     check(qb.hasPrefix("이겼다!"), "live: the queue's duel to its end — A \(qa) · B \(qb)")
     wa.openFeature("대전"); run(15) { ca.duelRecord != nil && idle(ca) }; wa.pageTap(6321)
     let recs = wa.paneContent(Date()).duelHub?.recs ?? []
-    check(recs.count >= 2 && recs.prefix(2).allSatisfy { !$0.won && $0.line.lowercased() == "vs " + b.lowercased() && $0.mine.count == 3 }, "live 전적: \(recs.prefix(2).map { "\($0.won ? "승" : "패") \($0.line) \($0.sub)" })")
+    check(recs.count >= 2 && recs.prefix(2).allSatisfy { !$0.won && $0.line.lowercased() == b.lowercased() && $0.mine.count == 3 }, "live 전적: \(recs.prefix(2).map { "\($0.won ? "승" : "패") \($0.line) \($0.sub)" })")
     print(failed == 0 ? "PASS live 3.8" : "FAIL \(failed)")
     return failed == 0
 }

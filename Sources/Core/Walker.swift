@@ -28,7 +28,6 @@ import Foundation
     var usedItem = "몬스터볼"                                                // the potion / ball / revive the current beat names
     var towerRun = false                                                   // a tower run is on (the server's: it ends with the session)
     var growthThen: Screen? = nil                                      // where a fight's end goes once home's news have played (settle): the lobby
-    var sideOn = false                                                     // the pane carries the battle's text (the app; not --selftest): the LCD shows the stage only
     var emote: (kind: Int, until: Date)? = nil                             // ♪ ♥ ! bubble over the companion
     var animOn: (who: String, art: Int, since: Date)? = nil                // the entry animation playing (Anim.swift): home's companion or a page's Pokémon
     lazy var rewarded = dexCount                                           // dex count already celebrated (no fanfare for old progress)
@@ -79,7 +78,7 @@ import Foundation
         }
         let h = pane.height
         if h != cardH { cardH = h; host?.resized() }
-        let hb = sideOn ? c.battle : nil
+        let hb = c.battle
         if hb != hud { hud = hb; host?.redraw(.lcd) }
         if homeKey() != keyShown { keyShown = homeKey(); host?.redraw(.key) }                   // the 메뉴 / 홈 key's face
         let t = title(), key = t.title + "|" + t.meta + "|" + "\(chevron.map { $0 ? 1 : 0 } ?? 2)"

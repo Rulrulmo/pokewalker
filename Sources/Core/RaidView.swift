@@ -243,7 +243,7 @@ extension Walker {
     func raidBallsLCD(_ fb: inout FB, _ now: Date) {
         guard let p = raidStage else { return }
         let b = Battle(wild: p.boss, companion: state.companion)
-        stage(&fb, b, now, .idle, hud: false)
+        stage(&fb, b, now, .idle)
         let of = RaidRules.balls + (p.won ? RaidRules.winBalls : 0)
         for k in 0..<of { fb.draw(caughtMark, 2 + 7 * k, 2, k < p.balls ? ballPal : [ballPal[3], rgb(120, 124, 132), rgb(120, 124, 132), ballPal[3]]) }   // (top left: the HUD's place, empty here)
     }

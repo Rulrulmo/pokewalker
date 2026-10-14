@@ -68,7 +68,6 @@ final class JSONSettings: Settings {
     walker.save()
     walker.refreshPane(Date(), force: true)                                                      // the page it opens on (the status sheet)
     c.open(); settings.set("hidden", false)                                                      // a launch always shows it
-    walker.sideOn = true
     var msg = MSG()
     while Bool(GetMessageW(&msg, nil, 0, 0)) { _ = TranslateMessage(&msg); _ = DispatchMessageW(&msg) }
     walker.save()

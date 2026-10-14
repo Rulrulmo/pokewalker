@@ -78,14 +78,6 @@ extension Walker {
     func hpBar(_ fb: inout FB, _ x: Int, _ y: Int, _ w: Int, _ hp: Int, _ max: Int) {
         let inner = w - 2, f = hp <= 0 ? 0 : Swift.max(1, hp * inner / Swift.max(1, max))
         let c = hp * 5 > max * 2 ? rgb(72, 200, 90) : hp * 5 > max ? rgb(240, 200, 50) : rgb(230, 70, 60)
-        if fxV2 {                                                                                  // 5.0's quality pass (the prototype, with MoveFX2): HGSS's bar — round ends, a lit top row, a shaded bottom one
-            let o = rgb(40, 44, 52)
-            for dx in 1..<w - 1 { fb.set(x + dx, y, 3, o); fb.set(x + dx, y + 3, 3, o) }
-            fb.set(x, y + 1, 3, o); fb.set(x, y + 2, 3, o); fb.set(x + w - 1, y + 1, 3, o); fb.set(x + w - 1, y + 2, 3, o)
-            for dx in 0..<inner { let on = dx < f
-                fb.set(x + 1 + dx, y + 1, on ? 1 : 2, on ? lerpRGB(c, rgb(255, 255, 255), 0.35) : rgb(150, 154, 160)); fb.set(x + 1 + dx, y + 2, on ? 1 : 2, on ? lerpRGB(c, rgb(0, 0, 0), 0.18) : rgb(112, 116, 124)) }
-            return
-        }
         for dx in 0..<w { fb.set(x + dx, y, 3, rgb(40, 44, 52)); fb.set(x + dx, y + 3, 3, rgb(40, 44, 52)) }
         for dy in 1...2 { fb.set(x, y + dy, 3, rgb(40, 44, 52)); fb.set(x + w - 1, y + dy, 3, rgb(40, 44, 52))
             for dx in 0..<inner { fb.set(x + 1 + dx, y + dy, dx < f ? 1 : 2, dx < f ? c : rgb(120, 124, 132)) } }
@@ -129,13 +121,16 @@ extension Walker {
     }
     /// The DS layout: theirs front-on at the top right, ours from behind at the bottom left, each on a pad.
     /// beat = the beat playing and how far into it (the move effects' clock); nil between turns.
-    func stage(_ fb: inout FB, _ b: Battle, _ now: Date, _ p: Pose, hud: Bool = true, pending: Set<Side> = [], beat: (Beat, Double)? = nil) {
+    /// The whole LCD is the stage: the HP boxes, names and menus are the panel's (Card.drawHUD over the LCD's corners, Page's battle).
+    /// The HP boxes (half-dots: theirs 4…108 × 4…34, ours 98…188 × 86…124) and where theirs may be drawn — right of its box, above ours.
+    static let hudBoxes: [[Double]] = [[4, 4, 108, 34], [98, 86, 188, 124]], foeStage = [110, 0, 82, 84]
+    func stage(_ fb: inout FB, _ b: Battle, _ now: Date, _ p: Pose, pending: Set<Side> = [], beat: (Beat, Double)? = nil) {
         let t = now.timeIntervalSinceReferenceDate, f = Int(t * 2) % 2
-        let at: [Side: (x: Int, y: Int)] = [.it: (60, hud ? 14 : 8), .me: (8, hud ? 22 : 32)]   // where each stands (feet at y + 32, centre x + 16; sprites are 40 dots): theirs clear of the HP box, ours flush with the bottom
+        let at: [Side: (x: Int, y: Int)] = [.it: (60, 8), .me: (8, 32)]                               // where each stands (feet at y + 32, centre x + 16; sprites are 40 dots): ours flush with the bottom
         let sky: Weather = switch b.weatherOn { case .rain: .rain; case .hail: .snow; case .fog: .fog; default: .sunny }   // the battle's own weather (a 비바라기 shows), not the course's
         fb.battleGround(at, art: state.here.art, hour: state.hour, season: state.season, weather: sky, indoor: b.trainer != nil)   // the ground, the pads they stand on
-        defer { fb.weatherFX(sky, 0, hud ? 12 : 0, 96, hud ? 38 : 64, t) }   // over the fighters, under the HUD (the tower is indoors)
-        let foe = b.theirs[b.it].mon, mine = b.mine[b.me].mon                                          // the HUD: who it is (its own name, level, shine)
+        defer { fb.weatherFX(sky, 0, 0, 96, 64, t) }                                                     // over the fighters (the tower is indoors)
+        let foe = b.theirs[b.it].mon
         let veiled: Side? = { if let (bt, u) = beat, case .mega(let s, _, _) = bt, u < MegaFX.reveal { return s }; return nil }()   // 5.0: still its old form, in its light
         func look(_ f: Fighter, _ s: Side) -> Mon { var m = f.mon; let x = f.body; if veiled != s { m.dex = x.dex; m.form = x.form }; return m }   // the sprite: 변신 shows what it became; 5.0: a Mega / battle form its own
         let foeLook = look(b.theirs[b.it], .it), mineLook = look(b.mine[b.me], .me)
@@ -159,15 +154,16 @@ extension Walker {
             let plain = s == .it && alive && shot?.glow == nil && !v.flash && { if case .ball = p { return false }; return true }() && (mega.map { $0.side != s || $0.u > MegaFX.reveal + 0.3 } ?? true)   // out and standing: HGSS plays its own animation once (a Mega: once it shows)
             fb.sprite(s == .me ? mineLook : foeLook, a.x + v.dx, a.y + v.dy, back: s == .me, bob: s == .me ? f - 1 : f, flash: v.flash, floor: alive ? 64 : a.y + 32,
                       anim: plain ? animT("foe \(b.it)", foeLook.art, now) : nil)   // ours bobs down: its cut-off back never lifts
+            if s == .it { let c = Walker.foeStage; fb.sprites[fb.sprites.count - 1].clip = [c[0] + 2 * v.dx, c[1] + 2 * v.dy, c[2], c[3]] }   // 5.0: theirs (a jump, a stretch) never under the HP boxes; its lunge moves it whole (the boxes fade then)
             if let g = shot?.glow, shot?.side == s { fb.glow(g) }                                     // going into / coming out of a ball
-            if let m = mega, m.side == s, let k = MegaFX.cocoon(m.u, MegaFX.colours(m.dex, m.form)) { fb.megaTint(k.tint, k.amount, floor: hud ? 50 : 64) }   // its cocoon of light
+            if let m = mega, m.side == s, let k = MegaFX.cocoon(m.u, MegaFX.colours(m.dex, m.form)) { fb.megaTint(k.tint, k.amount) }   // its cocoon of light
         }
         if case .idle = p, foe.shiny == true, shown[.it]!.on {                                      // sparkles around it, from its head down
             let top = at[.it]!.y + 32 - (80 - spriteTop(foeLook.art)) / 2, h = at[.it]!.y + 32 - top          // a sprite pixel is half a dot
             for (k, (sx, sy)) in [(-2, 2), (26, h / 4), (12, -3), (28, h * 3 / 4)].enumerated() where (Int(t * 4) + k) % 3 == 0 { fb.draw(spark, at[.it]!.x + sx, max(0, top + sy), sparkPal) }
         }
         if let (bt, u) = beat { moveFX(&fb, bt, u, b, at) }                                         // a move's effect over the fighters
-        if let m = mega { fb.megaFX(m.side, m.u, dex: m.dex, form: m.form, at: at, top: 80 - spriteTop((m.side == .me ? mineLook : foeLook).art, back: m.side == .me), stage: hud ? [0, 24, 192, 76] : []) }   // (the LCD's HUD and message strip kept clear)
+        if let m = mega { fb.megaFX(m.side, m.u, dex: m.dex, form: m.form, at: at, top: 80 - spriteTop((m.side == .me ? mineLook : foeLook).art, back: m.side == .me)) }
         if raidOn, let (bt, u) = beat, Walker.isShinyReveal(bt) {                                  // 4.0 (16 §8-2): a shiny boss — light bursting from it, stars wheeling round
             var s = BallShot(); s.burst = (0, -30, u * 0.8); s.shine = u * 0.55; shot = s
         }
@@ -175,38 +171,6 @@ extension Walker {
         if let (bt, u) = beat, bt == .appear, !legendDex.contains(b.wild.dex) { fb.entryFlash(u) }   // a wild one: two quick flashes first (a legend's screen flips instead)
         if b.trainer == Tower.tycoon { fb.decoFrame(gold: Tower.tycoonPrint(afterWins: state.towerStreak ?? 0) == "금") }   // 3.9 (15 §6 E): the tycoon's fight in 은 or 금
         if raidOn, let (bt, u) = beat, Walker.isShinyReveal(bt), u < 0.8, Int(u * 5) % 2 == 0 { fb.decoFrame(gold: true) }   // ... and the gold frame, twice
-        guard hud else { return }
-        // HUD: theirs top-left (name, Lv, bar; a trainer's remaining balls), ours top-right; each on its own plate so the sprite's head can't muddle it
-        let gathering = megaGathering(now)                                                           // 5.0: a Mega's mark after its name (both names in full don't fit), once its light bursts
-        let fm = b.theirs[b.it].mega != nil && gathering != .it, mm = b.mine[b.me].mega != nil && gathering != .me, owned = (state.owned ?? []).contains(foe.dex)
-        let fn = (raidOn && foe.shiny == true ? "★" : "") + monNames[foe.dex], fs = b.theirs[b.it].status?.badge, ms = b.mine[b.me].status?.badge
-        let marks = 2 + (owned ? 7 : 0) + (fm ? 7 : 0) + (b.trainer != nil ? 13 : 0) + 2 + (mm ? 7 : 0)
-        var ft = "", mt = ""
-        for (lv, st) in [(true, true), (false, true), (true, false), (false, false)] {                // 5.0: both in one row on any font — the levels go first, then the statuses
-            ft = fn + (lv ? " \(foe.level)" : "") + (st ? fs.map { " " + $0 } ?? "" : ""); mt = monNames[mine.dex] + (lv ? " \(mine.level)" : "") + (st ? ms.map { " " + $0 } ?? "" : "")
-            if textWidth(ft, small: true) + textWidth(mt, small: true) + marks <= 95 { break }
-        }
-        let lw = max(38, textWidth(ft, small: true) + 2 + (owned ? 7 : 0) + (fm ? 7 : 0)) + (b.trainer != nil ? 13 : 0)
-        let rw = max(38, textWidth(mt, small: true) + 2 + (mm ? 7 : 0))
-        for (x0, w) in [(0, lw), (96 - rw, rw)] { for y in 0..<14 { for x in x0..<min(96, x0 + w) { fb.set(x, y, 0) } } }
-        fb.text(ft, 1, 0, 3, small: true)
-        if fxV2 {                                                                                  // (the prototype: a status on a pill in its colour)
-            for (st, right) in [(b.theirs[b.it].status, false), (b.mine[b.me].status, true)] { guard let st, (right ? mt : ft).hasSuffix(st.badge) else { continue }
-                let bw = textWidth(st.badge, small: true), bx = right ? 95 - bw : textWidth(ft, small: true) + 1 - bw
-                let c: UInt32 = switch st { case .burn: rgb(255, 150, 90); case .paralysis: rgb(250, 214, 70); case .poison, .toxic: rgb(200, 140, 230); case .sleep: rgb(170, 180, 200); case .freeze: rgb(150, 210, 245) }
-                for y in 0..<9 { for x in (bx - 1)...(bx + bw) where !((x == bx - 1 || x == bx + bw) && (y == 0 || y == 8)) { fb.set(x, y, 1, c) } }   // (dots: over the plate)
-            }
-        }
-        if owned { fb.draw(caughtMark, textWidth(ft, small: true) + 3, 2, ballPal) }                 // caught before: the HGSS ball mark
-        if fm { fb.draw(megaMark, textWidth(ft, small: true) + 3 + (owned ? 7 : 0), 2, megaPal) }
-        let hp = beat == nil ? b : beatState(now).map { drained($0.hp, $0.names, $0.beat, $0.u) } ?? b   // the bars drain (MoveFX.swift)
-        hpBar(&fb, 1, 9, 36, hp.theirs[b.it].hp, b.theirs[b.it].maxHP)
-        if raidOn { fb.text("×\(b.theirs.filter(\.alive).count)", 39, 6, 3, small: true) }            // 4.0 (16 §8-3): its bars left, this one counted (ten don't fit as gems)
-        else if b.trainer != nil { for (k, x) in b.theirs.enumerated() { fb.draw(gem, 39 + 4 * k, 9, x.alive ? ballPal : [ballPal[3], ballPal[3], ballPal[3], ballPal[3]]) } }
-        fb.text(mt, 95, 0, 3, right: true, small: true)
-        if mm { fb.draw(megaMark, 95 - textWidth(mt, small: true) - 7, 2, megaPal) }
-        hpBar(&fb, 59, 9, 36, hp.mine[b.me].hp, b.mine[b.me].maxHP)
-        fb.fill(0, 50, 96, 1, 2)
     }
     /// 3.9: a wild KO's EXP for the ones not out (the walker's share it) as one line: in each run of EXP beats, the one out and any level-up keep
     /// their own lines, the rest fold into the first of them (다른 포켓몬도 …) — the end's state is the server's, so the HUD loses nothing.

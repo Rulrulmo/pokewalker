@@ -130,7 +130,7 @@ extension Walker {
         }
         // theirs: [caught] name · Lv on top; its types (and a status) then the HP bar below
         if foeUp {
-            let f = box(4, 4, 110, 30), fr = m.foe.max > 0 ? CGFloat(m.foe.hp) / CGFloat(m.foe.max) : 0
+            let f = box(4, 4, 104, 30), fr = m.foe.max > 0 ? CGFloat(m.foe.hp) / CGFloat(m.foe.max) : 0   // (5.0: ends at 108, clear of theirs: Walker.hudBoxes)
             var x = f.minX + 7 * k
             if m.foe.owned { c.miniBall(CGPoint(x: f.minX + 9.5 * k, y: f.minY + 10 * k), 4.2 * k); x = f.minX + 17 * k }
             let lv = "Lv\(m.foe.level)", lvf = font(8, .semibold)

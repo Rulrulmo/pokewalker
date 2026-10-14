@@ -170,7 +170,7 @@ extension Walker {
             let all = cloud?.duelRecord?.recent ?? [], per = DuelHubModel.perPage, first = min(sel, max(0, all.count - 1)) / per * per
             m.recs = all.dropFirst(first).prefix(per).map { r in
                 let why = r.why == "timeout" ? (r.won ? "상대의 시간 초과" : "시간 초과") : r.why == "forfeit" ? (r.won ? "상대의 기권" : "기권") : ""
-                return .init(won: r.won, line: "vs " + r.opponent, sub: (why.isEmpty ? "" : why + " · ") + ago(max(60, Int(now.timeIntervalSince1970) - r.at)), mine: r.mine, theirs: r.theirs)
+                return .init(won: r.won, line: r.opponent, sub: (why.isEmpty ? "" : why + " · ") + ago(max(60, Int(now.timeIntervalSince1970) - r.at)), mine: r.mine, theirs: r.theirs)
             }
             m.first = first; m.count = all.count
             m.empty = cloud?.duelRecord == nil ? "불러오는 중…" : "아직 대전 기록이 없어요"

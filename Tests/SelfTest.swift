@@ -756,10 +756,9 @@ import AppKit                                                                   
     check(onMenu(back(.box(0, act: nil, confirm: false)), "포켓몬") && { if case .box(0, nil, false, false) = back(.box(0, act: 1, confirm: true)) { return true }; return false }() && bk.state.box.count == 1
           && { if case .box(0, nil, false, true) = back(.box(0, act: 1, confirm: true, detail: true)) { return true }; return false }() && { if case .box(0, nil, false, false) = back(.box(0, act: nil, confirm: false, detail: true)) { return true }; return false }(),
           "box: ↩ from 놓아줄까? back (= 아니오), from a Pokémon's page to the grid, from the grid to the menu")
-    bk.sideOn = true; bk.state.towerStreak = 5; bk.towerRun = true; bk.screen = .forfeit(tw, yes: false)
-    check(!bk.touch(80, 56) && bk.state.towerStreak == 5, "with the side panel, an LCD tap in a fight answers nothing (it drags)")
-    bk.sideOn = false; bk.screen = .forfeit(tw, yes: false); let lcdTap = bk.touch(55, 56); bk.sidePick(0)
-    check(!lcdTap && bk.state.towerStreak == 5 && isBattle(bk.screen, "기권"), "the LCD answers nothing even without the pane; the pane's 아니오 is 아니오")
+    bk.state.towerStreak = 5; bk.towerRun = true; bk.screen = .forfeit(tw, yes: false)
+    let lcdTap = bk.touch(55, 56); bk.sidePick(0)
+    check(!lcdTap && bk.state.towerStreak == 5 && isBattle(bk.screen, "기권"), "an LCD tap in a fight answers nothing (it drags); the pane's 아니오 is 아니오")
     bk.screen = .battle(wild, sel: 0)
     let rightClick = bk.menu()
     check(!rightClick.contains { m in ["코스", "함께 걷기", "가방", "진화의 돌"].contains { m.title.hasPrefix($0) } } && rightClick.contains { $0.title.hasPrefix("배틀 속도 · ") },
@@ -974,7 +973,7 @@ import AppKit                                                                   
     gk.refreshPane(Date(), force: true); let homeH = gk.cardH
     gk.screen = .menu(group: nil, sel: 0); gk.refreshPane(Date(), force: true); let menuH = gk.cardH
     gk.screen = .dex(25, filter: 0, detail: false); gk.refreshPane(Date(), force: true); let gridH = gk.cardH
-    gk.screen = .battle(wild, sel: 0); gk.refreshPane(Date(), force: true); let fightH = gk.cardH, hudUp = gk.hud == nil
+    gk.screen = .battle(wild, sel: 0); gk.refreshPane(Date(), force: true); let fightH = gk.cardH, hudUp = gk.hud != nil   // (the HP boxes over the LCD: the app's one layout)
     gk.statusOpen = false; gk.screen = .home; gk.refreshPane(Date(), force: true); let foldH = gk.cardH, foldChev = gk.chevron; gk.statusOpen = true
     gk.screen = .home; gk.refreshPane(Date(), force: true)
     #if os(macOS)
