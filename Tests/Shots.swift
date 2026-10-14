@@ -13,13 +13,15 @@ import AppKit
     func take(_ name: String, _ v: Walker, _ set: (Walker) -> Void) {
         let view = WalkerView(walker: v); set(v)
         if let only = ProcessInfo.processInfo.environment["SHOTS"], !only.split(separator: ",").contains(where: { name.hasPrefix($0) }) { return }   // SHOTS=raid,friends: just those (the rest still set up)
-        cutTexts = []
+        cutTexts = []; drawnTexts = []
         v.refreshPane(Date(), force: true); view.fitWindow(); view.shown = v.compose(Date()); view.page.needsDisplay = true
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
         if let cut = cutTexts, !cut.isEmpty { print("cut \(name): " + Array(Set(cut)).sorted().joined(separator: " | ")) }   // text cut short (…) or off the LCD
         if lcdDeco, v.pageGroup() != nil, let fb = view.shown, !lcdOverlaps(fb).isEmpty { print("overlap \(name): " + lcdOverlaps(fb).joined(separator: " | ")) }   // 5.0: a Pokémon over a word, the band or the panel
         cutTexts = nil
+        let clash = textClashes(drawnTexts ?? [], width: view.bounds.width) + (view.shown.map { runClashes($0.runs) } ?? []).map { "LCD " + $0 }; drawnTexts = nil
+        if !clash.isEmpty { print("clash \(name): " + Array(Set(clash)).sorted().joined(separator: " | ")) }   // 5.0: words over words, or off the window
         if (try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))) != nil { n += 1 }
     }
     let off = online(base()), (srv, _) = server(off)

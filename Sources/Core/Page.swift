@@ -21,6 +21,30 @@ let typeColor: [String: Color] = (["normal": (168, 167, 122), "fire": (238, 129,
 @MainActor func fitFont(_ s: String, _ sizes: [CGFloat], _ w: CGFloat, _ weight: FontSpec.Weight) -> FontSpec { font(sizes.first { width(s, font($0, weight)) <= w } ?? sizes.last!, weight) }
 /// The renders' (Tests/Shots.swift, Windows/WinRender.swift) look-out: each text cut short (…) or off its LCD while drawing (nil: not looking).
 @MainActor var cutTexts: [String]? = nil
+/// … and every text drawn with its box (the panel's and the card's: words on words, words off the window — textClashes; nil: not looking).
+@MainActor var drawnTexts: [(s: String, r: CGRect)]? = nil
+/// The words drawn over other words (more than a sliver: a fifth of the smaller) or past the window's sides, as "a × b" lines.
+@MainActor func textClashes(_ ts: [(s: String, r: CGRect)], width w: CGFloat) -> [String] {
+    var out: [String] = []
+    for (i, a) in ts.enumerated() {
+        if a.r.minX < -0.5 || a.r.maxX > w + 0.5 { out.append("off: \(a.s)") }
+        for b in ts[(i + 1)...] {
+            let x = a.r.intersection(b.r)
+            guard !x.isNull, a.s != b.s || a.r != b.r, x.width * x.height > 0.2 * min(a.r.width * a.r.height, b.r.width * b.r.height) else { continue }
+            out.append("\(a.s) × \(b.s)")
+        }
+    }
+    return out
+}
+/// The LCD's words drawn over other words (runs, in dots), as "a × b" lines.
+func runClashes(_ runs: [TextRun]) -> [String] {
+    var out: [String] = []
+    for (i, a) in runs.enumerated() { for b in runs[(i + 1)...] {
+        let ax = (a.x, a.x + a.w), bx = (b.x, b.x + b.w), ay = (a.y + 2, a.y + a.rows - 2), by = (b.y + 2, b.y + b.rows - 2)
+        if min(ax.1, bx.1) - max(ax.0, bx.0) > 1, min(ay.1, by.1) - max(ay.0, by.0) > 1 { out.append("\(a.s) × \(b.s)") }
+    } }
+    return out
+}
 extension Canvas {
     /// Text centred on the row `cy` (by its caps, one baseline for Hangul and digits); align 0 = starts at x, 0.5 = centred on x, 1 = ends at x.
     @discardableResult func say(_ s: String, _ x: CGFloat, _ cy: CGFloat, _ f: FontSpec, _ c: Color, _ align: CGFloat = 0, maxW: CGFloat? = nil) -> CGFloat {
@@ -31,6 +55,7 @@ extension Canvas {
         }
         let w = width(s, f), m = fonts.metrics(f)
         text(s, CGPoint(x: x - w * align, y: cy - m.ascender + m.capHeight / 2), f, c)
+        if drawnTexts != nil, !s.trimmingCharacters(in: .whitespaces).isEmpty { drawnTexts?.append((s, CGRect(x: x - w * align, y: cy - f.size * 0.42, width: w, height: f.size * 0.84))) }   // (the renders' look-out)
         return w
     }
     func pill(_ r: CGRect, _ c: Color) { fill(.rounded(r, min(r.height, r.width) / 2), c) }

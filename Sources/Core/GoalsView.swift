@@ -49,7 +49,7 @@ extension Walker {
             }
             fb.name("전국 \(all)/\(dexMax)", x, 13, 94 - x)
             bar(26, all, dexMax)
-            fb.text(next.map { "다음 \($0.count)종" } ?? "모두 잡았다!", x, 31, 2, small: true)
+            fb.line(next.map { "다음 \($0.count)종" } ?? "모두 잡았다!", x, 31, 94 - x)
             fb.wrap(next.map { goalGifts($0.gifts) } ?? "칭호 " + DexGoals.doctor, x, 40, 94 - x, lines: 2, 3)
         case 1...DexGoals.regions.count:                                                          // a region: its count, half, whole, 이로치
             let r = DexGoals.regions[s - 1], n = DexGoals.caught(w, r), done = n >= r.total
@@ -57,15 +57,14 @@ extension Walker {
             fb.name(r.name + (done ? " ✦" : ""), x, 13, 94 - x)
             fb.text("\(n)/\(r.total)", 94, 14, 2, right: true, small: true)
             bar(26, n, r.total, half: r.half)
-            fb.text((n >= r.half ? "50% ✓" : "50% \(r.half)") + " · " + (done ? "완성 ✓" : "완성 \(r.total)"), x, 31, 2, small: true)
-            fb.text(done ? "✦ 이로치 한 번 더" : "이로치 \(DexGoals.shinies(w, r))/\(r.total)", x, 41, done ? 3 : 2, small: true)
-            fb.text("● 이 지역 도감", x, 52, 1, small: true)
+            fb.line(n >= r.half ? "절반 ✓" : "절반 \(r.half)종", x, 31, 94 - x); fb.line(done ? "완성 ✓" : "완성 \(r.total)종", x, 40, 94 - x)   // (a row each: any font's widths)
+            fb.line(done ? "✦ 이로치 한 번 더" : "이로치 \(DexGoals.shinies(w, r))/\(r.total)", x, 49, 94 - x, done ? 3 : 2)
         default:                                                                                  // 해금: what the 도감 opens
             let u = dexUnlocks(), open = u.filter(\.open).count
             fb.focusPic("shell|럭셔리볼") { shellPic("럭셔리볼") }
             fb.name("해금 \(open)/\(u.count)", x, 13, 94 - x)
             for (k, e) in u.filter({ !$0.open }).prefix(3).enumerated() { fb.wrap(e.need + " " + e.name.replacingOccurrences(of: "기기 색 ", with: "").replacingOccurrences(of: "코스 ", with: ""), x, 26 + 9 * k, 94 - x, lines: 1) }   // (what it asks first: a long name cut)
-            if u.allSatisfy(\.open) { fb.text("모두 열렸다!", x, 26, 3, small: true) }
+            if u.allSatisfy(\.open) { fb.line("모두 열렸다!", x, 26, 94 - x, 3) }
         }
     }
     func goalsModel(_ sel: Int) -> GoalsModel {
@@ -102,7 +101,10 @@ extension Walker {
         let m = w.goalsModel(1)
         let rows = m.rows.count == 8 && m.rows[0].have == 200 && m.rows[1].done && m.rows[1].shiny == "이로치 2/151" && m.rows[2].have == 49 && m.rows[2].half == 50 && !m.rows[2].done
         var bad: [String] = []
-        for s in 0..<w.goalRows { w.screen = .goals(s); let fb = w.compose(Date()); bad += lcdOverlaps(fb) + fb.runs.filter { $0.x < 0 || $0.x + $0.w > 96 }.map { "past the edge: \($0.s)" } }
+        for k in [1.0, 1.15] {                                                                    // (and as if a font 15 % wider: another OS's)
+            textWidthScale = k; defer { textWidthScale = 1 }
+            for s in 0..<w.goalRows { w.screen = .goals(s); let fb = w.compose(Date()); bad += lcdOverlaps(fb) + fb.runs.filter { $0.x < 0 || $0.x + $0.w > 96 }.map { "past the edge ×\(k): \($0.s)" } + runClashes(fb.runs) }
+        }
         w.screen = .goals(2); w.press(1)
         let opened: Bool = { if case .dex(let d, 0, false) = w.screen { return w.dexRegion == 2 && (152...251).contains(d) }; return false }()
         c.append((rows && bad.isEmpty && opened, "5.0 도감 업적: 전국 · six regions (관동 완성 ✦, 이로치 n/151) · 해금; every row's LCD clear and inside; ● on 성도 opens its 도감" + (bad.isEmpty ? "" : " — \(bad.prefix(4))")))

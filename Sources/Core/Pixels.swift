@@ -189,8 +189,10 @@ let sparkPal = [rgb(255, 236, 120), rgb(255, 236, 120), rgb(255, 250, 200), rgb(
 @MainActor func lcdFont(_ small: Bool) -> FontSpec { FontSpec(size: (small ? 6.5 : 8) * PX, weight: small ? .regular : .medium) }
 /// A string's width in LCD dots, in whichever text style is on (layout, centring and tap targets all use this).
 @MainActor func textWidth(_ s: String, small: Bool = false) -> Int {
-    smoothText ? Int(ceil(fonts.width(s, lcdFont(small)) / PX)) : (textDots(s, small: small).first?.count ?? 0)
+    smoothText ? Int(ceil(fonts.width(s, lcdFont(small)) * textWidthScale / PX)) : (textDots(s, small: small).first?.count ?? 0)
 }
+/// The checks' wider font (5.0: another OS's font may run wider — the LCD's pages laid out as if 15 % wider must still fit); 1 = as is.
+@MainActor var textWidthScale = 1.0
 struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bool; var shade: UInt8 }
 
 

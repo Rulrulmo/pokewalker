@@ -31,8 +31,12 @@ extension FB {
         for (k, r) in rows.enumerated() { text(r, x, y + 9 * k, shade, small: true) }
         return rows.count
     }
-    /// A name: as is where it fits w dots, else small.
-    mutating func name(_ s: String, _ x: Int, _ y: Int, _ w: Int, _ shade: UInt8 = 3) { text(s, x, y, shade, small: textWidth(s) > w) }
+    /// A name: as is where it fits w dots, else small, else cut (…): measured with this machine's font, never past w.
+    mutating func name(_ s: String, _ x: Int, _ y: Int, _ w: Int, _ shade: UInt8 = 3) {
+        if textWidth(s) <= w { text(s, x, y, shade) } else if textWidth(s, small: true) <= w { text(s, x, y, shade, small: true) } else { line(s, x, y, w, shade) }
+    }
+    /// One row of words in w dots (small), cut with … if this machine's font makes it wider (a narrow column's words: never past its edge).
+    mutating func line(_ s: String, _ x: Int, _ y: Int, _ w: Int, _ shade: UInt8 = 2) { wrap(s, x, y, w, lines: 1, shade) }
 }
 
 extension Walker {
@@ -48,7 +52,7 @@ extension Walker {
         case .legend(let k): fb.mon(Mon(dex: Walk.legendShop[k].dex, level: Walk.legendShop[k].level, female: false), 0, 0, 2)
         }
         fb.name(state.wareName(w).replacingOccurrences(of: " (전설)", with: "").replacingOccurrences(of: " (기기 색)", with: ""), x, 13, 94 - x, can ? 3 : 1)
-        fb.text(had ? "보유" : "\(w.price)\(unit)", x, 25, can ? 3 : 1, small: true)
+        fb.line(had ? "보유" : "\(w.price)\(unit)", x, 25, 94 - x - (!had && state.owned(w) > 0 ? textWidth("보유 \(state.owned(w))", small: true) + 3 : 0), can ? 3 : 1)
         if !had, state.owned(w) > 0 { fb.text("보유 \(state.owned(w))", 94, 25, 2, right: true, small: true) }
         fb.wrap(state.wareNote(w).replacingOccurrences(of: "지니게 하기: ", with: "지니면 "), x, 35, 94 - x, lines: 2)
         fb.text("\(min(sel, ws.count - 1) + 1)/\(ws.count)", 94, 53, 1, right: true, small: true)
@@ -59,7 +63,7 @@ extension Walker {
         guard let n = rows[safe: min(sel, rows.count - 1)] else { fb.text("없음", 0, 30, 2, center: true); return }
         fb.focusPic("item|" + n) { itemPic(n) }
         fb.name(n, x, 13, 94 - x)
-        fb.text("×\(state.count(n))" + (state.items.contains(n) ? " · 워커 \(state.items.filter { $0 == n }.count)" : ""), x, 25, 2, small: true)
+        fb.line("×\(state.count(n))" + (state.items.contains(n) ? " · 워커 \(state.items.filter { $0 == n }.count)" : ""), x, 25, 94 - x)
         fb.wrap(ItemKind.of(n).summary.replacingOccurrences(of: "지니게 하기: ", with: "지니면 "), x, 35, 94 - x, lines: 2)
         fb.text("\(min(sel, rows.count - 1) + 1)/\(rows.count)", 94, 53, 1, right: true, small: true)
     }
@@ -72,9 +76,9 @@ extension Walker {
         fb.pic("pill|type|\(mv.type)", 94 * 2 - tw - 4, 2 * 13 + 11, under: true) { lcdReady(typePill(c, 2 * tw + 8)) }
         fb.text(type, 94 - tw - 2, 14, 3, small: true)
         let kind = ["물리", "특수", "변화"][safe: mv.kind] ?? ""
-        fb.text([kind, mv.power > 0 ? "위력 \(mv.power)" : nil, mv.accuracy > 0 ? "명중 \(mv.accuracy)" : "반드시 명중", "PP \(mv.pp)"].compactMap { $0 }.joined(separator: " · "), 2, 25, 2, small: true)
+        fb.line([kind, mv.power > 0 ? "위력 \(mv.power)" : nil, mv.accuracy > 0 ? "명중 \(mv.accuracy)" : "반드시 명중", "PP \(mv.pp)"].compactMap { $0 }.joined(separator: " · "), 2, 25, 92)
         fb.wrap(moveText(id) ?? "", 2, 34, 92, lines: 2)
-        fb.text(foot, 2, 53, 2, small: true); fb.text("\(n)/\(of)", 94, 53, 1, right: true, small: true)
+        let nw = fb.text("\(n)/\(of)", 94, 53, 1, right: true, small: true); fb.line(foot, 2, 53, 92 - nw - 3)
     }
     /// 도구 주기: the row picked — its item (or the one held, to take off) on the stage, its name, what it does, what's held now, n/N; the
     /// Pokémon's name by the title.
@@ -86,7 +90,7 @@ extension Walker {
         fb.focusPic("item|" + item) { itemPic(item) }
         fb.name(r.take ? "빼기" : r.name, x, 13, 94 - x, r.why == nil ? 3 : 1)
         fb.wrap(r.take ? josa(item, "을", "를") + " 가방으로" : r.why ?? ItemKind.of(r.name).summary.replacingOccurrences(of: "지니게 하기: ", with: "지니면 "), x, 25, 94 - x, lines: 2, r.why == nil ? 2 : 1)
-        fb.text("지금 " + (m.item ?? "없음"), x, 44, 1, small: true)
+        fb.line("지금 " + (m.item ?? "없음"), x, 44, 94 - x, 1)
         fb.text("\(min(sel, rows.count - 1) + 1)/\(rows.count)", 94, 53, 1, right: true, small: true)
     }
     /// 로토무의 모습 · 합체: the form the pick would make (its picture on the stage), its name, what comes with it, why not, n/N.
@@ -142,10 +146,13 @@ func typePill(_ c: UInt32, _ w: Int) -> Pic {
     var st = Walk(); st.watts = 99_999; st.bp = 9_999; st.bag = ["구애머리띠", "이상한사탕", "오랭열매"]
     let w = Walker(state: st); w.persist = false
     var bad: [String] = []
-    for s in [Screen.shop(bp: false, sel: 0, qty: nil), .shop(bp: true, sel: 3, qty: nil), .items(0), .items(2)] {
-        w.screen = s; let fb = w.compose(Date())
-        bad += lcdOverlaps(fb) + fb.runs.filter { $0.x < 0 || $0.x + $0.w > 96 }.map { "past the edge: \($0.s)" }
-        if !fb.pics.contains(where: { $0.key.hasPrefix("focus|") }) { bad.append("no picture: \(s)") }
+    for k in [1.0, 1.15] {                                                                        // (and as if a font 15 % wider: another OS's)
+        textWidthScale = k; defer { textWidthScale = 1 }
+        for s in [Screen.shop(bp: false, sel: 0, qty: nil), .shop(bp: true, sel: 3, qty: nil), .shop(bp: true, sel: 16, qty: nil), .items(0), .items(2)] {
+            w.screen = s; let fb = w.compose(Date())
+            bad += lcdOverlaps(fb) + fb.runs.filter { $0.x < 0 || $0.x + $0.w > 96 }.map { "past the edge ×\(k): \($0.s)" } + runClashes(fb.runs)
+            if !fb.pics.contains(where: { $0.key.hasPrefix("focus|") }) { bad.append("no picture: \(s)") }
+        }
     }
     c.append((bad.isEmpty, "5.0 focus: the shop's and the bag's thing on its stage, clear of the words and panel, nothing past the edge" + (bad.isEmpty ? "" : " — \(bad.prefix(5))")))
     return c
