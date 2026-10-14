@@ -237,6 +237,7 @@ actor SaveDB {
                 var reply: [String: JSON] = ["rev": .i(0), "session": .s(session)]
                 if let token { reply["trust"] = .s(token) }
                 if issues { reply["starter"] = .i(firstUID) }
+                if Content.gen6 { reply["content5"] = .b(true) }                                     // 5.0: as login's — a new trainer's first session too
                 return Reply(200, reply, note: "new trainer \(id.name) from \(r.device_name.prefix(64))")
             }
         }

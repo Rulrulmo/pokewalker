@@ -1067,7 +1067,7 @@ N을 올리면 생기는 gen.py 필터 버그 3개도 같이 고친다:
 
 ### 14.10 7단계: 서버 막기 · 스위치 · 업데이트 힌트(서버, 10-14, 124efec)
 
-- **content5 스위치:** `pokeserver content5 on|off`(settings 표). 도는 서버는 10초마다 읽는다. 로그인 응답에 `content5: true`가 실린다(꺼지면 없음).
+- **content5 스위치:** `pokeserver content5 on|off`(settings 표). 도는 서버는 10초마다 읽는다. 로그인 응답과 새 트레이너를 만드는 응답에 `content5: true`가 실린다(꺼지면 없음). 생성 응답은 10-14 mac 라이브 테스트에서 빠진 걸 찾아 더했다.
 - **옛 앱 막기(§10.1 · 10.2):**
   - 트레이너 경로 17곳 모두 User-Agent의 앱 버전이 그 트레이너의 최소 버전보다 낮으면 426(`old_app`, need)이다. `/v1/create` · `/v1/update` · 다운로드는 열려 있다.
   - 최소 버전 = max(trainers.app, MIN_APP). 지금 라이브는 MIN_APP 3.0이고 모든 트레이너가 3.0이라 막히는 앱이 없다.

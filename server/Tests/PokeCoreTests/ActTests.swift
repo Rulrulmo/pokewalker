@@ -1073,6 +1073,16 @@ extension SaveDB {
         _ = try reply(await db.act(ActReq(id: "앨리스", session: s, seq: 2, steps: 5, act: .steps, app: "5.0"), now: base.addingTimeInterval(20)))
         #expect(try await db.needAppFor("앨리스") == "5.0")
     }
+    // both replies a session starts by say content5 (the app's Content.on): a new trainer's first session too (the Mac's live test, 10-14)
+    func flag(_ r: Reply) -> Bool? { fields(r)["content5"] as? Bool }
+    let t0 = Int(base.timeIntervalSince1970)
+    let c0 = await db.create(CreateReq(id: "캐롤", device: "pc3", device_name: "PC3", app: "5.0", pin: "1357"), now: t0 + 100)
+    #expect(c0.status == 200 && flag(c0) == nil)                                                         // off: none
+    try await Content.$testing.withValue(true) {
+        let c = await db.create(CreateReq(id: "바비", device: "pc2", device_name: "PC2", app: "5.0", pin: "1357"), now: t0 + 200)
+        let l = await db.login(LoginReq(id: "바비", device: "pc2", device_name: "PC2", app: "5.0", force: true, pin: "1357"), now: t0 + 300)
+        #expect(c.status == 200 && flag(c) == true && l.status == 200 && flag(l) == true)
+    }
     // the updater's report and the hint
     try await db.recordUpdateReport(UpdateReq(app: "5.0", platform: "mac", trainer: "앨리스", staged: "5.0.1", blocked: "translocated", failed: ["5.0.1"], place: "downloads"), now: 100)
     let v = try await db.versionsReport(now: 200)
