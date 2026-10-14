@@ -366,6 +366,7 @@ Swift 6, 외부 의존성 없음. Mac은 `swiftc`로 AppKit 앱을, Windows는 S
 | `--selftest` | 빌드마다 도는 셀프테스트(약 560개). 규칙 · 배틀(데미지 공식은 Bulbapedia 예시로) · 데이터 · 무작위 배틀 + 가짜 서버(`FakeCloud`)로 화면을 버튼 · 클릭 · 키로 조작하는 흐름 |
 | `--shots <폴더>` | Mac 화면 렌더 PNG(약 150장) — 바뀐 화면은 직접 보고 확인 |
 | `--live-test` · `--live-team` · `--live-trade` · `--live-raid` · `--live-social` · `--live-duel` · `--live-hold` · `--live-v38` | 실서버 테스트(zz + 6자리 테스트 ID, 개발 빌드만) |
+| `--live-five <id> <pin>` | 5.0(새 포켓몬 · 메가진화 · 로토무카탈로그 · 메가 레이드)을 로컬 서버에서. `POKEWALKER_SERVER=http://127.0.0.1:8799`(개발 빌드만 이 값을 읽어요)로, content5를 켠 임시 DB의 서버(server/README)에 붙어요. 처음 한 번 실행해 트레이너를 만들고, `pokeserver set`으로 리자몽 Lv.60 + 리자몽나이트X · 로토무 · 와트 · 레이드 파워를 넣은 뒤 다시 실행해요 |
 | Windows CI | `.github/workflows/windows.yml` — 빌드 · 셀프테스트 · 렌더 61장 · 실행 확인(`gh workflow run windows.yml --ref main`) |
 
 | 파일 | 내용 |

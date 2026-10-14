@@ -14,9 +14,11 @@ protocol CloudLink: Sendable {
 }
 extension CloudLink { func get(_ path: String, done: @escaping @Sendable (Int, Data) -> Void) { done(404, Data()) } }   // (the save server's fakes have no downloads)
 
-/// The real one: https://pokewalker.rulrulmo.work (08b's api.<domain>), 15 s to answer.
+/// The real one: https://pokewalker.rulrulmo.work (08b's api.<domain>), 15 s to answer. A dev build only (build.sh beside it) may be pointed at
+/// another, POKEWALKER_SERVER (5.0's live tests on a local server, docs/plans/18 §12 A6): a shipped app never reads it.
 struct HTTPLink: CloudLink {
-    static let base = URL(string: "https://pokewalker.rulrulmo.work")!
+    static let base = (Store.devBuild(Bundle.main.bundleURL) ? ProcessInfo.processInfo.environment["POKEWALKER_SERVER"].flatMap(URL.init(string:)) : nil)
+        ?? URL(string: "https://pokewalker.rulrulmo.work")!
     static let appKey = "6b0b5cdf9410adc1ed7d10ae86dd2013"                                       // not a secret (08 §2-1): it keeps the internet's scanners from making trainers
     func post(_ path: String, _ json: Data, done: @escaping @Sendable (Int, Data) -> Void) {
         var r = request(path); r.httpMethod = "POST"; r.httpBody = json; r.setValue("application/json", forHTTPHeaderField: "Content-Type")

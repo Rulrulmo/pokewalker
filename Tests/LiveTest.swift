@@ -748,3 +748,107 @@ import Foundation
     print(failed == 0 ? "PASS live tower" : "FAIL \(failed)")
     return failed == 0
 }
+
+/// `PokeWalker --live-five <id> <pin>` (a dev build only, against a local 5.0 server: POKEWALKER_SERVER=http://127.0.0.1:8799, content5 on,
+/// MIN_APP 5.0 — docs/plans/18 §12 A6): one zz ID, made by a first run and then seeded by the local server's admin (`pokeserver set`): the
+/// companion 리자몽 Lv.60 holding 리자몽나이트X, a 로토무 in the box, 1,000 W+, raid power for a run. The login turns content5 on (721);
+/// the shop sells 로토무카탈로그 and the catalog turns the 로토무 into 히트로토무 (오버히트); a radar fight's 메가진화 (the toggle, then a move:
+/// the server's Mega beat); 메가 레이드's lobby (the week's two), a ★1 run to its end, its 내 판; 5.0's pictures drawn.
+@MainActor func liveFiveTest(_ id: String, _ pin: String) -> Bool {
+    var failed = 0
+    func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-livefive-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
+    let c = Cloud(link: HTTPLink(), dir: tmp); h.texts = [id]; h.pins = [pin, pin, pin]; h.answer = true
+    w.startCloud(c, file: tmp.appendingPathComponent("state.json"), bak: tmp.appendingPathComponent("state.json.bak"))
+    @discardableResult func run(_ secs: Double, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end { w.tick(Date()); if done() { return true }; Thread.sleep(forTimeInterval: 0.1) }
+        return done()
+    }
+    func idle() -> Bool { w.waiting == nil && c.inFlight == nil && c.queued == nil && c.out == nil }
+    func settle() { run(15, until: idle) }
+    func says() -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func toHome() { run(20) { if !w.news.isEmpty || !idle() { return false }; if case .home = w.screen { return true }; w.screen = .home; return false } }
+    print("server: \(HTTPLink.base)")
+    check(run(40) { c.phase == .on && c.base != nil }, "live 5.0: \(id) logged in (\(c.phase); asked \(h.asked))")
+    check(Content.on && dexMax == 721 && w.dexList(0).count == 721, "live 5.0: the login's content5 on — 도감 \(w.dexList(0).count), dexMax \(dexMax)")
+    let seeded = w.state.companion.dex == 6 && w.state.companion.item == "리자몽나이트X" && w.state.box.contains { $0.dex == 479 } && w.state.watts >= 1000 && w.raidCells >= 1
+    check(seeded, "live 5.0: seeded — companion \(monNames[w.state.companion.dex]) Lv.\(w.state.companion.level) \(w.state.companion.item ?? "-"), box \(w.state.box.map(\.dex)), \(w.state.watts) W, raid cells \(w.raidCells)")
+    guard seeded else { print("FAIL \(failed) (seed it on the local server, then run again)"); return false }
+
+    // 상점: 로토무카탈로그; then the catalog on the box's 로토무 → 히트로토무 (its move 오버히트)
+    if let k = w.wares(false).firstIndex(where: { $0.kind == .item("로토무카탈로그") }) {
+        w.screen = .shop(bp: false, sel: k, qty: 1); w.press(1); settle()
+        check(w.state.count("로토무카탈로그") == 1, "live 5.0 shop: 로토무카탈로그 bought (\(w.wares(false)[k].price) W)")
+    } else { check(false, "live 5.0 shop: no 로토무카탈로그 among \(w.wares(false).count) wares") }
+    if let r = w.state.box.firstIndex(where: { $0.dex == 479 }), let u = w.state.box[r].uid {
+        w.calmAt = .distantPast; w.screen = .formPick(ref: r, item: "로토무카탈로그", sel: 1); w.press(1); settle()
+        let m = w.state.ref(uid: u).flatMap { w.state.mon($0) }
+        check(m?.form == 1 && m?.moves.contains(315) == true && w.formName(m!) == "히트로토무", "live 5.0 로토무카탈로그: \(says()) — form \(m?.form ?? 0), moves \(m?.moves ?? [])")
+        w.press(1)
+    }
+
+    // a radar fight: 메가진화 ticked, then a move — the server's Mega beat, 메가리자몽X on our side
+    toHome(); let w0 = w.state.watts
+    w.openFeature("포켓 레이더")
+    if run(20, until: { if case .radar = w.screen { return true }; return false }), case .radar(let b, _, let since, let chain) = w.screen {
+        w.screen = .radar(bush: b, cursor: b, since: since, chain: chain)
+        while Date().timeIntervalSince(since) < 1.6 { Thread.sleep(forTimeInterval: 0.05) }
+        w.press(1)
+        run(20) { if case .battle = w.screen { return true }; return idle() && !w.inBattle && { if case .beats = w.screen { return false }; return true }() }
+        if case .battle(let bt, _) = w.screen {
+            check(bt.canMega(.me), "live 5.0: a fight with 리자몽나이트X: 메가진화 offered (wild \(monNames[bt.wild.dex]) Lv.\(bt.wild.level), \(w0) W → \(w.state.watts))")
+            w.screen = .moves(bt, sel: bt.mine[bt.me].moves.count); w.calmAt = .distantPast; w.press(1)
+            let ticked = w.megaOn
+            w.screen = .moves(bt, sel: 0); w.calmAt = .distantPast; w.press(1)
+            var megaBeat = false, megaSide = false
+            run(20) {
+                if case .beats(let after, let bs, _, _) = w.screen {
+                    megaBeat = bs.contains { if case .mega(.me, 1, _) = $0 { return true }; return false }; megaSide = after.mine[after.me].mega == 1; return true
+                }
+                return idle() && !w.inBattle
+            }
+            check(ticked && megaBeat && megaSide, "live 5.0 메가진화: ticked \(ticked), the server's Mega beat \(megaBeat), 메가리자몽X on our side \(megaSide)")
+            run(60) { if case .beats = w.screen { return false }; if case .battle(let bt2, _) = w.screen, w.waiting == nil { w.screen = .battle(bt2, sel: w.battleMenu(bt2).count - 1); w.press(1) }; return !w.inBattle && idle() }   // (then away)
+        } else { check(false, "live 5.0: no radar fight began (\(w.screen))") }
+    } else { check(false, "live 5.0: no radar") }
+
+    // 메가 레이드: the lobby (the week's two, 스톤까지 n/30), ★1 with the strongest three, played to its end, its 내 판
+    toHome(); w.openFeature("메가 레이드"); c.megaRaidDue = true; run(15) { !c.megaRaidDue && idle() && w.waiting == nil }
+    let lob = c.megaRaid
+    check(w.raidMega && lob?.bosses.count == 2 && lob?.pityNeed == 30 && lob?.today.max == RaidRules.perDay,
+          "live 5.0 메가 레이드: \(lob?.week ?? "-") — \(lob?.bosses.map { w.megaName($0) + " (\($0.stone))" } ?? []), 스톤까지 \(lob?.pity ?? -1)/\(lob?.pityNeed ?? -1), today \(lob?.today.used ?? -1)/\(lob?.today.max ?? -1)")
+    let runs0 = lob?.mine.runs ?? 0
+    w.calmAt = .distantPast; w.pageTap(7010); w.pageTap(7020); w.pageTap(7020)
+    if case .squad(var q) = w.screen {
+        q.picked = Array(w.squadKeys(q).sorted { (w.squadMon(q, $0)?.level ?? 0) > (w.squadMon(q, $1)?.level ?? 0) }.prefix(3)); w.screen = .squad(q)
+    }
+    w.pageTap(8790); settle()
+    let boss = w.fight?.wild, bossMega = w.fight?.theirs.first?.mega
+    check(boss != nil && bossMega != nil && w.fight?.raidTier == 1, "live 5.0 메가 레이드 ★1: in — \(boss.map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "-"), its Mega form \(bossMega ?? 0)")
+    let end = Date().addingTimeInterval(240)
+    while Date() < end {
+        run(0.3) { false }
+        guard w.waiting == nil, idle() else { continue }
+        switch w.screen {
+        case .beats: continue
+        case .battle(let bt, _): w.screen = .battle(bt, sel: 0); w.press(1)
+        case .moves(let bt, _): w.screen = .moves(bt, sel: bt.mine[bt.me].pp.firstIndex { $0 > 0 } ?? 0); w.press(1)
+        case .party(let bt, _): w.screen = .party(bt, sel: bt.mine.indices.first { bt.mine[$0].alive } ?? 0); w.press(1)
+        case .learn: w.screen = .learn(sel: 4); w.press(1)
+        default: break
+        }
+        if !w.inBattle, case .say = w.screen { break }
+    }
+    let lines = says(); w.press(1); run(3) { false }
+    c.megaRaidDue = true; run(15) { !c.megaRaidDue && idle() }
+    check(!w.inBattle && !lines.isEmpty && (c.megaRaid?.mine.runs ?? 0) == runs0 + 1 && c.megaRaid?.runs.first?.tier == 1,
+          "live 5.0 메가 레이드: over — \(lines); 내 판 \(runs0) → \(c.megaRaid?.mine.runs ?? -1), 스톤까지 \(c.megaRaid?.pity ?? -1)/30")
+
+    // 5.0's pictures: the box's and the 도감's past 493 (hg-engine's)
+    check(spriteCount > 721 && (0..<80).contains { spritePixel(658, back: false, $0, 79, shiny: false) != 0 } && !w.compose(Date()).sprites.isEmpty, "live 5.0: pictures past 493 (\(spriteCount) in the bundle)")
+    print(failed == 0 ? "PASS live five" : "FAIL \(failed)")
+    return failed == 0
+}
