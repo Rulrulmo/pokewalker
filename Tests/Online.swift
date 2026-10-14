@@ -133,6 +133,22 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
               "\(opened) \(rows) \(heat) \(partners) \(fused) \(unOpt) \(apart) \(keyKind) \(rotomAb) \(zardAb)")
         calm(ro)
     }
+    // 5.0: the 상점's 로토무카탈로그 under a 기타 tab of its own (it was under no tab: never shown) — ● → × 1 → 정말 살까? → 예, then 보유; off: no 기타
+    let tabsOff = online(Walk()).shopTabs(false)
+    Content.$testing.withValue(true) {
+        let cs = online({ var s = Walk(); s.watts = 5000; return s }())
+        let i = cs.wares(false).firstIndex { $0.kind == .item("로토무카탈로그") } ?? 0
+        cs.screen = .shop(bp: false, sel: i, qty: nil); let m0 = cs.shopModel()
+        let shown = cs.shopTabs(false).contains("기타") && m0?.tabs[m0?.tab ?? 0] == "기타" && m0?.rows.map(\.name) == ["로토무카탈로그"] && m0?.rows.first?.price == "1,000W"
+        cs.press(1); cs.press(1); let asked = { if case .shopConfirm(false, i, false) = cs.screen { return true }; return false }()
+        cs.press(2); cs.press(1); drain(cs)
+        let bought = cs.state.bag.filter { $0 == "로토무카탈로그" }.count == 1 && cs.state.watts == 4000
+        cs.screen = .shop(bp: false, sel: i, qty: nil); let had = cs.shopModel()?.rows.first?.price == "보유"
+        check(!tabsOff.contains("기타") && shown && asked && bought && had,
+              "5.0 상점: 로토무카탈로그 under 기타 (off: no such tab), 1,000W, 정말 살까? → bought once, then 보유",
+              "\(tabsOff) \(cs.shopTabs(false)) \(String(describing: m0?.rows.map(\.name))) \(String(describing: m0?.rows.first?.price)) \(asked) \(bought) \(had) \(cs.state.watts)")
+        calm(cs)
+    }
 
     // 5.0 (docs/plans/18 §6.4 · §9.6): 메가 레이드 — the menu's (content5 only); its lobby (the week's two as tabs, 스톤까지 n/30); ● → its tier (the stone's
     // odds) → a run (Act.megaRaid: the boss Mega from the start, 10 bars); a win mails its stone (the dice: sure here), said, back to the lobby

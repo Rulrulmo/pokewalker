@@ -15,7 +15,7 @@ enum ItemKind: Equatable {
     case sell(Int)                 // watts at the exchange
     case mint(Int)                 // 민트 (SwSh): the stats go by this nature (its own stays shown): docs/plans/13
     case held(String)              // only to hold (3.7, Held.swift): 구애머리띠, 먹다남은음식 … (berries and evolution items keep their own use, and can be held too)
-    case key                       // 5.0: an important item, never sold (로토무카탈로그, 유전자쐐기, and the legend rewards' later)
+    case key                       // 5.0: an important item, never sold back (로토무카탈로그: the 상점's 기타, once; 유전자쐐기, and the legend rewards' later)
 
     /// One line on what it does (the bag list, the shops).
     var summary: String {

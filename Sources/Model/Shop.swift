@@ -155,7 +155,7 @@ extension Walk {
     struct Ware: Equatable {
         enum Kind: Equatable { case item(String), legend(Int), shell(String) }   // legend = Walk.legendShop index; shell = a device colour's name
         var kind: Kind; var price: Int
-        var once: Bool { if case .item = kind { return false }; return true }              // one at a time, with 정말 살까? (a device colour also only ever once)
+        var once: Bool { if case .item(let i) = kind { if case .key = ItemKind.of(i) { return true }; return false }; return true }   // one at a time, with 정말 살까? (a device colour, 5.0's 로토무카탈로그 also only ever once)
     }
     enum Bought: Equatable { case items(String, Int), legend(Mon), shell(String) }
     /// The rows, in order: the goods, then (상점) the companion's evolution items, then the once-only ones. `shells` = the device colours sold for BP.
@@ -171,7 +171,7 @@ extension Walk {
             + Walk.legendShop.indices.filter { Walk.legendShop[$0].watts > 0 }.map { Ware(kind: .legend($0), price: Walk.legendShop[$0].watts) }
     }
     /// The shops' tabs (docs/plans/13: the lists got long), in order; and the one a row goes under.
-    static func shopTabs(bp: Bool) -> [String] { bp ? ["회복", "육성", "지닌 도구", "기기 색", "전설"] : ["회복", "배틀", "육성", "민트", "지닌 도구", "열매", "진화", "전설"] }
+    static func shopTabs(bp: Bool) -> [String] { bp ? ["회복", "육성", "지닌 도구", "기기 색", "전설"] : ["회복", "배틀", "육성", "민트", "지닌 도구", "열매", "진화", "기타", "전설"] }   // (기타: 5.0's 로토무카탈로그, as the bag's; a tab shows only with a row in it)
     /// bp: which shop the row is in (3.7: a held item is under 지닌 도구 / 열매 by the list it's sold from).
     static func shopTab(_ w: Ware, bp: Bool = false) -> String {
         switch w.kind {

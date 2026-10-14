@@ -493,6 +493,27 @@ private func formed(_ dex: Int, _ f: Int?, _ level: Int = 50) -> Mon { var m = m
     #expect(Walk.bagTabs.count == 8)                                                                     // off: 4.1's eight
 }
 
+@Test func gen6ShopTabs() {                                                                      // 5.0: the 상점's 로토무카탈로그 under 기타 (it was under no tab: never shown), once
+    func tabs(_ w: Walk) -> [Bool: [String]] {                                                   // the tabs with a row, every row (both shops) under one of the shop's own
+        var out: [Bool: [String]] = [:]
+        for bp in [false, true] {
+            let ws = w.wares(bp: bp, shells: [("은", 30)])
+            for ware in ws { #expect(Walk.shopTabs(bp: bp).contains(Walk.shopTab(ware, bp: bp)), "\(w.wareName(ware)) → \(Walk.shopTab(ware, bp: bp))") }
+            out[bp] = Walk.shopTabs(bp: bp).filter { t in ws.contains { Walk.shopTab($0, bp: bp) == t } }
+        }
+        return out
+    }
+    let off = tabs(Engine.fresh(now: t0, starter: firstUID))
+    #expect(off[false] == ["회복", "배틀", "육성", "민트", "지닌 도구", "열매", "진화", "전설"] && !off[true]!.contains("기타"))   // off: 4.1's
+    gen6 {
+        var w = Engine.fresh(now: t0, starter: firstUID); w.watts = 5000
+        #expect(tabs(w)[false] == ["회복", "배틀", "육성", "민트", "지닌 도구", "열매", "진화", "기타", "전설"])
+        let cat = w.wares(bp: false, shells: []).first { $0.kind == .item("로토무카탈로그") }!
+        #expect(Walk.shopTab(cat) == "기타" && cat.once && cat.price == 1000 && w.canBuy(cat, bp: false) == 1)
+        #expect(w.purchase(cat, 1, bp: false) == .items("로토무카탈로그", 1) && w.watts == 4000 && w.canBuy(cat, bp: false) == 0 && w.purchase(cat, 1, bp: false) == nil)
+    }
+}
+
 @Test func megaRotation() {                                                                      // plan 18 §6.4: fixed and shuffled, from content5's first week
     #expect(MegaRaid.order.count == 48 && Set(MegaRaid.order.map { "\($0.dex)-\($0.form)" }) == Set(MegaRaid.bosses.map { "\($0.dex)-\($0.form)" }))   // all 48 once
     let weeks = (0..<24).map(MegaRaid.week)

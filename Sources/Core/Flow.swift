@@ -294,7 +294,7 @@ extension Walker {
                 let most = max(1, state.canBuy(w, bp: bp))
                 if k == 0 { screen = .shop(bp: bp, sel: sel, qty: q > 1 ? q - 1 : most) }
                 else if k == 2 { screen = .shop(bp: bp, sel: sel, qty: q < most ? q + 1 : 1) }
-                else if w.once { screen = .shopConfirm(bp: bp, sel: sel, yes: false) }                 // 전설 · 기기 색: one more step, 아니오 first
+                else if w.once { screen = .shopConfirm(bp: bp, sel: sel, yes: false) }                 // 전설 · 기기 색 · 로토무카탈로그: one more step, 아니오 first
                 else { buyWare(w, q, bp: bp, sel: sel, now) }
             } else if k != 1 { let ids = shopRows(bp, shopTab(bp, sel)), m = max(1, ids.count), i = ids.firstIndex(of: sel) ?? 0; _ = n; screen = .shop(bp: bp, sel: ids[safe: (i + (k == 0 ? m - 1 : 1)) % m] ?? sel, qty: nil) }   // ◀ ▶ round its tab
             else if state.canBuy(w, bp: bp) > 0 { screen = .shop(bp: bp, sel: sel, qty: 1) }
