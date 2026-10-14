@@ -277,6 +277,7 @@ func put<T>(_ s: String, _ field: inout T) {
         guard let k = page.hits.first(where: { $0.0.contains(p) })?.1 else { drag(); return }    // not on a button: drag the whole card
         if n == 1, walker.dragsFrom(k) { downOn = pageKind; gridPress = (k, p); _ = SetCapture(hwnd); return }   // 포켓몬's grid: decided at the release (a click) or as it moves (a drag)
         if n == 1 { downOn = pageKind } else if c.battle != nil || c.shop?.ask != nil || c.mon != nil || c.tower != nil && !(5440...5441).contains(k) || c.relearn != nil && !(5540...5541).contains(k) || pageKind != downOn { return }   // a double-click's 2nd click on what the 1st one opened: ignored
+        page.flash = (k, Date()); _ = SetTimer(hwnd, 5, 160, nil)                                   // 5.0: the press, seen (timer 5 draws the page again)
         walker.paneTap(k)
     }
     func drag() { _ = ReleaseCapture(); _ = SendMessageW(hwnd, UINT(WM_NCLBUTTONDOWN), WPARAM(HTCAPTION), 0) }
@@ -340,7 +341,7 @@ func put<T>(_ s: String, _ field: inout T) {
     func handle(_ msg: UINT, _ wp: WPARAM, _ lp: LPARAM) -> LRESULT? {
         switch msg {
         case UINT(WM_TIMER):
-            switch wp { case 1: tick(); case 2: frame(); case 4: _ = KillTimer(hwnd, wp); if !windowHidden { toggleShown() }; default: _ = KillTimer(hwnd, wp); tick() }
+            switch wp { case 1: tick(); case 2: frame(); case 4: _ = KillTimer(hwnd, wp); if !windowHidden { toggleShown() }; case 5: _ = KillTimer(hwnd, wp); redraw(.page); default: _ = KillTimer(hwnd, wp); tick() }
             return 0
         case wmRender: render(); return 0
         case UINT(WM_LBUTTONDOWN):

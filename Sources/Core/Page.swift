@@ -7,7 +7,7 @@ enum Ink {
     static func c(_ r: Int, _ g: Int, _ b: Int, _ a: CGFloat = 1) -> Color { Color(red: CGFloat(r) / 255, green: CGFloat(g) / 255, blue: CGFloat(b) / 255, alpha: a) }
     static var red: Color { accent?.main ?? c(214, 46, 42) }; static var redTint: Color { accent?.tint ?? c(252, 228, 226) }; static var onRed: Color { accent?.on ?? c(250, 212, 208) }
     static let dark = c(34, 37, 45)
-    /// 5.0's quality pass (the prototype, with fxV2): the page's accent in its LCD group's colour while it's drawn (nil: the red as ever).
+    /// 5.0's quality pass: the page's accent in its LCD group's colour while it's drawn (nil: the red as ever — home, the menu, a fight).
     nonisolated(unsafe) static var accent: (main: Color, tint: Color, on: Color)? = nil
     static func c(_ v: UInt32) -> Color { c(Int(v >> 16 & 255), Int(v >> 8 & 255), Int(v & 255)) }
     static let tile = c(242, 243, 246), board = c(246, 247, 249), line = c(230, 232, 237), ink = c(28, 32, 42), sub = c(112, 118, 130), faint = c(160, 165, 176)
@@ -110,6 +110,7 @@ extension Canvas {
     var hits: [(CGRect, Int)] = []                                         // clickable: battle index, 2000+ shop, 3000+ menu, 4000+ grid / box controls, 5000+ other pages, 10000+ grid cells
     var drops: [(CGRect, Int)] = []                                        // 포켓몬's grid: where a dragged Pokémon can land (4500-4503 the companion and the walker's 3, 4520 the box)
     private var c: (any Canvas)! = nil                                     // while drawing
+    var flash: (code: Int, at: Date)? = nil                                // 5.0: the button just pressed (its hit code), darkened for 0.15 s: the hosts set it and draw again after
 
     /// Card coordinates → the page's (it starts at the pane's top, card y 189).
     func r(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect { CGRect(x: x * K, y: (y - Layout.pane) * K, width: w * K, height: h * K) }
@@ -118,7 +119,7 @@ extension Canvas {
 
     func draw(on canvas: any Canvas) {
         hits = []; drops = []; c = canvas; drawnSurface = 2; defer { c = nil; drawnSurface = 0; Ink.accent = nil }
-        if fxV2, let g = walker?.pageGroup(), g != .notice { let b = LCDDeco.tones(g).band; Ink.accent = (Ink.c(lerpRGB(b, rgb(30, 30, 40), 0.22)), Ink.c(lerpRGB(b, rgb(255, 255, 255), 0.82)), Ink.c(lerpRGB(b, rgb(255, 255, 255), 0.65))) }
+        if let g = walker?.pageGroup(), g != .notice { let b = LCDDeco.tones(g).band; Ink.accent = (Ink.c(lerpRGB(b, rgb(30, 30, 40), 0.22)), Ink.c(lerpRGB(b, rgb(255, 255, 255), 0.82)), Ink.c(lerpRGB(b, rgb(255, 255, 255), 0.65))) }
         let p = content
         if let l = p.login { drawLogin(l) } else if let d = p.dex { drawDex(d) } else if let g = p.grid { drawGrid(g) } else if let m = p.mon { drawMon(m) } else if let s = p.shop { drawShop(s) }
         else if let m = p.menu { drawMenu(m) } else if let m = p.battle { drawBattle(m) } else if let i = p.items { drawItems(i) } else if let r = p.radar { drawRadar(r) }
@@ -128,6 +129,17 @@ extension Canvas {
         else if let t = p.trades { drawTrades(t) } else if let o = p.offer { drawOffer(o) } else if let k = p.pick { drawPick(k) }
         else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let v = p.visits { drawVisits(v) } else if let s = p.squad { drawSquad(s) } else if let h = p.duelHub { drawDuelHub(h) } else if let m = p.mailList { drawMailList(m) } else if let m = p.mailOpen { drawMailOpen(m) } else if let m = p.mailPick { drawMailPick(m) } else if let r = p.raid { drawRaid(r) } else if let r = p.raidTier { drawRaidTier(r) } else if let g = p.goals { drawGoals(g) } else if let r = p.raidBalls { drawRaidBalls(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
         else if let s = p.status { drawStatus(s) }
+        if let f = flash, Date().timeIntervalSince(f.at) < 0.15, let rc = hits.first(where: { $0.1 == f.code })?.0 {   // 5.0: the press, seen
+            c.fill(.rounded(rc, min(10 * K, rc.height / 2)), Color(white: 0, alpha: 0.12))
+        }
+    }
+    /// 5.0: an empty list — the page's mark (its LCD group's), faint, over its line.
+    func emptyState(_ text: String, _ cx: CGFloat, _ cy: CGFloat) {
+        if let g = walker?.pageGroup() {
+            let key = "mark|\(g.rawValue)"; if picStore[key] == nil { picStore[key] = LCDScenes.mark(g) }
+            if let img = picImage(PicRun(key: key, x: 0, y: 0), lcds[0]) { let w = 14 * 2 * K; c.image(img, CGRect(x: cx - w / 2, y: cy - x(30), width: w, height: w), alpha: 0.35) }
+        }
+        c.say(text, cx, cy + x(6), font(10, .medium), Ink.sub, 0.5, maxW: x(X1 - X0 - 12))
     }
     let X0: CGFloat = 9, X1: CGFloat = 207                                                         // the content column (card points): the bezel's edges
     /// A hairline across the column at y (page coordinates).
@@ -285,7 +297,7 @@ extension Canvas {
         let board = r(X0, top + 28, X1 - X0, 5 * 33)
         c.fill(.rounded(board, 11 * K), Ink.board)
         if g.items != nil { drops.append((board, 4520)) }
-        if g.cells.isEmpty { c.say(g.empty, board.midX, board.midY, font(10, .medium), Ink.sub, 0.5) }
+        if g.cells.isEmpty { emptyState(g.empty, board.midX, board.midY) }
         let side = 32 * K, snap = { (v: CGFloat) in (v * scale).rounded() / scale }
         for (k, e) in g.cells.enumerated() {
             let cell = r(X0 + CGFloat(k % GridModel.columns) * 33, top + 28 + CGFloat(k / GridModel.columns) * 33, 33, 33)
@@ -610,7 +622,7 @@ extension Page {
     }
     /// 포켓몬 레이더: tap the patch that rustles, where it is on the LCD.
     func drawRadar(_ m: RadarModel) {
-        c.say(m.chain > 0 ? "연쇄 \(m.chain) · 흔들리는 풀숲을 골라요" : "흔들리는 풀숲을 골라요", x(X0 + 2), y(206), font(11, .medium), Ink.ink)
+        c.say(m.chain > 0 ? "연쇄 \(m.chain) · 흔들리는 풀숲을 골라요" : "흔들리는 풀숲을 골라요", x(X0 + 2), y(206), font(12, .bold), Ink.ink)
         let cw = (X1 - X0 - 5) / 2
         for k in 0..<4 {
             let rc = r(X0 + CGFloat(k % 2) * (cw + 5), 220 + CGFloat(k / 2) * 51, cw, 46), live = m.live == k
@@ -667,7 +679,7 @@ extension Page {
     /// (its own marked with their slot: picking one swaps the two; the rest with the level it learns them).
     func drawRelearn(_ m: RelearnModel) {
         guard let p = m.pick else {
-            c.say(m.who + " · 바꿀 기술을 고르세요", x(X0 + 2), y(206), font(11, .medium), Ink.ink, maxW: x(X1 - X0 - 4))
+            c.say(m.who + " · 바꿀 기술을 고르세요", x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 4))
             for i in 0..<min(4, m.slots.count + 1) {
                 let rc = r(X0, 216 + CGFloat(i) * 22, X1 - X0, 20); tile(rc, 7, on: i == m.slot)
                 if let mv = m.slots[safe: i] { moveLine(mv, rc) } else { c.say("빈 칸", rc.minX + x(9), rc.midY, font(10, .bold), Ink.faint) }
@@ -677,7 +689,7 @@ extension Page {
             moveBox(m.slots[safe: m.slot], 350, empty: "빈 칸 · 새 기술을 고를 수 있어요")
             return
         }
-        c.say(m.slots[safe: m.slot].map { "\(m.slot + 1)번 \($0.name) → 무엇으로?" } ?? "빈 칸 · 무엇을 배울까?", x(X0 + 2), y(206), font(11, .medium), Ink.ink, maxW: x(X1 - X0 - 4))
+        c.say(m.slots[safe: m.slot].map { "\(m.slot + 1)번 \($0.name) → 무엇으로?" } ?? "빈 칸 · 무엇을 배울까?", x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 4))
         for (i, row) in p.rows.enumerated() {
             let rc = r(X0, 216 + CGFloat(i) * 22, X1 - X0, 20); tile(rc, 7, on: p.first + i == p.sel)
             var xr = rc.maxX - x(9)
@@ -695,7 +707,7 @@ extension Page {
     }
     /// 배틀 타워's lobby: the run, the three who go (a click: who goes there instead; 추천으로 once it's the player's own), then 도전 (or the next trainer) and 나가기.
     func drawTower(_ m: TowerModel) {
-        c.say((m.run ? "\(m.streak)연승 중" : "최고 \(m.best)연승") + " · Lv.50 맞춤", x(X0 + 2), y(206), font(11, .medium), Ink.ink)   // BP is on the title row
+        c.say((m.run ? "\(m.streak)연승 중" : "최고 \(m.best)연승") + " · Lv.50 맞춤", x(X0 + 2), y(206), font(12, .bold), Ink.ink)   // BP is on the title row
         if m.custom {
             let t = "추천으로", f = font(8.5, .bold), w = width(t, f) + x(14), rc = CGRect(x: x(X1) - w, y: y(206) - x(7.5), width: w, height: x(15))
             c.pill(rc, Ink.redTint); c.say(t, rc.midX, rc.midY, f, Ink.red, 0.5); hits.append((rc, 5420))
@@ -726,7 +738,7 @@ extension Page {
     /// The tower's picker: who could go in the slot, by level, a page of five (the party's marked with where they are; picking one of them swaps the two).
     /// 코스: a page of five (open ones dark, locked ones faint with what opens them, the one walked marked), the pager, and 가기.
     func drawCourse(_ m: CourseModel) {
-        c.say(m.about, x(X0 + 2), y(206), font(11, .medium), Ink.ink, maxW: x(X1 - X0 - 4))                      // the pick: its levels and types (the title row has how many are open)
+        c.say(m.about, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 4))                      // the pick: its levels and types (the title row has how many are open)
         for (i, row) in m.rows.enumerated() {
             let rc = r(X0, 216 + CGFloat(i) * 22, X1 - X0, 20); tile(rc, 7, on: m.first + i == m.sel)
             var xr = rc.maxX - x(9)
@@ -756,7 +768,7 @@ extension Page {
     }
     func drawTeam(_ m: TeamModel) {
         c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 60))
-        if !m.week.isEmpty { c.say(m.week, x(X1 - 2), y(206), font(8.5, .medium), Ink.faint, 1) }
+        if !m.week.isEmpty { c.say(m.week, x(X1 - 2), y(206), font(9, .medium), Ink.faint, 1) }
         let d = teamTabs(m.tabs, m.tab)
         if m.rows.isEmpty { c.say(m.note, x(Layout.w / 2), y(300 + d), font(10, .medium), Ink.sub, 0.5); return }
         if let h = m.hint { c.say(h, x(Layout.w / 2), y(242 + d + CGFloat(m.rows.count) * 29 + 14), font(9, .medium), Ink.faint, 0.5) }   // only me: how to add one
@@ -817,8 +829,8 @@ extension Page {
         c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
         tabs(m.tabs, m.tabs.count - 1, 214, code: 6000)
         if m.rows.isEmpty {
-            c.say(m.note.hasPrefix("받은") ? "걸린 교환이 없어요" : m.note, x(Layout.w / 2), y(300), font(10, .medium), Ink.sub, 0.5)
-            c.say("팀원의 카드에서 교환을 신청할 수 있어요", x(Layout.w / 2), y(318), font(9, .medium), Ink.faint, 0.5); return
+            emptyState(m.note.hasPrefix("받은") ? "걸린 교환이 없어요" : m.note, x(Layout.w / 2), y(300))
+            c.say("팀원의 카드에서 교환을 신청할 수 있어요", x(Layout.w / 2), y(322), font(9, .medium), Ink.faint, 0.5); return
         }
         for (i, row) in m.rows.enumerated() {
             let rc = r(X0, 242 + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: m.first + i == m.sel)
@@ -882,8 +894,8 @@ extension Page {
         c.fill(.rounded(board, 11 * K), Ink.board)
         if m.cells.isEmpty {                                                                         // a line, and what to do about it under it
             let l = m.empty.components(separatedBy: "\n")
-            c.say(l[0], board.midX, board.midY - (l.count > 1 ? x(8) : 0), font(10, .medium), Ink.sub, 0.5, maxW: board.width - x(12))
-            if l.count > 1 { c.say(l[1], board.midX, board.midY + x(9), font(8.5, .medium), Ink.faint, 0.5, maxW: board.width - x(12)) }
+            emptyState(l[0], board.midX, board.midY - (l.count > 1 ? x(4) : 0))
+            if l.count > 1 { c.say(l[1], board.midX, board.midY + x(18), font(8.5, .medium), Ink.faint, 0.5, maxW: board.width - x(12)) }
         }
         let side = 32 * K, scale = c.scale, snap = { (v: CGFloat) in (v * scale).rounded() / scale }
         for (k, e) in m.cells.enumerated() {
@@ -950,7 +962,7 @@ extension Page {
     func drawBoard(_ m: MarketBoardModel) {
         c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
         tabs(m.tabs, m.tab, 214, code: 8000)
-        if m.rows.isEmpty { c.say(m.empty, x(Layout.w / 2), y(300), font(10, .medium), Ink.sub, 0.5) }
+        if m.rows.isEmpty { emptyState(m.empty, x(Layout.w / 2), y(300)) }
         for (i, row) in m.rows.enumerated() {
             let rc = r(X0, 242 + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: m.first + i == m.sel)
             c.image(iconImage(row.dex), CGRect(x: rc.minX + x(6), y: rc.midY - x(15), width: 28 * K, height: 28 * K), alpha: 1)
@@ -1068,7 +1080,7 @@ extension Page {
         }
     }
     func drawSquad(_ m: SquadModel) {
-        let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .semibold), m.theirs != nil ? Ink.red : Ink.sub, 1)
+        let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .medium), m.theirs != nil ? Ink.red : Ink.sub, 1)
         c.say(m.title, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)
         squadStrip(m.strip, 214)
         if let t = m.theirs {                                                                       // a duel: the other's six (species only), my six to pick from
@@ -1084,7 +1096,7 @@ extension Page {
         } else {
             if let tb = m.tabs { tabs(tb, m.tab, 262, code: 8700) }
             let board = r(X0, 290, X1 - X0, 4 * 33); c.fill(.rounded(board, 11 * K), Ink.board)
-            if m.cells.isEmpty { c.say(m.empty, board.midX, board.midY, font(10, .medium), Ink.sub, 0.5) }
+            if m.cells.isEmpty { emptyState(m.empty, board.midX, board.midY) }
             for (k, e) in m.cells.enumerated() {
                 let cell = r(X0 + CGFloat(k % 6) * 33, 290 + CGFloat(k / 6) * 33, 33, 33); squadCell(e, cell, order: m.order[safe: k] ?? nil, looked: k == m.sel); hits.append((cell, 8750 + k))
             }
@@ -1140,7 +1152,7 @@ extension Page {
     }
     func drawMailList(_ m: MailListModel) {
         c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
-        if m.rows.isEmpty { c.say(m.empty, x(Layout.w / 2), y(300), font(10, .medium), Ink.sub, 0.5) }
+        if m.rows.isEmpty { emptyState(m.empty, x(Layout.w / 2), y(300)) }
         for (i, row) in m.rows.enumerated() {
             let rc = r(X0, 216 + CGFloat(i) * 31, X1 - X0, 28); tile(rc, 9, on: m.first + i == m.sel, row.done ? Ink.board : nil)
             mailIcon(row.icon, rc.minX + x(19), rc.midY)
@@ -1184,7 +1196,7 @@ extension Page {
         c.say(m.button ?? m.off, rc.midX, rc.midY, font(m.button == nil ? 9.5 : 11, .bold), m.button == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.button != nil { hits.append((rc, 8840)) }
     }
     func drawMailPick(_ m: MailPickModel) {
-        let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .semibold), Ink.sub, 1)
+        let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
         c.say(m.title, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)
         if m.cells.isEmpty {                                                                      // the items: a row each (the 도구 주기 rows' look), a page at a time
             let per = MailPickModel.per(m.count, legend: false), first = m.sel / per * per            // (the pick's page: it's always in view)
@@ -1224,7 +1236,7 @@ extension Page {
         c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
         tabs(m.tabs, m.tab, 214, code: 6320)
         if m.tab == 1 {
-            if m.recs.isEmpty { c.say(m.empty, x(Layout.w / 2), y(320), font(10, .medium), Ink.sub, 0.5) }
+            if m.recs.isEmpty { emptyState(m.empty, x(Layout.w / 2), y(320)) }
             for (i, row) in m.recs.enumerated() {
                 let rc = r(X0, 242 + CGFloat(i) * 33, X1 - X0, 30); tile(rc, 9, on: m.first + i == m.sel, row.won ? Ink.tint(Ink.green, 0.08) : nil)
                 let f = font(8.5, .bold), t = row.won ? "승" : "패", bw = x(18), b = CGRect(x: rc.minX + x(6), y: rc.midY - x(8), width: bw, height: x(16))
@@ -1249,7 +1261,7 @@ extension Page {
         slotStrip(m.party, 258, 40, code: nil)
         hits.append((r(X0, 258, X1 - X0, 40), 6330))
         c.say("지금 걷는 친구", x(X0 + 2), y(312), font(9, .semibold), Ink.sub)
-        if m.friends.isEmpty { c.say(m.empty, x(Layout.w / 2), y(350), font(10, .medium), Ink.sub, 0.5) }
+        if m.friends.isEmpty { emptyState(m.empty, x(Layout.w / 2), y(350)) }
         for (i, row) in m.friends.enumerated() {
             let rc = r(X0, 320 + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: m.sel == i + 1)
             c.miniBall(CGPoint(x: rc.minX + x(14), y: rc.midY), 5.5 * K)
@@ -1265,7 +1277,7 @@ extension Page {
     }
     // MARK: 실시간 대전's invitation (12 §5): who, the rules, the time left, my record, its buttons
     func drawDuel(_ m: DuelModel) {
-        let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .semibold), Ink.red, 1)
+        let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .medium), Ink.red, 1)
         c.say(m.title, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)
         let card = r(X0, 218, X1 - X0, 50); c.fill(.rounded(card, 10 * K), Ink.tile)
         c.say(m.line, card.minX + x(10), card.minY + x(16), font(9.5, .semibold), Ink.ink, maxW: card.width - x(20))
@@ -1305,7 +1317,7 @@ extension Page {
             }
         }
         tabs(m.tabs, m.tab, 291, code: 7000)
-        if m.rows.isEmpty { c.say(m.empty, x(Layout.w / 2), y(368), font(10, .medium), Ink.sub, 0.5) }
+        if m.rows.isEmpty { emptyState(m.empty, x(Layout.w / 2), y(368)) }
         let rh: CGFloat = m.roomy ? 26 : 21, big: CGFloat = m.roomy ? 1 : 0                           // 5.0: the Mega raid's four, bigger
         for (i, row) in m.rows.enumerated() {
             let rc = r(X0, 319 + CGFloat(i) * rh, X1 - X0, rh - 2); tile(rc, 7, on: false, row.me ? Ink.tint(Ink.blue, 0.10) : nil)
@@ -1385,7 +1397,7 @@ extension Page {
     }
     /// 대단한 특훈: the companion's six stats (trained ones and 31s marked), the pick, then its button (or why not).
     func drawTrain(_ m: TrainModel) {
-        c.say(m.who, x(X0 + 2), y(206), font(11, .medium), Ink.ink); c.say("지금 \(m.v)V", x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)   // (the caps left: the title row)
+        c.say(m.who, x(X0 + 2), y(206), font(12, .bold), Ink.ink); c.say("지금 \(m.v)V", x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)   // (the caps left: the title row)
         for (i, row) in m.rows.enumerated() {
             let rc = r(X0, 216 + CGFloat(i) * 22, X1 - X0, 20); tile(rc, 7, on: i == m.sel)
             c.say(row.name, rc.minX + x(9), rc.midY, font(10, .bold), Ink.ink)
@@ -1404,7 +1416,7 @@ extension Page {
             c.pill(rc, Ink.red); c.say(t, rc.midX, rc.midY, f, .white, 0.5); hits.append((rc, 5711)); right = rc.minX - x(6)
         }
         c.say("워커 \(m.walker) · 가방 \(m.bag)", x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: right - x(X0 + 2))   // (never under the pill)
-        if m.rows.isEmpty { c.say("없음", x(Layout.w / 2), y(260), font(10, .medium), Ink.sub, 0.5); return }
+        if m.rows.isEmpty { emptyState("가방이 비어 있어요", x(Layout.w / 2), y(280)); c.say("상점에서 사거나, 걷다 보면 동료가 주워 와요", x(Layout.w / 2), y(302), font(9, .medium), Ink.faint, 0.5); return }
         let two = m.tabs.count > 4                                                                 // 3.8.5: the bag's kinds as tabs (5720 + t), more than four on two rows
         if two { let half = (m.tabs.count + 1) / 2; tabs(Array(m.tabs.prefix(half)), m.tab < half ? m.tab : -1, 214, code: 5720); tabs(Array(m.tabs.dropFirst(half)), m.tab >= half ? m.tab - half : -1, 238, code: 5720 + half) }
         else if m.tabs.count > 1 { tabs(m.tabs, m.tab, 214, code: 5720) }
