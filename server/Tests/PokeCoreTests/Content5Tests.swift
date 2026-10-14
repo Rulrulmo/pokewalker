@@ -493,6 +493,12 @@ private func formed(_ dex: Int, _ f: Int?, _ level: Int = 50) -> Mon { var m = m
     #expect(Walk.bagTabs.count == 8)                                                                     // off: 4.1's eight
 }
 
+@Test func megaStoneCard() {                                                                     // 5.0 (10-14): the card's 메가스톤 n/48, as the save has them
+    var w = Walk(); w.bag = ["리자몽나이트X", "리자몽나이트X", "쪽빛구슬", "생명의구슬"]; w.box = [{ var m = Mon(dex: 130, level: 40, female: false); m.item = "갸라도스나이트"; return m }()]
+    #expect(TeamCard(name: "a", walk: w, today: 0, week: 0, idle: 0).megaStones == nil)                // off: none
+    gen6 { #expect(TeamCard(name: "a", walk: w, today: 0, week: 0, idle: 0).megaStones == 3 && MegaRaid.collected(w) == 3) }
+}
+
 @Test func gen6ShopTabs() {                                                                      // 5.0: the 상점's 로토무카탈로그 under 기타 (it was under no tab: never shown), once
     func tabs(_ w: Walk) -> [Bool: [String]] {                                                   // the tabs with a row, every row (both shops) under one of the shop's own
         var out: [Bool: [String]] = [:]

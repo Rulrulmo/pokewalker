@@ -12,6 +12,7 @@ struct TeamCard: Codable, Equatable {
     var idle: Int                                                      // seconds since its last act (under 60: walking now — the app sends steps every 15 s)
     var title: String? = nil, deco: String? = nil                      // 3.9 (docs/plans/15 §3.2): the newest 칭호, the card's 장식
     var raid: RaidWeek? = nil                                          // 4.0 (docs/plans/16 §4.4): this week's runs (nil: none)
+    var megaStones: Int? = nil                                         // 5.0 (docs/plans/18 §6.4, content5): 메가스톤 n / MegaRaid.stones.count
 
     init(name: String, walk w: Walk, today: Int, week: Int, idle: Int) {
         self.name = name; companion = w.companion; walker = w.caught
@@ -20,6 +21,7 @@ struct TeamCard: Codable, Equatable {
         towerBest = w.towerBest ?? 0; bestChain = w.bestChain ?? 0; bp = w.bp ?? 0; course = w.course; self.idle = idle
         duelWins = w.duelWins ?? 0; duelLosses = w.duelLosses ?? 0
         title = w.titles?.last; deco = w.deco
+        if Content.gen6 { megaStones = MegaRaid.collected(w) }
     }
 }
 struct TeamReq: Codable, Equatable { var id, session: String }              // /v2/team and /v2/trades

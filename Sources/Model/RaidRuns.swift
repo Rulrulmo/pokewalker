@@ -130,7 +130,16 @@ enum MegaRaid {
     static func mailTitle(_ stone: String, had: Bool) -> String { had ? "\(stone) 대신 BP" : josa(stone, "을", "를") + " 얻었다!" }
     /// The 20 wins' stone mail: its title (ends as a drop's: "…를 얻었다!") and line.
     static func winsTitle(_ stone: String) -> String { "\(bossWins)승! " + josa(stone, "을", "를") + " 얻었다!" }
-    static func winsBody(_ b: MegaBoss) -> String { josa(Forms.of(b.dex, b.form)?.name ?? b.stone, "을", "를") + " \(bossWins)번 이겨서 스톤이 왔어요." }
+    static func winsBody(_ b: MegaBoss) -> String { josa(name(b), "을", "를") + " \(bossWins)번 이겨서 스톤이 왔어요." }
+    static func name(_ b: MegaBoss) -> String { Forms.of(b.dex, b.form)?.name ?? b.stone }
+    /// A boss's first ★5 win (the user, 10-14: "1,3도 추가하자"): 금색병뚜껑 once a boss (48), stone or not; its mail.
+    static let firstFive: [Gift] = [.items(name: "금색병뚜껑", count: 1)]
+    static func firstFiveTitle(_ b: MegaBoss) -> String { "\(name(b)) ★5 첫 승리!" }
+    static func firstFiveBody(_ b: MegaBoss) -> String { josa(name(b), "을", "를") + " ★5에서 처음 이겼어요. 보스마다 한 번 금색병뚜껑을 줘요." }
+    /// The collection (10-14): the 48 stones (쪽빛구슬 · 주홍구슬 in), counted as the save has them (MegaRaid.stonesHad; not what's in the mail); all 48 → the 칭호.
+    static let stones: Set<String> = Set(bosses.map(\.stone))
+    static func collected(_ w: Walk) -> Int { stones.intersection(stonesHad(w)).count }
+    static let master = "메가 마스터", masterTitle = "메가스톤 48개를 다 모았다!"
     /// Its Mega's own move: 메가뮤츠 사이코브레이크, 원시가이오가 근원의파동, 원시그란돈 단애의칼 (in the place of the weakest attack).
     static let signature: [Int: Int] = [150: 540, 382: 618, 383: 619]
     /// A run's boss: the species at the tier's level and IVs with its stone (it fights as its Mega: RaidBoss.mega).
@@ -146,7 +155,7 @@ enum MegaRaid {
     /// The stones a trainer has: in the bag, on the walker, held by any of theirs.
     static func stonesHad(_ w: Walk) -> Set<String> { Set(w.bag + w.items + ([w.companion] + w.caught + w.box).compactMap(\.item)) }
 }
-struct MegaBoss: Codable, Equatable { var dex, form: Int; var stone: String; var had: Bool? = nil; var wins: Int? = nil }   // (the lobby's: had, its count of bossWins)
+struct MegaBoss: Codable, Equatable { var dex, form: Int; var stone: String; var had: Bool? = nil; var wins: Int? = nil; var fiveGot: Bool? = nil }   // (the lobby's: had, its count of bossWins, its first ★5's 금색병뚜껑 given)
 /// POST /v2/raid with kind "mega" (5.0): the week's two (had: that stone already), next week's, the day's runs (both raids'), the week's Mega
 /// runs, each boss's count (MegaBoss.wins of pityNeed: bossWins), the odds by tier.
 struct MegaRaidLobby: Codable, Equatable {
