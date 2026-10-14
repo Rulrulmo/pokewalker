@@ -12,24 +12,57 @@ extension FB {
     mutating func focusPic(_ key: String, _ make: () -> Pic) { pic("focus|" + key, 34, 66, scale: 1.5, make) }
     /// Words wrapped to w dots (small), at most `lines` rows from (x, y) 9 apart, the last cut with …; the rows used.
     @discardableResult mutating func wrap(_ s: String, _ x: Int, _ y: Int, _ w: Int, lines: Int, _ shade: UInt8 = 2) -> Int {
-        var rows: [String] = [], cur = ""
-        for word in s.split(separator: " ").map(String.init) {
-            let next = cur.isEmpty ? word : cur + " " + word
-            if textWidth(next, small: true) <= w { cur = next; continue }
-            if !cur.isEmpty { rows.append(cur) }
-            cur = word
-            while textWidth(cur, small: true) > w, cur.count > 1 {                                  // one word too long: cut it where it fills the row
-                var head = cur; while head.count > 1, textWidth(head, small: true) > w { head.removeLast() }
-                rows.append(head); cur = String(cur.dropFirst(head.count))
-            }
-        }
-        if !cur.isEmpty { rows.append(cur) }
-        if rows.count > lines {
-            var last = rows[lines - 1]; while last.count > 1, textWidth(last + "…", small: true) > w { last.removeLast() }
-            rows = Array(rows.prefix(lines - 1)) + [last + "…"]
-        }
+        let rows = FB.rows(s, w, lines)
         for (k, r) in rows.enumerated() { text(r, x, y + 9 * k, shade, small: true) }
         return rows.count
+    }
+    /// Words in rows of w dots (small), at most `lines` (5.0: never a … where it can help it) — a list (a · b · c) its parts whole, a part's
+    /// words whole (a short word kept with the next: 한 번, 1/10); too many rows: the last parts dropped whole; one part still too long: its last words
+    /// dropped; only a single word wider than a row is cut (…, and the renders hear of it).
+    @MainActor static func rows(_ s: String, _ w: Int, _ lines: Int) -> [String] {
+        func fits(_ t: String) -> Bool { textWidth(t, small: true) <= w }
+        func words(_ part: String) -> [String] {                                                  // a one-letter word goes with the next (한 번, 때 한 번); 라티아스·라티오스 may break after its ·
+            var out: [String] = [], carry = ""
+            for raw in part.split(separator: " ").map(String.init) {
+                let pieces = raw.contains("·") ? raw.split(separator: "·", omittingEmptySubsequences: false).enumerated().map { $0.offset < raw.split(separator: "·", omittingEmptySubsequences: false).count - 1 ? $0.element + "·" : String($0.element) } : [raw]
+                for (k, wd) in pieces.enumerated() {
+                    let t = carry.isEmpty ? wd : carry + (k == 0 ? " " : "") + wd
+                    if wd.count <= 1 || wd.hasSuffix("·") && k < pieces.count - 1 && wd.count <= 2 { carry = t; continue }
+                    out.append(t); carry = ""
+                }
+            }
+            if !carry.isEmpty { out.append(carry) }
+            return out
+        }
+        func lay(_ parts: [String]) -> [String] {
+            var rows: [String] = [], cur = ""
+            for (i, part) in parts.enumerated() {
+                let joined = cur.isEmpty ? part : cur + " · " + part
+                if fits(joined) { cur = joined; continue }
+                if !cur.isEmpty { rows.append(cur + (i < parts.count ? " ·" : "")); cur = "" }
+                if fits(part) { cur = part; continue }
+                for wd in words(part) {                                                           // a part longer than a row: its words
+                    let t = cur.isEmpty ? wd : cur + (cur.hasSuffix("·") ? "" : " ") + wd
+                    if fits(t) { cur = t } else { if !cur.isEmpty { rows.append(cur) }; cur = wd }
+                }
+            }
+            if !cur.isEmpty { rows.append(cur) }
+            return rows.map { $0.hasSuffix(" ·") && !fits($0) ? String($0.dropLast(2)) : $0 }
+        }
+        var parts = s.components(separatedBy: " · ").filter { !$0.isEmpty }
+        var rows = lay(parts)
+        while rows.count > lines, parts.count > 1 { parts.removeLast(); rows = lay(parts) }     // the last parts go, whole
+        if rows.count > lines, var p = parts.first {                                             // one part, too long: its last words go
+            var ws = words(p)
+            while rows.count > lines, ws.count > 1 { ws.removeLast(); p = ws.reduce("") { $0.isEmpty ? $1 : $0 + ($0.hasSuffix("·") ? "" : " ") + $1 }; rows = lay([p]) }
+        }
+        if rows.count > lines { rows = Array(rows.prefix(lines)) }
+        rows = rows.map { r in
+            guard !fits(r) else { return r }                                                     // a word wider than the row: cut, said
+            var t = r; while t.count > 1, !fits(t + "…") { t.removeLast() }; cutTexts?.append("LCD " + r); return t + "…"
+        }
+        if let last = rows.last, last.hasSuffix(" ·") { rows[rows.count - 1] = String(last.dropLast(2)) }
+        return rows
     }
     /// A name: as is where it fits w dots, else small, else cut (…): measured with this machine's font, never past w.
     mutating func name(_ s: String, _ x: Int, _ y: Int, _ w: Int, _ shade: UInt8 = 3) {

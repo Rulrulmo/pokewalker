@@ -185,6 +185,7 @@ extension Walker {
             fb.text(forms == 0 ? (owned ? "잡음" : "봤음") : "폼 \((form ?? 0) + 1)/\(forms + 1)", 94, 42, 2, right: true, small: true)   // 5.0: ● turns them (1: the species)
             fb.text("\((list.firstIndex(of: d) ?? 0) + 1)/\(list.count)", 94, 52, 1, right: true, small: true)
         case .box(let i, let act, let confirm, let detail):
+            if !detail, !boxQuery.isEmpty, boxShown.isEmpty, i >= -1 { header("포켓몬"); fb.text("맞는 포켓몬 없음", 0, 26, 2, center: true, small: true); fb.text("✕로 찾기를 지워요", 0, 38, 1, center: true, small: true); break }   // 5.0: 찾기, nothing kept
             guard let m = state.mon(i) else { header("포켓몬"); break }
             header((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)")
             fb.mon(m, half, 0, 2, anim: animT("box \(i)", m.art, now))

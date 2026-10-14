@@ -190,3 +190,20 @@ import Foundation
     }
     return Array(Set(out)).sorted()
 }
+
+/// 5.0 (회사: the focus card's 강철주얼 cut short): every item's line on the focus pages — its summary as 상점 · 가방 · BP · 도구 주기 · 우편 show it
+/// (50 dots, two rows; a mail's pick three) — fits without a … (a long one drops its last parts whole), and a short word stays with the next.
+@MainActor func focusTextChecks() -> [(Bool, String)] {
+    var cut: [String] = []
+    let names = Set((Walk().wares(bp: false, shells: []) + Walk().wares(bp: true, shells: Engine.bpShells)).compactMap { w -> String? in if case .item(let i) = w.kind { i } else { nil } } + Forms.stones + Walk.mints)
+    for k in [1.0, 1.15] {
+        textWidthScale = k; defer { textWidthScale = 1 }
+        for n in names.sorted() {
+            for (s, lines) in [(ItemKind.of(n).summary.replacingOccurrences(of: "지니게 하기: ", with: "지니면 "), 2), (Held.summary(n) ?? ItemKind.of(n).summary, 3)] {
+                let rows = FB.rows(s, 50, lines)
+                if rows.contains(where: { $0.hasSuffix("…") }) || rows.contains(where: { $0.hasSuffix(" 한") || $0.hasSuffix(" 두") }) { cut.append("\(n) ×\(k): \(rows)") }
+            }
+        }
+    }
+    return [(cut.isEmpty, "5.0 the focus pages' item lines: \(names.count) items (sold, BP, Mega stones, mints) in 50 dots, two rows (three on a mail's pick), no … and no 한 / 번 split, as if the font ran 15 % wider too" + (cut.isEmpty ? "" : " — \(cut.prefix(5))"))]
+}
