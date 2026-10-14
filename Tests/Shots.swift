@@ -519,6 +519,13 @@ import AppKit
         take("stress_dex_mega", sx) { v in v.dexForm = (6, Forms.mega(6, holding: "리자몽나이트Y")?.n ?? 1); v.screen = .dex(6, filter: 0, detail: true) }
         take("stress_shop", sx) { v in v.screen = .shop(bp: false, sel: 0, qty: nil) }
         take("stress_shop_qty", sx) { v in v.screen = .shop(bp: false, sel: 0, qty: 99) }
+        // the ease (5.0): 상자 찾기's words, the shop's amount at its most, who holds a held item already, a mint's before / after, a page's ‹
+        take("ux_box_query", sx) { v in v.boxQuery = "불꽃 이로치"; v.screen = .box(v.boxShown.first ?? -1, act: nil, confirm: false) }
+        sx.boxQuery = ""
+        take("ux_shop_most", sx) { v in v.state.watts = 300; v.screen = .shop(bp: false, sel: 2, qty: 1) }
+        take("ux_shop_most_max", sx) { v in v.state.watts = 300; v.screen = .shop(bp: false, sel: 2, qty: 1); v.shopStep(nil) }
+        take("ux_shop_held", sx) { v in v.state.companion.item = Walk.heldWGen6.first?.item; v.screen = .shop(bp: false, sel: v.wares(false).firstIndex { v.state.wareName($0) == Walk.heldWGen6.first?.item } ?? 0, qty: nil) }
+        take("ux_mint", sx) { v in v.screen = .itemOn(ItemOn(item: "대담민트", pick: -1, at: 0)) }
         take("stress_bp", sx) { v in v.screen = .shop(bp: true, sel: v.wares(true).count - 1, qty: nil) }
         take("stress_items", sx) { v in v.screen = .items(0) }
         take("stress_hold", sx) { v in v.screen = .hold(ref: -1, sel: 3) }

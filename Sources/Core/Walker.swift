@@ -4,7 +4,7 @@ import Foundation
 
 @MainActor final class Walker {
     var state: Walk
-    var screen = Screen.home { didSet { if case .say = oldValue, Walker.startsFights(screen) { calmAt = Date() }; if case .menu(let g?, let s) = screen { menuSlot[g] = s } } }
+    var screen = Screen.home { didSet { if case .say = oldValue, Walker.startsFights(screen) { calmAt = Date() }; if case .menu(let g?, let s) = screen { menuSlot[g] = s }; remember(screen) } }
     var menuSlot: [Int: Int] = [:]
     var mailOpened: Set<Int> = []                                                                   // 3.9: mails opened since the server's last list (read now, for the red dot)                                                                  // 3.9: each menu group's last tile (its page opens on it again)
     /// 3.8.6: a message gone (a fight's end: n연승! · n 데미지!) onto a page whose ● or button starts a fight — for a moment that start isn't taken:
@@ -15,13 +15,15 @@ import Foundation
     static func startsFights(_ s: Screen) -> Bool { switch s { case .tower(nil), .raid(.lobby), .raid(.tier): return true; case .squad(let q): return q.kind == .raid; default: return false } }
     weak var host: (any Host)?
     var lastInput = Date(), lastStep = Date.distantPast, lastSave = Date()
-    var boxSort = 0                                                        // the 상자 grid's order: 번호순 / 레벨순 / V순 / 최근
-    var dexRegion = 0                                                      // 5.0 (content5): the 도감 grid's region, 0 = 전국 (dexRegions)
+    var boxSort = min(max(settings.int("ui.boxSort", 0), 0), 3) { didSet { if persist { settings.set("ui.boxSort", boxSort) } } }   // the 상자 grid's order: 번호순 / 레벨순 / V순 / 최근 (5.0: kept)
+    var dexRegion = min(max(settings.int("ui.dexRegion", 0), 0), 6) { didSet { if persist { settings.set("ui.dexRegion", dexRegion) } } }   // 5.0 (content5): the 도감 grid's region, 0 = 전국 (dexRegions; kept)
     var dexForm: (dex: Int, n: Int)? = nil                                 // 5.0: the 도감 entry page's form on show (● turns them; nil = the species)
     var raidMega = false, raidMegaBoss = 0                                 // 5.0 (docs/plans/18 §6.4): the raid screens are the Mega raid's; its boss (the week's 0 / 1)
     var sayStone: (lines: [String], stone: String)? = nil
     var titlePick = false
-    var lastTile = 0                                                       // 5.0: the menu's tile last opened (the 메뉴 key comes back to it)                                                  // 5.0: the card's 칭호 list open (two or more: pick the one shown)                   // 5.0: the message saying a Mega stone came, and its stone (drawn big on its card: LCDDeco)
+    var lastTile = min(max(settings.int("ui.lastTile", 0), 0), 7) { didSet { if persist { settings.set("ui.lastTile", lastTile) } } }   // 5.0: the menu's tile last opened (the 메뉴 key comes back to it; kept)
+    var boxQuery = ""                                                      // 5.0: the 상자 grid's 찾기 (names, numbers, types, 이로치, 3V, 도구: UXView.swift)
+    var goalsSeen = settings.int("ui.goalsSeen", 0)                        // 5.0: how many 도감 업적 were mailed when the page was last opened (its red dot)                                                  // 5.0: the card's 칭호 list open (two or more: pick the one shown)                   // 5.0: the message saying a Mega stone came, and its stone (drawn big on its card: LCDDeco)
     var megaOn = false                                                     // 5.0 (docs/plans/18 §9.6): 메가진화 ticked on the move screen: the move goes as .megaFight
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
     var keyShown: Bool?? = .none                                           // the 메뉴 / 홈 key as last shown (see homeKey)
@@ -124,12 +126,13 @@ import Foundation
     var busy: Bool { switch screen { case .beats, .hatch, .evolve, .radar, .traded: true; default: animating || waiting != nil } }   // (an act out: its dots)
 
     /// The keys as the walker knows them: ◀ ▶ ↑ ↓, page up / down, tab, ● (return / space), ↩ (esc), 메뉴 / 홈 (M).
-    enum Key { case left, right, up, down, pageUp, pageDown, tab, enter, back, menu }
+    enum Key: Hashable { case left, right, up, down, pageUp, pageDown, tab, enter, back, menu, digit(Int), letter(Character) }   // 5.0: 1–8 the menu's tiles, R · B · I · / (UXView.swift)
     /// A key down (held: the key's repeat): in a shop ↑ ↓ = a row, or ±10; in a grid ↑ ↓ a row, page up / down a page; tab a grid's next tab
     /// (shift: the one before). false = not the walker's (the platform passes it on).
     func key(_ k: Key, shift: Bool = false, held: Bool = false) -> Bool {
         if frozen { if k == .enter, !held { press(1) }; return true }                              // another PC has it: ● = 여기서 계속, nothing else
         if waiting != nil { return true }                                                          // an act's answer on the way
+        switch k { case .digit, .letter: return shortcut(k); default: break }                     // 5.0: the shortcuts (UXView.swift)
         if case .shop(_, _, let q) = screen, let d = [Key.up: -1, .down: 1][k] { shopStep(q == nil ? d : -10 * d); return true }
         if case .shop(let bp, let sel, nil) = screen, k == .tab {                                    // 3.6: the next tab (shift: the one before), its first row
             let n = max(1, shopTabs(bp).count), t = (shopTab(bp, sel) + (shift ? n - 1 : 1)) % n
@@ -166,6 +169,8 @@ import Foundation
     func toggleStatus() { statusOpen.toggle(); if persist { settings.set("homePanel", statusOpen) }; refreshPane(Date(), force: true) }
     /// The title row's ⌄ / ⌃ where the pane has no page of its own (home and its messages): true = open; nil = none.
     var chevron: Bool? { pane.status != nil || pane == PaneContent() ? statusOpen : nil }
+    /// 5.0: the title row's ‹ (as ↩) on a page — not home, not a fight (its ↩ is its own: 도망 · 기권).
+    var backOn: Bool { homeKey() == false }
 
     /// The title row for this screen: what it is, and one line of what the LCD doesn't show.
     func title() -> (title: String, meta: String) {

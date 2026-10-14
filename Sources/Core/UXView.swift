@@ -14,7 +14,7 @@ extension Walker {
         guard !frozen, waiting == nil else { return }
         lastInput = Date(); host?.redraw(.all)
         switch name {
-        case "도구": screen = .items(0)
+        case "도구": screen = .items(itemsAt)
         case "트레이너 카드": screen = .card(2)                                                       // (알: its page)
         default: if menuItems.contains(name) { open(name) }
         }
@@ -37,4 +37,69 @@ extension Walker {
         guard let d = found else { screen = .say([josa("'\(q)'", "을", "를"), "찾지 못했어요"], next: screen, since: Date()); return }
         screen = .dex(d, filter: 0, detail: true)
     }
+
+    /// 5.0: what's kept for next time (this PC; the app's walker only): the shop's ware last looked at, the bag's item.
+    func remember(_ s: Screen) {
+        guard persist else { return }
+        switch s {
+        case .shop(let bp, let sel, _): if settings.int("ui.shop.\(bp ? "BP" : "W")", -1) != sel { settings.set("ui.shop.\(bp ? "BP" : "W")", sel) }
+        case .items(let sel): if settings.int("ui.items", -1) != sel { settings.set("ui.items", sel) }
+        case .goals: if goalsSeen != (state.dexRewards ?? []).count { goalsSeen = (state.dexRewards ?? []).count; settings.set("ui.goalsSeen", goalsSeen) }
+        default: break
+        }
+    }
+    /// The bag where it was left (its row, clamped).
+    var itemsAt: Int { min(max(0, settings.int("ui.items", 0)), max(0, state.inventory.count - 1)) }
+
+    // MARK: the shortcuts (5.0): 1–8 the menu's tiles (a group's page: its rows), R 포켓 레이더, B 포켓몬, I 도구, / 찾기 (도감, 상자)
+    func shortcut(_ k: Key) -> Bool {
+        let calmPage: Bool = { switch screen { case .home, .menu, .dex(_, _, false), .box(_, .none, _, false), .items, .card, .goals, .course: true; default: false } }()
+        guard calmPage else { return false }
+        switch k {
+        case .digit(let n) where (1...8).contains(n):
+            if case .menu(let g?, _) = screen { guard menuTiles[g].items.indices.contains(n - 1) else { return false }; menuTap(n - 1); return true }
+            screen = .menu(group: nil, sel: n - 1); press(1); return true
+        case .letter(let c):
+            switch c {
+            case "r": quickOpen("포켓 레이더")
+            case "b": quickOpen("포켓몬")
+            case "i": quickOpen("도구")
+            case "/":
+                if case .dex = screen { dexFind() } else if case .box = screen { boxFind() } else { quickOpen("도감"); dexFind() }
+            default: return false
+            }
+            return true
+        default: return false
+        }
+    }
+
+    // MARK: the 상자's 찾기 (5.0): words, all of them to match — a name (or part of it), a number, a type (불꽃), 이로치 (★), 3V … 6V, 도구 (지닌)
+    func boxMatch(_ m: Mon, _ q: String) -> Bool {
+        let types = Dictionary(typeKo.map { ($1, $0) }) { a, _ in a }
+        return q.lowercased().split(whereSeparator: { $0 == " " || $0 == "," }).allSatisfy { w in
+            let t = String(w)
+            if t == "이로치" || t == "★" { return m.shiny == true }
+            if t.count == 2, t.hasSuffix("v"), let n = Int(t.prefix(1)) { return m.perfectIVs >= n }
+            if ["도구", "지닌", "지님", "지닌도구"].contains(t) { return m.item != nil }
+            if let ty = types[t] { return m.typing.contains(ty) }
+            if let n = Int(t) { return m.dex == n }
+            return monNames[m.dex].contains(t) || (Forms.of(m.dex, m.form)?.name.contains(t) ?? false)
+        }
+    }
+    /// The box as the grid shows it: its order (boxSort), what 찾기 keeps.
+    var boxShown: [Int] { boxQuery.isEmpty ? boxOrder : boxOrder.filter { boxMatch(state.box[$0], boxQuery) } }
+    func boxFind() {
+        guard let h = host, let raw = h.askText(title: "상자 찾기", message: "이름 · 번호 · 타입(불꽃) · 이로치 · 3V · 도구\n띄어 쓰면 모두 맞는 것만") else { return }
+        boxQuery = raw.trimmingCharacters(in: .whitespaces)
+        screen = .box(boxShown.first ?? -1, act: nil, confirm: false); lastInput = Date(); host?.redraw(.all)
+    }
+
+    // MARK: the red dots (5.0): the power full with runs left today, one of ours ready to evolve by an item in the bag, a 도감 업적 not looked at
+    func powerDot(mega: Bool) -> Bool {
+        guard raidPower >= Engine.raidPowerMax, cloud?.online == true else { return false }
+        if mega { return Content.gen6 && (megaLeftToday ?? 1) > 0 }
+        return (raidLeftToday ?? 1) > 0
+    }
+    var evolveDot: Bool { ([-1] + state.caught.indices.map { -2 - $0 }).contains { !state.stoneEvolutions(Date(), ref: $0).isEmpty } }
+    var goalsDot: Bool { Content.gen6 && (state.dexRewards ?? []).count > goalsSeen }
 }

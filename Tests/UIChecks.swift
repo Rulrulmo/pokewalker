@@ -59,11 +59,35 @@ import Foundation
     do {
         var st = Walk(); st.box = [Mon(dex: 16, level: 5, female: false)]; st.watts = 5000; st.bag = ["상처약"]
         @MainActor func walker(_ s: Screen) -> () -> Walker { { let w = Walker(state: st); w.persist = false; w.screen = s; return w } }
-        let dead = [("홈", deadHits(walker(.home))), ("상자", deadHits(walker(.box(0, act: nil, confirm: false)), skip: [4100])), ("상점 수량", deadHits(walker(.shop(bp: false, sel: 0, qty: 1)), skip: [2008, 2100]))]   // (the tab it's on; the row picked)
+        let dead = [("홈", deadHits(walker(.home))), ("상자", deadHits(walker(.box(0, act: nil, confirm: false)), skip: [4100, 4171])), ("상점 수량", deadHits(walker(.shop(bp: false, sel: 0, qty: 1)), skip: [2008, 2100]))]   // (the tab it's on; the row picked)
             .filter { !$0.1.isEmpty }
         let w = Walker(state: st); w.persist = false; w.screen = .home; w.open("배틀 타워"); w.screen = .home; w.calmAt = .distantPast; w.press(4)
         let back: Bool = { if case .menu(nil, let sel) = w.screen { return menuTiles[sel].items.contains("배틀 타워") }; return false }()
         c.append((dead.isEmpty && back, "5.0 the panel's ease: 홈's quick buttons and rows, the box's pick's buttons, the shop's 최대 all do something; the 메뉴 key comes back on the tile last used" + (dead.isEmpty ? "" : " — dead: \(dead)")))
+    }
+    // the rest of the ease (5.0, "전부다"): 찾기 (상자: words that all match; 도감: a name or number), the shortcuts, the red dots, the 금색병뚜껑's ask,
+    // the title row's ‹, what's kept
+    Content.$testing.withValue(true) {
+        var r = Seeded(s: 12), st = Walk()
+        var a = Mon.wild(6, level: 60, &r); a.shiny = true; a.ivs = [31, 31, 31, 0, 0, 0]; var b = Mon.wild(7, level: 10, &r); b.item = "구애스카프"; let d = Mon.wild(25, level: 5, &r)
+        st.box = [a, b, d]; st.companion = Mon.wild(16, level: 5, &r); st.bag = ["금색병뚜껑", "천둥의돌"]; st.owned = [6, 7, 25, 445]; st.seen = st.owned; st.dex()
+        let h = TestHost(), w = Walker(state: st); w.persist = false; w.host = h; w.screen = .box(0, act: nil, confirm: false)
+        h.texts = ["불꽃 이로치 3v"]; w.gridTap(4171); let one = w.boxShown == [0] && w.paneContent(Date()).grid?.query == "불꽃 이로치 3v"
+        h.texts = ["도구"]; w.gridTap(4171); let held = w.boxShown == [1]
+        w.gridTap(4172); let all = w.boxShown.count == 3 && w.boxQuery.isEmpty
+        w.screen = .dex(1, filter: 0, detail: false); h.texts = ["한카"]; w.gridTap(4170); let found = { if case .dex(445, _, true) = w.screen { return true }; return false }()
+        w.screen = .home; let keyMenu = w.key(.digit(4)) && { if case .menu(let g?, _) = w.screen { return menuTiles[g].name == "기록" }; return false }()
+        w.screen = .home; let keyBox = w.key(.letter("b")) && { if case .box = w.screen { return true }; return false }()
+        w.screen = .home; let keyBag = w.key(.letter("i")) && { if case .items = w.screen { return true }; return false }()
+        let evolve = w.evolveDot                                                                 // 천둥의돌 and 피카츄 in the box only: no dot
+        w.state.caught = [d]; let evolveWalker = w.evolveDot
+        h.answer = false; w.state.companion = a; w.screen = .hold(ref: -1, sel: 0)
+        let capRow = w.holdRows(-1).firstIndex { $0.name == "금색병뚜껑" } ?? 0; w.screen = .hold(ref: -1, sel: capRow); w.calmAt = .distantPast; w.press(1)
+        let asked = h.asked.last == "금색병뚜껑을 쓸까요?" && w.state.bag.contains("금색병뚜껑")
+        w.screen = .shop(bp: false, sel: 0, qty: nil); let back = w.backOn; w.screen = .home; let homeNoBack = !w.backOn
+        c.append((one && held && all && found && keyMenu && keyBox && keyBag && !evolve && evolveWalker && asked && back && homeNoBack,
+                  "5.0 the ease: 상자 찾기 (불꽃 이로치 3v → 리자몽; 도구 → the one holding; ✕ all), 도감 찾기 (한카 → 한카리아스), keys 4 · B · I, the 포켓몬 dot (one on the walker ready to evolve), the 금색병뚜껑 asked (no: kept), ‹ on a page not home"
+                  + " — \(one) \(held) \(all) \(found) \(keyMenu) \(keyBox) \(keyBag) \(evolve) \(evolveWalker) \(asked) \(back) \(homeNoBack)"))
     }
     let hud = hudOverlaps()                                                                       // (the user: "겹침은 해결해주고")
     c.append((hud.isEmpty, "5.0 a fight's HP boxes clear of every picture: theirs front-on with each animation frame (in its stage), ours from behind (\(spriteCount) pictures)" + (hud.isEmpty ? "" : " — \(hud.prefix(6))")))

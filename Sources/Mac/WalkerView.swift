@@ -56,7 +56,7 @@ final class WalkerView: NSView {
     /// The clock, 10 a second (main.swift's timer): the walker's rules, the menu-bar title, the frame; 30 fps while something plays.
     @objc func tick(_ sender: Any?) {
         walker.tick(Date())
-        let st = walker.stickerRects + (walker.chevron != nil ? [chevronRect] : []); if st != stickersShown { stickersShown = st; window?.invalidateCursorRects(for: self) }   // the hands over the stickers / ⌄ follow the screen
+        let st = walker.stickerRects + (walker.chevron != nil ? [chevronRect] : []) + (walker.backOn ? [backRect] : []); if st != stickersShown { stickersShown = st; window?.invalidateCursorRects(for: self) }   // the hands over the stickers / ⌄ follow the screen
         updateStatus()
         frame(nil)
         let busy = walker.busy
@@ -86,13 +86,17 @@ final class WalkerView: NSView {
             if i == 1 || i == 4, e.clickCount > 1 { return }                                        // ● or 메뉴 twice fast: once (the 2nd would act on what the 1st opened)
             pressed = i; pressedAt = Date(); walker.press(i)
             perform(#selector(tick(_:)), with: nil, afterDelay: 0.15, inModes: [.common])
-        } else if chevronRect.contains(p), walker.chevron != nil { walker.toggleStatus() }
+        } else if backRect.contains(p), walker.backOn { walker.press(3) }                       // 5.0: the title row's ‹
+        else if chevronRect.contains(p), walker.chevron != nil { walker.toggleStatus() }
         else if lcdRect.contains(p), e.clickCount == 1 || walker.stickerAt(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) == nil,   // a sticker's 2nd click would swap back
                   walker.touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needsDisplay = true }
         else { window?.performDrag(with: e) }
     }
     override func keyDown(with e: NSEvent) {                                                  // ← → ↑ ↓, page up / down, tab, return / space, esc (= ↩ 뒤로), M (= 메뉴 / 홈): Walker.key
-        let keys: [UInt16: Walker.Key] = [123: .left, 124: .right, 126: .up, 125: .down, 116: .pageUp, 121: .pageDown, 48: .tab, 36: .enter, 49: .enter, 53: .back, 46: .menu]
+        let keys: [UInt16: Walker.Key] = [123: .left, 124: .right, 126: .up, 125: .down, 116: .pageUp, 121: .pageDown, 48: .tab, 36: .enter, 49: .enter, 53: .back, 46: .menu,
+                                          18: .digit(1), 19: .digit(2), 20: .digit(3), 21: .digit(4), 23: .digit(5), 22: .digit(6), 26: .digit(7), 28: .digit(8),   // 5.0: the shortcuts (Walker.shortcut)
+                                          83: .digit(1), 84: .digit(2), 85: .digit(3), 86: .digit(4), 87: .digit(5), 88: .digit(6), 89: .digit(7), 91: .digit(8),   // (the keypad's)
+                                          15: .letter("r"), 11: .letter("b"), 34: .letter("i"), 44: .letter("/")]
         if let k = keys[e.keyCode], walker.key(k, shift: e.modifierFlags.contains(.shift), held: e.isARepeat) { return }
         super.keyDown(with: e)
     }
@@ -100,7 +104,8 @@ final class WalkerView: NSView {
     override func resetCursorRects() {
         for b in buttons { addCursorRect(NSRect(x: b.c.x - b.r, y: b.c.y - b.r, width: 2 * b.r, height: 2 * b.r), cursor: .pointingHand) }
         for r in walker.stickerRects { addCursorRect(r, cursor: .pointingHand) }
-        if walker.chevron != nil { addCursorRect(chevronRect, cursor: .pointingHand) }                     // the walker's stickers on home: a tap walks with that one
+        if walker.chevron != nil { addCursorRect(chevronRect, cursor: .pointingHand) }
+        if walker.backOn { addCursorRect(backRect, cursor: .pointingHand) }                         // 5.0: the title row's ‹                     // the walker's stickers on home: a tap walks with that one
     }
 
     override func menu(for event: NSEvent) -> NSMenu? { buildMenu() }

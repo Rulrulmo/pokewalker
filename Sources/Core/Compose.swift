@@ -188,7 +188,7 @@ extension Walker {
             guard let m = state.mon(i) else { header("포켓몬"); break }
             header((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)")
             fb.mon(m, half, 0, 2, anim: animT("box \(i)", m.art, now))
-            fb.text(i == -1 ? "함께" : i < -1 ? "워커 \(-1 - i)" : "상자 \((boxOrder.firstIndex(of: i) ?? 0) + 1)/\(state.box.count)", 94, 15, 2, right: true, small: true)   // where it is
+            fb.text(i == -1 ? "함께" : i < -1 ? "워커 \(-1 - i)" : "상자 \((boxShown.firstIndex(of: i) ?? 0) + 1)/\(state.box.count)", 94, 15, 2, right: true, small: true)   // where it is
             if genderRate[m.dex] >= 0 { fb.text(m.female ? "암컷" : "수컷", 94, 26, 2, right: true, small: true) }   // genderless: nothing (the games show no symbol); vLabel(m, 36)
             if let f = formName(m).map({ $0.replacingOccurrences(of: monNames[m.dex], with: "").trimmingCharacters(in: .whitespaces) }), !f.isEmpty {
                 fb.text(f, 94, genderRate[m.dex] >= 0 ? 36 : 26, 2, right: true, small: true)   // 5.0: its form (히트, 모던한 모양 ...), a line of its own: clear of the picture
@@ -275,10 +275,10 @@ extension Walker {
                              first: p.first, sel: i.map { $0 - p.first }, page: p.page, pages: p.pages, empty: f == 2 ? "모두 잡았다!" : "아직 없다", bob: bob,
                              regions: Content.gen6 ? ["전국"] + dexRegions(dexMax).map { r in r.name + (DexGoals.regions.first { $0.range == r.range }.map { DexGoals.complete(state, $0) } == true ? "✦" : "") } : nil, region: dexRegion)   // 5.0: a second row (content5)
         case .box(let i, _, _, false):                                                              // 포켓몬: the companion and the walker's over the box
-            let o = boxOrder, b = state.box, at = o.firstIndex(of: i), p = page(o.count, at ?? 0), party = [state.companion] + state.caught
+            let o = boxShown, b = state.box, at = o.firstIndex(of: i), p = page(o.count, at ?? 0), party = [state.companion] + state.caught
             return GridModel(tabs: ["번호순", "레벨순", "V순", "최근"], tab: boxSort,
                              cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3, held: b[$0].item != nil, art: b[$0].art) },
-                             first: p.first, sel: at.map { $0 - p.first }, page: p.page, pages: p.pages, empty: "상자가 비어 있다", bob: bob,
+                             first: p.first, sel: at.map { $0 - p.first }, page: p.page, pages: p.pages, empty: boxQuery.isEmpty ? "상자가 비어 있다" : "맞는 포켓몬이 없어요", bob: bob, query: boxQuery,
                              party: party.map { .init(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil, art: $0.art) }, partySel: i < 0 ? -1 - i : nil, items: state.items.count + state.bag.count)
         default: return nil
         }
@@ -307,12 +307,14 @@ extension Walker {
         case (.dex(let d, let f, _), 4150...4156):                                                   // 5.0: a region (0 = 전국), the tab kept
             dexRegion = code - 4150; let l = dexList(f); screen = .dex(l.contains(d) ? d : l.first ?? d, filter: f, detail: false)
         case (.box(let pick, _, _, _), 10000...):                                                  // the same: picked first, its page on a second click
-            guard let j = boxOrder[safe: code - 10000] else { return }
+            guard let j = boxShown[safe: code - 10000] else { return }
             screen = .box(j, act: nil, confirm: false, detail: j == pick)
         case (.box(let pick, _, _, _), 4500...4503):                                               // the row above: -1 the companion, then the walker's
             let ref = -1 - (code - 4500); guard state.mon(ref) != nil else { return }
             screen = .box(ref, act: nil, confirm: false, detail: ref == pick)
-        case (.box, 4510): screen = .items(0)
+        case (.box, 4510): screen = .items(itemsAt)
+        case (.box, 4171): boxFind()                                                                                                    // 5.0: 찾기
+        case (.box(let i, _, _, _), 4172): boxQuery = ""; screen = .box(i, act: nil, confirm: false)                                   // … and its words cleared
         case (.box(let i, _, _, _), 4100...4103): boxSort = code - 4100; screen = .box(i, act: nil, confirm: false)
         case (.box(let i, _, _, true), 4400) where i != -1: screen = .box(i, act: 0, confirm: false, detail: true); press(1)      // = ● 함께
         case (.box(let i, _, _, true), 4404) where i < -1: screen = .box(i, act: 1, confirm: false, detail: true); press(1)       // the walker's: 상자로 보내기
@@ -575,7 +577,8 @@ extension Walker {
         let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
         let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / \(dexMax)", "도감 업적": "받은 업적 \((state.dexRewards ?? []).count)개", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "친구": friendRequestsIn > 0 ? "친구 신청 \(friendRequestsIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "친구 · 이번 주 순위", "교환": marketNote,
                      "레이드": raidNote, "메가 레이드": megaNote, "대전": duelNote, "우편함": mailNote]
-        let dots: Set<String> = Set([marketDot ? "교환" : nil, friendRequestsIn > 0 ? "친구" : nil, mailDot ? "우편함" : nil, raidDot ? "레이드" : nil].compactMap { $0 })   // 3.8: something waits there (4.0: a raid's ball stage)
+        let dots: Set<String> = Set([marketDot ? "교환" : nil, friendRequestsIn > 0 ? "친구" : nil, mailDot ? "우편함" : nil, raidDot || powerDot(mega: false) ? "레이드" : nil,
+                                     powerDot(mega: true) ? "메가 레이드" : nil, evolveDot ? "포켓몬" : nil, goalsDot ? "도감 업적" : nil].compactMap { $0 })   // 3.8: something waits there (4.0: a raid's ball stage; 5.0: the power full, one ready to evolve, a new 도감 업적)
         func row(_ n: String) -> MenuModel.Row { off && needs.contains(n) ? .init(name: n, note: "연결되면 할 수 있어요", off: true) : .init(name: n, note: notes[n] ?? "", dot: dots.contains(n)) }
         if let g { return MenuModel(rows: menuTiles[g].items.map(row), sel: i, group: menuTiles[g].name) }
         let sums = ["기록": "도감 \(dexCount) · 오늘 \(state.today.formatted())걸음", "배틀": "최고 \(state.towerBest ?? 0)연승 · 파워 \(raidCells)칸", "친구": notes["친구"]!, "상점": "\(state.watts.formatted())W · \((state.bp ?? 0).formatted())BP"]
@@ -609,7 +612,9 @@ extension Walker {
         let rows = ids.map { ws[$0] }.map { w in ShopModel.Row(name: state.wareName(w), note: state.wareNote(w).replacingOccurrences(of: "지니게 하기: ", with: "지니면 "), price: w.once && state.owned(w) > 0 ? "보유" : "\(w.price.formatted())\(unit)",
                                                  owned: state.owned(w), can: state.canBuy(w, bp: bp) > 0, once: w.once) }
         let cost = (w?.price ?? 0) * (qty ?? 0)
+        let holders: [String] = w.flatMap { w -> [String]? in if case .item(let i) = w.kind, case .held = ItemKind.of(i) { return ([state.companion] + state.caught + state.box).filter { $0.item == i }.map { monNames[$0.dex] } }; return nil } ?? []
         let hint = said ?? w.map { w in
+            !holders.isEmpty && state.canBuy(w, bp: bp) > 0 && qty == nil ? (holders.count == 1 ? josa(holders[0], "이", "가") : "\(holders[0]) 외 \(holders.count - 1)마리가") + " 지니고 있어요 · 클릭하면 몇 개 살지 정해요" :   // 5.0: who holds it already
             w.once && state.owned(w) > 0 ? "이미 가지고 있어요" : state.canBuy(w, bp: bp) == 0 ? "\(unit)가 부족해요 · \(w.price.formatted())\(unit) 필요" : w.once ? "클릭하거나 ●를 누르면 살지 물어봐요" : "클릭하거나 ●를 누르면 몇 개 살지 정해요"
         } ?? ""
         let spend = ask != nil ? w?.price ?? 0 : cost

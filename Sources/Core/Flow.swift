@@ -175,7 +175,7 @@ extension Walker {
             let l = dexList(f); guard !l.isEmpty else { return }
             screen = .dex(l[to(l.firstIndex(of: n) ?? 0, l.count)], filter: f, detail: detail)
         case .box(let i, _, _, let detail):                                                       // ◀ ▶: the companion, the walker's, then the box, round; rows and pages in the box
-            let o = boxOrder, all = [-1] + state.caught.indices.map { -2 - $0 } + o, at = o.firstIndex(of: i)
+            let o = boxShown, all = [-1] + state.caught.indices.map { -2 - $0 } + o, at = o.firstIndex(of: i)
             let next = wrap ? all[to(all.firstIndex(of: i) ?? 0, all.count)] : at == nil ? (o.isEmpty || d < 0 && !ends ? nil : abs(d) < GridModel.perPage ? o.first : o[to(0, o.count)]) : d < 0 && d > -GridModel.perPage && at! + d < 0 ? -1 : o[to(at!, o.count)]
             if let next { screen = .box(next, act: nil, confirm: false, detail: detail) }            // up from the box's top row: the companion
         default: return
@@ -438,7 +438,9 @@ extension Walker {
         case "트레이너 카드": screen = .card(0)
         case "도감 업적": screen = .goals(0)                                                          // 5.0 (content5)
         case "포켓몬": screen = .box(-1, act: nil, confirm: false)                                  // the companion first
-        case "상점", "BP 교환소": screen = .shop(bp: name == "BP 교환소", sel: 0, qty: nil)
+        case "상점", "BP 교환소":                                                                    // 5.0: back on the ware last looked at
+            let bp = name == "BP 교환소"
+            screen = .shop(bp: bp, sel: min(max(0, settings.int("ui.shop.\(bp ? "BP" : "W")", 0)), max(0, wares(bp).count - 1)), qty: nil)
         case "배틀 타워": screen = .tower(pick: nil)
         case "친구":
             guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: menuFor(name), since: now); return }
@@ -483,10 +485,10 @@ extension Walker {
     func dragsFrom(_ code: Int) -> Bool {
         guard case .box(_, nil, false, false) = screen, waiting == nil, !frozen else { return false }
         if (4501...4503).contains(code) { return state.mon(-1 - (code - 4500)) != nil }
-        return code >= 10000 && boxOrder.indices.contains(code - 10000)
+        return code >= 10000 && boxShown.indices.contains(code - 10000)
     }
     /// The one a press on `code` picks: its ref.
-    func dragRef(_ code: Int) -> Int? { code >= 10000 ? boxOrder[safe: code - 10000] : (4500...4503).contains(code) ? -1 - (code - 4500) : nil }
+    func dragRef(_ code: Int) -> Int? { code >= 10000 ? boxShown[safe: code - 10000] : (4500...4503).contains(code) ? -1 - (code - 4500) : nil }
     /// Whether a drag from `from` does something dropped on `to`: the companion takes the walker's or the box's; the walker's row takes the box's;
     /// the box takes the walker's.
     func canDrop(_ from: Int, _ to: Int) -> Bool {

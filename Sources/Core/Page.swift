@@ -275,7 +275,12 @@ extension Canvas {
         if g.items == nil {                                                                        // 5.0 (UXView.swift): the 도감's 찾기 by its tabs
             tabs(g.tabs, g.tab, top, span: X1 - X0 - 50)
             let rc = r(X1 - 46, top, 46, 22); c.pill(rc, Ink.tint(Ink.red, 0.12)); c.say("찾기", rc.midX, rc.midY, font(10, .bold), Ink.red, 0.5); hits.append((rc, 4170))
-        } else { tabs(g.tabs, g.tab, top) }
+        } else {                                                                                   // 5.0: the 상자's 찾기 (its words, ✕ to clear)
+            tabs(g.tabs, g.tab, top, span: X1 - X0 - 50)
+            let q = g.query ?? "", rc = r(X1 - 46, top, 46, 22)
+            c.pill(rc, q.isEmpty ? Ink.tint(Ink.red, 0.12) : Ink.red)
+            c.say(q.isEmpty ? "찾기" : "✕ " + q, rc.midX, rc.midY, font(q.isEmpty ? 10 : 8.5, .bold), q.isEmpty ? Ink.red : .white, 0.5, maxW: rc.width - x(6)); hits.append((rc, q.isEmpty ? 4171 : 4172))
+        }
         if let rg = g.regions { top += 26; tabs(rg, g.region, top, code: 4150) }                    // 5.0: the regions (content5)
         let board = r(X0, top + 28, X1 - X0, 5 * 33)
         c.fill(.rounded(board, 11 * K), Ink.board)
@@ -494,7 +499,9 @@ extension Canvas {
             if plus { c.fill(CGRect(x: x(cx) - 0.8 * K, y: step.midY - x(4), width: 1.6 * K, height: x(8)), ink) }
             if on { hits.append((hr, code)) }
         }
-        c.say("\(q)개", step.midX, step.midY, font(11, .bold), Ink.ink, 0.5)
+        if q >= s.most, s.most < 99 {                                                              // 5.0: why + is grey — what's had covers no more
+            c.say("\(q)개", step.midX, step.midY - x(4), font(11, .bold), Ink.ink, 0.5); c.say("최대", step.midX, step.midY + x(8), font(7, .bold), Ink.sub, 0.5)
+        } else { c.say("\(q)개", step.midX, step.midY, font(11, .bold), Ink.ink, 0.5) }
         hits.append((CGRect(x: step.midX - x(16), y: step.minY, width: x(32), height: step.height), 2008))   // 5.0 (UXView.swift): the amount typed
         let buy = r(X0 + 118, by, X1 - X0 - 118, 30); c.pill(buy, Ink.red); c.say("\(s.total) 사기", buy.midX, buy.midY, font(11, .bold), .white, 0.5, maxW: buy.width - x(12)); hits.append((buy, 2005))
     }

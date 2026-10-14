@@ -56,8 +56,19 @@ extension Walker {
             ?? TradeSlot(label: "받을 포켓몬", name: "골라 주세요")
         let verb: String = { switch ItemKind.of(p.item) { case .candy, .vitamin, .evReset, .berry: "먹이기"; case .bottleCap(let g): g ? "특훈" : "특훈할 능력 고르기"; case .held: "지니게 하기"; default: "쓰기" } }()
         let go = m != nil && why == nil ? josa(monNames[m!.dex], "에게", "에게") + " " + verb : nil
+        let then: String? = m.flatMap { m in                                                     // 5.0: what it is now, and what it'd be
+            switch ItemKind.of(p.item) {
+            case .mint(let k): return "지금 " + natures[m.mint ?? m.nature ?? 0].name + " → " + natures[k].name
+            case .vitamin(let k, let d): let e = (m.evs ?? [])[safe: k] ?? 0; return "\(["HP", "공격", "방어", "특공", "특방", "스피드"][k]) 노력치 \(e) → \(max(0, min(Walk.vitaminCap, e + d)))"
+            case .evReset: return "노력치 합 \((m.evs ?? []).reduce(0, +)) → 0"
+            case .bottleCap: return "지금 \(m.perfectIVs)V"
+            case .held: return "지금 " + (m.item ?? "지닌 도구 없음")
+            case .candy: return "Lv.\(m.level) → Lv.\(min(100, m.level + 1))"
+            default: return nil
+            }
+        }
         return PaneContent(pick: TradePickModel(title: "누구에게 쓸까요?", note: "\(p.item) ×\(state.count(p.item))", mine: mine, theirs: TradeSlot(label: "쓸 도구", name: p.item),
-                                                side: 0, fixed: true, boxTitle: "동료 · 워커 · 상자 · \(refs.count.formatted())마리", cells: cells, sel: refs.isEmpty ? nil : at - first,
+                                                side: 0, fixed: true, boxTitle: then.map { monNames[m!.dex] + " · " + $0 } ?? "동료 · 워커 · 상자 · \(refs.count.formatted())마리", cells: cells, sel: refs.isEmpty ? nil : at - first,
                                                 picked: p.pick.flatMap { refs.firstIndex(of: $0) }.flatMap { (first..<first + per).contains($0) ? $0 - first : nil },
                                                 first: first, count: refs.count, empty: "", any: nil, go: go, hint: why.map { "이 포켓몬에게는: " + $0 } ?? "쓸 포켓몬을 골라 주세요",
                                                 bob: Int(now.timeIntervalSinceReferenceDate * 2) % 2 == 0, base: 8300))
@@ -111,7 +122,7 @@ extension Walker {
         let back = Screen.items(state.inventory.firstIndex(of: p.item) ?? 0)
         if keyItemOn(p.item, r) { return }                                                          // 5.0: 로토무카탈로그 · 유전자쐐기 ask what next
         if case .bottleCap(false) = ItemKind.of(p.item) { trainRef = r; screen = .train(state.mon(r)?.effectiveIVs.firstIndex { $0 < 31 } ?? 0); return }
-        if case .bottleCap(true) = ItemKind.of(p.item) { trainRef = r; useCap(nil, back: back); return }
+        if case .bottleCap(true) = ItemKind.of(p.item) { guard goldCapAsked(r) else { return }; trainRef = r; useCap(nil, back: back); return }
         if case .held = ItemKind.of(p.item) { holdOn(r, p.item, back: .itemOn(p), then: { [weak self] in .items(self?.state.inventory.firstIndex(of: p.item) ?? 0) }, now); return }
         useItem(p.item, on: r, back: .itemOn(p), then: { [weak self] in .items(self?.state.inventory.firstIndex(of: p.item) ?? 0) }, now)
     }
@@ -164,7 +175,7 @@ extension Walker {
             if keyItemOn(r.name, ref) { return }                                                    // 5.0: FormView's
             switch ItemKind.of(r.name) {
             case .bottleCap(false): trainRef = ref; screen = .train(state.mon(ref)?.effectiveIVs.firstIndex { $0 < 31 } ?? 0)
-            case .bottleCap(true): trainRef = ref; useCap(nil, back: here)
+            case .bottleCap(true): guard goldCapAsked(ref) else { return }; trainRef = ref; useCap(nil, back: here)
             default: useItem(r.name, on: ref, back: here, then: { [weak self] in .hold(ref: ref, sel: min(sel, max(0, (self?.holdRows(ref).count ?? 1) - 1))) }, now)
             }
             return
@@ -196,5 +207,13 @@ extension Walker {
     func itemTargets(_ b: Battle, _ use: ItemUse) -> [Int] { b.mine.indices.filter { b.usable(use, on: $0) } }
     static func battleUse(_ name: String) -> ItemUse? {
         switch ItemKind.of(name) { case .heal(let n): .heal(n); case .battle(let u): u; case .revive(let p): .revive(p); default: nil }
+    }
+}
+
+extension Walker {
+    /// 5.0 (the user's review: what can't be undone, asked once more): a 금색병뚜껑 — rare — asked before it's used (a test's walker: yes).
+    func goldCapAsked(_ ref: Int) -> Bool {
+        guard let m = state.mon(ref) else { return false }
+        return host?.confirm("금색병뚜껑을 쓸까요?", josa(monNames[m.dex], "의", "의") + " 개체값 6개가 모두 31이 돼요(지금 \(m.perfectIVs)V).\n쓰면 되돌릴 수 없어요.", ok: "쓰기") ?? true
     }
 }

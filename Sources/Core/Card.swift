@@ -18,7 +18,8 @@ extension Walker {
         c.stroke(body, Color(white: 0, alpha: 0.12), width: 0.5)
         // the title row: what the LCD doesn't show; home's ⌄ folds the status sheet
         let tl = title(), fg = light ? Ink.ink : .white, fg2 = light ? Ink.sub : Color(white: 1, alpha: 0.82), cy = 12.5 * k
-        c.say(tl.title, 12 * k, cy, font(11, .bold), fg, maxW: 120 * k)
+        if backOn { c.say("‹", 9 * k, cy - 0.5 * k, font(15, .bold), fg); c.say(tl.title, 21 * k, cy, font(11, .bold), fg, maxW: 111 * k) }   // 5.0: ‹ = ↩ (backRect)
+        else { c.say(tl.title, 12 * k, cy, font(11, .bold), fg, maxW: 120 * k) }
         c.say(tl.meta, (207 - 3 - (chevron != nil ? 13 : 0)) * k, cy, font(9, .medium), fg2, 1, maxW: 110 * k)
         if let open = chevron {
             let cx = 200 * k, s3 = 3 * k, d: CGFloat = open ? -1 : 1

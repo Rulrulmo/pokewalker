@@ -45,6 +45,7 @@ struct GridModel: Equatable {
     var tabs: [String]; var tab: Int
     var cells: [Cell]; var first: Int; var sel: Int?                   // this page's cells; first = cells[0]'s place in the whole list; sel = the pick's cell
     var page, pages: Int; var empty: String; var bob: Bool
+    var query: String? = nil                                           // 5.0: the 상자's 찾기 words ("" none; nil: the 도감's 찾기)
     var party: [Cell] = []; var partySel: Int? = nil; var items: Int? = nil   // 포켓몬: the companion + the walker's in a row over the box, then the items chip (nil = no row: 도감)
     var regions: [String]? = nil; var region = 0                       // 5.0 도감 (content5): 전국 · 관동 ... 칼로스 under the tabs (nil = no row)
 }

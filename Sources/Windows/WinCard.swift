@@ -262,7 +262,8 @@ func put<T>(_ s: String, _ field: inout T) {
             if i == 1 || i == 4, n > 1 { return }                                                  // ● or 메뉴 twice fast: once (the 2nd would act on what the 1st opened)
             pressed = i; pressedAt = Date(); walker.press(i)
             _ = SetTimer(hwnd, 3, 150, nil)                                                        // the key comes back up
-        } else if chevronRect.contains(p), walker.chevron != nil { walker.toggleStatus() }
+        } else if backRect.contains(p), walker.backOn { walker.press(3) }                       // 5.0: the title row's ‹
+        else if chevronRect.contains(p), walker.chevron != nil { walker.toggleStatus() }
         else if lcdRect.contains(p), n == 1 || walker.stickerAt(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) == nil,   // a sticker's 2nd click would swap back
                   walker.touch(Int((p.x - lcdRect.minX) / PX), Int((p.y - lcdRect.minY) / PX)) { needAll = true; post() }
         else { drag() }
@@ -305,7 +306,10 @@ func put<T>(_ s: String, _ field: inout T) {
     func keyDown(_ wp: WPARAM, _ lp: LPARAM) -> Bool {
         var vk = Int32(truncatingIfNeeded: wp)
         if vk == VK_PROCESSKEY { vk = Int32(MapVirtualKeyW(UINT(lp >> 16 & 0xFF), UINT(MAPVK_VSC_TO_VK))) }   // an IME had it: the key itself
-        let keys: [Int32: Walker.Key] = [VK_LEFT: .left, VK_RIGHT: .right, VK_UP: .up, VK_DOWN: .down, VK_PRIOR: .pageUp, VK_NEXT: .pageDown, VK_TAB: .tab, VK_RETURN: .enter, VK_SPACE: .enter, VK_ESCAPE: .back, 0x4D: .menu]
+        let keys: [Int32: Walker.Key] = [VK_LEFT: .left, VK_RIGHT: .right, VK_UP: .up, VK_DOWN: .down, VK_PRIOR: .pageUp, VK_NEXT: .pageDown, VK_TAB: .tab, VK_RETURN: .enter, VK_SPACE: .enter, VK_ESCAPE: .back, 0x4D: .menu,
+                                         0x31: .digit(1), 0x32: .digit(2), 0x33: .digit(3), 0x34: .digit(4), 0x35: .digit(5), 0x36: .digit(6), 0x37: .digit(7), 0x38: .digit(8),   // 5.0: the shortcuts (Walker.shortcut)
+                                         0x61: .digit(1), 0x62: .digit(2), 0x63: .digit(3), 0x64: .digit(4), 0x65: .digit(5), 0x66: .digit(6), 0x67: .digit(7), 0x68: .digit(8),   // (the keypad's)
+                                         0x52: .letter("r"), 0x42: .letter("b"), 0x49: .letter("i"), 0xBF: .letter("/")]
         guard let k = keys[vk] else { return false }
         return walker.key(k, shift: GetKeyState(VK_SHIFT) < 0, held: lp >> 30 & 1 == 1)
     }
@@ -328,7 +332,7 @@ func put<T>(_ s: String, _ field: inout T) {
     /// Over a key or one of the page's buttons: the hand (the LCD is to look at).
     func cursorHand(_ p: CGPoint) -> Bool {
         if p.y >= pageTop { let q = CGPoint(x: p.x, y: p.y - pageTop); return page.hits.contains { $0.0.contains(q) } }
-        return buttons.contains { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r } || walker.stickerRects.contains { $0.contains(p) } || (walker.chevron != nil && chevronRect.contains(p))
+        return buttons.contains { hypot($0.c.x - p.x, $0.c.y - p.y) <= $0.r } || walker.stickerRects.contains { $0.contains(p) } || (walker.chevron != nil && chevronRect.contains(p)) || (walker.backOn && backRect.contains(p))
     }
     func client(_ lp: LPARAM) -> CGPoint { CGPoint(x: CGFloat(lo(lp)) / sc, y: CGFloat(hi(lp)) / sc) }
 
