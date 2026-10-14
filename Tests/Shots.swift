@@ -9,8 +9,8 @@ import AppKit
     if let d = ProcessInfo.processInfo.environment["LCD_DECO"].flatMap(Int.init) { lcdDeco = d != 0 }   // 5.0: the LCD's pages plain (0), as before they were dressed (LCDDeco.swift)
     if let l = ProcessInfo.processInfo.environment["LCD_SCREEN"].flatMap(Int.init) { lcdStyle = min(max(l, 0), lcds.count - 1) }   // ... on another screen (1 원작, 2 백라이트)
     if ProcessInfo.processInfo.environment["LCD_FOCUS"] == "0" { lcdFocus = false }
-    if ProcessInfo.processInfo.environment["FX_V2"] == "1" { fxV2 = true }
-    if ProcessInfo.processInfo.environment["HUD_AUDIT"] == "1" { for l in hudOverlaps() { print("hud " + l) } }   // 5.0: every picture against the fight's HP boxes                         // 5.0: the moves' second look (the prototype: MoveFX2.swift)               // 5.0: the list pages as lists (before the focus LCD: FocusView.swift)
+    if ProcessInfo.processInfo.environment["FX_V2"] == "0" { fxV2 = false }                        // 5.0: the moves as before their second look (MoveFX2.swift)
+    if ProcessInfo.processInfo.environment["HUD_AUDIT"] == "1" { for l in hudOverlaps() { print("hud " + l) } }   // 5.0: every picture against the fight's HP boxes
     func base() -> Walk { var s = Walk(), r = Seeded(s: 3); s.companion = Mon.wild(25, level: 30, &r); s.caught = [Mon.wild(16, level: 8, &r)]; s.watts = 1234; s.bp = 40; return s }
     func take(_ name: String, _ v: Walker, _ set: (Walker) -> Void) {
         let view = WalkerView(walker: v); set(v)

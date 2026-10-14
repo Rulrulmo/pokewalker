@@ -91,6 +91,16 @@ import Foundation
     }
     let hud = hudOverlaps()                                                                       // (the user: "겹침은 해결해주고")
     c.append((hud.isEmpty, "5.0 a fight's HP boxes clear of every picture: theirs front-on with each animation frame (in its stage), ours from behind (\(spriteCount) pictures)" + (hud.isEmpty ? "" : " — \(hud.prefix(6))")))
+    do {                                                                                          // the moves' second look (MoveFX2.swift): every move, both ways
+        var r = Seeded(s: 6), zard = Mon.wild(6, level: 60, &r); zard.known = [53, 19, 337, 89]
+        let b = Battle(wild: Mon.wild(214, level: 60, &r), companion: zard), w = Walker(state: { var s = Walk(); s.companion = zard; return s }()); w.persist = false; w.fight = b
+        var drawn = 0
+        for id in moveTable.keys.sorted() { for s in [Side.me, .it] {
+            let beats: [Beat] = [.use(s, move: id), .hit(b.other(s), move: id, damage: 20, effect: 2, crit: false)], total = beats.map(\.length).reduce(0, +)
+            for k in 0..<6 { w.screen = .beats(b, beats, since: Date().addingTimeInterval(-(0.05 + Double(k) * total / 6) / w.battleSpeed), from: b); _ = w.compose(Date()); drawn += 1 }
+        } }
+        c.append((fxV2 && drawn == moveTable.count * 12, "5.0 every move's effects drawn (\(moveTable.count) moves, ours and theirs, its flight and its hit at 6 moments)"))
+    }
     Content.$testing.withValue(true) {
         var r = Seeded(s: 4), zard = Mon.wild(6, level: 60, &r); zard.item = "리자몽나이트X"; zard.known = [53, 19, 337, 89]
         let b = Battle(wild: Mon.wild(214, level: 60, &r), companion: zard)
