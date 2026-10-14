@@ -121,10 +121,15 @@ enum LCDDeco {
         let w = Double(p.w) * r.scale, h = Double(p.h) * r.scale
         walls.append((String(r.key.split(separator: "|")[1]), [Double(r.x) - w / 2, Double(r.y) - h / 2, Double(r.x) + w / 2, Double(r.y) + h / 2]))
     }
+    var subjects: [(String, [Double])] = fb.sprites.filter { !$0.back && $0.alpha > 0 }.compactMap { s in drawnBox(s).map { ("#\(s.art)", $0) } }
+    for r in fb.pics where r.key.hasPrefix("focus|") {                                             // a focus page's thing (FocusView.swift)
+        guard let p = picStore[r.key] else { continue }
+        let w = Double(p.w) * r.scale, h = Double(p.h) * r.scale
+        subjects.append((r.key, [Double(r.x) - w / 2, Double(r.y) - h / 2, Double(r.x) + w / 2, Double(r.y) + h / 2]))
+    }
     var out: [String] = []
-    for s in fb.sprites where !s.back && s.alpha > 0 {
-        guard let b = drawnBox(s) else { continue }
-        for (name, w) in walls where min(b[2], w[2]) - max(b[0], w[0]) > 1 && min(b[3], w[3]) - max(b[1], w[1]) > 1 { out.append("#\(s.art) × \(name)") }
+    for (who, b) in subjects {
+        for (name, w) in walls where min(b[2], w[2]) - max(b[0], w[0]) > 1 && min(b[3], w[3]) - max(b[1], w[1]) > 1 { out.append("\(who) × \(name)") }
     }
     return out
 }
@@ -158,7 +163,8 @@ extension Walker {
         if !grey { fb.palette = LCDDeco.palette(g) }
         if case .say(let lines, _, _) = screen, g == .notice, !lines.isEmpty { decorateNotice(&fb, tone); return }
         let ti = fb.runs.firstIndex { $0.y <= 1 && $0.x <= 3 }, si = fb.sprites.firstIndex { $0.x == 16 && $0.y == 18 && !$0.back }   // the title; the Pokémon (fb.mon at the old box)
-        let lay = LCDDeco.layout(fb, band: ti != nil, mon: si != nil), p = lay.panel
+        let fi = si == nil ? fb.pics.firstIndex { $0.key.hasPrefix("focus|") } : nil                    // or a focus page's thing (FocusView.swift)
+        let lay = LCDDeco.layout(fb, band: ti != nil, mon: si != nil || fi != nil), p = lay.panel
         fb.pic("deco|scene|\(g.rawValue)" + tone, 96, 64, under: true) { ready(LCDScenes.scene(g)) }
         fb.pic("deco|panel|\(g.rawValue)|\(p[2])|\(p[3])" + tone, p[0] + p[2] / 2, p[1] + p[3] / 2, under: true) { ready(LCDScenes.panel(g, p[2], p[3])) }
         if let s = lay.strip { fb.pic("deco|strip|\(g.rawValue)|\(s[3])" + tone, s[0] + s[2] / 2, s[1] + s[3] / 2, under: true) { ready(LCDScenes.panel(g, s[2], s[3])) } }
@@ -182,6 +188,14 @@ extension Walker {
             for k in fb.runs.indices where fb.runs[k].y <= 2 { fb.runs[k].shade = 3 }             // on the band: full ink (a grey one fades into its colour)
         }
         tidy(&fb, g, lay, band: ti != nil)
+        if let f = fi, let stage = lay.stage, let pic = picStore[fb.pics[f].key] {                // a focus page's thing: on its stage, as big as fits (up to 2 x, in crisp steps), on a pad
+            let fit = min(2, Double(stage[2] - 8) / Double(pic.w), Double(stage[3] - 24) / Double(pic.h)), k = [2, 1.5, 1].first { $0 <= fit } ?? fit
+            let cx = stage[0] + stage[2] / 2, cy = stage[1] + stage[3] / 2 - 4, h = Int(Double(pic.h) * k)
+            fb.pics[f].x = cx; fb.pics[f].y = cy; fb.pics[f].scale = k
+            fb.pic("deco|pad|\(g.rawValue)" + tone, cx, cy + h / 2 + 3, scale: min(1.1, max(0.6, Double(pic.w) * k / 56)), under: true, clip: stage) { ready(LCDDeco.pad(g)) }
+            fb.pic("deco|glow|\(g.rawValue)" + tone, cx, cy, scale: min(1.2, max(0.7, Double(max(pic.w, pic.h)) * k / 56)), alpha: 0.8, under: true, clip: stage) { ready(LCDDeco.glow(LCDDeco.tones(g).band)) }
+            return
+        }
         guard let i = si, let stage = lay.stage else { return }
         let (run, b) = LCDDeco.fit(fb.sprites[i], stage)
         fb.sprites[i] = run

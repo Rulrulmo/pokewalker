@@ -90,6 +90,7 @@ extension Walker {
                 fb.text("◀", 14, 34, w.once ? 1 : 2); fb.text("× \(q)", 0, 34, 3, center: true); fb.text("▶", 82, 34, w.once ? 1 : 2, right: true)
                 fb.fill(0, 50, 96, 1, 2)
                 fb.text("\(w.price * q)\(unit) → 남음 \(money - w.price * q)\(unit)", 0, 53, 2, center: true, small: true)
+            } else if lcdFocus { shopFocusLCD(&fb, bp, sel)                                        // 5.0 (prototype): the one picked, big (FocusView.swift)
             } else {
                 let top = max(0, min(sel - 2, ws.count - 5))                                          // 5 rows, the pick kept in view
                 for (k, w) in ws.enumerated() where k >= top && k < top + 5 {
@@ -110,6 +111,11 @@ extension Walker {
             var st = state
             if let (ref, id) = st.nextToLearn(), let m = state.mon(ref) {
                 fb.text("새 기술: " + moveTable[id]!.name, 2, 1, 3, small: true); fb.fill(0, 10, 96, 1, 2)
+                if lcdFocus {                                                                        // 5.0 (prototype): the one to forget, or not learning it
+                    if let old = m.moves[safe: sel] { moveFocusLCD(&fb, old, foot: "잊고 배우기", sel + 1, m.moves.count + 1) }
+                    else { fb.text(josa(moveTable[id]!.name, "을", "를"), 0, 22, 3, center: true); fb.text("배우지 않는다", 0, 34, 3, center: true); fb.text("\(sel + 1)/\(m.moves.count + 1)", 94, 53, 1, right: true, small: true) }
+                    break
+                }
                 for (k, label) in (m.moves.map { moveTable[$0]!.name } + ["배우지 않는다"]).enumerated() {
                     let y = 13 + 10 * k
                     fb.text(label, 2, y, 3, small: true)
@@ -123,6 +129,7 @@ extension Walker {
             if let at {                                                                            // what goes in slot s: five rows round the pick (its own marked with their slot)
                 let all = m.relearnable, i = all.firstIndex(of: at) ?? 0, top = max(0, min(all.count - 5, i - 2))
                 fb.text(m.moves[safe: s].map { "\(s + 1)번 " + moveTable[$0]!.name + " →" } ?? "빈 칸 →", 2, 1, 3, small: true); fb.fill(0, 10, 96, 1, 2)
+                if lcdFocus { moveFocusLCD(&fb, at, foot: m.moves.firstIndex(of: at).map { "지금 \($0 + 1)번" } ?? "떠올리기", i + 1, all.count); break }   // 5.0 (prototype)
                 for (k, id) in all[top..<min(all.count, top + 5)].enumerated() {
                     let y = 13 + 10 * k, mv = moveTable[id]!
                     fb.text(mv.name, 2, y, 3, small: true); fb.text(m.moves.firstIndex(of: id).map { "\($0 + 1)번" } ?? note(mv), 94, y, 2, right: true, small: true)
@@ -130,6 +137,12 @@ extension Walker {
                 }
             } else {                                                                               // its slots (a free one while it knows fewer than 4)
                 fb.text(monNames[m.dex] + "의 기술", 2, 1, 3, small: true); fb.fill(0, 10, 96, 1, 2)
+                if lcdFocus {                                                                        // 5.0 (prototype): the slot picked
+                    let n = min(4, m.moves.count + 1)
+                    if let id = m.moves[safe: s] { moveFocusLCD(&fb, id, foot: "\(s + 1)번 칸", s + 1, n) }
+                    else { fb.text("빈 칸", 0, 22, 3, center: true); fb.text("새 기술을 고를 수 있어요", 0, 34, 2, center: true, small: true); fb.text("\(s + 1)/\(n)", 94, 53, 1, right: true, small: true) }
+                    break
+                }
                 for k in 0..<min(4, m.moves.count + 1) {
                     let y = 13 + 10 * k
                     if let mv = m.moves[safe: k].flatMap({ moveTable[$0] }) { fb.text(mv.name, 2, y, 3, small: true); fb.text(note(mv), 94, y, 2, right: true, small: true) }
@@ -199,6 +212,7 @@ extension Walker {
             fb.text("은색병뚜껑 ×\(state.count("은색병뚜껑"))", 2, 52, 2, small: true)
         case .items(let sel):                                                                        // 도구: the pick (the pane has the list and its use)
             header("도구")
+            if lcdFocus { itemsFocusLCD(&fb, sel); break }                                         // 5.0 (prototype): the one picked, big (FocusView.swift)
             let rows = state.inventory
             guard let n = rows[safe: min(sel, rows.count - 1)] else { fb.text("없음", 0, 30, 2, center: true); break }
             fb.draw(gem, 4, 20, gemPal); fb.text(n, 12, 16)

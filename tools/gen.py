@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerates Sources/Data/{Data,BattleData}.swift + Resources/{hgss,icons,frames,anims,walk}.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
+"""Regenerates Sources/Data/{Data,BattleData}.swift + Resources/{hgss,icons,frames,anims,walk,items}.bin from the original sources. Needs Pillow. Run from the repo root: python3 tools/gen.py
 (`python3 tools/gen.py art`: the pictures only; `data`: the tables only)
 
 Sources (cached in tools/.cache, not committed; every URL is in SRC below — README "그림 · 데이터 출처" has the same list):
@@ -9,6 +9,8 @@ Sources (cached in tools/.cache, not committed; every URL is in SRC below — RE
       icons/{n}.png                                    Gen IV box / party icons (32x32) -> icons.bin (도감 / 포켓몬 grids)
       heartgold-soulsilver/animated/{n}.png            HGSS entry animations (APNG; shiny/ too) -> anims.bin
       heartgold-soulsilver/egg.png                     the HGSS egg -> frames.bin
+  - PokeAPI item sprites (raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/<identifier>.png, 30x30): every item the app names
+      (a quoted name in Sources/ that is one of item_names.csv's Korean ones, spaces dropped; the mints) -> items.bin (5.0: the LCD's focus pages)
   - Pokémon Showdown trainer sprites: play.pokemonshowdown.com/sprites/trainers/<name>.png (Gen IV rips) -> frames.bin (tower trainers)
   - HGSS following Pokémon (overworld walking, 4 frames a direction): github.com/teobz/pkmn-hgss-animated-overworld-sprites,
       APNG/by-direction/{left,right,down,up}/{regular,shiny}/{nnn}_{shiny_}{dir}.png (dex 3 digits) -> walk.bin
@@ -28,7 +30,7 @@ The walker's own draw: for each of the 3 carried Pokémon, rarest first, "steps 
 next; the commonest is the fallback. Serebii prints the resulting band percentages; chance = the slot's % in the first band
 where it appears, which reproduces every printed row (e.g. A 70 -> B (1-.7)*75 = 22.5 -> C 7.5).
 """
-import csv, io, json, os, re, html, struct, sys, urllib.request, warnings, zlib
+import csv, glob, io, json, os, re, html, struct, sys, threading, urllib.error, urllib.request, warnings, zlib
 if 'data' not in sys.argv[1:]: from PIL import Image, ImageChops
 warnings.filterwarnings('ignore', category=DeprecationWarning)   # Pillow 12: getdata
 
@@ -58,7 +60,7 @@ SRC = {
                                               'version_groups', 'move_changelog', 'pokemon_stats_past',
                                               'move_meta', 'move_meta_stat_changes', 'move_meta_ailments', 'move_flag_map', 'abilities', 'ability_names',
                                               'pokemon_abilities', 'pokemon_abilities_past', 'natures', 'nature_names', 'ability_flavor_text',
-                                              'pokemon_forms', 'pokemon_form_names', 'item_categories']},
+                                              'pokemon_forms', 'pokemon_form_names', 'item_categories', 'machines']},
 }
 N = 721   # the national dex through Gen VI (5.0, plan 18): every table below goes to N
 N4 = 493  # HGSS's: every Gen IV table stops here (and HGSS's own pictures); above it only the Gen VI tables (Sources/Data/Content.swift)
@@ -81,6 +83,7 @@ def url(name):
     if d == 'hge': return f'https://raw.githubusercontent.com/BluRosie/hg-engine/{HGE}/data/graphics/sprites/{f}'
     if d == 'gen5ani': return 'https://play.pokemonshowdown.com/sprites/gen5ani/' + ('' if f == 'index.html' else f)   # the folder's listing: which exist
     if d == 'sd': return 'https://play.pokemonshowdown.com/sprites/' + f
+    if d == 'items': return 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/' + f
     raise KeyError(name)
 
 def get(name):
@@ -88,7 +91,8 @@ def get(name):
     if not os.path.exists(p):
         os.makedirs(os.path.dirname(p), exist_ok=True)
         req = urllib.request.Request(url(name), headers={'User-Agent': 'Mozilla/5.0'})
-        open(p + '.part', 'wb').write(urllib.request.urlopen(req).read()); os.replace(p + '.part', p)
+        part = f'{p}.{threading.get_ident()}.part'                                       # (one a thread: two threads may fetch the same file)
+        open(part, 'wb').write(urllib.request.urlopen(req).read()); os.replace(part, p)
     return p
 
 def form_rows():
@@ -396,6 +400,42 @@ if ARTWORK:   # `python3 tools/gen.py data`: the tables only (Sources/Data), the
     wout = b''.join(struct.pack('<I', v) for v in off) + b''.join(wblocks)
     open('Resources/walk.bin', 'wb').write(wout)
     print(f'walk.bin {len(wout) / 1e6:.2f} MB; none: {[a for a in wnone if ART[a]["walks"]]}; palette cut to 15:', wover, '; 64 px:', sum(1 for b in wblocks if b and zlib.decompress(b, -15)[0] == 64))
+    # --- items.bin (5.0: an item's own picture on the LCD's focus pages): every item the app names — a quoted name in Sources/ that is one of
+    # PokeAPI's Korean item names (spaces dropped), and the mints — as PokeAPI's item sprite (its lowest id that has one; a 기술머신 the disc of
+    # its HGSS move's type), cut to its pixels. None for the mints and 로토무카탈로그: the app draws those (ItemArt.swift).
+    # The file: n (uint32), the n names (uint8 length, UTF-8), n + 1 uint32 offsets from the file's start, then per item a raw-DEFLATE block:
+    # w, h (uint8), w x h RGBA (alpha 0 or 255).
+    idn = {r['id']: r['identifier'] for r in csv.DictReader(open(get('items.csv')))}
+    ko = {}
+    for r in csv.DictReader(open(get('item_names.csv'), encoding='utf-8')):
+        if r['local_language_id'] == '3': ko.setdefault(r['name'].replace(' ', ''), []).append(int(r['item_id']))
+    said = set(re.findall(r'"([가-힣A-Za-z0-9-]+)"', ''.join(open(p, encoding='utf-8').read() for p in sorted(glob.glob('Sources/**/*.swift', recursive=True)))))
+    inames = sorted({n for n in said if n in ko} | {n for n in ko if n.endswith('민트')})
+    tm = {}                                                                             # a 기술머신's disc in its move's type's colour (HGSS's: version group 10)
+    mtype = {r['id']: r['type_id'] for r in csv.DictReader(open(get('moves.csv')))}
+    tname = {r['id']: r['identifier'] for r in csv.DictReader(open(get('types.csv')))}
+    for r in csv.DictReader(open(get('machines.csv'))):
+        if r['version_group_id'] == '10': tm[int(r['item_id'])] = tname[mtype[r['move_id']]]
+    def item_pic(n):
+        for i in sorted(ko[n]):
+            try: return rgba(f'items/{idn[str(i)]}.png')
+            except urllib.error.HTTPError:
+                if i in tm:
+                    try: return rgba(f'items/tm-{tm[i]}.png')
+                    except urllib.error.HTTPError: pass
+        return None
+    with ThreadPoolExecutor(16) as ex: ipics = list(ex.map(item_pic, inames))
+    kept = [(n, p.crop(p.getchannel('A').point(lambda v: 255 if v >= 128 else 0).getbbox())) for n, p in zip(inames, ipics) if p and p.getchannel('A').getbbox()]
+    iblocks = []
+    for n, p in kept:
+        px = b''.join(bytes((r, g, b, 255 if a >= 128 else 0)) for r, g, b, a in p.getdata())
+        c = zlib.compressobj(9, zlib.DEFLATED, -15); iblocks.append(c.compress(bytes((p.width, p.height)) + px) + c.flush())
+    head = struct.pack('<I', len(kept)) + b''.join(bytes((len(n.encode()),)) + n.encode() for n, _ in kept)
+    ioff = [len(head) + 4 * (len(kept) + 1)]
+    for b in iblocks: ioff.append(ioff[-1] + len(b))
+    iout = head + b''.join(struct.pack('<I', v) for v in ioff) + b''.join(iblocks)
+    open('Resources/items.bin', 'wb').write(iout)
+    print(f'items.bin {len(iout) / 1e3:.0f} KB: {len(kept)} items; no picture: {[n for n, p in zip(inames, ipics) if not p]}')
     if sys.argv[1:] == ['art']: sys.exit()                                              # `python3 tools/gen.py art`: the pictures only
 
 # --- names / types

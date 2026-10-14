@@ -52,6 +52,7 @@ extension Walker {
         let o = formOptions(ref, item)
         fb.text(item == "유전자쐐기" ? (m.fused == nil ? "합체" : "분리") : "로토무의 모습", 2, 1, 3, small: true); fb.fill(0, 10, 96, 1, 2)
         if o.isEmpty { fb.text("레시라무 · 제크로무가", 0, 24, 2, center: true, small: true); fb.text("워커나 상자에 없어요", 0, 35, 2, center: true, small: true); return }
+        if lcdFocus { formFocusLCD(&fb, m, o, sel); return }                                      // 5.0 (prototype): the form it'd make, big (FocusView.swift)
         let top = max(0, min(o.count - 5, sel - 2))
         for (k, x) in o[top..<min(o.count, top + 5)].enumerated() {
             let y = 13 + 10 * k

@@ -8,6 +8,7 @@ import AppKit
     var n = 0
     if let d = ProcessInfo.processInfo.environment["LCD_DECO"].flatMap(Int.init) { lcdDeco = d != 0 }   // 5.0: the LCD's pages plain (0), as before they were dressed (LCDDeco.swift)
     if let l = ProcessInfo.processInfo.environment["LCD_SCREEN"].flatMap(Int.init) { lcdStyle = min(max(l, 0), lcds.count - 1) }   // ... on another screen (1 원작, 2 백라이트)
+    if ProcessInfo.processInfo.environment["LCD_FOCUS"] == "1" { lcdFocus = true }                // 5.0: the list pages' focus LCD (the prototype: FocusView.swift)
     func base() -> Walk { var s = Walk(), r = Seeded(s: 3); s.companion = Mon.wild(25, level: 30, &r); s.caught = [Mon.wild(16, level: 8, &r)]; s.watts = 1234; s.bp = 40; return s }
     func take(_ name: String, _ v: Walker, _ set: (Walker) -> Void) {
         let view = WalkerView(walker: v); set(v)
@@ -288,6 +289,9 @@ import AppKit
     take("shop_tab_heal", shop36) { v in v.screen = .shop(bp: false, sel: 0, qty: nil) }
     take("shop_tab_mint", shop36) { v in v.screen = .shop(bp: false, sel: v.shopRows(false, v.shopTabs(false).firstIndex(of: "민트") ?? 0).first ?? 0, qty: nil) }
     take("shop_bp_tabs", shop36) { v in v.screen = .shop(bp: true, sel: 0, qty: nil) }
+    for (name, pick) in [("shop_bp_shell", { (k: Walk.Ware.Kind) -> Bool in if case .shell = k { true } else { false } }), ("shop_bp_legend", { if case .legend = $0 { true } else { false } })] {
+        take(name, shop36) { v in v.screen = .shop(bp: true, sel: v.wares(true).firstIndex { pick($0.kind) } ?? 0, qty: nil) }   // (a device colour, a legend: the focus page's pictures)
+    }
     let it36 = online({ var s = base(); var r = Seeded(s: 71); s.box = (0..<14).map { k in Mon.wild([19, 133, 25, 1, 4, 7, 16, 41, 129, 92, 66, 74, 95, 63][k], level: 5 + 6 * k, &r) }
         s.bag = ["이상한사탕", "고집민트", "불꽃의돌", "타우린", "은색병뚜껑"]; return s }())
     take("item_pick_candy", it36) { v in v.screen = .itemOn(ItemOn(item: "이상한사탕", pick: -1, at: 0)) }
