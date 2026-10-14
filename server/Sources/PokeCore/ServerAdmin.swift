@@ -202,6 +202,8 @@ extension SaveDB {
     }
 
     /// A new name; a new key moves the trainer, its history and legacy rows (a legacy row whose (key, device) is taken stays put) and ends the session.
+    /// 5.0's tables by trainer (plan 18): a rename takes them along, a delete takes them away (else a new trainer of that name had its pity, its paid 도감 업적).
+    private var fiveTables: [String] { ["mega_wins", "mega_clears", "dex_rewards", "app_reports"] }
     func rename(_ id: String, to newID: String) throws -> String {
         let k = try key(id)
         guard let n = trainerID(newID) else { throw ServerError(description: "\(newID): not a trainer ID (2–12 of 가-힣 A-Z a-z 0-9 _)") }
@@ -215,7 +217,7 @@ extension SaveDB {
             try db.rows("UPDATE trainers SET key = :nk, name = :n, session = NULL, device = NULL WHERE key = :k", a.merging(["n": .text(n.name)]) { $1 })
             try db.rows("UPDATE history SET key = :nk WHERE key = :k", a)
             try db.rows("UPDATE OR IGNORE legacy SET key = :nk WHERE key = :k", a)
-            for t in ["pins", "flags", "mons", "chains", "grants", "steps_day", "actions", "raid_hits", "raid_catch", "raid_runs", "mail", "tower_rewards"] { try db.rows("UPDATE \(t) SET key = :nk WHERE key = :k", a) }
+            for t in ["pins", "flags", "mons", "chains", "grants", "steps_day", "actions", "raid_hits", "raid_catch", "raid_runs", "mail", "tower_rewards"] + fiveTables { try db.rows("UPDATE \(t) SET key = :nk WHERE key = :k", a) }
             for t in ["trust", "pin_fails", "play"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }   // play: the session ends anyway
             for (t, c) in [("inbox", "to_key"), ("inbox", "from_key"), ("trades", "to_key"), ("trades", "from_key"), ("friends", "a"), ("friends", "b"), ("listings", "key"), ("bids", "key"), ("duels", "a"), ("duels", "b"),
                            ("claims", "key"), ("visits", "owner"), ("visits", "host")] {
@@ -235,7 +237,7 @@ extension SaveDB {
                 try Data(w.utf8).write(to: file, options: .atomic)
                 kept = "save kept as \(file.path)"
             }
-            for t in ["history", "trainers", "pins", "trust", "pin_fails", "mons", "chains", "grants", "play", "steps_day", "actions", "raid_hits", "raid_catch", "raid_runs"] { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
+            for t in ["history", "trainers", "pins", "trust", "pin_fails", "mons", "chains", "grants", "play", "steps_day", "actions", "raid_hits", "raid_catch", "raid_runs"] + fiveTables { try db.rows("DELETE FROM \(t) WHERE key = :k", ["k": .text(k)]) }
             for t in ["inbox", "trades"] { try db.rows("DELETE FROM \(t) WHERE to_key = :k OR from_key = :k", ["k": .text(k)]) }
             try db.rows("DELETE FROM friends WHERE a = :k OR b = :k", ["k": .text(k)])
             for l in try listings("key = :k AND state = 'open'", ["k": .text(k)]) {                    // 3.8: others' Pokémon held by its posts or raised by it go home first

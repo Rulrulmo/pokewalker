@@ -259,8 +259,14 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     #expect(t?.rev == 2)                                                                           // nothing changed
     var r = await save(db, "admin", s, base: 1, now: 4_030)
     #expect(string(r, "reason") == "stale")                                                        // the PC follows the admin
-    // rename: a new key ends the session; the old PC gets no_trainer
+    // rename: a new key ends the session; the old PC gets no_trainer (5.0's tables go along)
+    let five = ["mega_wins": "(key, stone, wins) VALUES ('admin', '거북왕나이트', 3)", "mega_clears": "(key, stone, tier, at) VALUES ('admin', '거북왕나이트', 4, 1)",
+                "dex_rewards": "(key, goal, at) VALUES ('admin', '전국:25', 1)", "app_reports": "(key, at, app) VALUES ('admin', 1, '5.0')"]
+    for (t, v) in five { _ = try await db.count("INSERT INTO \(t) \(v)") }
+    func fiveOf(_ k: String) async throws -> [Int] { var n: [Int] = []; for t in five.keys.sorted() { n.append(try await db.count("SELECT count(*) AS n FROM \(t) WHERE key = '\(k)'")) }; return n }
     _ = try await db.rename("admin", to: "Boss")
+    let fiveOld = try await fiveOf("admin"), fiveNew = try await fiveOf("boss")
+    #expect(fiveOld == [0, 0, 0, 0] && fiveNew == [1, 1, 1, 1])
     let gone = try await db.trainer("admin"), boss = try await db.trainer("boss")
     copies = try await db.copies("boss", "admin")
     #expect(gone == nil && boss?.session == nil && boss?.name == "Boss" && copies == 1)
@@ -276,6 +282,7 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     copies = try await db.copies("boss", "admin")
     let legacy = try await db.count("SELECT count(*) AS n FROM legacy WHERE key = 'boss'")
     #expect(t == nil && copies == 0 && legacy == 1)
+    let fiveGone = try await fiveOf("boss"); #expect(fiveGone == [0, 0, 0, 0])
     let kept = URL(fileURLWithPath: path).deletingLastPathComponent().appendingPathComponent("deleted-boss-4060.json")
     #expect(walkDecodes(try String(contentsOf: kept, encoding: .utf8)))
     try? FileManager.default.removeItem(at: kept)
