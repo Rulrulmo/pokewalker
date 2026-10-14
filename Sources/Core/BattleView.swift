@@ -78,6 +78,14 @@ extension Walker {
     func hpBar(_ fb: inout FB, _ x: Int, _ y: Int, _ w: Int, _ hp: Int, _ max: Int) {
         let inner = w - 2, f = hp <= 0 ? 0 : Swift.max(1, hp * inner / Swift.max(1, max))
         let c = hp * 5 > max * 2 ? rgb(72, 200, 90) : hp * 5 > max ? rgb(240, 200, 50) : rgb(230, 70, 60)
+        if fxV2 {                                                                                  // 5.0's quality pass (the prototype, with MoveFX2): HGSS's bar — round ends, a lit top row, a shaded bottom one
+            let o = rgb(40, 44, 52)
+            for dx in 1..<w - 1 { fb.set(x + dx, y, 3, o); fb.set(x + dx, y + 3, 3, o) }
+            fb.set(x, y + 1, 3, o); fb.set(x, y + 2, 3, o); fb.set(x + w - 1, y + 1, 3, o); fb.set(x + w - 1, y + 2, 3, o)
+            for dx in 0..<inner { let on = dx < f
+                fb.set(x + 1 + dx, y + 1, on ? 1 : 2, on ? lerpRGB(c, rgb(255, 255, 255), 0.35) : rgb(150, 154, 160)); fb.set(x + 1 + dx, y + 2, on ? 1 : 2, on ? lerpRGB(c, rgb(0, 0, 0), 0.18) : rgb(112, 116, 124)) }
+            return
+        }
         for dx in 0..<w { fb.set(x + dx, y, 3, rgb(40, 44, 52)); fb.set(x + dx, y + 3, 3, rgb(40, 44, 52)) }
         for dy in 1...2 { fb.set(x, y + dy, 3, rgb(40, 44, 52)); fb.set(x + w - 1, y + dy, 3, rgb(40, 44, 52))
             for dx in 0..<inner { fb.set(x + 1 + dx, y + dy, dx < f ? 1 : 2, dx < f ? c : rgb(120, 124, 132)) } }
@@ -146,6 +154,7 @@ extension Walker {
         for s in [Side.it, .me] where shown[s]!.on {                                                // theirs first: ours is nearer
             var v = shown[s]!; let a = at[s]!
             if let m = mega { v.dx += MegaFX.shake(m.u) }                                              // the flash shakes the stage
+            if fxV2, let (bt, u) = beat, case .hit(_, _, let d, let e, let c) = bt, d > 0 { v.dx += Walker.hitShake(u, strong: e > 1 || c) }   // 5.0 (MoveFX2): a hit shakes it
             let alive = s == .me ? b.mine[b.me].alive : b.theirs[b.it].alive                         // only a fainting one sinks behind its pad; a lunge isn't clipped
             let plain = s == .it && alive && shot?.glow == nil && !v.flash && { if case .ball = p { return false }; return true }() && (mega.map { $0.side != s || $0.u > MegaFX.reveal + 0.3 } ?? true)   // out and standing: HGSS plays its own animation once (a Mega: once it shows)
             fb.sprite(s == .me ? mineLook : foeLook, a.x + v.dx, a.y + v.dy, back: s == .me, bob: s == .me ? f - 1 : f, flash: v.flash, floor: alive ? 64 : a.y + 32,
@@ -181,6 +190,13 @@ extension Walker {
         let rw = max(38, textWidth(mt, small: true) + 2 + (mm ? 7 : 0))
         for (x0, w) in [(0, lw), (96 - rw, rw)] { for y in 0..<14 { for x in x0..<min(96, x0 + w) { fb.set(x, y, 0) } } }
         fb.text(ft, 1, 0, 3, small: true)
+        if fxV2 {                                                                                  // (the prototype: a status on a pill in its colour)
+            for (st, right) in [(b.theirs[b.it].status, false), (b.mine[b.me].status, true)] { guard let st, (right ? mt : ft).hasSuffix(st.badge) else { continue }
+                let bw = textWidth(st.badge, small: true), bx = right ? 95 - bw : textWidth(ft, small: true) + 1 - bw
+                let c: UInt32 = switch st { case .burn: rgb(255, 150, 90); case .paralysis: rgb(250, 214, 70); case .poison, .toxic: rgb(200, 140, 230); case .sleep: rgb(170, 180, 200); case .freeze: rgb(150, 210, 245) }
+                for y in 0..<9 { for x in (bx - 1)...(bx + bw) where !((x == bx - 1 || x == bx + bw) && (y == 0 || y == 8)) { fb.set(x, y, 1, c) } }   // (dots: over the plate)
+            }
+        }
         if owned { fb.draw(caughtMark, textWidth(ft, small: true) + 3, 2, ballPal) }                 // caught before: the HGSS ball mark
         if fm { fb.draw(megaMark, textWidth(ft, small: true) + 3 + (owned ? 7 : 0), 2, megaPal) }
         let hp = beat == nil ? b : beatState(now).map { drained($0.hp, $0.names, $0.beat, $0.u) } ?? b   // the bars drain (MoveFX.swift)

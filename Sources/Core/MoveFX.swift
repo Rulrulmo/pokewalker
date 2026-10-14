@@ -358,6 +358,11 @@ extension Walker {
             }
         }
         func pulse(_ v: Double, _ peak: Double) -> Double { v < 0 || v > 1 ? 0 : peak * (0.55 + 0.45 * sin(v * .pi * 6)) * min(1, (1 - v) * 4) }
+        if fxV2 {                                                                                  // 5.0's quality pass: the second look, where it's drawn (MoveFX2.swift)
+            var geo = FXGeo(mouth: [:], aim: [:], body: [:], run: [:])
+            for s in [Side.me, .it] { let p = body(s); geo.mouth[s] = mouth(s); geo.aim[s] = aim(s); geo.body[s] = (p.x, p.top, min(p.feet, low)); if let r = p.run { geo.run[s] = r } }
+            if moveFX2(&fb, beat, u, b, geo) { return }
+        }
 
         switch beat {
         case .use(let s, let id):                                                               // the move's flight: its user, then towards its target

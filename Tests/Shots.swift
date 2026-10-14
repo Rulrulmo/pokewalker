@@ -8,7 +8,8 @@ import AppKit
     var n = 0
     if let d = ProcessInfo.processInfo.environment["LCD_DECO"].flatMap(Int.init) { lcdDeco = d != 0 }   // 5.0: the LCD's pages plain (0), as before they were dressed (LCDDeco.swift)
     if let l = ProcessInfo.processInfo.environment["LCD_SCREEN"].flatMap(Int.init) { lcdStyle = min(max(l, 0), lcds.count - 1) }   // ... on another screen (1 원작, 2 백라이트)
-    if ProcessInfo.processInfo.environment["LCD_FOCUS"] == "0" { lcdFocus = false }               // 5.0: the list pages as lists (before the focus LCD: FocusView.swift)
+    if ProcessInfo.processInfo.environment["LCD_FOCUS"] == "0" { lcdFocus = false }
+    if ProcessInfo.processInfo.environment["FX_V2"] == "1" { fxV2 = true }                         // 5.0: the moves' second look (the prototype: MoveFX2.swift)               // 5.0: the list pages as lists (before the focus LCD: FocusView.swift)
     func base() -> Walk { var s = Walk(), r = Seeded(s: 3); s.companion = Mon.wild(25, level: 30, &r); s.caught = [Mon.wild(16, level: 8, &r)]; s.watts = 1234; s.bp = 40; return s }
     func take(_ name: String, _ v: Walker, _ set: (Walker) -> Void) {
         let view = WalkerView(walker: v); set(v)
@@ -103,6 +104,12 @@ import AppKit
                 ("primal", pb, Beat.mega(.it, form: 1, text: "그란돈의 원시회귀!\n그란돈은 원시회귀하여 원래의 모습을 되찾았다!"))]
             for (tag, bt, beat) in cases {
                 for k in 0..<44 { take(String(format: "megagif_%@_%02d", tag, k), mg) { v in v.sideOn = false; v.screen = .beats(bt, [beat], since: Date().addingTimeInterval(-Double(k) / 15 / v.battleSpeed), from: bt) } }
+            }
+        }
+        if let list = ProcessInfo.processInfo.environment["MOVE_FRAMES"] {                              // 5.0's quality pass: a move's flight and hit as frames (GIFs to compare): MOVE_FRAMES=53,56,…
+            for id in list.split(separator: ",").compactMap({ Int($0) }) where moveTable[id] != nil {
+                let beats: [Beat] = [.use(.me, move: id), .hit(.it, move: id, damage: 20, effect: 2, crit: false)], total = beats.map(\.length).reduce(0, +)
+                for k in 0..<Int(total * 20) + 4 { take(String(format: "movegif_%03d_%03d", id, k), mg) { v in v.sideOn = false; v.screen = .beats(mgb, beats, since: Date().addingTimeInterval(-Double(k) / 20 / v.battleSpeed), from: mgb) } }
             }
         }
         var both = mgb; both.mine[0].mega = 1; both.theirs[0].mega = 1; both.megaUsed = [true, true]

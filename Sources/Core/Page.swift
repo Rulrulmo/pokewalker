@@ -5,7 +5,11 @@ import Foundation
 // MARK: - the look (card points x K)
 enum Ink {
     static func c(_ r: Int, _ g: Int, _ b: Int, _ a: CGFloat = 1) -> Color { Color(red: CGFloat(r) / 255, green: CGFloat(g) / 255, blue: CGFloat(b) / 255, alpha: a) }
-    static let red = c(214, 46, 42), redTint = c(252, 228, 226), onRed = c(250, 212, 208), dark = c(34, 37, 45)
+    static var red: Color { accent?.main ?? c(214, 46, 42) }; static var redTint: Color { accent?.tint ?? c(252, 228, 226) }; static var onRed: Color { accent?.on ?? c(250, 212, 208) }
+    static let dark = c(34, 37, 45)
+    /// 5.0's quality pass (the prototype, with fxV2): the page's accent in its LCD group's colour while it's drawn (nil: the red as ever).
+    nonisolated(unsafe) static var accent: (main: Color, tint: Color, on: Color)? = nil
+    static func c(_ v: UInt32) -> Color { c(Int(v >> 16 & 255), Int(v >> 8 & 255), Int(v & 255)) }
     static let tile = c(242, 243, 246), board = c(246, 247, 249), line = c(230, 232, 237), ink = c(28, 32, 42), sub = c(112, 118, 130), faint = c(160, 165, 176)
     static let blue = c(58, 132, 236), green = c(52, 178, 88), yellow = c(240, 176, 32), pink = c(226, 80, 120), gold = c(222, 150, 20)
     static func tint(_ col: Color, _ k: CGFloat) -> Color { var t = col; t.tint = k; return t }   // k of it over white
@@ -108,7 +112,8 @@ extension Canvas {
     func x(_ v: CGFloat) -> CGFloat { v * K }
 
     func draw(on canvas: any Canvas) {
-        hits = []; drops = []; c = canvas; drawnSurface = 2; defer { c = nil; drawnSurface = 0 }
+        hits = []; drops = []; c = canvas; drawnSurface = 2; defer { c = nil; drawnSurface = 0; Ink.accent = nil }
+        if fxV2, let g = walker?.pageGroup(), g != .notice { let b = LCDDeco.tones(g).band; Ink.accent = (Ink.c(lerpRGB(b, rgb(30, 30, 40), 0.22)), Ink.c(lerpRGB(b, rgb(255, 255, 255), 0.82)), Ink.c(lerpRGB(b, rgb(255, 255, 255), 0.65))) }
         let p = content
         if let l = p.login { drawLogin(l) } else if let d = p.dex { drawDex(d) } else if let g = p.grid { drawGrid(g) } else if let m = p.mon { drawMon(m) } else if let s = p.shop { drawShop(s) }
         else if let m = p.menu { drawMenu(m) } else if let m = p.battle { drawBattle(m) } else if let i = p.items { drawItems(i) } else if let r = p.radar { drawRadar(r) }
