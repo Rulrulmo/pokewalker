@@ -168,6 +168,7 @@ import Foundation
         var cross = Mon(dex: 214, level: 60, female: false); cross.item = "헤라크로스나이트"
         let mgb = Battle(wild: cross, companion: zard); var both = mgb; both.mine[0].mega = 1; both.theirs[0].mega = 1; both.megaUsed = [true, true]
         take("battle_mega_toggle_on") { v in v.state.companion = zard; v.megaOn = true; v.fight = mgb; v.screen = .moves(mgb, sel: 4) }   // 메가진화 (§9.6)
+        take("battle_mega_toggle_off") { v in v.state.companion = zard; v.megaOn = false; v.fight = mgb; v.screen = .moves(mgb, sel: 0) }
         take("battle_mega_after") { v in v.state.companion = zard; v.fight = both; v.screen = .battle(both, sel: 0) }
         let frog = Mon(dex: 658, level: 40, female: false), xb = Battle(wild: Mon(dex: 716, level: 50, female: false), companion: frog)   // 5.0's pictures (hg-engine, §9.1)
         take("battle_gen6") { v in v.state.companion = frog; still(v, "foe 0", 716); v.fight = xb; v.screen = .battle(xb, sel: 0) }

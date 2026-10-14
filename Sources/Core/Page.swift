@@ -164,8 +164,12 @@ extension Canvas {
             if let on = m.mega {
                 let rc = r(X1 - 58, top + 82, 58, 33), p = Path.rounded(rc, 9 * K)
                 c.fill(p, on ? Ink.c(132, 64, 196) : Ink.tile); if sel == ms.count { c.stroke(p, Ink.red, width: 2 * K) }
-                c.say((on ? "✓ " : "") + "메가", rc.midX, rc.midY - x(7), font(10.5, .bold), on ? .white : Ink.ink, 0.5)
+                c.say("메가", rc.midX, rc.midY - x(7), font(10.5, .bold), on ? .white : Ink.ink, 0.5)
                 c.say("진화", rc.midX, rc.midY + x(7), font(10.5, .bold), on ? .white : Ink.ink, 0.5); hits.append((rc, ms.count))
+                if on {                                                                                // ticked: a ✓ badge in its corner (the words stay centred)
+                    let d = x(13), b = CGRect(x: rc.maxX - d + x(3), y: rc.minY - x(3), width: d, height: d)
+                    c.fill(.oval(b), .white); c.stroke(.oval(b), Ink.c(132, 64, 196), width: 1.5 * K); c.say("✓", b.midX, b.midY, font(8, .bold), Ink.c(132, 64, 196), 0.5)
+                }
             }
             if let mv = ms[safe: sel] {                                                            // 3.8.2: what the pick does
                 let box = r(X0, top + 82, w - mw, 33); c.fill(.rounded(box, 9 * K), Ink.tile)
