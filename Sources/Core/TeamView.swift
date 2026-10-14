@@ -56,6 +56,7 @@ extension Walker {
                 .init(key: "도감", value: "잡음 \(c.owned) · 봤음 \(c.seen)" + (c.shinies > 0 ? " · 이로치 \(c.shinies)" : "")),
                 .init(key: "타워", value: "최고 \(c.towerBest)연승 · BP \(c.bp.formatted())"),
                 c.raid.map { r in .init(key: "레이드", value: "\(r.runs)판 \(r.wins)승 · 잡음 \(r.caught)" + (r.shiny > 0 ? " · 이로치 \(r.shiny)" : "")) },   // 4.0: its week (none: no line)
+                c.megaStones.map { .init(key: "메가스톤", value: "\($0)/\(MegaRaid.stones.count)") },          // 5.0 (content5: else no line)
                 .init(key: "레이더", value: "최고 연쇄 \(c.bestChain)" + (c.duelWins + c.duelLosses > 0 ? " · 대전 \(c.duelWins)승 \(c.duelLosses)패" : "")),
                 .init(key: "걸음", value: "오늘 \(c.today.formatted()) · 이번 주 \(c.week.formatted())"),
                 .init(key: "누적", value: "\(c.total.formatted())걸음"),

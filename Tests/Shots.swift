@@ -121,6 +121,10 @@ import AppKit
         take("mega_raid_lobby", mrw) { v in v.screen = .raid(.lobby(tab: 0)) }
         take("mega_raid_lobby_lcd", mrw) { v in v.sideOn = false; v.screen = .raid(.lobby(tab: 1)) }
         take("mega_raid_tier", mrw) { v in v.raidMegaBoss = 0; v.screen = .raid(.tier(sel: 2)) }
+        take("mega_raid_tier5", mrw) { v in v.raidMegaBoss = 0; v.screen = .raid(.tier(sel: RaidRules.tiers.count - 1)) }   // its first ★5 win's 금색병뚜껑 (the row's pill, the LCD's line)
+        take("card_mega", mrw) { v in v.state.bag += Array(MegaRaid.stones.sorted().prefix(13)); v.state.titles = ["타워 타이쿤", MegaRaid.master]; v.state.deco = "gold"; v.screen = .card(0) }   // 메가스톤 13/48 by the 칭호
+        take("card_title_pick", mrw) { v in v.titlePick = true; v.state.cardTitle = "타워 타이쿤"; v.screen = .card(0) }   // the 칭호 to show: 가장 최근, then each
+        mrw.titlePick = false; mrw.state.cardTitle = nil
         msrv.megaWins[mkey] = [MegaRaid.week(0)[0].stone: 19, MegaRaid.week(0)[1].stone: 7]
         mrw.cloud!.megaRaidDue = true; drain(mrw); drain(mrw)
         take("mega_raid_near", mrw) { v in v.screen = .raid(.lobby(tab: 0)) }

@@ -555,7 +555,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     // 4.0 (docs/plans/16): raid runs, as the server's ServerRaid.swift — this week's species; each trainer's runs (open: its fight on; a ball stage:
     // ended, balls left, not caught); shinies / odds = the next runs' shine and the next throws' results (empty: the server's dice); opens = not yet
     struct RaidRun { var tier: Int; var boss: Mon; var day: String; var at: Int; var bars = 0, balls = 0; var won = false, caught = false, ended = false; var mega = false }   // mega: a Mega raid's (5.0: no balls, its stone)
-    var megaWins: [String: [String: Int]] = [:], megaOdds: [Bool] = [], megaWeekNo = 42   // 5.0 (docs/plans/18 §6.4, ServerRaid.swift): each trainer's count by stone; the next wins' drop (empty: dice); the rotation's week (MegaRaid.round)
+    var megaWins: [String: [String: Int]] = [:], megaFirsts: [String: [String: Set<Int>]] = [:], megaOdds: [Bool] = [], megaWeekNo = 42   // megaFirsts: by stone, the tiers whose first win paid   // 5.0 (docs/plans/18 §6.4, ServerRaid.swift): each trainer's count by stone; the next wins' drop (empty: dice); the rotation's week (MegaRaid.round)
     var raidDex = 249, raidRuns: [String: [RaidRun]] = [:], raidShinies: [Bool] = [], raidOdds: [Bool] = [], raidOpens: Int? = nil
     var offers: [(o: TradeOffer, from: String, to: String)] = [], nextOffer = 1, mail: [String: [News]] = [:], stale: Set<String> = []   // 12 §3 (M2): offers (keys), 3.3's news, saves another's trade changed
     func release() { let h = held; held = []; h.forEach { $0() } }
@@ -1151,6 +1151,10 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         raidRuns[key]![i].bars = end.bars ?? 0; raidRuns[key]![i].won = won; raidRuns[key]![i].balls = run.mega ? 0 : end.balls ?? RaidRules.balls; raidRuns[key]![i].ended = true
         if run.mega, won, let stone = run.boss.item {
             megaWon(key, stone: stone, tier: run.tier, drop: megaOdds.isEmpty ? Int(rng.next() % 100) < MegaRaid.stoneOdds[max(0, min(4, run.tier - 1))] : megaOdds.removeFirst())
+            if let item = MegaRaid.firstWins[run.tier], let b = MegaRaid.bosses.first(where: { $0.stone == stone }), !(megaFirsts[key]?[stone] ?? []).contains(run.tier) {   // a boss's first ★4 · ★5 win: its cap, once (the server's megaFirstWin)
+                megaFirsts[key, default: [:]][stone, default: []].insert(run.tier)
+                giveMail(key, "raid", from: "메가 레이드", title: MegaRaid.firstTitle(b, tier: run.tier), body: MegaRaid.firstBody(b, tier: run.tier), [.items(name: item, count: 1)])
+            }
         }
         let wins = raidRuns[key]!.filter(\.won).count
         if won, let r = RaidRules.weekly.first(where: { $0.wins == wins }) { giveMail(key, "raid", from: "레이드", title: "레이드 이번 주 \(wins)승 보상", r.gifts) }
@@ -1191,8 +1195,8 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         let k = id.key, at = now ?? Date(), today = Walk.key(at)
         if r.play.battle?.raidTier == nil { raidCut(k) }
         if q.kind == "mega", Content.gen6 {                                                          // 5.0: the Mega raid's lobby, as the server's
-            let had = megaHad(k), wins = megaWins[k] ?? [:]
-            func mark(_ bs: [MegaBoss]) -> [MegaBoss] { bs.map { var b = $0; b.had = had.contains(b.stone); b.wins = wins[b.stone] ?? 0; return b } }
+            let had = megaHad(k), wins = megaWins[k] ?? [:], firsts = megaFirsts[k] ?? [:]
+            func mark(_ bs: [MegaBoss]) -> [MegaBoss] { bs.map { var b = $0; b.had = had.contains(b.stone); b.wins = wins[b.stone] ?? 0; b.firstGot = (firsts[b.stone] ?? []).sorted(); return b } }
             let these = mark(MegaRaid.week(megaWeekNo))
             let mega = (raidRuns[k] ?? []).filter { $0.mega && $0.ended }.reversed()
             let runs = mega.map { RaidRunRow(dex: $0.boss.dex, tier: $0.tier, shiny: false, bars: $0.bars, won: $0.won, caught: false, at: $0.at) }

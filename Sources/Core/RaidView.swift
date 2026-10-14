@@ -108,7 +108,7 @@ extension Walker {
         let tiers = raidTiers, t = tiers[safe: sel] ?? tiers.first
         let boss = raidMega ? megaLobby?.bosses[safe: raidMegaBoss].map(megaName) ?? "" : raidLobby.map { monNames[$0.boss.dex] } ?? ""
         return PaneContent(raidTier: RaidTierModel(boss: boss, note: (raidMega ? megaLeftToday : raidLeftToday).map { "오늘 \($0)판 남음" } ?? "",
-                                                   rows: tiers.map { .init(tier: $0.tier, level: $0.level, perfect: $0.perfect, bp: $0.bp) }, sel: sel,
+                                                   rows: tiers.map { t in let f = raidMega ? megaFirst(t.tier) : nil; return .init(tier: t.tier, level: t.level, perfect: t.perfect, bp: t.bp, first: f?.item, firstGot: f?.got ?? false) }, sel: sel,
                                                    note2: raidMega ? megaTierNote(t) : t.map { $0.level > 100 ? "★\($0.tier)" + ([1, 3].contains($0.tier) ? "은" : "는") + " Lv.\($0.level)으로 싸우고, 잡히면 Lv.100이에요" : "10줄을 다 깨면 승리 · 볼 3개, 이기면 5개" } ?? "",
                                                    go: "★\(t?.tier ?? 1) · 출전 고르기"))
     }
@@ -127,7 +127,8 @@ extension Walker {
             fb.mon(boss, half, 0, 2, anim: animT("raid tier", boss.art, now))
             fb.text(String(repeating: "★", count: t.tier), 94, 15, 3, right: true, small: true)
             fb.text("\(t.perfect)V", 94, 28, 2, right: true, small: true)
-            if t.level > 100 { fb.text("잡히면 Lv.100", 94, 40, 2, right: true, small: true) }      // (a boss above 100 is caught at 100)
+            if let f = raidMega ? megaFirst(t.tier) : nil { fb.text(f.text, 94, 40, f.got ? 1 : 3, right: true, small: true) }   // 5.0: a Mega boss's first win's cap here (no catching there)
+            else if t.level > 100, !raidMega { fb.text("잡히면 Lv.100", 94, 40, 2, right: true, small: true) }   // (a boss above 100 is caught at 100)
             fb.text("이기면 BP \(t.bp)", 94, 52, 2, right: true, small: true)
             return
         case .lobby: break

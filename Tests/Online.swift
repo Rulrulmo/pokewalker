@@ -199,9 +199,30 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
             && ms.megaWins[mk]?[wk[1].stone] == 0 && stoneSaid("같은 보스 \(MegaRaid.bossWins)승!", wk[1].stone)
         mr.calmAt = .distantPast; mr.press(1); mr.calmAt = .distantPast; mr.press(1); drain(mr)
         let both = mr.megaLobby?.bosses.allSatisfy { $0.had == true } == true && mr.megaNote.hasSuffix("스톤 모두 보유")
-        check(menuOff && lobbyOK && tierUp && started && won && backLobby && nineteen && twenty && both,
-              "5.0 메가 레이드: the menu's (content5), its lobby (two bosses, 스톤까지 0/20), tier (the stone's odds), Act.megaRaid (Mega from the start, 10 bars), a drop's stone by mail (its card, no balls, then 스톤 보유), the other boss's 20th win mails its stone (title, line, count back to 0)",
-              "\(menuOff) \(lobbyOK) \(String(describing: lobby?.tabs)) \(String(describing: lobby?.week)) \(tierUp) \(started) \(won) \(said) \(mailed) \(backLobby) \(nineteen) \(String(describing: mr.megaLobby?.bosses)) \(twenty) \(String(describing: ms.postBox[mk]?.last?.title)) \(both) \(mr.megaNote)")
+        // a boss's first ★5 win: its 금색병뚜껑 by mail, once (the tier page's ★5 row shows the cap, then faded); ★4's 은색병뚜껑 still to come; the run's card says it
+        mr.raidMegaBoss = 0; mr.screen = .raid(.tier(sel: RaidRules.tiers.count - 1))
+        let five = RaidRules.tiers.count, before = mr.paneContent(Date()).raidTier?.rows.suffix(2).map { "\($0.first ?? "-") \($0.firstGot)" } == ["은색병뚜껑 false", "금색병뚜껑 false"]
+        for _ in 0..<2 {
+            ms.raidRuns[mk, default: []].append(FakeCloud.RaidRun(tier: five, boss: { var m = Mon(dex: wk[0].dex, level: 120, female: false); m.item = wk[0].stone; return m }(), day: "2026-10-01", at: 0, mega: true))
+            ms.megaOdds = [false]; ms.raidEnded(mk, BattleEnd(result: "won", bars: RaidRules.bars))
+        }
+        let capMails = ms.postBox[mk]?.filter { $0.title == MegaRaid.firstTitle(wk[0], tier: five) && $0.body == MegaRaid.firstBody(wk[0], tier: five) && $0.gifts == [.items(name: "금색병뚜껑", count: 1)] }.count
+        mr.cloud!.megaRaidDue = true; for _ in 0..<4 where mr.megaLobby?.bosses[safe: 0]?.firstGot != [five] { mr.tick(Date()); drain(mr) }
+        mr.screen = .raid(.tier(sel: five - 1)); let after = mr.paneContent(Date()).raidTier?.rows.suffix(2).map { "\($0.first ?? "-") \($0.firstGot)" } == ["은색병뚜껑 false", "금색병뚜껑 true"]
+        mr.news = [.mailNew(id: 990, title: MegaRaid.firstTitle(wk[0], tier: five))]
+        let cardSaid: Bool = { if case .say(let l, _, _) = mr.megaRaidEnded(Battle(wild: Mon(dex: wk[0].dex, level: 120, female: false), companion: mew), BattleEnd(result: "won", bars: RaidRules.bars), Date()) { return l.contains("★5 첫 승리! 금색병뚜껑이 왔다") }; return false }()
+        let firstFive = before && capMails == 1 && after && cardSaid
+        // two 칭호: the card's pill opens them (가장 최근 first), a pick is the server's (Act.cardTitle) and shows on the LCD and the pane
+        mr.state.titles = ["타워 타이쿤", MegaRaid.master]; ms.set(mk, mr.state); mr.screen = .card(0); mr.refreshPane(Date(), force: true)
+        let pill = mr.paneContent(Date()).card.map { $0.title == MegaRaid.master && $0.titles == [MegaRaid.master, "타워 타이쿤"] } == true
+        mr.pageTap(5209); let open = mr.paneContent(Date()).card?.picking == true
+        mr.pageTap(5212); drain(mr)
+        let picked = ms.acts.last == .cardTitle(name: "타워 타이쿤") && mr.state.cardTitle == "타워 타이쿤" && mr.paneContent(Date()).card.map { $0.title == "타워 타이쿤" && !$0.picking } == true
+            && mr.compose(Date()).runs.contains { $0.s == "타워 타이쿤" && $0.y <= 1 }
+        let titlePick = pill && open && picked
+        check(menuOff && lobbyOK && tierUp && started && won && backLobby && nineteen && twenty && both && firstFive && titlePick,
+              "5.0 메가 레이드: the menu's (content5), its lobby (two bosses, 스톤까지 0/20), tier (the stone's odds), Act.megaRaid (Mega from the start, 10 bars), a drop's stone by mail (its card, no balls, then 스톤 보유), the other boss's 20th win mails its stone (title, line, count back to 0); a boss's first ★5 win mails 금색병뚜껑 once (its tier row, then 받음; the run's card); two 칭호: the card's pick (Act.cardTitle)",
+              "\(menuOff) \(lobbyOK) \(String(describing: lobby?.tabs)) \(String(describing: lobby?.week)) \(tierUp) \(started) \(won) \(said) \(mailed) \(backLobby) \(nineteen) \(String(describing: mr.megaLobby?.bosses)) \(twenty) \(String(describing: ms.postBox[mk]?.last?.title)) \(both) \(mr.megaNote) \(before) \(String(describing: capMails)) \(after) \(cardSaid) \(pill) \(open) \(picked)")
         calm(mr); mr.raidMega = false
     }
 

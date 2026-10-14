@@ -19,7 +19,8 @@ import Foundation
     var dexRegion = 0                                                      // 5.0 (content5): the 도감 grid's region, 0 = 전국 (dexRegions)
     var dexForm: (dex: Int, n: Int)? = nil                                 // 5.0: the 도감 entry page's form on show (● turns them; nil = the species)
     var raidMega = false, raidMegaBoss = 0                                 // 5.0 (docs/plans/18 §6.4): the raid screens are the Mega raid's; its boss (the week's 0 / 1)
-    var sayStone: (lines: [String], stone: String)? = nil                   // 5.0: the message saying a Mega stone came, and its stone (drawn big on its card: LCDDeco)
+    var sayStone: (lines: [String], stone: String)? = nil
+    var titlePick = false                                                  // 5.0: the card's 칭호 list open (two or more: pick the one shown)                   // 5.0: the message saying a Mega stone came, and its stone (drawn big on its card: LCDDeco)
     var megaOn = false                                                     // 5.0 (docs/plans/18 §9.6): 메가진화 ticked on the move screen: the move goes as .megaFight
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
     var keyShown: Bool?? = .none                                           // the 메뉴 / 홈 key as last shown (see homeKey)

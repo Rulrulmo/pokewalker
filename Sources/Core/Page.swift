@@ -514,6 +514,14 @@ extension Canvas {
 }
 extension Page {
     /// A few-colour pixel picture (" .:#" shades, `_` clear) at `px` points a pixel, centred on o.
+    /// 5.0: an item's own picture (ItemArt.swift) fitted to rc, whole pixels where it can.
+    func itemImage(_ name: String, _ rc: CGRect, alpha: CGFloat = 1) {
+        let key = "item|" + name
+        if picStore[key] == nil { picStore[key] = itemPic(name) }
+        guard let p = picStore[key], let img = picImage(PicRun(key: key, x: 0, y: 0), lcds[0]) else { return }
+        let k = min(rc.width / CGFloat(p.w), rc.height / CGFloat(p.h)), w = CGFloat(p.w) * k, h = CGFloat(p.h) * k
+        c.image(img, CGRect(x: rc.midX - w / 2, y: rc.midY - h / 2, width: w, height: h), alpha: alpha)
+    }
     func pixelArt(_ a: [[UInt8?]], _ pal: [UInt32], _ o: CGPoint, _ px: CGFloat) {
         let w = CGFloat(a.first?.count ?? 0) * px, h = CGFloat(a.count) * px
         for (y, row) in a.enumerated() { for (x, v) in row.enumerated() { if let v {
@@ -1016,11 +1024,28 @@ extension Page {
     }
     // MARK: 트레이너 카드: its tabs; 3.9 (15 §6 C): the 칭호 (a gold pill) and the 장식 (its medal and name) over them
     func drawCard(_ m: CardModel) {
-        guard m.title != nil || m.deco != nil else { tabs(["트레이너 카드", "최근 7일", "알"], m.page, 198, code: 5200); return }
+        guard m.title != nil || m.deco != nil || m.stones != nil else { tabs(["트레이너 카드", "최근 7일", "알"], m.page, 198, code: 5200); return }
         var xl = x(X0 + 2)
         if let d = m.deco { pixelArt(medalArt, d == "gold" ? goldPal : silverPal, CGPoint(x: xl + x(8), y: y(208)), 2.2 * K); xl += x(20); xl += c.say(d == "gold" ? "금장식" : "은장식", xl, y(208), font(10, .bold), d == "gold" ? Ink.gold : Ink.sub) + x(8) }
-        if let t = m.title { titlePill(t, xl, y(208)) }
+        if let t = m.title {
+            let w = titlePill(t + (m.titles.isEmpty ? "" : " ▾"), xl, y(208))
+            if !m.titles.isEmpty { hits.append((CGRect(x: xl, y: y(208) - x(10), width: w, height: x(20)), 5209)) }   // 5.0: two or more: tap to pick
+            xl += w + x(6)
+        }
+        if let s = m.stones {                                                                    // 5.0: the Mega stones collected, at the row's end
+            let f = font(9, .bold), w = width(s, f) + x(12), rc = CGRect(x: x(X1 - 2) - w, y: y(208) - x(8.75), width: w, height: x(17.5))
+            if rc.minX > xl { c.pill(rc, Ink.tint(Ink.c(150, 80, 220), 0.16)); c.say(s, rc.midX, rc.midY, f, Ink.c(118, 56, 186), 0.5) }
+        }
         tabs(["트레이너 카드", "최근 7일", "알"], m.page, 222, code: 5200)
+        guard m.picking, !m.titles.isEmpty else { return }                                         // 5.0: the 칭호 to show — 가장 최근, then each, newest first
+        c.say("카드에 보일 칭호", x(X0 + 2), y(258), font(10, .bold), Ink.sub)
+        for (k, t) in ([nil] + m.titles.map { Optional($0) }).enumerated() {
+            let rc = r(X0, 268 + CGFloat(k) * 30, X1 - X0, 26), on = t == m.picked
+            tile(rc, 8, on: on)
+            if let t { titlePill(t, rc.minX + x(8), rc.midY) } else { c.say("가장 최근 (" + (m.titles.first ?? "") + ")", rc.minX + x(10), rc.midY, font(10, .bold), Ink.ink) }
+            if on { c.say("✓", rc.maxX - x(10), rc.midY, font(11, .bold), Ink.red, 1) }
+            hits.append((rc, 5210 + k))
+        }
     }
     /// A 칭호 as a gold pill starting at xl; returns its width.
     @discardableResult func titlePill(_ t: String, _ xl: CGFloat, _ midY: CGFloat, size: CGFloat = 9) -> CGFloat {
@@ -1229,7 +1254,12 @@ extension Page {
             c.say(String(repeating: "★", count: row.tier), rc.minX + x(9), rc.midY, font(10, .bold), Ink.gold)
             c.say("Lv.\(row.level)", rc.minX + x(68), rc.midY, font(11, .bold), Ink.ink)
             c.say("\(row.perfect)V", rc.minX + x(112), rc.midY, font(9.5, .semibold), Ink.sub)
-            c.say("이기면 BP \(row.bp)", rc.maxX - x(9), rc.midY, font(9.5, .semibold), Ink.ink, 1)
+            if let f = row.first {                                                                  // 5.0: the cap a Mega boss's first win here pays (paid: faded, ✓)
+                let ic = CGRect(x: rc.minX + x(136), y: rc.midY - x(9), width: x(18), height: x(18))   // (what it is: the line under the rows)
+                itemImage(f, ic, alpha: row.firstGot ? 0.3 : 1)
+                if row.firstGot { c.say("✓", ic.maxX - x(1), ic.maxY - x(3), font(8, .bold), Ink.green, 0.5) }
+            }
+            c.say((m.rows.contains { $0.first != nil } ? "" : "이기면 ") + "BP \(row.bp)", rc.maxX - x(9), rc.midY, font(9.5, .semibold), Ink.ink, 1)   // (5.0: room for a first win's cap)
             hits.append((rc, 7020 + i))
         }
         c.say(m.note2, x(Layout.w / 2), y(406), font(9, .medium), Ink.sub, 0.5, maxW: x(X1 - X0))

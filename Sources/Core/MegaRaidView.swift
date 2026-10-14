@@ -43,10 +43,17 @@ extension Walker {
                                            empty: "이번 주에 이 보스와 한 판이 없어요", go: go, hint: hint, ranks: false, roomy: true,
                                            rule: "이기면 확률로 메가스톤 · 같은 보스 \(r.pityNeed)승이면 확정"))   // 5.0 (the user: 처음 보는 사람도 바로)
     }
+    /// A tier's first-win reward for this boss (the user, 10-14: ★4 은색병뚜껑 · ★5 금색병뚜껑, once a boss and tier): its item, its words, whether
+    /// it's been paid (nil: none at this tier, or a lobby without firstGot).
+    func megaFirst(_ tier: Int) -> (item: String, text: String, got: Bool)? {
+        guard let item = MegaRaid.firstWins[tier], let got = megaLobby?.bosses[safe: raidMegaBoss]?.firstGot.map({ $0.contains(tier) }) else { return nil }
+        return (item, got ? "첫 승리 받음" : "첫 승리 " + item, got)
+    }
     func megaTierNote(_ t: RaidTier?) -> String {
         guard let t, let r = megaLobby, let b = r.bosses[safe: raidMegaBoss] else { return "" }
         let odds = r.odds[safe: t.tier - 1] ?? 0
-        return b.had == true ? "이기면 \(odds)% 확률로 BP \(MegaRaid.duplicateBP(t.tier)) (스톤은 이미 있어요)" : "이기면 \(odds)% 확률로 \(b.stone) · 볼 없음"
+        let first = megaFirst(t.tier).flatMap { $0.got ? nil : " · 첫 승리 " + $0.item }               // 5.0: this tier's first-win cap, still to come
+        return (b.had == true ? "이기면 \(odds)% 확률로 BP \(MegaRaid.duplicateBP(t.tier))" + (first == nil ? " (스톤은 이미 있어요)" : "") : "이기면 \(odds)% 확률로 \(b.stone)" + (first == nil ? " · 볼 없음" : "")) + (first ?? "")
     }
     func megaLCD(_ fb: inout FB, _ tab: Int, _ now: Date) {
         let half = Int(now.timeIntervalSinceReferenceDate * 2) % 2
@@ -72,10 +79,11 @@ extension Walker {
     /// own card, the stone big (sayStone); then its lobby (no balls).
     func megaRaidEnded(_ b: Battle, _ e: BattleEnd, _ now: Date) -> Screen {
         raidOn = false; cloud?.megaRaidDue = true; cloud?.raidDue = true
-        var stone: String? = nil, weekly = false
+        var stone: String? = nil, first: String? = nil, weekly = false
         news.removeAll {
             guard case .mailNew(_, let t) = $0 else { return false }
             if t.hasSuffix("를 얻었다!") || t.hasSuffix("을 얻었다!") || t.hasSuffix("대신 BP") { stone = t; mailNews(t); return true }
+            if t.hasSuffix("첫 승리!") { first = t; mailNews(t); return true }                      // 5.0: a tier's first win (★4 은색병뚜껑, ★5 금색병뚜껑)
             if t.hasPrefix("레이드") { weekly = true; mailNews(t); return true }
             return false
         }
@@ -83,6 +91,9 @@ extension Walker {
         let paid = (e.gifts ?? []).map(giftName).joined(separator: " · ")
         var lines = won ? ["\(RaidRules.bars)줄을 모두 깼다!"] + (paid.isEmpty ? [] : [paid]) : [bars > 0 ? "\(bars)줄을 깼다" : "줄을 깨지 못했다"]
         if stone?.hasSuffix("대신 BP") == true { lines.append("스톤 대신 BP가 우편함에 왔다") }
+        if let f = first, let tier = f.split(separator: "★").last?.split(separator: " ").first.flatMap({ Int($0) }), let item = MegaRaid.firstWins[tier] {
+            lines.append("★\(tier) 첫 승리! " + josa(item, "이", "가") + " 왔다")
+        }
         if weekly { lines.append("우편함에 이번 주 보상이 왔다") }
         if !news.isEmpty { growthThen = .raid(.lobby(tab: raidMegaBoss)) }
         let after: Screen = news.isEmpty ? .raid(.lobby(tab: raidMegaBoss)) : .home

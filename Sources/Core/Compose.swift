@@ -178,7 +178,7 @@ extension Walker {
         case .market(let s): marketLCD(&fb, s, now)
         case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
         case .card(let p):
-            if p == 0, state.deco != nil || state.titles?.last != nil { fb.text(cardTitle, 2, 0); fb.fill(0, 12, 96, 1, 2) } else { header(p == 0 ? cardTitle : ["트레이너 카드", "최근 7일", "알"][p]) }   // (a 칭호 or 장식: there, not the W)
+            if p == 0, state.deco != nil || state.shownTitle != nil { fb.text(cardTitle, 2, 0); fb.fill(0, 12, 96, 1, 2) } else { header(p == 0 ? cardTitle : ["트레이너 카드", "최근 7일", "알"][p]) }   // (a 칭호 or 장식: there, not the W)
             if p == 2 {
                 if let e = state.egg {
                     fb.cardEgg(close: e.left < 500, t: t)
@@ -186,7 +186,7 @@ extension Walker {
                 } else { fb.text("갖고 있지 않다", 0, 30, 2, center: true) }
             } else if p == 0 {
                 if let d = state.deco { fb.decoFrame(gold: d == "gold"); fb.draw(medalArt, min(80, textWidth(cardTitle) + 5), 2, d == "gold" ? goldPal : silverPal) }   // 3.9 (15 §6 C): 은 · 금 장식 — the frame, a medal by the name
-                if let t = state.titles?.last { fb.text(t, 94, 1, 3, right: true, small: true) }                                              // … and the 칭호
+                if let t = state.shownTitle { fb.text(t, 94, 1, 3, right: true, small: true) }                                              // … and the 칭호
                 fb.text(state.here.name, 2, 14)
                 if state.corrected == true { fb.text("기록 보정됨", 94, 15, 1, right: true, small: true) }   // 1.7 took back a macro's gains
                 fb.text("오늘  \(state.today)걸음", 2, 26)
@@ -408,7 +408,8 @@ extension Walker {
         case .radar(let b, let c, let since, let chain):
             let u = Date().timeIntervalSince(since)
             return PaneContent(radar: RadarModel(live: (1.5...(1.5 + radarWindow(chain))).contains(u) ? b : nil, cursor: c, chain: chain, season: state.season))
-        case .card(let p): return PaneContent(card: CardModel(page: p, title: state.titles?.last, deco: state.deco))
+        case .card(let p): return PaneContent(card: CardModel(page: p, title: state.shownTitle, deco: state.deco, stones: Content.gen6 ? "메가스톤 \(MegaRaid.collected(state))/\(MegaRaid.stones.count)" : nil,
+                                                              titles: (state.titles ?? []).count > 1 ? Array((state.titles ?? []).reversed()) : [], picked: state.cardTitle, picking: titlePick))   // 5.0: two or more 칭호: pick the card's
         case .learn(let sel):
             var st = state
             guard let (ref, id) = st.nextToLearn(), let m = state.mon(ref), let new = moveTable[id] else { break }
@@ -460,7 +461,13 @@ extension Walker {
         throughSay(); lastInput = Date(); host?.redraw(.all)
         switch (screen, code) {
         case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
-        case (.card, 5200...5202): screen = .card(code - 5200)
+        case (.card, 5200...5202): titlePick = false; screen = .card(code - 5200)
+        case (.card, 5209): titlePick.toggle()                                                     // 5.0: the 칭호 pill → the 칭호 to show (two or more)
+        case (.card, 5210...5229):                                                                // … 가장 최근 (nil), or one of them, newest first
+            let earned = Array((state.titles ?? []).reversed()), k = code - 5210, name = k == 0 ? nil : earned[safe: k - 1]
+            guard k == 0 || name != nil else { break }
+            titlePick = false
+            if name != state.cardTitle { act(.cardTitle(name: name), back: screen) { _, _ in nil } }
         case (.team(let sel, _, _), 6000...6007): if code - 6000 < teamTabCount { screen = .team(sel: code - 6000 == 0 ? sel : 0, tab: code - 6000, card: false) }   // a tab (a rank tab from its top; TeamTab)
         case (.team(_, TeamTab.visits, false), 6400...6439): visitEnd(code - 6400, Date())                    // 3.8: 데려오기 / 돌려보내기 (the row's own place)
         case (.team(_, TeamTab.visits, false), 6440...6479): screen = .team(sel: code - 6440, tab: TeamTab.visits, card: false)   // 3.8.5: a row: picked (the LCD shows it)
