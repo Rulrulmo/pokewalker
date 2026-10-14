@@ -172,6 +172,13 @@ extension Walker {
                 if x < x0 + 8 { fb.px[i] = 0; fb.col[i] = 0 }
             } }
             fb.runs[ti].x += 8
+            let right = fb.runs.indices.filter { $0 != ti && fb.runs[$0].y <= 2 && fb.runs[$0].x > r.x }.map { fb.runs[$0].x }.min() ?? 96, by = r.x + 8 + r.w
+            let end = (by..<min(96, x1 + 8)).last { x in (1..<11).contains { fb.px[$0 * 96 + x] != 0 } }.map { $0 + 1 } ?? by
+            if end + 2 > right, !r.small {                                                           // too long for what's on its right (a 칭호, the W): a size smaller, its medal in with it
+                let dx = r.w - textWidth(r.s, small: true)
+                fb.runs[ti].small = true; fb.runs[ti].w -= dx
+                for y in 1..<11 { for x in by..<min(96, x1 + 8) { let i = y * 96 + x; fb.px[i - dx] = fb.px[i]; fb.col[i - dx] = fb.col[i]; fb.px[i] = 0; fb.col[i] = 0 } }
+            }
             for k in fb.runs.indices where fb.runs[k].y <= 2 { fb.runs[k].shade = 3 }             // on the band: full ink (a grey one fades into its colour)
         }
         tidy(&fb, g, lay, band: ti != nil)

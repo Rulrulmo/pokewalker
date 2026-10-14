@@ -450,6 +450,7 @@ import AppKit
     take("tower_tycoon_lobby", dme) { v in v.state.towerRewards = [7, 14, 21]; v.towerRun = true; v.screen = .tower(pick: nil) }
     let sme = online({ var s = base(); s.deco = "silver"; s.towerBest = 8; return s }())
     take("card_deco_silver", sme) { v in v.screen = .card(0) }
+    take("card_deco_long", Walker(state: { var s = base(); s.deco = "gold"; s.titles = ["타워 타이쿤"]; return s }())) { v in v.persist = false; v.screen = .card(0) }   // (no ID yet: 트레이너 카드, its medal and 칭호 — Windows' render)
     take("tower_strip", sme) { v in v.state.towerRewards = [7]; v.towerRun = false; v.screen = .tower(pick: nil) }
     // 4.1: after 100, every 50 (the strip's 9th cell: the next of them); the one-time reset (streak, best, rewards all 0 — my card, a friend's, the lobby)
     take("tower_strip_endless", sme) { v in v.state.towerBest = 163; v.state.towerStreak = 163; v.state.towerRewards = Tower.rewards.map(\.wins) + [150]; v.towerRun = true; v.screen = .tower(pick: nil) }
