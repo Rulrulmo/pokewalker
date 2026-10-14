@@ -80,11 +80,16 @@ extension Walker {
     }
     func megaPickLCD(_ fb: inout FB, _ sel: Int) {
         fb.text("스톤 고르기", 2, 1, 3, small: true); fb.fill(0, 10, 96, 1, 2)
-        for (k, b) in megaPickRows().enumerated() {
+        let rows = megaPickRows(), big = decoStyle >= 4, w = big ? 60 : 96
+        if big, let b = rows[safe: min(sel, max(0, rows.count - 1))] {                                // 5.0's second-round looks (the user's idea: the stone big): the picked one's stone
+            let type = (Forms.of(b.dex, b.form)?.types ?? monTypes[b.dex]).first ?? "normal"
+            fb.pic("mega stone|\(type)", 160, 76, scale: 1.25 + 0.04 * sin(Date().timeIntervalSinceReferenceDate * 3), under: true) { lcdReady(LCDScenes.stonePic(type)) }
+        }
+        for (k, b) in rows.enumerated() {
             let y = 14 + 12 * k
             fb.text(b.stone, 2, y, b.had == true ? 1 : 3, small: true)
-            if b.had == true { fb.text("가짐", 94, y, 1, right: true, small: true) }
-            if k == sel { fb.invert(0, y - 1, 96, 11) }
+            if b.had == true { fb.text("가짐", w - 2, y, 1, right: true, small: true) }
+            if k == sel { fb.invert(0, y - 1, w, 11) }
         }
     }
     func megaPickPress(_ k: Int, _ sel: Int, _ now: Date) {

@@ -6,15 +6,17 @@ import Foundation
 // (0 = the plain page as before): 1 수첩 (the home's paper and tape, the Pokémon as a sticker), 2 게임 (a coloured band, a soft ground, a pad and
 // a glow), 3 도트 (the Pokéwalker's own: dithered, quiet).
 
-@MainActor var decoStyle = min(max(settings.int("deco", 0), 0), 3)
+@MainActor var decoStyle = min(max(settings.int("deco", 0), 0), 5)                // (4, 5: the second round, its two strengths: LCDScenes.swift)
 
-enum PageGroup: String { case pokemon, social, shop, tower, raid, mega, notice, card }
+enum PageGroup: String { case pokemon, dex, social, mail, shop, tower, raid, mega, notice, card }
 
 enum LCDDeco {
     /// A group's colours: its band, its light (backdrop), its pad.
     static func tones(_ g: PageGroup) -> (band: UInt32, light: UInt32, pad: UInt32) {
         switch g {
         case .pokemon: (rgb(120, 196, 120), rgb(226, 242, 214), rgb(118, 176, 92))
+        case .dex: (rgb(222, 108, 96), rgb(248, 230, 222), rgb(176, 140, 104))
+        case .mail: (rgb(96, 140, 220), rgb(232, 238, 250), rgb(170, 150, 120))
         case .social: (rgb(112, 160, 228), rgb(222, 234, 250), rgb(150, 170, 200))
         case .shop: (rgb(236, 178, 84), rgb(250, 236, 206), rgb(196, 150, 96))
         case .tower: (rgb(132, 146, 186), rgb(226, 230, 242), rgb(150, 156, 178))
@@ -109,10 +111,15 @@ enum LCDDeco {
 extension Walker {
     /// The page's group, if this screen is one of the LCD's pages (home, a fight, the radar, a course, the shows: their own pictures).
     func pageGroup() -> PageGroup? {
-        var sc = screen; if case .say(_, let next, _) = sc { if case .home = next { return .notice }; sc = next }
+        if case .say(_, let next, _) = screen {                                                       // a message: its card, unless a fight's stage stays under it (sideOn)
+            switch next { case .battle where sideOn, .moves where sideOn, .party where sideOn, .bagBattle where sideOn, .forfeit where sideOn: return nil; default: return .notice }
+        }
+        let sc = screen
         switch sc {
-        case .box, .dex, .itemOn, .hold, .formPick, .train, .relearn, .learn, .visitPick: return .pokemon
-        case .team, .trade, .market, .mail, .duel, .squad: return .social
+        case .dex: return .dex
+        case .mail: return .mail
+        case .box, .itemOn, .hold, .formPick, .train, .relearn, .learn, .visitPick: return .pokemon
+        case .team, .trade, .market, .duel, .squad: return .social
         case .shop, .shopConfirm, .items: return .shop
         case .tower(nil): return .tower
         case .raid(.lobby), .raid(.tier), .raid(.pick): return raidMega ? .mega : .raid
@@ -124,6 +131,9 @@ extension Walker {
     /// The page dressed (LCDDeco), under what's drawn: its backdrop, the band under its title, its Pokémon's pad (and a glow; a raid's cave).
     func decorate(_ fb: inout FB, _ now: Date) {
         guard decoStyle > 0, let g = pageGroup() else { return }
+        let n0 = fb.pics.count
+        defer { let added = Array(fb.pics[n0...]); fb.pics.removeSubrange(n0...); fb.pics.insert(contentsOf: added, at: 0) }   // (under the page's own: the stone's)
+        if decoStyle >= 4 { decorate2(&fb, g, now); return }
         let style = decoStyle, grey = !lcds[lcdStyle].color, t = now.timeIntervalSinceReferenceDate, tone = grey ? "|g" : ""
         let ready = { (p: Pic) -> Pic in lcdReady(p) }
         fb.pic("deco|bg|\(g.rawValue)|\(style)|\(paperStyle)|\(lightBand(state.hour))" + tone, 96, 64, under: true) { ready(LCDDeco.backdrop(g, style, paper: paperStyle, tb: lightBand(state.hour), grey: grey)) }
@@ -151,5 +161,75 @@ extension Walker {
             fb.pic("deco|glow|\(g.rawValue)" + tone, fx, feet - 34, alpha: 0.6, under: true) { ready(LCDDeco.glow(LCDDeco.tones(g).band, rainbow: false)) }
         default: fb.pic("deco|pad|\(g.rawValue)|3" + tone, fx, feet - 2, under: true) { LCDDeco.pad(g, 3) }
         }
+    }
+    /// The second round (decoStyle 4, 5: LCDScenes.swift) — a place for each group (5: the whole screen; 4: the Pokémon's stage), the words on a
+    /// light panel, the title's band with its mark, the Pokémon on a pad in a glow (5: a size bigger); a raid's cave (5: its boss's weather, a
+    /// Mega's rainbow running in); a message's card by what it says.
+    func decorate2(_ fb: inout FB, _ g: PageGroup, _ now: Date) {
+        let strong = decoStyle == 5, grey = !lcds[lcdStyle].color, t = now.timeIntervalSinceReferenceDate, tone = grey ? "|g" : ""
+        let ready = { (p: Pic) -> Pic in lcdReady(p) }
+        if case .say(let lines, _, _) = screen, g == .notice, !lines.isEmpty {                       // a message: its card, its mark by what it says
+            let k = LCDScenes.kind(lines), h = min(116, 28 * lines.count + 36), top = 64 - h / 2
+            if strong { fb.pic("deco2|scene|pokemon" + tone, 96, 64, under: true) { ready(LCDScenes.scene(.pokemon)) } }
+            else { fb.pic("deco|bg|notice|2" + tone, 96, 64, under: true) { ready(LCDDeco.backdrop(.notice, 2, paper: 0, tb: 0, grey: grey)) } }
+            fb.pic("deco2|card|\(k)|\(h)" + tone, 96, 64 + 4, under: true) { ready(LCDScenes.noticeCard(k, 172, h)) }
+            fb.pic("deco2|kind|\(k)" + tone, 96, top + 6, scale: k == .wait ? 1 : 1 + 0.08 * sin(t * 4), angle: k == .wait ? Double(Int(t * 2) % 2) * 180 : 0, under: true) { ready(LCDScenes.kindMark(k)) }
+            if k == .reward { for i in 0..<6 {                                                       // a reward: stars twinkling round it
+                let a = Double(i) * .pi / 3 + 0.3, al = max(0, sin(t * 3 + Double(i)))
+                fb.pic("ball star" , 96 + Int(92 * cos(a)), 68 + Int(Double(h) / 2 * 0.9 * sin(a)), alpha: al, under: true) { starPic() }
+            } }
+            return
+        }
+        let si = fb.sprites.firstIndex { $0.x == 16 && $0.y == 18 && !$0.back }                     // the page's Pokémon (fb.mon at the old box)
+        let raid = g == .raid || g == .mega, place = g
+        if strong { fb.pic("deco2|scene|\(place.rawValue)" + tone, 96, 64, under: true) { ready(LCDScenes.scene(place)) } }
+        else {
+            fb.pic("deco|bg|\(g.rawValue)|2|0|0" + tone, 96, 64, under: true) { ready(LCDDeco.backdrop(g, 2, paper: 0, tb: 0, grey: grey)) }
+            if si != nil { fb.pic("deco2|scene|\(place.rawValue)" + tone, 96, 64, under: true, clip: [3, 27, 94, 98]) { ready(LCDScenes.scene(place)) } }   // its place behind the Pokémon only
+        }
+        fb.pic(si != nil ? "deco2|panel|\(g.rawValue)|90|\(strong)" + tone : "deco2|panel|\(g.rawValue)|186|\(strong)" + tone, si != nil ? 145 : 96, 77, under: true) { ready(LCDScenes.panel(g, si != nil ? 90 : 186, 100, strong: strong)) }
+        if let ti = fb.runs.firstIndex(where: { $0.y <= 1 && $0.x <= 3 }) {                            // the title's band, its mark before it
+            fb.pic("deco2|band|\(g.rawValue)" + tone, 96, 12, under: true) { ready(LCDScenes.band(g)) }
+            fb.pic("deco2|mark|\(g.rawValue)" + tone, 9, 12, under: true) { ready(LCDScenes.mark(g)) }
+            let r = fb.runs[ti], x0 = max(1, r.x), x1 = min(87, r.x + r.w + 12)                   // what's drawn by the title (a medal) moves with it
+            for y in 1..<11 { for x in stride(from: x1 - 1, through: x0, by: -1) {                // (not the card's frame: row 0, columns 0 and 95)
+                let i = y * 96 + x, j = i + 8
+                fb.px[j] = fb.px[i]; fb.col[j] = fb.col[i]
+                if x < x0 + 8 { fb.px[i] = 0; fb.col[i] = 0 }
+            } }
+            fb.runs[ti].x += 8
+            for k in fb.runs.indices where fb.runs[k].y <= 2 { fb.runs[k].shade = 3 }             // on the band: full ink (a grey one fades into its colour)
+        }
+        if strong { for (k, (x, y)) in [(6, 30), (186, 30), (6, 122), (186, 122)].enumerated() {   // the corners' brackets
+            fb.pic("deco2|corner|\(g.rawValue)" + tone, x, y, angle: Double([0, 90, 270, 180][k]), under: true) { ready(LCDScenes.corner(g)) }
+        } }
+        guard let i = si else { return }
+        let s = fb.sprites[i], fx = 64, feet = strong ? 110 : 100
+        if strong { fb.sprites[i].scale = 1.12; fb.sprites[i].y += 5 }                           // bigger (about its feet), and down: its head stays under the title
+        if raid {                                                                                    // the boss: lit in its type's colour; 5: its weather, a Mega's rainbow
+            let dex = raidMega ? (megaLobby?.bosses[safe: raidMegaBoss]?.dex ?? s.art) : (raidLobby?.boss.dex ?? s.art)
+            let type = monTypes[min(dex, 721)].first ?? "normal", c = fxTones[type]?[2] ?? rgb(200, 200, 220)
+            if g == .mega {                                                                          // the Mega's: a rainbow ring turning, its symbol, rainbow streaks running in
+                fb.pic("deco2|aura" + tone, fx, feet - 36, scale: (strong ? 1.25 : 1.1) + 0.05 * sin(t * 2.4), angle: t * 40, under: true) { ready(LCDScenes.rainbowRing()) }
+                fb.pic("deco|msym2" + tone, fx, feet - 36, scale: strong ? 2.6 : 2.2, alpha: 0.85, angle: t * 16, under: true) { ready(MegaFX.symbolPic(6, 1)) }
+                if strong { let cs = MegaFX.colours(6, 1); for k in 0..<10 {
+                    let ph = (t * 0.6 + Double(k) / 10).truncatingRemainder(dividingBy: 1), ang = Double(k) * .pi / 5 + t * 0.3, r = 62 * (1 - ph) + 12
+                    fb.pic("mega streak 6.1.\(k % cs.count)" + tone, fx + Int(r * cos(ang)), feet - 36 + Int(r * sin(ang) * 0.8), alpha: min(1, ph * 4) * min(1, (1 - ph) * 3), angle: ang * 180 / .pi + 180, clip: [3, 27, 94, 98]) { MegaFX.streakPic(cs[k % cs.count]) }
+                } }
+            } else {
+                fb.pic("deco|glow|\(type)" + tone, fx, feet - 36, scale: 1.15 + 0.08 * sin(t * 2.4), alpha: 0.8 + 0.2 * sin(t * 2.4), under: true) { ready(LCDDeco.glow(c, rainbow: false)) }
+            }
+            if g == .raid, strong {                                                                  // a raid: its boss's weather in the cave
+                let (vx, vy) = LCDScenes.weatherFall(type)
+                for k in 0..<(type == "electric" ? 1 : 14) {
+                    if type == "electric" { if Int(t * 3) % 4 == 0 { fb.pic("deco2|wx|electric" + tone, 30 + Int(t * 7) % 40, 50, scale: 2, clip: [3, 27, 94, 98]) { ready(LCDScenes.weatherBit("electric")) } }; continue }
+                    let x = (Double(k * 37) + t * vx).truncatingRemainder(dividingBy: 96), y = (Double(k * 53) + t * vy).truncatingRemainder(dividingBy: 100)
+                    fb.pic("deco2|wx|\(type)" + tone, 3 + Int(x < 0 ? x + 96 : x), 27 + Int(y < 0 ? y + 100 : y), clip: [3, 27, 94, 98]) { ready(LCDScenes.weatherBit(type)) }
+                }
+            }
+            return
+        }
+        fb.pic("deco|pad|\(g.rawValue)|2" + tone, fx, feet - 3, scale: strong ? 1.15 : 1, under: true) { ready(LCDDeco.pad(g, 2)) }
+        fb.pic("deco|glow|\(g.rawValue)" + tone, fx, feet - 36, scale: strong ? 1.15 : 1, alpha: 0.7, under: true) { ready(LCDDeco.glow(LCDDeco.tones(g).band, rainbow: false)) }
     }
 }
