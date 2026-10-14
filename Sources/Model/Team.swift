@@ -20,7 +20,7 @@ struct TeamCard: Codable, Equatable {
         self.today = today; self.week = week; total = w.total
         towerBest = w.towerBest ?? 0; bestChain = w.bestChain ?? 0; bp = w.bp ?? 0; course = w.course; self.idle = idle
         duelWins = w.duelWins ?? 0; duelLosses = w.duelLosses ?? 0
-        title = w.titles?.last; deco = w.deco
+        title = w.shownTitle; deco = w.deco
         if Content.gen6 { megaStones = MegaRaid.collected(w) }
     }
 }

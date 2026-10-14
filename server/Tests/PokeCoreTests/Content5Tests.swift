@@ -499,6 +499,16 @@ private func formed(_ dex: Int, _ f: Int?, _ level: Int = 50) -> Mon { var m = m
     gen6 { #expect(TeamCard(name: "a", walk: w, today: 0, week: 0, idle: 0).megaStones == 3 && MegaRaid.collected(w) == 3) }
 }
 
+@Test func cardTitlePick() {                                                                     // 5.0 (the user, 10-14): two 칭호 or more → the card's is picked (nil: the newest)
+    var w = Engine.fresh(now: t0, starter: firstUID), p = Play(), r = Seeded(s: 1), ids = Issued(next: firstUID + 1)
+    func pick(_ t: String?) -> String? { Engine.apply(.cardTitle(name: t), steps: 0, walk: &w, play: &p, rng: &r, now: t0, ids: &ids).cannot }
+    #expect(w.shownTitle == nil && pick("메가 마스터") == "받은 칭호가\n아니에요")
+    w.titles = ["타워 타이쿤", "메가 마스터"]
+    #expect(w.shownTitle == "메가 마스터" && pick("타워 타이쿤") == nil && w.shownTitle == "타워 타이쿤" && TeamCard(name: "a", walk: w, today: 0, week: 0, idle: 0).title == "타워 타이쿤")
+    #expect(pick(nil) == nil && w.cardTitle == nil && w.shownTitle == "메가 마스터")
+    w.cardTitle = "없는 칭호"; #expect(w.shownTitle == "메가 마스터")                                       // (one not earned: the newest)
+}
+
 @Test func gen6ShopTabs() {                                                                      // 5.0: the 상점's 로토무카탈로그 under 기타 (it was under no tab: never shown), once
     func tabs(_ w: Walk) -> [Bool: [String]] {                                                   // the tabs with a row, every row (both shops) under one of the shop's own
         var out: [Bool: [String]] = [:]

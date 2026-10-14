@@ -43,7 +43,10 @@ struct Walk: Codable, Equatable {
     var duelParty: [Int]? = nil                                        // 3.8 (14 §5.1): the 대전 파티's uids, 3–6 (one let go or traded drops out)
     var towerRewards: [Int]? = nil                                     // 3.9 (docs/plans/15 §3): the streak rewards mailed (the lobby's strip)
     var titles: [String]? = nil, deco: String? = nil                   // 3.9: 칭호 earned; 트레이너 카드 장식 "silver" · "gold" (the better kept)
+    var cardTitle: String? = nil                                       // 5.0 (the user, 10-14): the 칭호 the card shows, picked (nil: the newest)
 
+    /// The 칭호 shown (the card, a duel's opponent): the one picked while it's still earned, else the newest.
+    var shownTitle: String? { cardTitle.flatMap { (titles ?? []).contains($0) ? $0 : nil } ?? titles?.last }
     var here: Course { courses[course] }
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.
     var bonus: Bool { companion.typing.contains { here.types.contains($0) } }

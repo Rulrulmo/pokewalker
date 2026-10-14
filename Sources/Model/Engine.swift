@@ -11,6 +11,7 @@ enum Act: Codable, Equatable {
     case battle(cmd: BattleCmd)
     case tower                                                   // into the tower (50 W) or, on a run, its next trainer
     case towerPick(slot: Int, uid: Int), towerReset              // the lobby's picker (Walk.towerSet), 추천으로
+    case cardTitle(name: String?)                                // 5.0 (the user, 10-14): the card's 칭호, one earned (nil: the newest)
     case buy(bp: Bool, item: String?, legend: Int?, shell: String?, qty: Int)   // one of item / legend (Walk.legendShop index) / shell (a device colour)
     case use(item: String, stat: Int?, on: Int? = nil)           // the bag's use: feed, train (은색병뚜껑's stat), evolve, a mint, sell all of it; on: that one's uid (nil = the companion; 3.6)
     case sellAll

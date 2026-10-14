@@ -70,6 +70,9 @@ struct EngineRun<R: RandomNumberGenerator> {
             guard let ref = w.ref(uid: uid), (0..<3).contains(slot) else { return "고를 수 없어요" }
             return w.towerSet(slot, ref)
         case .towerReset: w.towerPick = nil; return nil
+        case .cardTitle(let t):
+            guard t.map({ (w.titles ?? []).contains($0) }) ?? true else { return "받은 칭호가\n아니에요" }
+            w.cardTitle = t; return nil
         case .buy(let bp, let item, let legend, let shell, let qty): return buy(bp, item, legend, shell, qty)
         case .use(let item, let stat, let on): return use(item, stat, on)
         case .sellAll:

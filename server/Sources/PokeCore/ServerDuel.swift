@@ -283,7 +283,7 @@ extension SaveDB {
         var v = DuelView(id: d.id, state: d.state, opponent: first ? d.bName : d.aName, challenger: first, turn: d.turns.count,
                          need: first ? d.needA : d.needB, deadline: ["active", "invited", "queued", "picking"].contains(d.state) ? d.deadline : nil, version: d.version)
         let other = first ? d.b : d.a                                                           // 3.9 (plan 15 §3.2): its 칭호 by its name
-        if !other.isEmpty { v.opponentTitle = try trainer(other)?.walk.flatMap(decodeWalk)?.titles?.last }
+        if !other.isEmpty { v.opponentTitle = try trainer(other)?.walk.flatMap(decodeWalk)?.shownTitle }
         if d.state == "picking", let xa = d.partyA, let xb = d.partyB {
             let (mine, theirs) = first ? (xa, xb) : (xb, xa)
             v.parties = DuelParties(mine: mine, theirs: theirs.map { DuelMon(dex: $0.dex, female: $0.female, shiny: $0.shiny == true) },

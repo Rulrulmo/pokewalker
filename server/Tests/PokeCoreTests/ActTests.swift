@@ -1025,7 +1025,7 @@ extension SaveDB {
         }
         try await db.setRaidRunsFrom(0)
         let l = try await lobby(), week = await db.megaWeek(base.addingTimeInterval(t))
-        #expect(l.bosses.map(\.stone) == week.map(\.stone) && l.bosses.allSatisfy { $0.had == false && $0.wins == 0 && $0.fiveGot == false } && l.bosses.count == 2 && l.pityNeed == 20 && l.odds == [3, 5, 8, 10, 20] && l.today.max == 3)
+        #expect(l.bosses.map(\.stone) == week.map(\.stone) && l.bosses.allSatisfy { $0.had == false && $0.wins == 0 && $0.firstGot == [] } && l.bosses.count == 2 && l.pityNeed == 20 && l.odds == [3, 5, 8, 10, 20] && l.today.max == 3)
         #expect(MegaRaid.bosses.count == 48 && !MegaRaid.bosses.contains { $0.dex == 384 || $0.dex == 719 })
         #expect(try await go(.megaRaid(tier: 1, boss: 0), app: "4.1").out.cannot == "메가 레이드는\n아직 열리지 않았어요")
         // a ★1 run: the boss Mega from the start, 10 bars, no balls
@@ -1068,11 +1068,14 @@ extension SaveDB {
         }
         let titles = try await db.mailTitles("앨리스")
         #expect(titles.filter { $0 == "리자몽나이트X를 얻었다!" || $0 == MegaRaid.winsTitle("리자몽나이트X") }.count == 1 && titles.contains("리자몽나이트X 대신 BP"))
-        // a boss's first ★5 win (the user, 10-14): 금색병뚜껑 once (the hundred above: one mail), stone or not; the lobby's fiveGot
-        #expect(titles.filter { $0 == "메가리자몽X ★5 첫 승리!" }.count == 1)
-        try await db.megaFirstFive("앨리스", stone: week[1].stone, now: 0); try await db.megaFirstFive("앨리스", stone: week[1].stone, now: 0)
-        let five = try await lobby(), capMails = try await db.count("SELECT count(*) AS n FROM mail WHERE key = '앨리스' AND gifts LIKE '%금색병뚜껑%' AND body LIKE '%처음 이겼어요%'")
-        #expect(five.bosses[1].fiveGot == true && five.bosses[0].fiveGot == false && capMails == 2)
+        // a boss's first win at ★4 (은색병뚜껑) and ★5 (금색병뚜껑) (the user, 10-14): once a boss and tier (the hundred above: one ★5 mail), stone
+        // or not; ★1–★3 nothing; the lobby's firstGot
+        #expect(titles.filter { $0 == "메가리자몽X ★5 첫 승리!" }.count == 1 && !titles.contains { $0.contains("★4 첫 승리") })
+        for t in [3, 4, 4, 5, 5] { try await db.megaFirstWin("앨리스", stone: week[1].stone, tier: t, now: 0) }
+        let firsts = try await lobby()
+        let silver = try await db.count("SELECT count(*) AS n FROM mail WHERE key = '앨리스' AND gifts LIKE '%은색병뚜껑%' AND body LIKE '%★4에서 처음 이겼어요%'")
+        let gold = try await db.count("SELECT count(*) AS n FROM mail WHERE key = '앨리스' AND gifts LIKE '%금색병뚜껑%' AND body LIKE '%★5에서 처음 이겼어요%'")
+        #expect(firsts.bosses[1].firstGot == [4, 5] && firsts.bosses[0].firstGot == [] && silver == 1 && gold == 2)
         // all 48 stones in the save → the 칭호 by mail, once, after any act; 47: nothing
         try await setWalk(db, "앨리스") { w in w.bag += MegaRaid.stones.sorted().dropFirst() }
         _ = try await go(.steps, steps: 10)
@@ -1083,7 +1086,8 @@ extension SaveDB {
         let titleMail = try await db.count("SELECT count(*) AS n FROM mail WHERE key = '앨리스' AND gifts LIKE '%\"메가 마스터\"%'")
         #expect(at47 == 0 && at48 == 1 && titleMail == 1)
     }
-    #expect(MegaRaid.firstFive == [.items(name: "금색병뚜껑", count: 1)] && MegaRaid.firstFiveTitle(MegaBoss(dex: 382, form: 1, stone: "쪽빛구슬")) == "원시가이오가 ★5 첫 승리!")
+    #expect(MegaRaid.firstWins == [4: "은색병뚜껑", 5: "금색병뚜껑"] && MegaRaid.firstTitle(MegaBoss(dex: 382, form: 1, stone: "쪽빛구슬"), tier: 5) == "원시가이오가 ★5 첫 승리!")
+    #expect(MegaRaid.firstBody(MegaBoss(dex: 6, form: 1, stone: "리자몽나이트X"), tier: 4) == "메가리자몽X를 ★4에서 처음 이겼어요. 보스마다 한 번 은색병뚜껑을 줘요.")
     #expect(MegaRaid.stones.count == 48 && MegaRaid.stones.contains("쪽빛구슬") && MegaRaid.stones.contains("뮤츠나이트Y"))
     #expect(MegaRaid.bossWins == 20 && MegaRaid.winsTitle("쪽빛구슬") == "20승! 쪽빛구슬을 얻었다!" && MegaRaid.winsTitle("리자몽나이트X") == "20승! 리자몽나이트X를 얻었다!")
     #expect(MegaRaid.winsBody(MegaBoss(dex: 6, form: 2, stone: "리자몽나이트Y")) == "메가리자몽Y를 20번 이겨서 스톤이 왔어요." && MegaRaid.winsBody(MegaBoss(dex: 383, form: 1, stone: "주홍구슬")) == "원시그란돈을 20번 이겨서 스톤이 왔어요.")

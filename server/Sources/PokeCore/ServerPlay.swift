@@ -28,7 +28,7 @@ struct PlayRow {
 
 func actName(_ a: Act) -> String {
     switch a {
-    case .steps: "steps"; case .radar: "radar"; case .radarPick(let b): "pick \(b)"; case .tower: "tower"; case .towerPick, .towerReset: "tower pick"
+    case .steps: "steps"; case .radar: "radar"; case .radarPick(let b): "pick \(b)"; case .tower: "tower"; case .towerPick, .towerReset: "tower pick"; case .cardTitle(let t): "card title \(t ?? "newest")"
     case .battle(let c): "battle \(c)"; case .buy(let bp, let i, let l, let s, let q): "buy \(i ?? l.map { "legend \($0)" } ?? s ?? "?") ×\(q)\(bp ? " (BP)" : "")"
     case .use(let i, _, let on): "use \(i)" + (on.map { " on \($0)" } ?? ""); case .sellAll: "sell all"; case .mon(let op): "mon \(op)"; case .course(let c): "course \(c)"; case .greet(let to): "greet \(to)"
     case .tradeOffer(let to, let g, let wnt): "trade offer → \(to) \(g)\(wnt.map { " for \($0)" } ?? "")"; case .tradeAccept(let i, let g): "trade accept #\(i)\(g.map { " with \($0)" } ?? "")"

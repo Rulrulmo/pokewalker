@@ -16,7 +16,7 @@ let raidSchema = """
       caught INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL, ended_at INTEGER, kind TEXT);
     CREATE INDEX IF NOT EXISTS raid_runs_key ON raid_runs (key, week);
     CREATE TABLE IF NOT EXISTS mega_wins (key TEXT NOT NULL, stone TEXT NOT NULL, wins INTEGER NOT NULL, PRIMARY KEY (key, stone));
-    CREATE TABLE IF NOT EXISTS mega_firsts (key TEXT NOT NULL, stone TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (key, stone));
+    CREATE TABLE IF NOT EXISTS mega_clears (key TEXT NOT NULL, stone TEXT NOT NULL, tier INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (key, stone, tier));
     CREATE TABLE IF NOT EXISTS settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
     """
 let raidRotation = [249, 382, 383, 384, 483, 484, 487]                    // 루기아 가이오가 그란돈 레쿠쟈 디아루가 펄기아 기라티나 (ISO week % 7)
@@ -206,7 +206,7 @@ extension SaveDB {
         if mega, won, let tier = run.int("tier"), let stone = run.text("boss").flatMap({ try? JSONDecoder().decode(Mon.self, from: Data($0.utf8)) })?.item {
             var g = SystemRandomNumberGenerator()                                                 // 5.0: the stone (the dice, or its 20th win), or BP for one had
             try megaWon(key, stone: stone, tier: tier, drop: Int.random(in: 0..<100, using: &g) < MegaRaid.stoneOdds[max(0, min(4, tier - 1))], walk: w, now: now)
-            if tier == RaidRules.tiers.count { try megaFirstFive(key, stone: stone, now: now) }
+            try megaFirstWin(key, stone: stone, tier: tier, now: now)
         }
         try db.rows("UPDATE raid_runs SET ended_at = :now WHERE key = :k AND ended_at IS NULL", ["now": .int(now), "k": .text(key)])   // (none should be)
         guard won else { return }
@@ -359,15 +359,16 @@ extension SaveDB {
         try db.rows("INSERT INTO mega_wins (key, stone, wins) VALUES (:k, :s, :n) ON CONFLICT (key, stone) DO UPDATE SET wins = :n",
                     ["k": .text(key), "s": .text(stone), "n": .int(drop || full ? 0 : n)])
     }
-    /// The bosses (by stone) whose first ★5 win has been paid.
-    func megaFirsts(_ key: String) throws -> Set<String> {
-        Set(try db.rows("SELECT stone FROM mega_firsts WHERE key = :k", ["k": .text(key)]).compactMap { $0.text("stone") })
+    /// The tiers (★4 · ★5) whose first win's cap has been paid, by boss (its stone).
+    func megaFirsts(_ key: String) throws -> [String: [Int]] {
+        Dictionary(grouping: try db.rows("SELECT stone, tier FROM mega_clears WHERE key = :k ORDER BY tier", ["k": .text(key)]).compactMap { r in r.text("stone").map { ($0, r.int("tier") ?? 0) } }) { $0.0 }
+            .mapValues { $0.map(\.1) }
     }
-    /// A ★5 win on the boss holding `stone`: the first one pays MegaRaid.firstFive by mail (once a boss, stone had or not).
-    func megaFirstFive(_ key: String, stone: String, now: Int) throws {
-        guard let b = MegaRaid.bosses.first(where: { $0.stone == stone }), !(try megaFirsts(key)).contains(stone) else { return }
-        try db.rows("INSERT INTO mega_firsts (key, stone, at) VALUES (:k, :s, :now)", ["k": .text(key), "s": .text(stone), "now": .int(now)])
-        try sendMail(key, kind: "raid", from: "메가 레이드", title: MegaRaid.firstFiveTitle(b), body: MegaRaid.firstFiveBody(b), gifts: MegaRaid.firstFive, now: now)
+    /// A win at ★4 · ★5 on the boss holding `stone`: the first at that tier pays its cap by mail (MegaRaid.firstWins; once a boss and tier, stone had or not).
+    func megaFirstWin(_ key: String, stone: String, tier: Int, now: Int) throws {
+        guard let cap = MegaRaid.firstWins[tier], let b = MegaRaid.bosses.first(where: { $0.stone == stone }), !(try megaFirsts(key)[stone] ?? []).contains(tier) else { return }
+        try db.rows("INSERT INTO mega_clears (key, stone, tier, at) VALUES (:k, :s, :t, :now)", ["k": .text(key), "s": .text(stone), "t": .int(tier), "now": .int(now)])
+        try sendMail(key, kind: "raid", from: "메가 레이드", title: MegaRaid.firstTitle(b, tier: tier), body: MegaRaid.firstBody(b, tier: tier), gifts: [.items(name: cap, count: 1)], now: now)
     }
     /// After every act (content5): all 48 stones in the save → the 칭호 by mail, once (not had, not already in the mail).
     func megaMaster(_ key: String, walk w: Walk, now: Int) throws {
@@ -391,7 +392,7 @@ extension SaveDB {
                 return RaidRunRow(dex: b.dex, tier: x.int("tier") ?? 0, shiny: false, bars: x.int("bars") ?? 0, won: x.int("won") == 1, caught: false, at: x.int("at") ?? 0)
             }
             let mine = RaidWeek(runs: runs.count, wins: runs.filter(\.won).count, best: runs.filter(\.won).map(\.tier).max())
-            func mark(_ bs: [MegaBoss]) -> [MegaBoss] { bs.map { var b = $0; b.had = had.contains(b.stone); b.wins = wins[b.stone] ?? 0; b.fiveGot = firsts.contains(b.stone); return b } }
+            func mark(_ bs: [MegaBoss]) -> [MegaBoss] { bs.map { var b = $0; b.had = had.contains(b.stone); b.wins = wins[b.stone] ?? 0; b.firstGot = firsts[b.stone] ?? []; return b } }
             let these = mark(megaWeek(now))
             let lobby = MegaRaidLobby(week: week, bosses: these, next: mark(megaWeek(now.addingTimeInterval(7 * 86400))), ends: ends,
                                       today: RaidToday(used: try raidRunsToday(key, now: now), max: RaidRules.perDay), resetAt: reset, mine: mine, runs: runs,
