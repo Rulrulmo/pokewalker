@@ -217,7 +217,7 @@ struct DuelModel: Equatable { var title, line, note: String; var buttons: [Strin
 /// (친구 이번 주: rank, companion, name, the week; 내 판: the boss, tier and bars, when, 잡음 / 놓침), the button (도전, or back to a ball stage;
 /// nil: not now — hint says why).
 struct RaidModel: Equatable {
-    struct Row: Equatable { var rank: Int?; var dex: Int; var shiny: Bool; var name, value: String; var pill: String?; var me: Bool }
+    struct Row: Equatable { var rank: Int?; var dex: Int; var shiny: Bool; var name, value: String; var pill: String?; var me: Bool; var art: Int? = nil }   // art (5.0): a Mega boss's icon
     var boss: String; var left: String
     var todayUsed, todayMax: Int; var todayText: String
     var power: Int; var powerText: String

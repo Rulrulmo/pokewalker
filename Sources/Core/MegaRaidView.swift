@@ -28,7 +28,7 @@ extension Walker {
         }
         let rows = r.runs.filter { $0.dex == b.dex }.prefix(5).map { run in
             RaidModel.Row(rank: nil, dex: run.dex, shiny: false, name: (r.tiers.first { $0.tier == run.tier }.map { "Lv.\($0.level) · " } ?? "") + "\(run.bars)/\(RaidRules.bars)줄",
-                          value: ago(max(60, Int(now.timeIntervalSince1970) - run.at)), pill: run.won ? "승" : "패", me: false)
+                          value: ago(max(60, Int(now.timeIntervalSince1970) - run.at)), pill: run.won ? "승" : "패", me: false, art: artIndex(b.dex, b.form))
         }
         let left = max(0, r.today.max - r.today.used), picks = megaPicks(r)
         var go: String? = nil, hint = ""

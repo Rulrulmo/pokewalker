@@ -1193,7 +1193,7 @@ extension Page {
             let rc = r(X0, 319 + CGFloat(i) * 21, X1 - X0, 19); tile(rc, 7, on: false, row.me ? Ink.tint(Ink.blue, 0.10) : nil)
             var xl = rc.minX + x(8)
             if m.tab == 0, m.ranks { c.say(row.rank.map { "\($0)" } ?? "-", xl + x(5), rc.midY, font(9.5, .bold), (row.rank ?? 9) <= 3 ? Ink.red : Ink.sub, 0.5); xl += x(16) }
-            monIcon(row.dex, shiny: row.shiny, CGRect(x: xl - x(4), y: rc.midY - x(11), width: x(22), height: x(22)), side: 22 * K); xl += x(21)
+            monIcon(row.art ?? row.dex, shiny: row.shiny, CGRect(x: xl - x(4), y: rc.midY - x(11), width: x(22), height: x(22)), side: 22 * K); xl += x(21)
             var xr = rc.maxX - x(8)
             if let p = row.pill { let good = p == "잡음" || p == "승"; xr = pillAt(p, xr, rc.midY, good ? Ink.tint(Ink.green, 0.18) : Ink.board, good ? Ink.green : Ink.sub) }
             xr -= c.say(row.value, xr, rc.midY, font(8.5, .semibold), m.tab == 0 && m.ranks ? Ink.ink : Ink.sub, 1) + x(6)

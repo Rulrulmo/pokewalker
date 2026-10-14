@@ -555,7 +555,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     // 4.0 (docs/plans/16): raid runs, as the server's ServerRaid.swift — this week's species; each trainer's runs (open: its fight on; a ball stage:
     // ended, balls left, not caught); shinies / odds = the next runs' shine and the next throws' results (empty: the server's dice); opens = not yet
     struct RaidRun { var tier: Int; var boss: Mon; var day: String; var at: Int; var bars = 0, balls = 0; var won = false, caught = false, ended = false; var mega = false }   // mega: a Mega raid's (5.0: no balls, its stone)
-    var megaPicks: [String: Int] = [:], megaOdds: [Bool] = [], megaWeekNo = 42           // 5.0 (docs/plans/18 §6.4, ServerRaid.swift): stones picked; the next wins' stone (empty: dice); the ISO week
+    var megaPicks: [String: Int] = [:], megaOdds: [Bool] = [], megaWeekNo = 42           // 5.0 (docs/plans/18 §6.4, ServerRaid.swift): stones picked; the next wins' stone (empty: dice); the rotation's week (MegaRaid.round)
     var raidDex = 249, raidRuns: [String: [RaidRun]] = [:], raidShinies: [Bool] = [], raidOdds: [Bool] = [], raidOpens: Int? = nil
     var offers: [(o: TradeOffer, from: String, to: String)] = [], nextOffer = 1, mail: [String: [News]] = [:], stale: Set<String> = []   // 12 §3 (M2): offers (keys), 3.3's news, saves another's trade changed
     func release() { let h = held; held = []; h.forEach { $0() } }

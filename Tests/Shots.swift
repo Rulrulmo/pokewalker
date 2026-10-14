@@ -95,12 +95,12 @@ import AppKit
         let msrv = FakeCloud(); msrv.megaWeekNo = 0
         var mew = Mon.wild(150, level: 100, &fr); mew.known = [94, 105, 58, 247]
         let mrw = online({ var s = base(); s.companion = mew; s.raidPower = 25_000; return s }(), server: msrv), mkey = server(mrw).1
-        msrv.raidRuns[mkey] = (0..<4).map { k in FakeCloud.RaidRun(tier: k % 3 + 1, boss: Mon(dex: 3, level: 20, female: false), day: "2026-10-1\(k)", at: msrv.clockNow - 3600 * (k + 1), bars: k == 2 ? 6 : 10, won: k != 2, ended: true, mega: true) }
+        msrv.raidRuns[mkey] = (0..<4).map { k in FakeCloud.RaidRun(tier: k % 3 + 1, boss: Mon(dex: MegaRaid.week(0)[0].dex, level: 20, female: false), day: "2026-10-1\(k)", at: msrv.clockNow - 3600 * (k + 1), bars: k == 2 ? 6 : 10, won: k != 2, ended: true, mega: true) }
         mrw.openFeature("메가 레이드"); drain(mrw); drain(mrw)
         take("mega_raid_lobby", mrw) { v in v.screen = .raid(.lobby(tab: 0)) }
         take("mega_raid_lobby_lcd", mrw) { v in v.sideOn = false; v.screen = .raid(.lobby(tab: 1)) }
         take("mega_raid_tier", mrw) { v in v.raidMegaBoss = 0; v.screen = .raid(.tier(sel: 2)) }
-        msrv.raidRuns[mkey]! += (0..<27).map { _ in FakeCloud.RaidRun(tier: 1, boss: Mon(dex: 6, level: 20, female: false), day: "2026-10-01", at: 0, won: true, ended: true, mega: true) }
+        msrv.raidRuns[mkey]! += (0..<27).map { _ in FakeCloud.RaidRun(tier: 1, boss: Mon(dex: MegaRaid.week(0)[1].dex, level: 20, female: false), day: "2026-10-01", at: 0, won: true, ended: true, mega: true) }
         mrw.cloud!.megaRaidDue = true; drain(mrw); drain(mrw)
         take("mega_raid_ready", mrw) { v in v.screen = .raid(.lobby(tab: 0)) }
         take("mega_raid_pick", mrw) { v in v.screen = .raid(.pick(sel: 1)) }
