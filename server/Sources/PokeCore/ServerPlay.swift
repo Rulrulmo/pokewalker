@@ -32,7 +32,7 @@ func actName(_ a: Act) -> String {
     case .battle(let c): "battle \(c)"; case .buy(let bp, let i, let l, let s, let q): "buy \(i ?? l.map { "legend \($0)" } ?? s ?? "?") ×\(q)\(bp ? " (BP)" : "")"
     case .use(let i, _, let on): "use \(i)" + (on.map { " on \($0)" } ?? ""); case .sellAll: "sell all"; case .mon(let op): "mon \(op)"; case .course(let c): "course \(c)"; case .greet(let to): "greet \(to)"
     case .tradeOffer(let to, let g, let wnt): "trade offer → \(to) \(g)\(wnt.map { " for \($0)" } ?? "")"; case .tradeAccept(let i, let g): "trade accept #\(i)\(g.map { " with \($0)" } ?? "")"
-    case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"; case .raid(let p, let tier): "raid" + (tier.map { " ★\($0)" } ?? "") + (p.map { " with \($0)" } ?? ""); case .raidBall: "raid ball"; case .raidQuit: "raid quit"; case .megaRaid(let p, let tier, let boss): "mega raid #\(boss) ★\(tier)" + (p.map { " with \($0)" } ?? ""); case .megaPick(let s): "mega pick \(s)"
+    case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"; case .raid(let p, let tier): "raid" + (tier.map { " ★\($0)" } ?? "") + (p.map { " with \($0)" } ?? ""); case .raidBall: "raid ball"; case .raidQuit: "raid quit"; case .megaRaid(let p, let tier, let boss): "mega raid #\(boss) ★\(tier)" + (p.map { " with \($0)" } ?? "")
     case .friendRequest(let to): "friend request → \(to)"; case .friendAccept(let f): "friend accept \(f)"; case .friendDecline(let f): "friend decline \(f)"
     case .friendRemove(let n): "friend remove \(n)"; case .marketList(let g, let w, _): "market list \(g) wish \(w)"; case .marketUnlist(let i): "market unlist #\(i)"
     case .marketBid(let l, let g): "market bid #\(l) with \(g)"; case .marketWithdraw(let b): "market withdraw bid #\(b)"; case .marketAccept(let b): "market accept bid #\(b)"
@@ -152,8 +152,6 @@ extension SaveDB {
                         if let why { out.cannot = why; w = was } else if w != was { out.changed = true }
                     case .raidQuit:                                                                     // 16 §4.2: the ball stage given up
                         try raidRunQuit(id.key, now: now)
-                    case .megaPick:                                                                     // (10-13's pick: since 10-14 a boss's 20th win mails its stone)
-                        out.cannot = "스톤은 그 보스를 \(MegaRaid.bossWins)번\n이기면 우편으로 와요"
                     default: break
                     }
                 }

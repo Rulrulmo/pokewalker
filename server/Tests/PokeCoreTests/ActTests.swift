@@ -1025,7 +1025,7 @@ extension SaveDB {
         }
         try await db.setRaidRunsFrom(0)
         let l = try await lobby(), week = await db.megaWeek(base.addingTimeInterval(t))
-        #expect(l.bosses.map(\.stone) == week.map(\.stone) && l.bosses.allSatisfy { $0.had == false && $0.wins == 0 } && l.bosses.count == 2 && l.pity == 0 && l.pityNeed == 20 && l.odds == [3, 5, 8, 10, 20] && l.today.max == 3)
+        #expect(l.bosses.map(\.stone) == week.map(\.stone) && l.bosses.allSatisfy { $0.had == false && $0.wins == 0 } && l.bosses.count == 2 && l.pityNeed == 20 && l.odds == [3, 5, 8, 10, 20] && l.today.max == 3)
         #expect(MegaRaid.bosses.count == 48 && !MegaRaid.bosses.contains { $0.dex == 384 || $0.dex == 719 })
         #expect(try await go(.megaRaid(tier: 1, boss: 0), app: "4.1").out.cannot == "메가 레이드는\n아직 열리지 않았어요")
         // a ★1 run: the boss Mega from the start, 10 bars, no balls
@@ -1039,7 +1039,7 @@ extension SaveDB {
         #expect(try await db.count("SELECT count(*) AS n FROM raid_runs WHERE kind = 'mega' AND won = 1 AND balls = 0") == 1)
         let after = try await lobby(), first = after.bosses[0]                                         // (its ★1 3 %: then its stone came, the count 0)
         #expect(after.mine.wins == 1 && after.today.used == 1 && after.runs.count == 1 && after.bosses[1].wins == 0
-                && (first.had == false ? first.wins == 1 && after.pity == 1 : first.wins == 0 && after.pity == 0))
+                && (first.had == false ? first.wins == 1 : first.wins == 0))
         #expect(try await go(.raidBall).out.cannot == "던질 볼이 없어요")                                       // no ball stage
         // a boss's 20 wins (the user, 10-14: "보스별로 20번"): its stone by mail, said, the count back to 0; the other's apart; no pick
         let st = week[1].stone
@@ -1055,7 +1055,6 @@ extension SaveDB {
         try await db.megaWon("앨리스", stone: st, tier: 3, drop: true, walk: Walk(), now: 0)                 // had: no count, the dice's BP
         let bpTitle = try await db.mailTitles("앨리스").last, st0 = try await db.megaWins("앨리스")[st]
         #expect(bpTitle == "\(st) 대신 BP" && st0 == 0)
-        #expect(try await go(.megaPick(stone: week[0].stone)).out.cannot == "스톤은 그 보스를 20번\n이기면 우편으로 와요")
         // the dice: the stone at once (the count 0); one in the bag counts nothing
         try await db.megaWon("앨리스", stone: "리자몽나이트Y", tier: 4, drop: true, walk: Walk(), now: 0)
         var had = Walk(); had.box = [{ var m = Mon(dex: 130, level: 50, female: false); m.item = "갸라도스나이트"; return m }()]

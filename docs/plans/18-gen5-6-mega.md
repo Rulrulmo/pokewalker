@@ -1165,11 +1165,10 @@ N을 올리면 생기는 gen.py 필터 버그 3개도 같이 고친다:
   - 보스는 처음부터 메가(`RaidBoss.mega`)이고, 10줄이다. 볼은 없다.
   - 이기면 그 단계 확률(★1 3 · ★2 5 · ★3 8 · ★4 10 · ★5 20 %)로 그 보스의 스톤이 우편으로 온다. 이미 가진 스톤이면 ★×5 BP가 온다.
   - 천장(10-14에 바꿈): 보스별 20승. 그 스톤이 없을 때 그 보스를 이기면 +1, 20번째에 서버가 스톤을 우편으로 보낸다(`SaveDB.megaWon`, 제목 `MegaRaid.winsTitle`, 본문 `MegaRaid.winsBody`). 확률로 받아도 수는 0으로 돌아간다. 가진 것(우편함에 안 받은 것 포함, `megaHad`)은 세지 않는다.
-    - 10-13 ~ 10-14의 공통 천장(30승마다 `Act.megaPick(stone:)`로 고르기)은 뺐다. `Act.megaPick`은 앱이 고르기 화면을 뺄 때까지만 남기고, 서버는 "스톤은 그 보스를 20번 / 이기면 우편으로 와요"로 거절한다.
+    - 10-13 ~ 10-14의 공통 천장(30승마다 `Act.megaPick(stone:)`로 고르기)은 뺐다. 앱이 고르기 화면을 뺀 뒤(mac 3a9c16b) `Act.megaPick` · `MegaRaidLobby.pity` · `MegaRaid.pity`(30)도 지웠다.
   - 로비: POST /v2/raid에 `kind: "mega"`(그리고 `app` 5.0)를 실으면 `MegaRaidLobby`가 온다.
     - `bosses` · `next`(`MegaBoss`: dex, form, stone, had, wins), `ends`, `today`(두 레이드 합산), `resetAt`
     - `mine` · `runs`(그 주 메가 레이드만), `pityNeed`(20), `odds`, `tiers`. 보스마다 "스톤까지 `wins`/`pityNeed`"다.
-    - `pity`는 앱이 고르기 화면을 뺄 때까지만 남긴다(그 주 두 보스 중 없는 쪽의 큰 수). `MegaRaid.pity`(30)도 앱의 FakeCloud가 옮길 때까지만 있다.
   - 서버: `raid_runs.kind`(NULL = 지금 레이드, 'mega')와 `mega_wins` 표(key, stone, wins)를 만든다(10-14 전에는 `mega_picks`). 서버를 새로 설치해 시작할 때 붙는다(라이브 DB 변경이라 사용자 OK 뒤다).
 - **가방(mac 요청):** `ItemKind.key`(로토무카탈로그 · 유전자쐐기 · 비추는거울 · 그라시데아꽃 · 굴레의항아리)는 팔지 않고 "기타" 탭이다. content5면 "메가스톤" 탭이 생긴다(9탭). Core/Compose.swift의 도구 switch에 `.key`를 더했다.
 - **테스트:** 서버 115개. 메가 레이드는 서버를 거치는 테스트(로비, ★1 한 판, 볼 없음, 스톤 · BP 우편)가 있다. 10-14에 천장 고르기 대신 보스별 20승(19승 · 20승 우편 · 받은 뒤 BP · 다른 보스와 따로 · 가진 스톤은 안 셈)으로 바꿨다. 앱 SelfTest(리눅스)는 실패 이름이 HEAD와 같다(4개, 리눅스 전용).

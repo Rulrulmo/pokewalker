@@ -84,7 +84,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .raidQuit, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
              .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept,
              .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove, .claim, .visitSend, .visitEnd, .duelQueue, .duelQueueCancel, .duelPick,
-             .mailClaim, .mailClaimAll, .megaPick:
+             .mailClaim, .mailClaimAll:
             return nil                                                                              // the server's: other trainers' saves, the inbox, the raid, friends, the board, live battles
         case .duelParty(let uids): return duelParty(uids)
         case .raid(let party, _): return raid(party)                                               // (the tier: the server's boss, p.raidBoss)

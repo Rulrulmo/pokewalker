@@ -1170,7 +1170,6 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     func raided(_ a: Act, _ key: String, _ w: inout Walk, _ o: inout Outcome) {
         guard o.cannot == nil else { return }
         switch a {
-        case .megaPick: o.cannot = "스톤은 같은 보스\n\(MegaRaid.bossWins)승이면 와요"                         // (10-13's pick: refused, as the server's)
         case .raidQuit: raidCut(key); if let i = raidPending(key) { raidRuns[key]![i].balls = 0 }
         case .raidBall:
             raidCut(key)
@@ -1200,7 +1199,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             let lobby = MegaRaidLobby(week: "2026-W42", bosses: these, next: mark(MegaRaid.week(megaWeekNo + 1)), ends: Int(at.timeIntervalSince1970) + 3 * 86400 + 5 * 3600,
                                       today: RaidToday(used: (raidRuns[k] ?? []).filter { $0.day == today }.count, max: RaidRules.perDay), resetAt: Int(at.timeIntervalSince1970) + 8 * 3600,
                                       mine: RaidWeek(runs: runs.count, wins: runs.filter(\.won).count, best: runs.filter(\.won).map(\.tier).max()), runs: Array(runs),
-                                      pity: these.filter { $0.had != true }.compactMap(\.wins).max() ?? 0, pityNeed: MegaRaid.bossWins, odds: MegaRaid.stoneOdds, tiers: RaidRules.tiers)
+                                      pityNeed: MegaRaid.bossWins, odds: MegaRaid.stoneOdds, tiers: RaidRules.tiers)
             return (200, (try? JSONEncoder().encode(lobby)) ?? Data())
         }
         let friends = ([k] + rows.keys.filter { isFriend(k, $0) }.sorted()).compactMap { f -> RaidFriend? in

@@ -125,7 +125,6 @@ enum MegaRaid {
     }
     static let stoneOdds = [3, 5, 8, 10, 20]                    // % a win, ★1–★5 (the user, 10-13)
     static let bossWins = 20                                    // wins on one boss (its stone missing) for that stone, by mail
-    static let pity = 30                                        // (10-13's shared count: only the app's FakeCloud · pick screen still read it, till the Mac's change)
     static func duplicateBP(_ tier: Int) -> Int { 5 * tier }
     /// A win's stone mail title (one had: its BP instead). 쪽빛구슬 · 주홍구슬 take 을.
     static func mailTitle(_ stone: String, had: Bool) -> String { had ? "\(stone) 대신 BP" : josa(stone, "을", "를") + " 얻었다!" }
@@ -149,11 +148,10 @@ enum MegaRaid {
 }
 struct MegaBoss: Codable, Equatable { var dex, form: Int; var stone: String; var had: Bool? = nil; var wins: Int? = nil }   // (the lobby's: had, its count of bossWins)
 /// POST /v2/raid with kind "mega" (5.0): the week's two (had: that stone already), next week's, the day's runs (both raids'), the week's Mega
-/// runs, each boss's count (MegaBoss.wins of pityNeed: bossWins), the odds by tier. (pity: the larger of the week's two counts, for the app's
-/// pick screen till the Mac's change.)
+/// runs, each boss's count (MegaBoss.wins of pityNeed: bossWins), the odds by tier.
 struct MegaRaidLobby: Codable, Equatable {
     var week: String; var bosses: [MegaBoss]; var next: [MegaBoss]; var ends: Int
     var today: RaidToday; var resetAt: Int
     var mine: RaidWeek; var runs: [RaidRunRow]
-    var pity: Int; var pityNeed: Int; var odds: [Int]; var tiers: [RaidTier]
+    var pityNeed: Int; var odds: [Int]; var tiers: [RaidTier]
 }

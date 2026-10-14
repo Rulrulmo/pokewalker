@@ -377,7 +377,7 @@ extension SaveDB {
             let these = mark(megaWeek(now))
             let lobby = MegaRaidLobby(week: week, bosses: these, next: mark(megaWeek(now.addingTimeInterval(7 * 86400))), ends: ends,
                                       today: RaidToday(used: try raidRunsToday(key, now: now), max: RaidRules.perDay), resetAt: reset, mine: mine, runs: runs,
-                                      pity: these.filter { $0.had != true }.compactMap(\.wins).max() ?? 0, pityNeed: MegaRaid.bossWins, odds: MegaRaid.stoneOdds, tiers: RaidRules.tiers)
+                                      pityNeed: MegaRaid.bossWins, odds: MegaRaid.stoneOdds, tiers: RaidRules.tiers)
             let e = JSONEncoder(); e.outputFormatting = .sortedKeys
             return try e.encode(lobby)
         }
