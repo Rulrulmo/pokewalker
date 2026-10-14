@@ -80,7 +80,7 @@ struct Pic {
 }
 /// Where a picture goes: centred on (x, y) in half-dots (the LCD is 192 x 128 of them), scaled and turned (degrees, clockwise) about its centre;
 /// behind = under the sprites (a backdrop), else over them (a ball, a move's effect).
-struct PicRun: Equatable { var key: String; var x, y: Int; var scale = 1.0, alpha = 1.0, angle = 0.0; var behind = false; var inverted = false; var clip: [Int] = [] }   // clip: x, y, w, h in half-dots
+struct PicRun: Equatable { var key: String; var x, y: Int; var scale = 1.0, alpha = 1.0, angle = 0.0; var behind = false; var inverted = false; var clip: [Int] = []; var under = false }   // clip: x, y, w, h in half-dots; under (5.0): below the dots too (a page's backdrop, LCDDeco.swift)
 /// Every picture drawn so far, by key. Keys must come from a finite set (animate with position / scale / alpha / angle or a bounded frame number):
 /// the store is never emptied, so a frame's FB can be redrawn any time.
 @MainActor var picStore: [String: Pic] = [:]
@@ -222,9 +222,9 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
         sprites.append(SpriteRun(art: m.art, shiny: m.shiny == true, back: back, x: x, y: y, bob: f == nil ? bob : 0, tint: t?.1, tintShade: t?.0 ?? 0, floor: floor, frame: f))
     }
     /// A picture at sprite resolution centred on (x, y) in half-dots; `make` draws it the first time its key is seen (keys: a finite set).
-    mutating func pic(_ key: String, _ x: Int, _ y: Int, scale: Double = 1, alpha: Double = 1, angle: Double = 0, behind: Bool = false, clip: [Int] = [], _ make: () -> Pic) {
+    mutating func pic(_ key: String, _ x: Int, _ y: Int, scale: Double = 1, alpha: Double = 1, angle: Double = 0, behind: Bool = false, under: Bool = false, clip: [Int] = [], _ make: () -> Pic) {
         if picStore[key] == nil { picStore[key] = make() }
-        pics.append(PicRun(key: key, x: x, y: y, scale: scale, alpha: alpha, angle: angle, behind: behind, clip: clip))
+        pics.append(PicRun(key: key, x: x, y: y, scale: scale, alpha: alpha, angle: angle, behind: behind || under, clip: clip, under: under))
     }
     /// Too wide for the screen => the small font, one row lower so baselines match.
     @discardableResult mutating func text(_ s: String, _ x: Int, _ y: Int, _ shade: UInt8 = 3, center: Bool = false, right: Bool = false, small: Bool = false) -> Int {

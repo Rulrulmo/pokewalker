@@ -262,6 +262,7 @@ extension Walker {
         if let w = waiting, now.timeIntervalSince(w.since) > 0.3 {                                  // an act's answer on the way (docs/plans/11 §5): dots in the corner, one more each third of a second
             for k in 0...(Int(now.timeIntervalSince(w.since) * 3) % 3) { fb.fill(85 + 4 * k, 1, 2, 2, 3) }
         }
+        decorate(&fb, now)                                                                           // 5.0: a page dressed under its dots (LCDDeco.swift)
         return fb
     }
     func evoText(_ e: Evo) -> String {

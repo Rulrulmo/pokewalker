@@ -6,6 +6,8 @@ import AppKit
 @MainActor func shots(_ dir: String) -> Int {
     try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
     var n = 0
+    if let d = ProcessInfo.processInfo.environment["LCD_DECO"].flatMap(Int.init) { decoStyle = d }   // 5.0: the LCD's dressed pages in a look (LCDDeco.swift)
+    if let l = ProcessInfo.processInfo.environment["LCD_SCREEN"].flatMap(Int.init) { lcdStyle = min(max(l, 0), lcds.count - 1) }   // ... on another screen (1 원작, 2 백라이트)
     func base() -> Walk { var s = Walk(), r = Seeded(s: 3); s.companion = Mon.wild(25, level: 30, &r); s.caught = [Mon.wild(16, level: 8, &r)]; s.watts = 1234; s.bp = 40; return s }
     func take(_ name: String, _ v: Walker, _ set: (Walker) -> Void) {
         let view = WalkerView(walker: v); set(v)
@@ -51,6 +53,7 @@ import AppKit
         take("dex_kalos_entry", d5) { v in v.dexRegion = 6; v.screen = .dex(650, filter: 0, detail: true) }
         take("dex_regions_kalos", d5) { v in v.dexRegion = 6; v.screen = .dex(650, filter: 0, detail: false) }
         take("menu_battle5", d5) { v in v.dexRegion = 0; v.screen = menuFor("대전") }                     // 4 with 메가 레이드
+        take("shop_w5_key", d5) { v in v.state.watts = 5000; v.screen = .shop(bp: false, sel: v.wares(false).firstIndex { $0.kind == .item("로토무카탈로그") } ?? 0, qty: nil) }   // 9 tabs: 기타's 로토무카탈로그
         take("dex_form_rotom", d5) { v in v.dexRegion = 0; v.dexForm = (479, 1); v.screen = .dex(479, filter: 0, detail: true) }
         take("dex_form_mega", d5) { v in v.dexForm = (6, 2); v.screen = .dex(6, filter: 0, detail: true) }
         take("dex_form_vivillon", d5) { v in v.dexForm = (666, 4); v.screen = .dex(666, filter: 0, detail: true) }

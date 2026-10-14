@@ -780,7 +780,7 @@ import Foundation
 
     // 상점: 로토무카탈로그; then the catalog on the box's 로토무 → 히트로토무 (its move 오버히트)
     if let k = w.wares(false).firstIndex(where: { $0.kind == .item("로토무카탈로그") }) {
-        w.screen = .shop(bp: false, sel: k, qty: 1); w.press(1); settle()
+        w.screen = .shopConfirm(bp: false, sel: k, yes: true); w.press(1); settle()                     // (a key item: once, 정말 살까?)
         check(w.state.count("로토무카탈로그") == 1, "live 5.0 shop: 로토무카탈로그 bought (\(w.wares(false)[k].price) W)")
     } else { check(false, "live 5.0 shop: no 로토무카탈로그 among \(w.wares(false).count) wares") }
     if let r = w.state.box.firstIndex(where: { $0.dex == 479 }), let u = w.state.box[r].uid {

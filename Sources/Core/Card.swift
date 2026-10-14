@@ -66,10 +66,9 @@ extension Walker {
             for (k, path) in layer { c.fill(path, k < 4 ? l.shades[Int(k)] : Color(red: CGFloat(k >> 16 & 255) / 255, green: CGFloat(k >> 8 & 255) / 255, blue: CGFloat(k & 255) / 255, alpha: 1)) }
             c.antialias(true)
         }
-        dots(paths[0])
         let s = K, snap = { (v: CGFloat) in (v * scale).rounded() / scale }                            // 1 pt per sprite pixel at 보통, on whole device pixels
-        func pictures(behind: Bool) {                                                                  // pictures at sprite resolution: a backdrop under the sprites, a ball or an effect over them
-            for r in fb.pics where r.behind == behind {
+        func pictures(behind: Bool, under: Bool = false) {                                             // pictures at sprite resolution: a page's backdrop (under the dots), a backdrop under the sprites, a ball or an effect over them
+            for r in fb.pics where r.behind == behind && r.under == under {
                 guard let img = picImage(r, l) else { continue }
                 c.save()
                 if r.clip.count == 4 { c.clip(.rect(CGRect(x: lcdRect.minX + CGFloat(r.clip[0]) * s, y: lcdRect.minY + CGFloat(r.clip[1]) * s, width: CGFloat(r.clip[2]) * s, height: CGFloat(r.clip[3]) * s))) }
@@ -80,6 +79,8 @@ extension Walker {
                 c.restore()
             }
         }
+        pictures(behind: true, under: true)                                                            // 5.0: a page's backdrop, its title band, a pad (LCDDeco.swift)
+        dots(paths[0])
         pictures(behind: true)
         for r in fb.sprites {                                                                         // the sprites: smooth-sized pixels, not LCD dots
             c.save()
