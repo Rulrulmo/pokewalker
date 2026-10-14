@@ -39,7 +39,7 @@ func spritePixel(_ art: Int, back: Bool, _ x: Int, _ y: Int, shiny: Bool) -> UIn
 }
 /// A sprite laid over the dots at 1 pt per pixel (x 1.5 / x 2 on the bigger sizes): its 80x80 frame (40x40 dots) stands on (x + 16, y + 32); `floor` = the dot row it sinks behind.
 /// scale (about the feet) and alpha: growing out of / shrinking into a ball; frame = one of its animation's (Anim.swift; nil = the static sprite).
-struct SpriteRun: Equatable { var art: Int; var shiny, back: Bool; var x, y, bob: Int; var tint: UInt32?, tintShade: UInt8; var floor: Int; var inverted = false; var scale = 1.0, alpha = 1.0; var frame: Int? = nil }
+struct SpriteRun: Equatable { var art: Int; var shiny, back: Bool; var x, y, bob: Int; var tint: UInt32?, tintShade: UInt8; var floor: Int; var inverted = false; var scale = 1.0, alpha = 1.0; var frame: Int? = nil; var clip: [Int] = [] }   // clip (5.0): x, y, w, h in half-dots (a dressed page's stage: LCDDeco.swift)
 @MainActor var spriteCache: [String: Bitmap] = [:]
 /// The sprite as the LCD shows it: its colours, or on a grey screen 4 shades by brightness (white = the blank screen, like the walker's own art); a tint = a silhouette.
 /// Inverted (a full-screen flash) = the grey shades flipped, on any screen, as the dots are.
@@ -201,6 +201,7 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
     var sprites: [SpriteRun] = []
     var pics: [PicRun] = []                                              // pictures at sprite resolution (see PicRun)
     var over = [Bool](repeating: false, count: 96 * 64)                  // dots set after a sprite: drawn on top of it (a HUD plate, a ball, rain)
+    var palette: [UInt32]? = nil                                         // 5.0: on a colour LCD, the inks for shades 0...3 (a dressed page's group's: LCDDeco.palette)
     mutating func set(_ x: Int, _ y: Int, _ s: UInt8, _ c: UInt32 = 0) { if (0..<96).contains(x), (0..<64).contains(y) { px[y * 96 + x] = s; col[y * 96 + x] = c; if !sprites.isEmpty { over[y * 96 + x] = true } } }
     mutating func fill(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ s: UInt8) { for yy in y..<y + h { for xx in x..<x + w { set(xx, yy, s) } } }
     /// 3.9 (15 §6 C): the trainer card's 장식 — a 1-dot frame round the LCD, 은 or 금, in a two-dot pattern (shades on a plain LCD).

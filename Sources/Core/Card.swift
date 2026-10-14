@@ -55,9 +55,10 @@ extension Walker {
         defer { c.restore() }
         c.fill(lcdRect, l.shades[0])
         let scale = c.scale, fb = shown ?? compose(Date()), gap = PX * scale >= 8 ? 1 / scale : 0   // a dot grid only once dots are big on screen
+        let pal = l.color ? fb.palette : nil                                                         // 5.0: a dressed page's inks (LCDDeco.palette)
         var paths: [[UInt32: Path]] = [[:], [:]], cover = Path()                                     // under the sprites, over them; key: colour, or 0...3 for an LCD shade
         for y in 0..<64 { for x in 0..<96 {
-            let i = y * 96 + x, key = l.color && fb.col[i] != 0 ? fb.col[i] : UInt32(fb.px[i]), o = fb.over[i] ? 1 : 0
+            let i = y * 96 + x, key = l.color && fb.col[i] != 0 ? fb.col[i] : pal != nil && fb.px[i] != 0 ? pal![Int(fb.px[i])] : UInt32(fb.px[i]), o = fb.over[i] ? 1 : 0
             if o == 1 { cover.add(CGRect(x: lcdRect.minX + CGFloat(x) * PX, y: lcdRect.minY + CGFloat(y) * PX, width: PX, height: PX)) }   // the whole cell: no sprite through the dot grid
             if key != 0 || o == 1 { paths[o][key, default: Path()].add(CGRect(x: lcdRect.minX + CGFloat(x) * PX, y: lcdRect.minY + CGFloat(y) * PX, width: PX - gap, height: PX - gap)) }
         } }
@@ -85,6 +86,7 @@ extension Walker {
         for r in fb.sprites {                                                                         // the sprites: smooth-sized pixels, not LCD dots
             c.save()
             c.clip(.rect(CGRect(x: lcdRect.minX, y: lcdRect.minY, width: lcdRect.width, height: CGFloat(min(64, r.floor)) * PX)))
+            if r.clip.count == 4 { c.clip(.rect(CGRect(x: lcdRect.minX + CGFloat(r.clip[0]) * s, y: lcdRect.minY + CGFloat(r.clip[1]) * s, width: CGFloat(r.clip[2]) * s, height: CGFloat(r.clip[3]) * s))) }   // 5.0: its stage
             let feet = CGPoint(x: lcdRect.minX + CGFloat(r.x + 16) * PX, y: lcdRect.minY + CGFloat(r.y + 32) * PX), k = s * r.scale   // its 80x80 frame (40x40 dots) stands on the run's feet (bottom-centre)
             let a = playing(r), (ox, oy, w, h) = a.map { (CGFloat($0.x), CGFloat($0.y), CGFloat($0.w), CGFloat($0.h)) } ?? (0, 0, 80, 80)   // an animation frame: its box in the 80x80 frame
             let box = r.scale == 1 ? CGRect(x: snap(feet.x + (ox - 40) * s), y: snap(feet.y + (oy - 80) * s - CGFloat(r.bob) * s), width: w * s, height: h * s)
@@ -98,7 +100,8 @@ extension Walker {
         for r in fb.runs {                                                                             // smooth text over the dots; flipped where it sits in an inverted box
             let f = lcdFont(r.small), m = fonts.metrics(f), cx = r.x + r.w / 2, cy = r.y + r.rows / 2
             let flipped = fb.flips.contains { cx >= $0[0] && cx < $0[0] + $0[2] && cy >= $0[1] && cy < $0[1] + $0[3] }
-            let shade = Int(flipped ? 3 - r.shade : r.shade), ink = l.shades[max(0, min(3, shade))]
+            let shade = max(0, min(3, Int(flipped ? 3 - r.shade : r.shade)))
+            let ink = pal.map { p in let k = p[flipped ? (r.shade >= 2 ? 3 : 2) : shade]; return Color(red: CGFloat(k >> 16 & 255) / 255, green: CGFloat(k >> 8 & 255) / 255, blue: CGFloat(k & 255) / 255, alpha: 1) } ?? l.shades[shade]   // (a picked row in its colour, light: its words stay dark)
             let box = CGRect(x: lcdRect.minX + CGFloat(r.x) * PX, y: lcdRect.minY + CGFloat(r.y) * PX, width: CGFloat(r.w) * PX, height: CGFloat(r.rows) * PX)
             let y = box.midY + m.capHeight / 2 - m.ascender                                            // caps centred on the row, one baseline for Hangul and digits
             c.text(r.s, CGPoint(x: box.minX, y: y), f, ink)

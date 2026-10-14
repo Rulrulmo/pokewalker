@@ -6,7 +6,7 @@ import AppKit
 @MainActor func shots(_ dir: String) -> Int {
     try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
     var n = 0
-    if let d = ProcessInfo.processInfo.environment["LCD_DECO"].flatMap(Int.init) { decoStyle = d }   // 5.0: the LCD's dressed pages in a look (LCDDeco.swift)
+    if let d = ProcessInfo.processInfo.environment["LCD_DECO"].flatMap(Int.init) { lcdDeco = d != 0 }   // 5.0: the LCD's pages plain (0), as before they were dressed (LCDDeco.swift)
     if let l = ProcessInfo.processInfo.environment["LCD_SCREEN"].flatMap(Int.init) { lcdStyle = min(max(l, 0), lcds.count - 1) }   // ... on another screen (1 원작, 2 백라이트)
     func base() -> Walk { var s = Walk(), r = Seeded(s: 3); s.companion = Mon.wild(25, level: 30, &r); s.caught = [Mon.wild(16, level: 8, &r)]; s.watts = 1234; s.bp = 40; return s }
     func take(_ name: String, _ v: Walker, _ set: (Walker) -> Void) {
@@ -17,6 +17,7 @@ import AppKit
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
         if let cut = cutTexts, !cut.isEmpty { print("cut \(name): " + Array(Set(cut)).sorted().joined(separator: " | ")) }   // text cut short (…) or off the LCD
+        if lcdDeco, v.pageGroup() != nil, let fb = view.shown, !lcdOverlaps(fb).isEmpty { print("overlap \(name): " + lcdOverlaps(fb).joined(separator: " | ")) }   // 5.0: a Pokémon over a word, the band or the panel
         cutTexts = nil
         if (try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))) != nil { n += 1 }
     }

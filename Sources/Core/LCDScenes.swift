@@ -1,8 +1,8 @@
 import Foundation
-// 5.0, the LCD's pages dressed — the second round (the user: "시안 2가 좋긴한데 … 아쉽네"): each group in a place of its own, drawn at the
-// sprite's resolution (192 x 128 half-dots, under the dots: LCDDeco.swift) — 포켓몬 a meadow, 도감 the lab's shelves, 친구 · 교환 the Pokémon
-// Center's link counter, 우편 an airmail letter, 상점 the Poké Mart's shelves, 타워 its hall, 레이드 the cave (its boss's weather), 카드 the
-// trainer card; the words on a light panel; the title's band with the group's mark; a message's card by what it says.
+// 5.0, the LCD's pages dressed (LCDDeco.swift): each group in a place of its own, drawn at the sprite's resolution (192 x 128 half-dots, under
+// the dots) — 포켓몬 · 코스 a meadow, 도감 the lab's shelves, 친구 · 교환 the Pokémon Center's link counter, 우편 an airmail letter, 상점 the Poké
+// Mart's shelves, 타워 its hall, 레이드 the cave (its boss's weather), 카드 the trainer card; the words' light panel; the title's band with the
+// group's mark; a message's card edged by what it says.
 
 enum LCDScenes {
     // MARK: the places
@@ -11,7 +11,7 @@ enum LCDScenes {
         func f(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ c: UInt32) { p.fill(x, y, w, h, c) }
         func h(_ x: Int, _ y: Int, _ s: Int) -> Int { hashXY(x, y, s) }
         switch g {
-        case .pokemon, .notice:                                                                  // a meadow: sky, clouds, hills, grass with flowers
+        case .pokemon, .notice, .course:                                                         // a meadow: sky, clouds, hills, grass with flowers
             for y in 0..<128 { for x in 0..<192 {
                 let hill = 60 + Int(6 * sin(Double(x) / 18) + 3 * sin(Double(x) / 7)), grass = 78 + Int(2 * sin(Double(x) / 11))
                 let c: UInt32 = y < hill ? lerpRGB(rgb(140, 200, 244), rgb(222, 240, 252), Double(y) / 64)
@@ -77,12 +77,12 @@ enum LCDScenes {
 
     // MARK: the panel the words sit on, the title's band and mark, the corners
     /// A light panel, rounded, its edge in the group's colour (w x h half-dots).
-    static func panel(_ g: PageGroup, _ w: Int, _ h: Int, strong: Bool) -> Pic {
+    static func panel(_ g: PageGroup, _ w: Int, _ h: Int) -> Pic {
         let c = tones(g).band; var p = Pic(w: w, h: h)
         for y in 0..<h { for x in 0..<w {
             let dx = min(x, w - 1 - x), dy = min(y, h - 1 - y)
             if dx < 4, dy < 4, hypot(Double(4 - dx), Double(4 - dy)) > 4.2 { continue }
-            p.px[y * w + x] = dx == 0 || dy == 0 ? lerpRGB(c, rgb(60, 60, 70), 0.2) : argb(strong ? 236 : 214, y < 3 ? rgb(255, 255, 255) : rgb(252, 251, 246))
+            p.px[y * w + x] = dx == 0 || dy == 0 ? lerpRGB(c, rgb(60, 60, 70), 0.2) : argb(236, y < 3 ? rgb(255, 255, 255) : rgb(252, 251, 246))
         } }
         return p
     }
@@ -94,7 +94,7 @@ enum LCDScenes {
         } }
         return p
     }
-    /// The group's mark, 14 x 14: a ball, a book, two heads, an envelope, a bag, the tower, a crystal, the Mega symbol, a card, an i.
+    /// The group's mark, 14 x 14: a ball, a book, two heads, an envelope, a bag, the tower, a crystal, a key stone, a card, an i, a map pin.
     static func mark(_ g: PageGroup) -> Pic {
         let o = rgb(40, 40, 52), w = rgb(255, 255, 255), c = tones(g).band, d = lerpRGB(c, rgb(0, 0, 0), 0.35)
         let rows: [String]
@@ -108,6 +108,7 @@ enum LCDScenes {
         case .raid: rows = ["......o.......", ".....oco......", ".....occo.....", "....occcco....", "....owccco....", "...occcccco...", "...owccccco...", "..occccccccо..", "..owcccccccо..", ".occccccccccо.", ".oooooooooooo.", "..............", "..............", ".............."]
         case .mega: return megaMark()
         case .card: rows = ["..............", "oooooooooooooo", "occccccccccccо", "owwwwwwwwwwwwo", "owoowwwwwwwwwo", "owoowwddddwwwo", "owwwwwwwwwwwwo", "owoowwddddddwo", "owoowwwwwwwwwo", "owwwwwwwwwwwwo", "oooooooooooooo", "..............", "..............", ".............."]
+        case .course: rows = ["....oooooo....", "...occcccco...", "..occcwwccco..", "..occwwwwcco..", "..occwwwwcco..", "..occcwwccco..", "...occcccco...", "....occcco....", ".....occo.....", "......oo......", "..............", "...dddddddd...", "..............", ".............."]
         case .notice: rows = ["....oooooo....", "..oowwwwwwoo..", ".owwwwccwwwwo.", ".owwwwccwwwwo.", "owwwwwwwwwwwwo", "owwwwwccwwwwwo", "owwwwwccwwwwwo", "owwwwwccwwwwwo", "owwwwwccwwwwwo", ".owwwwccwwwwo.", ".owwwwwwwwwwo.", "..oowwwwwwoo..", "....oooooo....", ".............."]
         }
         return Pic(rows.map { $0.replacingOccurrences(of: "о", with: "o") }, ["o": o, "w": w, "c": c, "d": d, "r": rgb(230, 70, 70)])
@@ -126,11 +127,8 @@ enum LCDScenes {
         } }
         return p
     }
-    /// A corner's bracket (12 x 12) in the group's colour: turned for each corner.
-    static func corner(_ g: PageGroup) -> Pic {
-        let c = tones(g).band, d = lerpRGB(c, rgb(30, 30, 50), 0.4)
-        return Pic(["dddddddddddd", "dccccccccccd", "dcddddddddd.", "dcd.........", "dcd.........", "dcd.........", "dcd.........", "dcd.........", "dcd.........", "dcd.........", "dcd.........", "dd.........."], ["c": c, "d": d])
-    }
+    /// A white veil over a place (a message's: its card stands out).
+    static func veil() -> Pic { var p = Pic(w: 192, h: 128); p.fill(0, 0, 192, 128, argb(120, rgb(255, 253, 246))); return p }
 
     // MARK: a message's card, by what it says
     enum Kind { case reward, warn, wait, info }
@@ -141,22 +139,15 @@ enum LCDScenes {
         if ["없어요", "못", "실패", "부족", "연결되면", "할 수 없", "안 돼", "끊겼"].contains(where: s.contains) { return .warn }
         return .info
     }
-    static func kindMark(_ k: Kind) -> Pic {
-        let o = rgb(50, 44, 40)
-        switch k {
-        case .reward: return Pic(["......o......", ".....oyo.....", ".....oyo.....", "oooooyWyooooo", ".oyyyWWWyyyo.", "..oyyWWWyyo..", "...oyyyyyo...", "..oyyoooyyo..", ".oyyo...oyyo.", ".ooo.....ooo."], ["o": o, "y": rgb(255, 214, 64), "W": rgb(255, 250, 220)])
-        case .warn: return Pic(["......o......", ".....oyo.....", ".....oyo.....", "....oyyyo....", "....oyoyo....", "...oyyoyyo...", "...oyyoyyo...", "..oyyyyyyyo..", "..oyyyoyyyo..", ".oyyyyyyyyyo.", ".ooooooooooo."], ["o": o, "y": rgb(255, 196, 64)])
-        case .wait: return Pic([".ooooooooo.", ".owwwwwwwo.", "..owwwwwo..", "...owwwo...", "....oyo....", "...oyyyo...", "..oyyyyyo..", ".oyyyyyyyo.", ".ooooooooo."], ["o": o, "w": rgb(220, 236, 255), "y": rgb(236, 196, 120)])
-        case .info: return Pic(["...ooooo...", "..owwwwwo..", ".owwwbwwwo.", ".owwwwwwwo.", ".owwwbwwwo.", ".owwwbwwwo.", ".owwwbwwwo.", "..owwwwwo..", "...ooooo..."], ["o": o, "w": rgb(255, 255, 255), "b": rgb(70, 120, 210)])
-        }
-    }
+    /// A message's card (w x h half-dots): white, rounded, a thin edge and a strip along its top in the colour of what it says (보상 gold,
+    /// 경고 orange, 기다림 blue, 안내 its grey-blue).
     static func noticeCard(_ k: Kind, _ w: Int, _ h: Int) -> Pic {
-        let c: UInt32 = switch k { case .reward: rgb(240, 190, 70); case .warn: rgb(236, 140, 70); case .wait: rgb(120, 170, 230); case .info: rgb(150, 170, 200) }
+        let c: UInt32 = switch k { case .reward: rgb(236, 184, 60); case .warn: rgb(236, 136, 72); case .wait: rgb(110, 164, 228); case .info: rgb(146, 166, 198) }
         var p = Pic(w: w, h: h)
         for y in 0..<h { for x in 0..<w {
             let dx = min(x, w - 1 - x), dy = min(y, h - 1 - y)
-            if dx < 6, dy < 6, hypot(Double(6 - dx), Double(6 - dy)) > 6.2 { continue }
-            p.px[y * w + x] = dx < 2 || dy < 2 ? c : dy < 6 && y < h / 2 ? lerpRGB(c, rgb(255, 255, 255), 0.7) : rgb(255, 253, 246)
+            if dx < 5, dy < 5, hypot(Double(5 - dx), Double(5 - dy)) > 5.2 { continue }
+            p.px[y * w + x] = dx == 0 || dy == 0 ? lerpRGB(c, rgb(60, 50, 40), 0.3) : y < 4 ? c : y == 4 ? lerpRGB(c, rgb(255, 255, 255), 0.5) : argb(246, rgb(255, 254, 250))
         } }
         return p
     }

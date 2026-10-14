@@ -80,7 +80,7 @@ extension Walker {
     }
     func megaPickLCD(_ fb: inout FB, _ sel: Int) {
         fb.text("스톤 고르기", 2, 1, 3, small: true); fb.fill(0, 10, 96, 1, 2)
-        let rows = megaPickRows(), big = decoStyle >= 4, w = big ? 60 : 96
+        let rows = megaPickRows(), big = lcdDeco, w = big ? 60 : 96
         if big, let b = rows[safe: min(sel, max(0, rows.count - 1))] {                                // 5.0's second-round looks (the user's idea: the stone big): the picked one's stone
             let type = (Forms.of(b.dex, b.form)?.types ?? monTypes[b.dex]).first ?? "normal"
             fb.pic("mega stone|\(type)", 160, 76, scale: 1.25 + 0.04 * sin(Date().timeIntervalSinceReferenceDate * 3), under: true) { lcdReady(LCDScenes.stonePic(type)) }
