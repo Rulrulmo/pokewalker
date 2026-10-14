@@ -23,8 +23,9 @@ let typeColor: [String: Color] = (["normal": (168, 167, 122), "fire": (238, 129,
 @MainActor var cutTexts: [String]? = nil
 /// … and every text drawn with its box (the panel's and the card's: words on words, words off the window — textClashes; nil: not looking).
 @MainActor var drawnTexts: [(s: String, r: CGRect)]? = nil
+@MainActor var drawnSurface = 0                                                                 // which surface the next words land on (the card 1, the page 2: own coordinates)
 /// The words drawn over other words (more than a sliver: a fifth of the smaller) or past the window's sides, as "a × b" lines.
-@MainActor func textClashes(_ ts: [(s: String, r: CGRect)], width w: CGFloat) -> [String] {
+@MainActor func textClashes(_ ts: [(s: String, r: CGRect)], width w: CGFloat) -> [String] {   // (each surface's words in its own band of y: never compared across)
     var out: [String] = []
     for (i, a) in ts.enumerated() {
         if a.r.minX < -0.5 || a.r.maxX > w + 0.5 { out.append("off: \(a.s)") }
@@ -55,7 +56,7 @@ extension Canvas {
         }
         let w = width(s, f), m = fonts.metrics(f)
         text(s, CGPoint(x: x - w * align, y: cy - m.ascender + m.capHeight / 2), f, c)
-        if drawnTexts != nil, !s.trimmingCharacters(in: .whitespaces).isEmpty { drawnTexts?.append((s, CGRect(x: x - w * align, y: cy - f.size * 0.42, width: w, height: f.size * 0.84))) }   // (the renders' look-out)
+        if drawnTexts != nil, !s.trimmingCharacters(in: .whitespaces).isEmpty { drawnTexts?.append((s, CGRect(x: x - w * align, y: cy - f.size * 0.42 + CGFloat(drawnSurface) * 100_000, width: w, height: f.size * 0.84))) }   // (the renders' look-out)
         return w
     }
     func pill(_ r: CGRect, _ c: Color) { fill(.rounded(r, min(r.height, r.width) / 2), c) }
@@ -107,7 +108,7 @@ extension Canvas {
     func x(_ v: CGFloat) -> CGFloat { v * K }
 
     func draw(on canvas: any Canvas) {
-        hits = []; drops = []; c = canvas; defer { c = nil }
+        hits = []; drops = []; c = canvas; drawnSurface = 2; defer { c = nil; drawnSurface = 0 }
         let p = content
         if let l = p.login { drawLogin(l) } else if let d = p.dex { drawDex(d) } else if let g = p.grid { drawGrid(g) } else if let m = p.mon { drawMon(m) } else if let s = p.shop { drawShop(s) }
         else if let m = p.menu { drawMenu(m) } else if let m = p.battle { drawBattle(m) } else if let i = p.items { drawItems(i) } else if let r = p.radar { drawRadar(r) }
@@ -1136,14 +1137,16 @@ extension Page {
     func drawMailPick(_ m: MailPickModel) {
         let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .semibold), Ink.sub, 1)
         c.say(m.title, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)
-        if m.cells.isEmpty {                                                                      // the held items: a row each (the 도구 주기 rows' look)
-            for (i, row) in m.rows.enumerated() {
-                let rc = r(X0, 216 + CGFloat(i) * 28, X1 - X0, 25); tile(rc, 9, on: i == m.sel)        // (seven: one page, clear of 받을까요?)
-                pixelArt(gem, gemPal, CGPoint(x: rc.minX + x(14), y: rc.midY), 2.5 * K)
+        if m.cells.isEmpty {                                                                      // the items: a row each (the 도구 주기 rows' look), a page at a time
+            let per = MailPickModel.per(m.count, legend: false), first = m.sel / per * per            // (the pick's page: it's always in view)
+            for (i, row) in m.rows.dropFirst(first).prefix(per).enumerated() {
+                let rc = r(X0, 216 + CGFloat(i) * 28, X1 - X0, 25); tile(rc, 9, on: first + i == m.sel)  // (seven, or six and the pager: clear of the button and 받을까요?)
+                itemImage(row.name, CGRect(x: rc.minX + x(4), y: rc.midY - x(10), width: x(20), height: x(20)))   // 5.0: the item's own picture
                 c.say(row.name, rc.minX + x(28), rc.midY - x(5), font(10, .bold), Ink.ink, maxW: rc.width - x(36))
                 c.say(row.note, rc.minX + x(28), rc.midY + x(6.5), font(8, .medium), Ink.sub, maxW: rc.width - x(36))
                 hits.append((rc, 8850 + i))
             }
+            if m.count > per { let pages = (m.count + per - 1) / per; pager("\(first / per + 1) / \(pages)", 386, prev: m.ask == nil, next: m.ask == nil, codes: (8880, 8881)) }
         } else {                                                                                  // the legends: the 포켓몬 menu's cells, two pages
             let board = r(X0, 218, X1 - X0, 4 * 33); c.fill(.rounded(board, 11 * K), Ink.board)
             for (k, e) in m.cells.enumerated() {

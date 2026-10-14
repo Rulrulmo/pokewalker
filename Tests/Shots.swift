@@ -346,6 +346,7 @@ import AppKit
     fsrv.giveMail(meK, "trade", from: "민수", title: "교환으로 받은 포켓몬", body: "민수와 교환했어요 · 이브이 ↔ 고우스트", [.mon(mon: Mon.wild(94, level: 31, &r38))])
     for r in Tower.rewards.prefix(3) { fsrv.giveMail(meK, "tower", from: "배틀 타워", title: "\(r.wins)연승 달성 보상", body: "배틀 타워에서 처음으로 \(r.wins)연승에 닿았어요.", r.gifts) }
     fsrv.giveMail(meK, "tower", from: "배틀 타워", title: "100연승 달성 보상", body: "배틀 타워에서 처음으로 100연승에 닿았어요.", Tower.rewards.last!.gifts)
+    fsrv.giveMail(meK, "dex", from: "도감", title: "도감 업적: 50종 · 고르기", body: "포켓몬을 50종 잡았어요.", [.pickItem(items: Walk.mints)])   // 5.0: a long pick (21 mints)
     if let i = fsrv.postBox[meK]?.indices { for k in i { fsrv.postBox[meK]![k].at = tsF - [86_400 * 3, 90_000, 4000, 400, 7200, 3600, 1800, 600][k % 8] } }
     fme.cloud!.mailDue = true; drain(fme); drain(fme)
     let mails38 = fme.mails, pick14 = mails38.first { $0.title == "14연승 달성 보상" }?.id ?? 0, pick100 = mails38.first { $0.title == "100연승 달성 보상" }?.id ?? 0
@@ -356,6 +357,8 @@ import AppKit
     take("mail_open_notice", fme) { v in v.screen = .mail(.open(id: mails38.first { $0.kind == "notice" }?.id ?? 0)) }
     take("mail_pick_item", fme) { v in v.screen = .mail(.pick(id: pick14, at: 2, ask: nil)) }
     take("mail_pick_item_ask", fme) { v in v.screen = .mail(.pick(id: pick14, at: 2, ask: true)) }
+    let mintPick = mails38.first { $0.title.hasSuffix("· 고르기") }?.id ?? 0
+    for at in [0, 8, 20] { take("mail_pick_mints_\(at)", fme) { v in v.screen = .mail(.pick(id: mintPick, at: at, ask: nil)) } }   // its pages: the pick in view, clear of the button
     take("mail_pick_legend", fme) { v in v.screen = .mail(.pick(id: pick100, at: 3, ask: nil)) }
     take("mail_pick_legend_p2", fme) { v in v.screen = .mail(.pick(id: pick100, at: 27, ask: false)) }
     take("market_board_39", fme) { v in v.screen = .market(.board(tab: 1, sel: 0)) }

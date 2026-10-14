@@ -84,6 +84,9 @@ struct MailOpenModel: Equatable {
 /// A pick (15 §6 D): the held items as rows, or the legends as the 포켓몬 menu's cells; the button, or 받을까요? 아니오 / 예.
 struct MailPickModel: Equatable {
     static let perPage = 24
+    /// A page's rows: the legends' 24 cells; items up to 7 rows, more in pages of 6 (their pager under them, clear of the button) — 5.0 (the user:
+    /// 민트 21개가 스크롤도 안 되고 버튼과 겹쳐요).
+    static func per(_ count: Int, legend: Bool) -> Int { legend ? perPage : count > 7 ? 6 : 7 }
     struct Row: Equatable { var name, note: String }
     var title, note: String; var rows: [Row]; var cells: [GridModel.Cell]; var sel: Int; var first, count: Int; var go: String?; var ask: Bool?
 }

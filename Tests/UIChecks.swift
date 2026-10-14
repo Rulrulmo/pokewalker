@@ -36,6 +36,24 @@ import Foundation
 /// Self-test checks (run by selftest()).
 @MainActor func uiChecks() -> [(Bool, String)] {
     var c: [(Bool, String)] = []
+    // a mail's pick of items (the user: 민트 21개가 스크롤도 안 되고 버튼과 겹쳐요): in pages, the pick's row always in view, no row under the
+    // button or past the panel, a short list on one page
+    do {
+        var bad: [String] = []
+        for (count, sel) in [(21, 0), (21, 8), (21, 20), (5, 4), (7, 6), (8, 7)] {
+            let w = Walker(state: Walk()); w.persist = false
+            let rows = (0..<count).map { MailPickModel.Row(name: Walk.mints[safe: $0] ?? "민트", note: "공격 ↑ · 방어 ↓ 성격으로") }
+            w.pane = PaneContent(mailPick: MailPickModel(title: "민트 고르기", note: "하나만 받을 수 있어요", rows: rows, cells: [], sel: sel, first: 0, count: count, go: "받기", ask: nil))
+            let page = Page(); page.walker = w; page.draw(on: TextCanvas())
+            let drawn = page.hits.filter { (8850..<8880).contains($0.1) }, button = page.hits.first { $0.1 == 8890 }?.0, per = MailPickModel.per(count, legend: false)
+            let bottom = (w.pane.height - Layout.pane) * K
+            if let b = button, drawn.contains(where: { $0.0.intersects(b) }) { bad.append("\(count)/\(sel): a row under the button") }
+            if drawn.contains(where: { $0.0.maxY > bottom }) { bad.append("\(count)/\(sel): a row past the panel") }
+            if !drawn.contains(where: { $0.1 - 8850 == sel % per }) || drawn.count != min(per, count - sel / per * per) { bad.append("\(count)/\(sel): the pick's row not in view") }
+            if (count > per) != page.hits.contains(where: { $0.1 == 8881 }) { bad.append("\(count)/\(sel): pages") }
+        }
+        c.append((bad.isEmpty, "5.0 a mail's pick of items: pages of 6 past 7 (21 mints), the pick's row in view, none under the button or past the panel" + (bad.isEmpty ? "" : " — \(bad)")))
+    }
     Content.$testing.withValue(true) {
         var r = Seeded(s: 4), zard = Mon.wild(6, level: 60, &r); zard.item = "리자몽나이트X"; zard.known = [53, 19, 337, 89]
         let b = Battle(wild: Mon.wild(214, level: 60, &r), companion: zard)

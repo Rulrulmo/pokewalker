@@ -5,6 +5,7 @@ import Foundation
 extension Walker {
     /// The card in `bounds` (lcdOnly: only the screen, most frames). shown = the frame on the LCD (nil: composed now); down = the key held in.
     func drawCard(_ c: any Canvas, _ bounds: CGRect, shown: FB?, down: Int?, lcdOnly: Bool) {
+        drawnSurface = 1; defer { drawnSurface = 0 }                                             // (the renders' look-out: the card's own coordinates)
         if lcdOnly { drawLCD(c, shown); return }
         let t = shells[theme], k = K, W = bounds.width, luma = t.top.luma
         let light = luma > 0.6, dark = luma < 0.2                                                   // 프리미어볼 / 배틀 골드: dark ink; 하이퍼볼 / 럭셔리볼: the band and bezel need a lighter edge

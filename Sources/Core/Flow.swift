@@ -65,6 +65,9 @@ extension Walker {
         if case .course(let i) = screen { lastInput = Date(); host?.redraw(.all); screen = .course(max(0, min(courses.count - 1, i + d))); return }
         if case .items(let s) = screen { lastInput = Date(); host?.redraw(.all); screen = .items(max(0, min(state.inventory.count - 1, s + d))); return }   // 도구: a row (the wheel, ↑ ↓)
         if case .train(let k) = screen { lastInput = Date(); host?.redraw(.all); screen = .train(max(0, min(5, k + d))); return }
+        if case .mail(.pick(let id, let at, nil)) = screen, let n = mail(id).flatMap(pickCount) {   // 5.0: a mail's pick, a row (its page follows)
+            lastInput = Date(); host?.redraw(.all); screen = .mail(.pick(id: id, at: max(0, min(n - 1, at + d)), ask: nil)); return
+        }
         if case .relearn(let r, let s, let at) = screen, let m = state.mon(r) {                 // 기술 바꾸기: its slots, or the moves for one
             lastInput = Date(); host?.redraw(.all)
             if let at { let all = m.relearnable, i = all.firstIndex(of: at) ?? 0; screen = .relearn(ref: r, slot: s, at: all[max(0, min(all.count - 1, i + d))]) }

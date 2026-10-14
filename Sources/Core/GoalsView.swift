@@ -54,8 +54,8 @@ extension Walker {
         case 1...DexGoals.regions.count:                                                          // a region: its count, half, whole, 이로치
             let r = DexGoals.regions[s - 1], n = DexGoals.caught(w, r), done = n >= r.total
             fb.mon(Mon(dex: Walker.regionLegends[s - 1], level: 50, female: false, shiny: done ? true : nil), 0, 0, 2)
-            fb.name(r.name + (done ? " ✦" : ""), x, 13, 94 - x)
-            fb.text("\(n)/\(r.total)", 94, 14, 2, right: true, small: true)
+            let cw = fb.text("\(n)/\(r.total)", 94, 14, 2, right: true, small: true)                // its count first: the name has what's left (any font's ✦)
+            fb.name(r.name + (done ? " ✦" : ""), x, 13, 94 - x - cw - 3)
             bar(26, n, r.total, half: r.half)
             fb.line(n >= r.half ? "절반 ✓" : "절반 \(r.half)종", x, 31, 94 - x); fb.line(done ? "완성 ✓" : "완성 \(r.total)종", x, 40, 94 - x)   // (a row each: any font's widths)
             fb.line(done ? "✦ 이로치 한 번 더" : "이로치 \(DexGoals.shinies(w, r))/\(r.total)", x, 49, 94 - x, done ? 3 : 2)

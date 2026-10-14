@@ -124,7 +124,9 @@ extension Walker {
             guard let m = mail(id), let g = m.gifts.first(where: { if case .pickItem = $0 { return true }; if case .pickLegend = $0 { return true }; return false }) else { return mailPane(.list(sel: 0), now) }
             switch g {
             case .pickItem(let xs):
-                return PaneContent(mailPick: MailPickModel(title: "지닌 도구 고르기", note: "하나만 받을 수 있어요", rows: xs.map { .init(name: $0, note: Held.summary($0) ?? "") }, cells: [], sel: at, first: 0, count: xs.count,
+                let per = MailPickModel.per(xs.count, legend: false), mints = xs.allSatisfy { $0.hasSuffix("민트") }
+                return PaneContent(mailPick: MailPickModel(title: mints ? "민트 고르기" : "지닌 도구 고르기", note: "하나만 받을 수 있어요",
+                                                           rows: xs.map { .init(name: $0, note: Held.summary($0) ?? ItemKind.of($0).summary) }, cells: [], sel: at, first: at / per * per, count: xs.count,
                                                            go: xs[safe: at].map { "\($0) 받기" }, ask: ask))
             case .pickLegend(let xs, let lv, let shiny):
                 let per = MailPickModel.perPage, at = min(at, max(0, xs.count - 1)), first = at / per * per
@@ -169,7 +171,7 @@ extension Walker {
                     guard let n = xs[safe: at] else { continue }
                     head(n)
                     if lcdFocus {                                                                    // 5.0: the item itself on the stage, its words by it
-                        fb.focusPic("item|" + n) { itemPic(n) }; fb.wrap(Held.summary(n) ?? "", 44, 15, 50, lines: 3, 3)
+                        fb.focusPic("item|" + n) { itemPic(n) }; fb.wrap(Held.summary(n) ?? ItemKind.of(n).summary, 44, 15, 50, lines: 3, 3)   // (a mint: its nature)
                         if ask == nil { fb.text("\(at + 1)/\(xs.count)", 94, 43, 1, right: true, small: true) }
                     } else {
                         fb.draw(gem, 2, 17, gemPal, scale: 2)
@@ -312,13 +314,13 @@ extension Walker {
         case (.open(let id), 8840): if let m = mail(id) { mailTake(m, now) }
         case (.pick(let id, let at, _), 8850..<8880):
             guard let m = mail(id), let n = pickCount(m) else { return }
-            let legend = m.gifts.contains { if case .pickLegend = $0 { return true }; return false }
-            let k = (legend ? at / MailPickModel.perPage * MailPickModel.perPage : 0) + code - 8850
+            let legend = m.gifts.contains { if case .pickLegend = $0 { return true }; return false }, per = MailPickModel.per(n, legend: legend)
+            let k = at / per * per + code - 8850
             guard k < n else { return }
             screen = .mail(.pick(id: id, at: k, ask: k == at ? false : nil))
         case (.pick(let id, let at, nil), 8880...8881):
             guard let m = mail(id), let n = pickCount(m) else { return }
-            let pp = MailPickModel.perPage, pages = max(1, (n + pp - 1) / pp)
+            let pp = MailPickModel.per(n, legend: m.gifts.contains { if case .pickLegend = $0 { return true }; return false }), pages = max(1, (n + pp - 1) / pp)
             screen = .mail(.pick(id: id, at: min(n - 1, ((at / pp + (code == 8880 ? pages - 1 : 1)) % pages) * pp), ask: nil))
         case (.pick(let id, let at, nil), 8890): screen = .mail(.pick(id: id, at: at, ask: false))
         case (.pick(let id, let at, .some), 8891): screen = .mail(.pick(id: id, at: at, ask: nil))
