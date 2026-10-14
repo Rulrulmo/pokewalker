@@ -42,6 +42,13 @@ func fail(_ message: String) -> Int32 {
     return 1
 }
 
+/// MIN_APP as the service has it, for the commands (sudo -u clears the environment): the environment's, else server.env's line
+/// (the running server took its value at its start: an edit counts after the restart).
+func configuredMinApp(_ env: [String: String], file: String = "/etc/pokewalker/server.env") -> String? {
+    let v = env["MIN_APP"] ?? (try? String(contentsOfFile: file, encoding: .utf8))?.split(separator: "\n").last { $0.hasPrefix("MIN_APP=") }.map { String($0.dropFirst(8)) }
+    return v.flatMap { $0.isEmpty || versionParts($0) == nil ? nil : $0 }
+}
+
 /// Columns padded to the terminal width of their text (Hangul and other wide letters count 2).
 func table(_ header: [String], _ rows: [[String]]) -> String {
     func width(_ s: String) -> Int {
@@ -362,7 +369,7 @@ public func run(_ arguments: [String]) async -> Int32 {
         default: break
         }
 
-        let db = try SaveDB(path: path)
+        let db = try SaveDB(path: path, minApp: configuredMinApp(env))                         // (versions shows it)
         let out: String
         switch (command, rest.count) {
         case ("list", 0): out = try await db.list()

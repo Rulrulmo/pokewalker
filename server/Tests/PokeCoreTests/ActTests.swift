@@ -1168,6 +1168,16 @@ extension SaveDB {
     #expect(where_.place == "applications")
 }
 
+@Test func configuredMinAppReadsServerEnv() throws {   // pokeserver versions under sudo -u (no environment): server.env's MIN_APP
+    let f = FileManager.default.temporaryDirectory.appendingPathComponent("server-\(UUID().uuidString).env")
+    defer { try? FileManager.default.removeItem(at: f) }
+    try "# MIN_APP=9.9 a comment\nAPP_KEY=x\nMIN_APP=3.0\nVIEW_ALL=a\n".write(to: f, atomically: true, encoding: .utf8)
+    #expect(configuredMinApp([:], file: f.path) == "3.0")
+    #expect(configuredMinApp(["MIN_APP": "5.0"], file: f.path) == "5.0")                                   // the environment first
+    #expect(configuredMinApp(["MIN_APP": ""], file: f.path) == nil && configuredMinApp([:], file: f.path + ".none") == nil)
+    try "MIN_APP=\n".write(to: f, atomically: true, encoding: .utf8); #expect(configuredMinApp([:], file: f.path) == nil)
+}
+
 @Test func content5SaveChecks() {
     var w = Walk(); var heat = Mon(dex: 479, level: 30, female: false); heat.form = 1; w.box = [heat]
     #expect(SaveCheck.values(w).contains("form 1 of #479"))                                              // off: no forms
