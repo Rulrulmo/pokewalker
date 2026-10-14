@@ -509,6 +509,29 @@ private func formed(_ dex: Int, _ f: Int?, _ level: Int = 50) -> Mon { var m = m
     w.cardTitle = "없는 칭호"; #expect(w.shownTitle == "메가 마스터")                                       // (one not earned: the newest)
 }
 
+@Test func dexGoals() {                                                                          // plan 18 §15: the goals, the regions, the shiny roll once more
+    var w = Walk(); w.owned = Array(1...151) + [152, 153]
+    #expect(DexGoals.reached(w).isEmpty && !DexGoals.bonus(25, w))                                   // off: none
+    gen6 {
+        #expect(DexGoals.regions.map(\.total) == [151, 100, 135, 107, 156, 72] && DexGoals.regions.map(\.half) == [76, 50, 68, 54, 78, 36])
+        #expect(DexGoals.goals().count == 11 + 12 && DexGoals.tiers.last?.gifts == [.title(name: "포켓몬 박사")])
+        #expect(DexGoals.reached(w).map(\.key) == ["전국:25", "전국:50", "전국:100", "전국:150", "관동:50", "관동:100"])
+        #expect(DexGoals.bonus(25, w) && DexGoals.bonus(150, w) && !DexGoals.bonus(152, w) && !DexGoals.bonus(722, w))
+        #expect(DexGoals.reached(w).map(\.label) == ["25종", "50종", "100종", "150종", "관동 50 %", "관동 완성"])
+        let m = DexGoals.merged(DexGoals.reached(w))
+        #expect(m.picks.count == 1 && m.gifts == [.items(name: "이상한사탕", count: 13), .items(name: "은색병뚜껑", count: 1), .items(name: "금색병뚜껑", count: 1), .bp(amount: 20)])
+    }
+    // 이로치 from an egg: 1/64, its region filled one more roll (≈ 1/32); off, the same draws as 4.1
+    func rate(_ w: Walk) -> Double { var r = Seeded(s: 7), n = 0; for _ in 0..<40_000 { if w.eggMon(&r)?.shiny == true { n += 1 } }; return Double(n) / 40_000 }
+    var e = w; e.egg = Egg(dex: 4, left: 0)
+    let offRate = rate(e); e.owned = [1]; let plain = rate(e)
+    #expect(offRate == plain && abs(plain - 1 / 64) < 0.004)
+    gen6 {
+        e.owned = Array(1...151); let filled = rate(e); e.owned = [1]; let other = rate(e)
+        #expect(abs(filled - (1 - pow(63.0 / 64, 2))) < 0.005 && abs(other - 1 / 64) < 0.004)
+    }
+}
+
 @Test func gen6ShopTabs() {                                                                      // 5.0: the 상점's 로토무카탈로그 under 기타 (it was under no tab: never shown), once
     func tabs(_ w: Walk) -> [Bool: [String]] {                                                   // the tabs with a row, every row (both shops) under one of the shop's own
         var out: [Bool: [String]] = [:]

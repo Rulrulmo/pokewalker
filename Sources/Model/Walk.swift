@@ -44,6 +44,7 @@ struct Walk: Codable, Equatable {
     var towerRewards: [Int]? = nil                                     // 3.9 (docs/plans/15 §3): the streak rewards mailed (the lobby's strip)
     var titles: [String]? = nil, deco: String? = nil                   // 3.9: 칭호 earned; 트레이너 카드 장식 "silver" · "gold" (the better kept)
     var cardTitle: String? = nil                                       // 5.0 (the user, 10-14): the 칭호 the card shows, picked (nil: the newest)
+    var dexRewards: [String]? = nil                                    // 5.0 (plan 18 §15): the 도감 업적 mailed (DexGoals keys: "전국:100", "관동:50"), for the list
 
     /// The 칭호 shown (the card, a duel's opponent): the one picked while it's still earned, else the newest.
     var shownTitle: String? { cardTitle.flatMap { (titles ?? []).contains($0) ? $0 : nil } ?? titles?.last }

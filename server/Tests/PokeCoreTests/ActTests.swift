@@ -1003,7 +1003,38 @@ extension SaveDB {
 extension SaveDB {
     func sql(_ q: String, _ args: [String: SQLValue] = [:]) throws { _ = try db.rows(q, args) }
     func mailTitles(_ key: String) throws -> [String] { try db.rows("SELECT title FROM mail WHERE key = :k ORDER BY id", ["k": .text(key)]).compactMap { $0.text("title") } }
+    func mailGifts(_ key: String) throws -> [[Gift]] {
+        try db.rows("SELECT gifts FROM mail WHERE key = :k ORDER BY id", ["k": .text(key)]).map { r in r.text("gifts").flatMap { try? JSONDecoder().decode([Gift].self, from: Data($0.utf8)) } ?? [] }
+    }
 }
+@Test func dexGoalMail() async throws {                                                          // plan 18 §15: 도감 업적 by mail, content5 only
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let s = try await newTrainer(db, "도감왕"), off = try await newTrainer(db, "그대로")
+    var seq: [String: Int] = [:], t = 100.0
+    func go(_ id: String, _ session: String) async throws {
+        seq[id, default: 0] += 1; t += 1
+        _ = try reply(await db.act(ActReq(id: id, session: session, seq: seq[id]!, steps: 10, act: .steps, app: "5.0"), now: base.addingTimeInterval(t)))
+    }
+    func mails(_ key: String) async throws -> [(title: String, gifts: [Gift])] { Array(zip(try await db.mailTitles(key), try await db.mailGifts(key))).map { (title: $0.0, gifts: $0.1) } }
+    try await go("그대로", off); try await go("도감왕", s)                                                 // (a save to change)
+    try await setWalk(db, "그대로") { w in w.owned = Array(1...300) }
+    try await go("그대로", off); #expect(try await mails("그대로").isEmpty)                                // off: 4.1's
+    try await Content.$testing.withValue(true) {
+        try await setWalk(db, "도감왕") { w in w.owned = Array(1...151) + Array(152...201) }               // 201: 25–200, 관동 50 · 100, 성도 50
+        try await go("도감왕", s)
+        let first = try await mails("도감왕")
+        #expect(first.count == 2 && first[0].title == "도감 업적 8개" && first[1].title == "도감 업적: 50종 · 고르기" && first[1].gifts == [.pickItem(items: Walk.mints)])
+        #expect(first[0].gifts == [.items(name: "이상한사탕", count: 3 + 5 + 5 + 5), .items(name: "은색병뚜껑", count: 1), .items(name: "금색병뚜껑", count: 1 + 1), .bp(amount: 20)])   // 25 · 150 · 관동 50 · 성도 50; 100; 200 · 관동 100
+        let w1 = try await db.trainer("도감왕")?.walk.flatMap(decodeWalk)
+        #expect(w1?.dexRewards == ["전국:25", "전국:50", "전국:100", "전국:150", "전국:200", "관동:50", "관동:100", "성도:50"])
+        try await go("도감왕", s); #expect(try await mails("도감왕").count == 2)                             // nothing again
+        try await setWalk(db, "도감왕") { w in w.owned = Array(1...251) }                                  // 성도 filled: one goal, its own mail
+        try await go("도감왕", s)
+        let next = try await mails("도감왕")
+        #expect(next.count == 3 && next[2].title == "성도 도감 완성!" && next[2].gifts == DexGoals.fullGifts)
+    }
+}
+
 @Test func megaRaid() async throws {
     try await Content.$testing.withValue(true) {
         let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }

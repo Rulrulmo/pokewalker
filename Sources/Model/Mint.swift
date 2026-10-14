@@ -10,7 +10,8 @@ extension Walk {
         let s = encounter(&r, chain: chain), l = legend(&r, chain: chain)
         let top = here.all.map(\.level).max() ?? 45
         let level = l == nil ? min(100, s.level + Walk.chainLevel(chain)) : l == 493 ? 80 : max(50, top + 5)
-        let shiny: Bool? = Int.random(in: 0..<Walk.chainShinyOdds(chain), using: &r) == 0 ? true : nil
+        var shiny: Bool? = Int.random(in: 0..<Walk.chainShinyOdds(chain), using: &r) == 0 ? true : nil
+        if shiny == nil, DexGoals.bonus(l ?? s.dex, self), Int.random(in: 0..<shinyOdds, using: &r) == 0 { shiny = true }   // 5.0 (plan 18 §15): its region filled, once more
         var m = Mon.wild(l ?? s.dex, level: level, shiny: shiny, perfect: max(l == nil ? 0 : 3, Walk.chainPerfectIVs(chain)), &r)
         if l == nil { m.female = s.female }
         if Content.gen6, l == nil, let f = Forms.placeForm(m, season: season, art: here.art) { m.form = f == 0 ? nil : f }   // 5.0: 사철록 by the season, 도롱충이 by the course
@@ -19,10 +20,11 @@ extension Walk {
     }
     /// After a catch or a KO at chain length `chain`: does the grass rustle again?
     static func chainContinues<R: RandomNumberGenerator>(_ chain: Int, _ r: inout R) -> Bool { Double.random(in: 0..<1, using: &r) < chainGoesOn(chain) }
-    /// What the walker's egg hatches into (Lv.1, 이로치 1/64); nil = no egg. The egg itself stays (hatch() takes it).
+    /// What the walker's egg hatches into (Lv.1, 이로치 1/64; 5.0: its region filled, once more); nil = no egg. The egg itself stays (hatch() takes it).
     func eggMon<R: RandomNumberGenerator>(_ r: inout R) -> Mon? {
         guard let e = egg else { return nil }
-        let shiny: Bool? = Int.random(in: 0..<shinyOdds, using: &r) == 0 ? true : nil
+        var shiny: Bool? = Int.random(in: 0..<shinyOdds, using: &r) == 0 ? true : nil
+        if shiny == nil, DexGoals.bonus(e.dex, self), Int.random(in: 0..<shinyOdds, using: &r) == 0 { shiny = true }
         return Mon.wild(e.dex, level: 1, shiny: shiny, &r)
     }
     /// The legend shop's i-th (칠색조 Lv.50, 뮤츠 Lv.70): 3 sure 31s, 이로치 1/64.

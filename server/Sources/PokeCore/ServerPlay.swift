@@ -158,6 +158,7 @@ extension SaveDB {
                 try visitTick(id.key, steps: taken, walk: &w, news: &out.news, now: unix)             // 14 §3: guests raised, visits over, a host's BP
                 try towerRewards(id.key, walk: &w, now: unix)                                         // plan 15 §3: streak rewards (and the back-pay), as mail
                 try megaMaster(id.key, walk: w, now: unix)                                            // 5.0 (plan 18 §6.4): all 48 stones → the 칭호, as mail
+                try dexRewards(id.key, walk: &w, now: unix)                                           // 5.0 (plan 18 §15): 도감 업적, as mail
                 let mail = try delivery(id.key, app: r.app, now: unix)                                 // what teammates sent (only what this app can read)
                 out.news += mail.news
                 out.news = out.news.filter { appKnows(r.app, $0) }

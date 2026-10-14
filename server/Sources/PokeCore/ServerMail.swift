@@ -10,6 +10,7 @@ let mailSchema = """
       body TEXT, gifts TEXT NOT NULL, at INTEGER NOT NULL, read_at INTEGER, claimed_at INTEGER);
     CREATE INDEX IF NOT EXISTS mail_key ON mail (key, claimed_at);
     CREATE TABLE IF NOT EXISTS tower_rewards (key TEXT NOT NULL, wins INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (key, wins));
+    CREATE TABLE IF NOT EXISTS dex_rewards (key TEXT NOT NULL, goal TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (key, goal));
     """
 let mailApp = "3.9", mailKeptRead = 30 * 86400, mailKeptUnread = 90 * 86400
 
@@ -127,6 +128,29 @@ extension SaveDB {
         }
         let all = Set(try db.rows("SELECT wins FROM tower_rewards WHERE key = :k", ["k": .text(key)]).compactMap { $0.int("wins") })
         if Set(w.towerRewards ?? []) != all { w.towerRewards = all.sorted() }
+    }
+
+    /// 5.0 (plan 18 §15, content5): the 도감 업적 reached and not mailed yet, after every act. One: its own mail. Several at once (the switch-on
+    /// day's catch-up, two in one act): one mail of them all, merged, and a 고르기 (민트) each its own (a mail takes one pick). Kept in dex_rewards,
+    /// the save's list (Walk.dexRewards) as a copy for the screen.
+    func dexRewards(_ key: String, walk w: inout Walk, now: Int) throws {
+        let reached = DexGoals.reached(w)
+        guard !reached.isEmpty else { return }
+        let paid = Set(try db.rows("SELECT goal FROM dex_rewards WHERE key = :k", ["k": .text(key)]).compactMap { $0.text("goal") })
+        let due = reached.filter { !paid.contains($0.key) }
+        for g in due { try db.rows("INSERT INTO dex_rewards (key, goal, at) VALUES (:k, :g, :now)", ["k": .text(key), "g": .text(g.key), "now": .int(now)]) }
+        if due.count == 1, let g = due.first {
+            try sendMail(key, kind: "dex", from: "도감", title: g.title, body: g.body, gifts: g.gifts, now: now)
+        } else if due.count > 1 {
+            let m = DexGoals.merged(due)
+            if !m.gifts.isEmpty {
+                try sendMail(key, kind: "dex", from: "도감", title: "도감 업적 \(due.count)개", body: due.map(\.label).joined(separator: " · ") + "에 닿았어요."
+                             + (m.picks.isEmpty ? "" : " 민트 고르기는 따로 왔어요."), gifts: m.gifts, now: now)
+            }
+            for p in m.picks { try sendMail(key, kind: "dex", from: "도감", title: "도감 업적: \(p.goal.label) · 고르기", body: p.goal.body, gifts: [p.gift], now: now) }
+        }
+        let keys = Set(paid).union(due.map(\.key)), list = DexGoals.goals().map(\.key).filter(keys.contains)
+        if w.dexRewards != list { w.dexRewards = list }
     }
 
     // MARK: 3.8's 받기 함, folded in
