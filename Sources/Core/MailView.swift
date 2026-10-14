@@ -112,8 +112,9 @@ extension Walker {
                 case .mon(let x, let steps): return .init(icon: .mon(dex: x.dex, shiny: x.shiny == true), name: giftName(g), note: [x.natureName, x.perfectIVs > 0 ? "\(x.perfectIVs)V" : nil, x.item.map { $0 + " 지님" }, steps.map { "키운 걸음 \($0.formatted())" }].compactMap { $0 }.joined(separator: " · "))
                 case .deco(let k): return .init(icon: .medal(gold: k == "gold"), name: giftName(g), note: "트레이너 카드 · 친구 목록에 보여요")
                 case .title: return .init(icon: .medal(gold: true), name: giftName(g), note: "트레이너 카드에 보여요")
-                case .pickItem(let xs): return .init(icon: .gem, name: giftName(g), note: "\(xs.count)가지 중에서")
+                case .pickItem(let xs): return .init(icon: xs.first.map { .item($0) } ?? .gem, name: giftName(g), note: "\(xs.count)가지 중에서")
                 case .pickLegend(let xs, _, _): return .init(icon: .gift, name: giftName(g), note: "\(xs.count)종 중에서 · 4V")
+                case .items(let n, _): return .init(icon: .item(n), name: giftName(g), note: ItemKind.of(n).summary.replacingOccurrences(of: "지니게 하기: ", with: "지니면 "))
                 default: return .init(icon: .gem, name: giftName(g), note: "")
                 }
             }

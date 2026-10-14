@@ -954,7 +954,7 @@ extension Page {
         for (i, row) in m.rows.enumerated() where i >= top && i < top + 6 {
             let rc = r(X0, 216 + CGFloat(i - top) * 29, X1 - X0, 26); tile(rc, 9, on: i == m.sel, row.take ? Ink.tint(Ink.blue, 0.08) : nil)
             if let d = row.dex { c.image(iconImage(artIndex(d, row.form), shadow: row.why != nil), CGRect(x: rc.minX + x(14) - 14 * K, y: rc.midY - 15 * K, width: 28 * K, height: 28 * K), alpha: 1) }   // 5.0: a Pokémon's row
-            else { pixelArt(gem, gemPal, CGPoint(x: rc.minX + x(14), y: rc.midY), 2.5 * K) }
+            else { itemImage(row.take ? m.now ?? row.name : row.name, CGRect(x: rc.minX + x(4), y: rc.midY - x(10), width: x(20), height: x(20))) }   // 5.0: the item's own picture
             var cw: CGFloat = row.dex != nil ? 0 : row.take ? c.say("빼기", rc.maxX - x(9), rc.midY, font(9, .bold), Ink.blue, 1) : c.say("×\(row.count)", rc.maxX - x(9), rc.midY, font(10, .semibold), row.why == nil ? Ink.ink : Ink.faint, 1)
             if !row.take, row.dex == nil {                                                          // 3.8.5: 쓰기 (on it) or 지니기
                 let t = row.use ? "쓰기" : "지니기", col = row.why != nil ? Ink.faint : row.use ? Ink.green : Ink.blue
@@ -1086,6 +1086,7 @@ extension Page {
         case .gift: pixelArt(giftArt, giftPal, CGPoint(x: cx, y: cy), 2.4 * K)
         case .letter: pixelArt(letterArt, letterPal, CGPoint(x: cx, y: cy), 2.4 * K)
         case .gem: pixelArt(gem, gemPal, CGPoint(x: cx, y: cy), 3 * K)
+        case .item(let n): itemImage(n, CGRect(x: cx - x(12), y: cy - x(12), width: x(24), height: x(24)))
         case .medal(let gold): pixelArt(medalArt, gold ? goldPal : silverPal, CGPoint(x: cx, y: cy), 2.4 * K)
         }
     }
@@ -1364,7 +1365,7 @@ extension Page {
         for (i, row) in m.rows.enumerated() where i >= top && i < top + shown {
             let rc = r(X0, y0 + CGFloat(i - top) * 29, X1 - X0, 26)
             tile(rc, 9, on: i == m.sel)
-            pixelArt(gem, gemPal, CGPoint(x: rc.minX + x(14), y: rc.midY), 2.5 * K); c.say(row.name, rc.minX + x(28), rc.midY, font(10, .bold), Ink.ink, maxW: rc.width - x(90))
+            itemImage(row.name, CGRect(x: rc.minX + x(4), y: rc.midY - x(10), width: x(20), height: x(20))); c.say(row.name, rc.minX + x(28), rc.midY, font(10, .bold), Ink.ink, maxW: rc.width - x(90))   // 5.0: its own picture
             var xr = rc.maxX - x(9) - c.say("×\(row.count)", rc.maxX - x(9), rc.midY, font(10, .semibold), Ink.ink, 1)
             if row.onWalker > 0 { let t = "워커", f = font(7.5, .bold), w = width(t, f) + x(8); xr -= x(5); c.pill(CGRect(x: xr - w, y: rc.midY - x(5.5), width: w, height: x(11)), Ink.tint(Ink.blue, 0.16)); c.say(t, xr - w / 2, rc.midY, f, Ink.blue, 0.5) }
             hits.append((rc, 5600 + i))

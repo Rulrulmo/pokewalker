@@ -72,7 +72,7 @@ struct HoldModel: Equatable {
 /// 3.9's 우편함 (15 §6 A): a page of mails (the server's order: gifts to take first), 모두 받기.
 struct MailListModel: Equatable {
     static let perPage = 6
-    enum Icon: Equatable { case gift, letter, gem, medal(gold: Bool), mon(dex: Int, shiny: Bool) }
+    enum Icon: Equatable { case gift, letter, gem, medal(gold: Bool), mon(dex: Int, shiny: Bool), item(String) }   // item (5.0): its own picture
     struct Row: Equatable { var icon: Icon; var title, sub: String; var chips: [String]; var unread, done: Bool }   // unread: not opened, or a gift left (its dot); done: taken (dimmed)
     var rows: [Row]; var sel: Int?; var first, count: Int; var note: String; var all: String?; var empty: String
 }
