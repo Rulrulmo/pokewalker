@@ -34,10 +34,13 @@ import Foundation
     func take(_ name: String, size: CGFloat = 2, lcd: Bool = false, on v0: Walker? = nil, _ set: (Walker) -> Void) {
         SIZE = size; theme = 0; lcdStyle = 0; paperStyle = 0; smoothText = true
         let v = v0 ?? Walker(state: base()); v.persist = false; v.sideOn = true; v.rng = Seeded(s: 1); v.lastStep = .distantPast
+        cutTexts = []
         set(v); v.refreshPane(T, force: true); let fb = v.compose(T)
         let k: CGFloat = lcd ? 3 : 2, page = Page(); page.walker = v
         let r = Raster(Int((Layout.w * K * k).rounded()), Int(((v.cardH * K).rounded() * k).rounded()))
         drawWhole(v, page, SoftCanvas(r, scale: 2, pixels: k), shown: fb, down: nil)
+        if let cut = cutTexts, !cut.isEmpty { print("cut \(name): " + Array(Set(cut)).sorted().joined(separator: " | ")) }   // Windows' glyphs: what's cut here
+        cutTexts = nil
         let crop = lcd ? IRect(x0: Int(lcdRect.minX * k), y0: Int(lcdRect.minY * k), x1: Int(lcdRect.maxX * k), y1: Int(lcdRect.maxY * k)) : nil
         if (try? r.png(crop).write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))) != nil { n += 1 }
     }
@@ -169,6 +172,10 @@ import Foundation
         let frog = Mon(dex: 658, level: 40, female: false), xb = Battle(wild: Mon(dex: 716, level: 50, female: false), companion: frog)   // 5.0's pictures (hg-engine, §9.1)
         take("battle_gen6") { v in v.state.companion = frog; still(v, "foe 0", 716); v.fight = xb; v.screen = .battle(xb, sel: 0) }
         take("dex_form_vivillon") { v in v.state.owned = [6, 25, 666]; v.dexForm = (666, 4); v.screen = .dex(666, filter: 0, detail: true) }   // the entry page's forms (§9.6)
+        take("dex_regions_kalos") { v in v.state.owned = [650, 666]; v.dexRegion = 6; v.screen = .dex(650, filter: 0, detail: false) }   // seven regions in a row
+        take("menu_battle5") { v in v.screen = menuFor("대전") }                                                                   // 배틀's four
+        take("form_rotom") { v in var r = Mon(dex: 479, level: 40, female: false); r.form = 1; v.state.companion = r; v.state.bag = ["로토무카탈로그"]; v.screen = .formPick(ref: -1, item: "로토무카탈로그", sel: 2) }
+        take("box_vivillon", lcd: true) { v in var b = Mon(dex: 666, level: 20, female: false); b.form = 7; v.state.box = [b]; v.screen = .box(0, act: nil, confirm: false) }
     }
     take("battle_size3", size: 3) { v in let f = wildFight(v); still(v, "foe 0", 6); v.screen = .battle(f.b, sel: 0) }
     return n

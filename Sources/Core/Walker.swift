@@ -210,7 +210,7 @@ import Foundation
         case .raid(.tier): return (raidMega ? "메가 레이드" : "레이드", "난이도 고르기")
         case .raid(.pick): return ("메가 레이드", "스톤 고르기")
         case .raid(.balls): return ("레이드", "잡을 기회 · 볼 \(raidStage?.balls ?? 0)개")
-        case .raid where raidMega: return ("메가 레이드", megaLobby.map { "다음 주 " + $0.next.map(megaName).joined(separator: " · ") } ?? "")
+        case .raid where raidMega: return ("메가 레이드", megaLobby.map { "다음 주 " + $0.next.map { n in let s = megaName(n); return s.hasPrefix("메가") ? String(s.dropFirst(2)) : s }.joined(separator: " · ") } ?? "")   // (메가 레이드's: 샤크니아 · 앱솔)
         case .raid: return ("레이드", cloud?.raid.map { "다음 주 " + monNames[$0.next] } ?? "")
         default: return (state.here.name, cloudNote ?? (gate.held ? "자동 입력 감지 · 걸음 멈춤" : when))                                                 // screens without a page of their own: the status sheet
         }

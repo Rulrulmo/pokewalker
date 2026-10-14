@@ -116,11 +116,11 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
         let kRef = ro.state.box.firstIndex { $0.dex == 646 }!, kUid = ro.state.box[kRef].uid!
         ro.screen = .box(kRef, act: nil, confirm: false, detail: true); _ = ro.keyItemOn("유전자쐐기", kRef)
         let partners = ro.formOptions(kRef, "유전자쐐기").map(\.label)
-        ro.press(1); drain(ro)
+        ro.pageTap(5980); ro.pageTap(5999); drain(ro)                                                  // (the pane's: its row, then 합체하기 — not only ●)
         let k2 = ro.state.ref(uid: kUid).flatMap { ro.state.mon($0) }
         let fused = k2?.form == 2 && k2?.fused?.first?.dex == 643 && !ro.state.box.contains { $0.dex == 643 } && ro.state.box.count == 2
         let back = ro.state.ref(uid: kUid)!; _ = ro.keyItemOn("유전자쐐기", back); let unOpt = ro.formOptions(back, "유전자쐐기").map(\.label)
-        ro.press(1); drain(ro)
+        ro.pageTap(5999); drain(ro)
         let k3 = ro.state.ref(uid: kUid).flatMap { ro.state.mon($0) }
         let apart = k3?.form == nil && k3?.fused == nil && ro.state.box.contains { $0.dex == 643 } && ro.state.box.count == 3
         let keyKind: Bool = { if case .key = ItemKind.of("로토무카탈로그") { return ro.itemUse("로토무카탈로그").0 == "쓸 포켓몬 고르기" }; return false }()
@@ -164,7 +164,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
         mr.cloud!.megaRaidDue = true; for _ in 0..<4 where mr.megaLobby?.pity != 30 { mr.tick(Date()); drain(mr) }
         let ready = mr.paneContent(Date()).raid?.go == "30승! 스톤 고르기" && mr.megaNote == "스톤을 고를 수 있어요!"
         mr.calmAt = .distantPast; mr.press(1); let pickUp = { if case .raid(.pick(0)) = mr.screen { return true }; return false }() && mr.paneContent(Date()).hold?.rows.map(\.name) == wk.map(\.stone)
-        mr.press(2); mr.press(1); drain(mr)
+        mr.pageTap(5981); mr.pageTap(5999); drain(mr)                                                  // (the pane's row and button)
         let picked = mr.state.bag.contains(wk[1].stone) && ms.megaPity(mk) == 0 && { if case .say(let l, _, _) = mr.screen { return l == [josa(wk[1].stone, "을", "를"), "받았다!"] }; return false }()
         check(menuOff && lobbyOK && tierUp && started && won && backLobby && ready && pickUp && picked,
               "5.0 메가 레이드: the menu's (content5), its lobby (two bosses, 스톤까지 0/30), tier (the stone's odds), Act.megaRaid (Mega from the start, 10 bars), a win's stone by mail (said, no balls), 30 wins → a stone picked",

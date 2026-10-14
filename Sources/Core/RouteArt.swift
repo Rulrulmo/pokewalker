@@ -136,7 +136,7 @@ private func fogPic(_ w: Int, _ h: Int, _ cave: Bool) -> Pic {
 // MARK: - the course picture
 private let routeHorizon: [Art: Int] = [.field: 30, .forest: 18, .mountain: 38, .beach: 28, .lake: 24, .town: 30, .cave: 0]
 private let beachShore = 44   // where the sea meets the sand (the surf runs along it)
-private func bayer4(_ x: Int, _ y: Int) -> Double { ([0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5][(y & 3) * 4 + (x & 3)] + 0.5) / 16 - 0.5 }
+private func bayer4(_ x: Int, _ y: Int) -> Double { (([0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5] as [Double])[(y & 3) * 4 + (x & 3)] + 0.5) / 16 - 0.5 }   // (typed: Swift 6.3 timed out inferring it)
 func lerpRGB(_ a: UInt32, _ b: UInt32, _ k: Double) -> UInt32 {
     func f(_ s: UInt32) -> UInt8 { let u = Double(a >> s & 255), v = Double(b >> s & 255); return UInt8(max(0, min(255, (u + (v - u) * k).rounded()))) }
     return rgb(f(16), f(8), f(0))

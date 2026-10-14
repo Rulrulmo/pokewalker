@@ -145,6 +145,10 @@ extension Walker {
         var ix = me.minX + 7 * k
         if let st = m.mine.status { ix += status(st, ix, me.minY + 29.5 * k) + 3 * k }
         let hw = c.say("\(m.mine.hp) / \(m.mine.max)", me.maxX - 7 * k, me.minY + 29.5 * k, font(10, .semibold), Ink.ink, 1)
-        if let it = m.mine.item { c.say(it, ix, me.minY + 29.5 * k, font(7, .semibold), Ink.blue, maxW: me.maxX - 11 * k - hw - ix) }   // 3.7: what it holds now (5.0: up to the HP, a stone's long name cut)
+        if let it = m.mine.item {                                                                  // 3.7: what it holds now, up to the HP (5.0: a stone's long name as 메가스톤)
+            let room = me.maxX - 11 * k - hw - ix, f = font(7, .semibold)
+            let label = width(it, f) <= room ? it : Forms.stones.contains(it) ? (width("메가스톤", f) <= room ? "메가스톤" : "스톤") : it
+            c.say(label, ix, me.minY + 29.5 * k, f, Forms.stones.contains(it) ? Ink.c(132, 64, 196) : Ink.blue, maxW: room)
+        }
     }
 }

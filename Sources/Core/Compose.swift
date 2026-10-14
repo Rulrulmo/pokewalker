@@ -228,7 +228,10 @@ extension Walker {
             header((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)")
             fb.mon(m, half, 0, 2, anim: animT("box \(i)", m.art, now))
             fb.text(i == -1 ? "함께" : i < -1 ? "워커 \(-1 - i)" : "상자 \((boxOrder.firstIndex(of: i) ?? 0) + 1)/\(state.box.count)", 94, 15, 2, right: true, small: true)   // where it is
-            if genderRate[m.dex] >= 0 || formName(m) != nil { fb.text([genderRate[m.dex] >= 0 ? (m.female ? "암컷" : "수컷") : nil, formName(m).map { $0.replacingOccurrences(of: monNames[m.dex], with: "").trimmingCharacters(in: .whitespaces) }].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "), 94, 26, 2, right: true, small: true) }   // 5.0: its form (히트 · 어택폼 ...); vLabel(m, 36)   // genderless: nothing (the games show no symbol)
+            if genderRate[m.dex] >= 0 { fb.text(m.female ? "암컷" : "수컷", 94, 26, 2, right: true, small: true) }   // genderless: nothing (the games show no symbol); vLabel(m, 36)
+            if let f = formName(m).map({ $0.replacingOccurrences(of: monNames[m.dex], with: "").trimmingCharacters(in: .whitespaces) }), !f.isEmpty {
+                fb.text(f, 94, genderRate[m.dex] >= 0 ? 36 : 26, 2, right: true, small: true)   // 5.0: its form (히트, 모던한 모양 ...), a line of its own: clear of the picture
+            }
             if let a = act {
                 fb.fill(0, 50, 96, 14, 0); fb.fill(0, 50, 96, 1, 2)
                 let opts = confirm ? ["놓아줄까?", "아니오", "예"] : boxActs(i)
@@ -457,7 +460,7 @@ extension Walker {
         case (.duel, 6300...6351): duelTap(code, Date())
         case (.squad, 8700...8799): squadTap(code, Date())
         case (.mail, 8800...8899): mailTap(code, Date())
-        case (.hold, 5980...5999): holdTap(code, Date())
+        case (.hold, 5980...5999), (.formPick, 5980...5999), (.raid(.pick), 5980...5999): holdTap(code, Date())   // 5.0: the form's and the 30 wins' pages are 도구 주기's rows
         case (.visitPick, 8500...8599): visitPickTap(code, Date())
         case (.team(let sel, let tab, true), 6032): if let c = teamRows(tab)[safe: sel]?.card, !isMe(c), Walker.walkingNow(c) { challenge(c.name) }   // 대전 신청
         case (.trade, 6000...6199): tradeTap(code, Date())

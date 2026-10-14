@@ -10,9 +10,12 @@ import AppKit
     func take(_ name: String, _ v: Walker, _ set: (Walker) -> Void) {
         let view = WalkerView(walker: v); set(v)
         if let only = ProcessInfo.processInfo.environment["SHOTS"], !only.split(separator: ",").contains(where: { name.hasPrefix($0) }) { return }   // SHOTS=raid,friends: just those (the rest still set up)
+        cutTexts = []
         v.refreshPane(Date(), force: true); view.fitWindow(); view.shown = v.compose(Date()); view.page.needsDisplay = true
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
         view.cacheDisplay(in: view.bounds, to: rep)
+        if let cut = cutTexts, !cut.isEmpty { print("cut \(name): " + Array(Set(cut)).sorted().joined(separator: " | ")) }   // text cut short (…) or off the LCD
+        cutTexts = nil
         if (try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".png"))) != nil { n += 1 }
     }
     let off = online(base()), (srv, _) = server(off)
@@ -46,6 +49,8 @@ import AppKit
         take("dex_regions", d5) { v in v.dexRegion = 0; v.screen = .dex(25, filter: 0, detail: false) }
         take("dex_regions_unova", d5) { v in v.dexRegion = 5; v.screen = .dex(495, filter: 0, detail: false) }
         take("dex_kalos_entry", d5) { v in v.dexRegion = 6; v.screen = .dex(650, filter: 0, detail: true) }
+        take("dex_regions_kalos", d5) { v in v.dexRegion = 6; v.screen = .dex(650, filter: 0, detail: false) }
+        take("menu_battle5", d5) { v in v.dexRegion = 0; v.screen = menuFor("대전") }                     // 4 with 메가 레이드
         take("dex_form_rotom", d5) { v in v.dexRegion = 0; v.dexForm = (479, 1); v.screen = .dex(479, filter: 0, detail: true) }
         take("dex_form_mega", d5) { v in v.dexForm = (6, 2); v.screen = .dex(6, filter: 0, detail: true) }
         take("dex_form_vivillon", d5) { v in v.dexForm = (666, 4); v.screen = .dex(666, filter: 0, detail: true) }

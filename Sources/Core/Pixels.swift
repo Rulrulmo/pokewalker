@@ -232,11 +232,13 @@ struct TextRun: Equatable { var s: String; var x, y, w, rows: Int; var small: Bo
             var sm = small, w = textWidth(s, small: small)
             if !small, w > 94 { sm = true; w = textWidth(s, small: true) }
             let x0 = center ? (96 - w) / 2 : right ? x - w : x
+            if x0 < 0 || x0 + w > 96 { cutTexts?.append("LCD " + s) }               // (the renders' look-out)
             runs.append(TextRun(s: s, x: x0, y: y, w: w, rows: small ? 9 : 11, small: sm, shade: shade)); return w
         }
         var t = textDots(s, small: small), y = y + (small ? 1 : 0)
         if !small, (t.first?.count ?? 0) > 94 { t = textDots(s, small: true); y += 1 }
         let w = t.first?.count ?? 0, x0 = center ? (96 - w) / 2 : right ? x - w : x
+        if x0 < 0 || x0 + w > 96 { cutTexts?.append("LCD " + s) }
         for (dy, r) in t.enumerated() { for (dx, on) in r.enumerated() where on { set(x0 + dx, y + dy, shade) } }
         return w
     }

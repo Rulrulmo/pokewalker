@@ -17,10 +17,13 @@ let typeColor: [String: Color] = (["normal": (168, 167, 122), "fire": (238, 129,
     .mapValues { Ink.c($0.0, $0.1, $0.2) }
 @MainActor func font(_ size: CGFloat, _ w: FontSpec.Weight = .regular) -> FontSpec { FontSpec(size: size * K, weight: w) }
 @MainActor func width(_ s: String, _ f: FontSpec) -> CGFloat { fonts.width(s, f) }
+/// The renders' (Tests/Shots.swift, Windows/WinRender.swift) look-out: each text cut short (…) or off its LCD while drawing (nil: not looking).
+@MainActor var cutTexts: [String]? = nil
 extension Canvas {
     /// Text centred on the row `cy` (by its caps, one baseline for Hangul and digits); align 0 = starts at x, 0.5 = centred on x, 1 = ends at x.
     @discardableResult func say(_ s: String, _ x: CGFloat, _ cy: CGFloat, _ f: FontSpec, _ c: Color, _ align: CGFloat = 0, maxW: CGFloat? = nil) -> CGFloat {
         var s = s
+        if let maxW, width(s, f) > maxW { cutTexts?.append(s) }
         if let maxW { while s.count > 1, width(s, f) > maxW { s = String(s.dropLast(2)) + "…" } }
         let w = width(s, f), m = fonts.metrics(f)
         text(s, CGPoint(x: x - w * align, y: cy - m.ascender + m.capHeight / 2), f, c)
@@ -157,11 +160,12 @@ extension Canvas {
                 c.say(hint + power, rc.maxX - x(8), rc.minY + x(26), font(8, .semibold), dead ? Ink.faint : mv.effect > 1 ? Ink.red : Ink.sub, 1)
                 hits.append((rc, i))
             }
-            let mw: CGFloat = m.mega != nil ? 93 : 0                                                // 5.0: 메가진화 at the right of the note (ticked: purple, the move goes as one)
+            let mw: CGFloat = m.mega != nil ? 63 : 0                                                // 5.0: 메가진화 at the right of the note, two lines (the note keeps its room); ticked: purple, the move goes as one
             if let on = m.mega {
-                let rc = r(X1 - 88, top + 82, 88, 33), p = Path.rounded(rc, 9 * K)
+                let rc = r(X1 - 58, top + 82, 58, 33), p = Path.rounded(rc, 9 * K)
                 c.fill(p, on ? Ink.c(132, 64, 196) : Ink.tile); if sel == ms.count { c.stroke(p, Ink.red, width: 2 * K) }
-                c.say((on ? "✓ " : "") + "메가진화", rc.midX, rc.midY, font(11, .bold), on ? .white : Ink.ink, 0.5); hits.append((rc, ms.count))
+                c.say((on ? "✓ " : "") + "메가", rc.midX, rc.midY - x(7), font(10.5, .bold), on ? .white : Ink.ink, 0.5)
+                c.say("진화", rc.midX, rc.midY + x(7), font(10.5, .bold), on ? .white : Ink.ink, 0.5); hits.append((rc, ms.count))
             }
             if let mv = ms[safe: sel] {                                                            // 3.8.2: what the pick does
                 let box = r(X0, top + 82, w - mw, 33); c.fill(.rounded(box, 9 * K), Ink.tile)
@@ -257,11 +261,12 @@ extension Canvas {
     /// A pill track of tabs, the picked one solid red.
     func tabs(_ labels: [String], _ sel: Int, _ top: CGFloat, code: Int = 4100) {
         let track = r(X0, top, X1 - X0, 22), sw = track.width / CGFloat(labels.count)
+        let size = [10, 9.5, 9, 8.5].first { s in labels.allSatisfy { width($0, font(s, .bold)) <= sw - x(8) } } ?? 8   // 5.0: seven regions in a row
         c.pill(track, Ink.tile)
         for (i, s) in labels.enumerated() {
             let cell = CGRect(x: track.minX + CGFloat(i) * sw, y: track.minY, width: sw, height: track.height)
-            if i == sel { c.pill(cell.insetBy(dx: 2 * K, dy: 2 * K), Ink.red) }
-            c.say(s, cell.midX, cell.midY, font(10, i == sel ? .bold : .medium), i == sel ? .white : Ink.sub, 0.5)
+            if i == sel { c.pill(cell.insetBy(dx: (labels.count > 5 ? 1 : 2) * K, dy: 2 * K), Ink.red) }
+            c.say(s, cell.midX, cell.midY, font(size, i == sel ? .bold : .medium), i == sel ? .white : Ink.sub, 0.5)
             hits.append((cell, code + i))
         }
     }
@@ -439,11 +444,12 @@ extension Canvas {
         if let g = m.group {                                                                      // a group's page: ‹ 메뉴 (↩) over its features
             let back = r(X0, 200, 50, 20), w = c.say("‹ 메뉴", back.minX + x(2), back.midY, font(10, .semibold), Ink.sub); hits.append((back, 3099))
             c.say(g, back.minX + x(2) + w + x(6), back.midY, font(11, .bold), Ink.ink)
+            let step = min(56, (PaneContent.home - 233) / CGFloat(max(1, m.rows.count))), h = step - 6   // 5.0: 배틀's four still fit the page
             for (i, row) in m.rows.enumerated() {
-                let rc = r(X0, 225 + CGFloat(i) * 56, X1 - X0, 50), on = i == m.sel
+                let rc = r(X0, 225 + CGFloat(i) * step, X1 - X0, h), on = i == m.sel
                 c.fill(.rounded(rc, 10 * K), on ? Ink.red : Ink.tile)
-                c.say(row.name, rc.minX + x(12), rc.minY + x(17), font(12, .bold), on ? .white : row.off ? Ink.sub : Ink.ink, maxW: rc.width - x(30))
-                c.say(row.note, rc.minX + x(12), rc.minY + x(34), font(9, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(24))
+                c.say(row.name, rc.minX + x(12), rc.minY + x(h * 0.34), font(12, .bold), on ? .white : row.off ? Ink.sub : Ink.ink, maxW: rc.width - x(30))
+                c.say(row.note, rc.minX + x(12), rc.minY + x(h * 0.69), font(9, .medium), on ? Ink.onRed : Ink.sub, maxW: rc.width - x(24))
                 if row.dot { dot(rc, on) }
                 hits.append((rc, 3000 + i))
             }
@@ -1184,20 +1190,22 @@ extension Page {
             let gap: CGFloat = 4, bw = (X1 - X0 - gap * CGFloat(m.week.count - 1)) / CGFloat(m.week.count)
             for (i, t) in m.week.enumerated() {
                 let rc = r(X0 + CGFloat(i) * (bw + gap), 265, bw, 20); c.fill(.rounded(rc, 7 * K), Ink.board)
-                c.say(t, rc.midX, rc.midY, font(9.5, .bold), i == m.week.count - 1 && !t.hasSuffix(" 0") ? Ink.gold : Ink.ink, 0.5)
+                c.say(t, rc.midX, rc.midY, font(m.week.count < 3 ? 10.5 : 9.5, .bold), i == m.week.count - 1 && !t.hasSuffix(" 0") && m.ranks ? Ink.gold : Ink.ink, 0.5)   // (5.0's two: bigger)
             }
         }
         tabs(m.tabs, m.tab, 291, code: 7000)
         if m.rows.isEmpty { c.say(m.empty, x(Layout.w / 2), y(368), font(10, .medium), Ink.sub, 0.5) }
+        let rh: CGFloat = m.roomy ? 26 : 21, big: CGFloat = m.roomy ? 1 : 0                           // 5.0: the Mega raid's four, bigger
         for (i, row) in m.rows.enumerated() {
-            let rc = r(X0, 319 + CGFloat(i) * 21, X1 - X0, 19); tile(rc, 7, on: false, row.me ? Ink.tint(Ink.blue, 0.10) : nil)
+            let rc = r(X0, 319 + CGFloat(i) * rh, X1 - X0, rh - 2); tile(rc, 7, on: false, row.me ? Ink.tint(Ink.blue, 0.10) : nil)
             var xl = rc.minX + x(8)
             if m.tab == 0, m.ranks { c.say(row.rank.map { "\($0)" } ?? "-", xl + x(5), rc.midY, font(9.5, .bold), (row.rank ?? 9) <= 3 ? Ink.red : Ink.sub, 0.5); xl += x(16) }
-            monIcon(row.art ?? row.dex, shiny: row.shiny, CGRect(x: xl - x(4), y: rc.midY - x(11), width: x(22), height: x(22)), side: 22 * K); xl += x(21)
+            let side: CGFloat = 22 + 2 * big
+            monIcon(row.art ?? row.dex, shiny: row.shiny, CGRect(x: xl - x(4), y: rc.midY - x(side / 2), width: x(side), height: x(side)), side: side * K); xl += x(21 + 3 * big)
             var xr = rc.maxX - x(8)
             if let p = row.pill { let good = p == "잡음" || p == "승"; xr = pillAt(p, xr, rc.midY, good ? Ink.tint(Ink.green, 0.18) : Ink.board, good ? Ink.green : Ink.sub) }
-            xr -= c.say(row.value, xr, rc.midY, font(8.5, .semibold), m.tab == 0 && m.ranks ? Ink.ink : Ink.sub, 1) + x(6)
-            c.say(row.name, xl, rc.midY, font(9.5, .bold), Ink.ink, maxW: xr - xl)
+            xr -= c.say(row.value, xr, rc.midY, font(8.5 + big, .semibold), m.tab == 0 && m.ranks ? Ink.ink : Ink.sub, 1) + x(6)
+            c.say(row.name, xl, rc.midY, font(9.5 + big, .bold), Ink.ink, maxW: xr - xl)
         }
         let rc = r(X0, 428, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.go == nil ? Ink.tile : Ink.red)
         c.say(m.go ?? m.hint, rc.midX, rc.midY, font(m.go == nil ? 10 : 11, .bold), m.go == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.go != nil { hits.append((rc, 7010)) }
