@@ -141,7 +141,7 @@ extension Walker {
             switch next { case .battle where sideOn, .moves where sideOn, .party where sideOn, .bagBattle where sideOn, .forfeit where sideOn: return nil; default: return .notice }
         }
         switch screen {
-        case .dex: return .dex
+        case .dex, .goals: return .dex
         case .mail: return .mail
         case .box, .itemOn, .hold, .formPick, .train, .relearn, .learn, .visitPick: return .pokemon
         case .team, .trade, .market, .duel, .squad: return .social

@@ -90,7 +90,7 @@ extension Canvas {
         else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let l = p.relearn { drawRelearn(l) }
         else if let t = p.team { drawTeam(t) } else if let t = p.teamCard { drawTeamCard(t) }
         else if let t = p.trades { drawTrades(t) } else if let o = p.offer { drawOffer(o) } else if let k = p.pick { drawPick(k) }
-        else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let v = p.visits { drawVisits(v) } else if let s = p.squad { drawSquad(s) } else if let h = p.duelHub { drawDuelHub(h) } else if let m = p.mailList { drawMailList(m) } else if let m = p.mailOpen { drawMailOpen(m) } else if let m = p.mailPick { drawMailPick(m) } else if let r = p.raid { drawRaid(r) } else if let r = p.raidTier { drawRaidTier(r) } else if let r = p.raidBalls { drawRaidBalls(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
+        else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let v = p.visits { drawVisits(v) } else if let s = p.squad { drawSquad(s) } else if let h = p.duelHub { drawDuelHub(h) } else if let m = p.mailList { drawMailList(m) } else if let m = p.mailOpen { drawMailOpen(m) } else if let m = p.mailPick { drawMailPick(m) } else if let r = p.raid { drawRaid(r) } else if let r = p.raidTier { drawRaidTier(r) } else if let g = p.goals { drawGoals(g) } else if let r = p.raidBalls { drawRaidBalls(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
         else if let s = p.status { drawStatus(s) }
     }
     let X0: CGFloat = 9, X1: CGFloat = 207                                                         // the content column (card points): the bezel's edges
@@ -1246,6 +1246,23 @@ extension Page {
         c.say(m.go ?? m.hint, rc.midX, rc.midY, font(m.go == nil ? 10 : 11, .bold), m.go == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.go != nil { hits.append((rc, 7010)) }
     }
     /// The tier: a row each (★, the boss's level, its 31s, a win's BP), the pick ringed (a click picks, again goes on); the rule in a line; the button.
+    /// 5.0: 도감 업적 — a row each: its name, n / of with a bar (its half marked), a line, the steps paid or its 이로치; ✦ a region filled.
+    func drawGoals(_ m: GoalsModel) {
+        c.say("도감 업적", x(X0 + 2), y(206), font(12, .bold), Ink.ink)
+        c.say("받은 업적 \(m.paid)개", x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
+        for (i, row) in m.rows.enumerated() {
+            let rc = r(X0, 216 + CGFloat(i) * 30, X1 - X0, 27); tile(rc, 8, on: i == m.sel)
+            let nw = c.say(row.name + (row.done && i > 0 && i < m.rows.count - 1 ? " ✦" : ""), rc.minX + x(8), rc.minY + x(9), font(10, .bold), row.done ? Ink.c(150, 96, 16) : Ink.ink)
+            c.say("\(row.have)/\(row.of)", rc.minX + x(8) + max(nw + x(6), x(46)), rc.minY + x(9), font(9, .semibold), Ink.sub)
+            c.say(row.marks.map { "단계 \($0)/\(row.of2 ?? 0)" } ?? row.shiny ?? "", rc.maxX - x(8), rc.minY + x(9), font(8.5, .medium), Ink.sub, 1)
+            let bar = CGRect(x: rc.minX + x(8), y: rc.minY + x(16), width: rc.width * 0.34, height: x(4))
+            c.bar(bar.minX, bar.maxX, bar.midY, row.of > 0 ? CGFloat(row.have) / CGFloat(row.of) : 0, row.done ? Ink.gold : Ink.red, h: x(4))
+            if let h = row.half, row.of > 0 { let hx = bar.minX + bar.width * CGFloat(h) / CGFloat(row.of); c.fill(CGRect(x: hx - x(0.5), y: bar.minY - x(2), width: x(1), height: x(8)), Ink.ink) }
+            c.say(row.note, bar.maxX + x(6), bar.midY, font(8, .medium), Ink.sub, maxW: rc.maxX - bar.maxX - x(14))
+            hits.append((rc, 9100 + i))
+        }
+        if !m.hint.isEmpty { c.say(m.hint, x(Layout.w / 2), y(216 + CGFloat(m.rows.count) * 30 + 10), font(9, .medium), Ink.sub, 0.5) }
+    }
     func drawRaidTier(_ m: RaidTierModel) {
         let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
         c.say("난이도 · " + m.boss, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)

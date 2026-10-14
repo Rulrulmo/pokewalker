@@ -60,6 +60,11 @@ import AppKit
         take("dex_form_mega", d5) { v in v.dexForm = (6, 2); v.screen = .dex(6, filter: 0, detail: true) }
         take("dex_form_vivillon", d5) { v in v.dexForm = (666, 4); v.screen = .dex(666, filter: 0, detail: true) }
         d5.dexForm = nil
+        // 도감 업적 (§15): 전국, a region filled (✦), one half way, 해금; the regions' tabs with ✦
+        let gw = online({ var s = base(); s.owned = Array(1...151) + Array(152...230) + [495, 650]; s.shinyOwned = [25, 6, 249]; s.dex()
+                          s.dexRewards = ["전국:25", "전국:50", "전국:100", "전국:150", "전국:200", "관동:50", "관동:100", "성도:50"]; return s }())
+        for k in [0, 1, 2, 7] { take("goals_\(k)", gw) { v in v.screen = .goals(k) } }
+        take("dex_regions_done", gw) { v in v.dexRegion = 1; v.screen = .dex(25, filter: 0, detail: false) }
         var r5 = Seeded(s: 6), frog = Mon.wild(658, level: 40, &r5); frog.known = [57, 98, 400, 92]
         var vivi = Mon.wild(666, level: 20, &r5); vivi.form = 7; var wash = Mon.wild(479, level: 30, &r5); wash.form = 2
         let g6 = online({ var s = base(); s.companion = frog; s.caught = [Mon.wild(495, level: 10, &r5), wash]

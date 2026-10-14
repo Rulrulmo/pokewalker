@@ -228,6 +228,7 @@ extension Walker {
             case .shop(let bp, let sel, .some), .shopConfirm(let bp, let sel, _): screen = .shop(bp: bp, sel: sel, qty: nil)
             case .shop(let bp, _, nil): screen = menuFor(bp ? "BP 교환소" : "상점")
             case .course: screen = menuFor("코스")
+            case .goals: screen = menuFor("도감 업적")
             case .train: screen = .items(state.inventory.firstIndex(of: "은색병뚜껑") ?? 0); trainRef = -1
             case .tower(let p): screen = p != nil ? .tower(pick: nil) : menuFor("배틀 타워")                    // the picker → the lobby → the menu; a run stays on: ● in the lobby goes on
             case .learn: screen = .learn(sel: 4)                                                    // onto 배우지 않는다; ● decides
@@ -338,6 +339,7 @@ extension Walker {
             guard k == 1 else { return }
             towerNext(now)
         case .card(let p): screen = k == 1 ? menuFor("트레이너 카드") : .card((p + (k == 0 ? 2 : 1)) % 3)
+        case .goals(let s): goalsPress(k, s)
         case .team(let s, let t, let card):                                                      // ◀ ▶ a teammate (on a card: the next one's card), ● its card / 인사
             if k != 1 { teamStep(k == 0 ? -1 : 1); return }
             if t == TeamTab.requests, !card { if let r = friendReqRows[safe: s], !r.mine { friendReq(r, accept: true, now) } else if friendReqRows.isEmpty { askFriend(now) }; return }   // 신청: ● accepts (none: ID로 신청)
@@ -429,6 +431,7 @@ extension Walker {
         case "포켓 레이더": openRadar(back: menuFor(name), now)                                            // the server's find (docs/plans/11 §3.2)
         case "코스": screen = .course(state.course)
         case "트레이너 카드": screen = .card(0)
+        case "도감 업적": screen = .goals(0)                                                          // 5.0 (content5)
         case "포켓몬": screen = .box(-1, act: nil, confirm: false)                                  // the companion first
         case "상점", "BP 교환소": screen = .shop(bp: name == "BP 교환소", sel: 0, qty: nil)
         case "배틀 타워": screen = .tower(pick: nil)

@@ -555,6 +555,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     // 4.0 (docs/plans/16): raid runs, as the server's ServerRaid.swift — this week's species; each trainer's runs (open: its fight on; a ball stage:
     // ended, balls left, not caught); shinies / odds = the next runs' shine and the next throws' results (empty: the server's dice); opens = not yet
     struct RaidRun { var tier: Int; var boss: Mon; var day: String; var at: Int; var bars = 0, balls = 0; var won = false, caught = false, ended = false; var mega = false }   // mega: a Mega raid's (5.0: no balls, its stone)
+    var dexPaid: [String: Set<String>] = [:]                                                     // 5.0: the 도감 업적 mailed, by trainer (the server's dex_rewards)
     var megaWins: [String: [String: Int]] = [:], megaFirsts: [String: [String: Set<Int>]] = [:], megaOdds: [Bool] = [], megaWeekNo = 42   // megaFirsts: by stone, the tiers whose first win paid   // 5.0 (docs/plans/18 §6.4, ServerRaid.swift): each trainer's count by stone; the next wins' drop (empty: dice); the rotation's week (MegaRaid.round)
     var raidDex = 249, raidRuns: [String: [RaidRun]] = [:], raidShinies: [Bool] = [], raidOdds: [Bool] = [], raidOpens: Int? = nil
     var offers: [(o: TradeOffer, from: String, to: String)] = [], nextOffer = 1, mail: [String: [News]] = [:], stale: Set<String> = []   // 12 §3 (M2): offers (keys), 3.3's news, saves another's trade changed
@@ -619,6 +620,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if o.cannot == nil, let why = visitAct(q.act, id.key, r.name, &w, &o.news) { o.cannot = why }
         if o.cannot == nil, let why = mailAct(q.act, id.key, &w, &o) { o.cannot = why }
         let preTower = w; towerRewards(id.key, &w); if w != preTower { o.changed = true }                 // 3.9: every act, as the server's
+        let preDex = w; dexRewards(id.key, &w); if w != preDex { o.changed = true }                       // 5.0: 도감 업적, as the server's
         visitTick(id.key, steps: o.cannot == nil ? taken : 0, &w, &o.news)
         if w != preVisit { o.changed = true }
         if let a = q.app, verCmp(a, "3.2").map({ $0 >= 0 }) == true, let mail = inbox.removeValue(forKey: id.key) { o.news += mail }   // (3.2 on: hello)
@@ -1123,6 +1125,20 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         guard let t = RaidRules.tier(tier) else { return (nil, "난이도를\n골라 주세요") }
         guard let b = MegaRaid.week(megaWeekNo)[safe: k] else { return (nil, "그 보스는\n이번 주에 없어요") }
         return (RaidBoss(week: "2026-W42", boss: MegaRaid.boss(b, t, &rng), left: 1, tier: t.tier, mega: b.form), nil)
+    }
+    /// 5.0 (plan 18 §15): 도감 업적 as mail — as the server's dexRewards (one goal: its own mail; several: one merged, a pick apart), the keys
+    /// paid kept on the save (Walk.dexRewards).
+    func dexRewards(_ key: String, _ w: inout Walk) {
+        let due = DexGoals.reached(w).filter { !(dexPaid[key] ?? []).contains($0.key) }
+        if due.count == 1, let g = due.first { giveMail(key, "dex", from: "도감", title: g.title, body: g.body, g.gifts) }
+        else if due.count > 1 {
+            let m = DexGoals.merged(due)
+            if !m.gifts.isEmpty { giveMail(key, "dex", from: "도감", title: "도감 업적 \(due.count)개", body: due.map(\.label).joined(separator: " · ") + "에 닿았어요.", m.gifts) }
+            for p in m.picks { giveMail(key, "dex", from: "도감", title: "도감 업적: \(p.goal.label) · 고르기", body: p.goal.body, [p.gift]) }
+        }
+        dexPaid[key, default: []].formUnion(due.map(\.key))
+        let list = DexGoals.goals().map(\.key).filter { (dexPaid[key] ?? []).contains($0) }
+        if !list.isEmpty, w.dexRewards != list { w.dexRewards = list }
     }
     /// 5.0: the stones a trainer has or has coming (theirs, and unclaimed in mail) — as the server's megaHad.
     func megaHad(_ key: String) -> Set<String> {

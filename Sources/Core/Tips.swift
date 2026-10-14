@@ -1,16 +1,17 @@
 import Foundation
 // 5.0 (the user: 새 개념을 처음 만날 때 짧은 안내): a few words on the LCD, once on this PC, the first time each new thing comes up — 5.0's
-// world switched on, a Mega stone in the bag, a Pokémon with its hidden ability, the Mega raid opened. The app's own walker only (tipsOn):
+// world switched on, a Mega stone in the bag, a Pokémon with its hidden ability, the Mega raid opened, the first 도감 업적. The app's own walker only (tipsOn):
 // a test's walker stays as it was.
 
 enum Tip: Int, CaseIterable {
-    case content5, megaStone, hidden, megaRaid
+    case content5, megaStone, hidden, megaRaid, dexGoals
     var lines: [String] {
         switch self {
         case .content5: ["하나 · 칼로스 포켓몬이 왔어요!", "새 코스 · 도감 지방 탭 ·", "메가진화를 둘러보세요"]
         case .megaStone: ["메가스톤을 얻었다!", "지니게 하면 배틀의 기술에서", "메가진화를 켤 수 있어요"]
         case .hidden: ["숨겨진특성 포켓몬이다!", "레이더 연쇄가 길수록", "더 자주 만나요"]
         case .megaRaid: ["이기면 확률로 그 보스의", "메가스톤이 우편함에 와요", "한 보스를 \(MegaRaid.bossWins)번 이기면 확정"]
+        case .dexGoals: ["도감 업적 보상이 왔어요!", "기록 ▸ 도감 업적 · 지역을", "다 채우면 이로치 한 번 더"]
         }
     }
 }
@@ -30,6 +31,7 @@ extension Walker {
         if (state.bag + state.items).contains(where: { Forms.stones.contains($0) }) || ([state.companion] + state.caught + state.box).contains(where: { $0.item.map(Forms.stones.contains) == true }) {
             if showTip(.megaStone, next: .home, now) { return }
         }
-        if ([state.companion] + state.caught + state.box).contains(where: { $0.ability == 2 && (Forms.of($0.dex, $0.form)?.hidden ?? hiddenAbility[$0.dex]) > 0 }) { showTip(.hidden, next: .home, now) }
+        if ([state.companion] + state.caught + state.box).contains(where: { $0.ability == 2 && (Forms.of($0.dex, $0.form)?.hidden ?? hiddenAbility[$0.dex]) > 0 }) { if showTip(.hidden, next: .home, now) { return } }
+        if !(state.dexRewards ?? []).isEmpty { showTip(.dexGoals, next: .home, now) }             // (the first 도감 업적 mailed)
     }
 }

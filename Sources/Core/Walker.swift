@@ -109,7 +109,7 @@ import Foundation
         case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
         case .traded(_, _, _, let since) where now.timeIntervalSince(since) > 6: screen = .home
-        case .menu, .card, .items, .dex, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid(.lobby), .raid(.tier), .itemOn, .hold, .visitPick: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
+        case .menu, .card, .items, .dex, .goals, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid(.lobby), .raid(.tier), .itemOn, .hold, .visitPick: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
         case .trade, .market, .mail: if now.timeIntervalSince(lastInput) > 60 { screen = .home }       // (a trade is weighed up: longer)
         case .raid(.balls): if now.timeIntervalSince(lastInput) > 120 { screen = .home }               // 4.0: left alone, not given up — the stage waits (the lobby goes back to it)
         default: break
@@ -183,6 +183,7 @@ import Foundation
         let when = "\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · \((state.weather ?? .sunny).name)"
         switch sc {
         case .dex: return ("도감", "잡음 \(dexCount) · 봤음 \(seenList.count)")
+        case .goals: return ("도감 업적", "받은 업적 \((state.dexRewards ?? []).count)개")
         case .box(let i, _, _, true) where state.mon(i)?.ot != nil: return ("포켓몬", "어버이: " + (state.mon(i)?.ot ?? ""))   // a traded one: who it came from first
         case .box, .items: return ("포켓몬", "워커 \(state.caught.count) · 상자 \(state.box.count.formatted()) · 도구 \(state.items.count + state.bag.count)")
         case .menu(let g, _): return ("메뉴", g.map { menuTiles[$0].name } ?? "")

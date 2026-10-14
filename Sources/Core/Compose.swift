@@ -177,6 +177,7 @@ extension Walker {
         case .raid(let s): raidLCD(&fb, s, now)
         case .market(let s): marketLCD(&fb, s, now)
         case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
+        case .goals(let s): goalsLCD(&fb, s)
         case .card(let p):
             if p == 0, state.deco != nil || state.shownTitle != nil { fb.text(cardTitle, 2, 0); fb.fill(0, 12, 96, 1, 2) } else { header(p == 0 ? cardTitle : ["트레이너 카드", "최근 7일", "알"][p]) }   // (a 칭호 or 장식: there, not the W)
             if p == 2 {
@@ -326,7 +327,7 @@ extension Walker {
             return GridModel(tabs: ["전체", "잡음", "못 잡음", "이 코스"], tab: f,
                              cells: l[p.first..<min(l.count, p.first + per)].map { .init(dex: $0, look: owned.contains($0) ? 2 : seen.contains($0) ? 1 : 0, shiny: shiny.contains($0)) },
                              first: p.first, sel: i.map { $0 - p.first }, page: p.page, pages: p.pages, empty: f == 2 ? "모두 잡았다!" : "아직 없다", bob: bob,
-                             regions: Content.gen6 ? ["전국"] + dexRegions(dexMax).map(\.name) : nil, region: dexRegion)   // 5.0: a second row (content5)
+                             regions: Content.gen6 ? ["전국"] + dexRegions(dexMax).map { r in r.name + (DexGoals.regions.first { $0.range == r.range }.map { DexGoals.complete(state, $0) } == true ? "✦" : "") } : nil, region: dexRegion)   // 5.0: a second row (content5)
         case .box(let i, _, _, false):                                                              // 포켓몬: the companion and the walker's over the box
             let o = boxOrder, b = state.box, at = o.firstIndex(of: i), p = page(o.count, at ?? 0), party = [state.companion] + state.caught
             return GridModel(tabs: ["번호순", "레벨순", "V순", "최근"], tab: boxSort,
@@ -408,6 +409,7 @@ extension Walker {
         case .radar(let b, let c, let since, let chain):
             let u = Date().timeIntervalSince(since)
             return PaneContent(radar: RadarModel(live: (1.5...(1.5 + radarWindow(chain))).contains(u) ? b : nil, cursor: c, chain: chain, season: state.season))
+        case .goals(let s): return PaneContent(goals: goalsModel(s))
         case .card(let p): return PaneContent(card: CardModel(page: p, title: state.shownTitle, deco: state.deco, stones: Content.gen6 ? "메가스톤 \(MegaRaid.collected(state))/\(MegaRaid.stones.count)" : nil,
                                                               titles: (state.titles ?? []).count > 1 ? Array((state.titles ?? []).reversed()) : [], picked: state.cardTitle, picking: titlePick))   // 5.0: two or more 칭호: pick the card's
         case .learn(let sel):
@@ -462,6 +464,7 @@ extension Walker {
         switch (screen, code) {
         case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
         case (.card, 5200...5202): titlePick = false; screen = .card(code - 5200)
+        case (.goals(let s), 9100...9120): if code - 9100 == s { goalsPress(1, s) } else { screen = .goals(code - 9100) }   // 5.0: a row; the picked one again opens it
         case (.card, 5209): titlePick.toggle()                                                     // 5.0: the 칭호 pill → the 칭호 to show (two or more)
         case (.card, 5210...5229):                                                                // … 가장 최근 (nil), or one of them, newest first
             let earned = Array((state.titles ?? []).reversed()), k = code - 5210, name = k == 0 ? nil : earned[safe: k - 1]
@@ -618,7 +621,7 @@ extension Walker {
     func menuModel(_ g: Int?, _ i: Int) -> MenuModel {
         let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드", "메가 레이드", "대전", "우편함"]   // offline: what needs the server, dimmed
         let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
-        let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / \(dexMax)", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "친구": friendRequestsIn > 0 ? "친구 신청 \(friendRequestsIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "친구 · 이번 주 순위", "교환": marketNote,
+        let notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / \(dexMax)", "도감 업적": "받은 업적 \((state.dexRewards ?? []).count)개", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "친구": friendRequestsIn > 0 ? "친구 신청 \(friendRequestsIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "친구 · 이번 주 순위", "교환": marketNote,
                      "레이드": raidNote, "메가 레이드": megaNote, "대전": duelNote, "우편함": mailNote]
         let dots: Set<String> = Set([marketDot ? "교환" : nil, friendRequestsIn > 0 ? "친구" : nil, mailDot ? "우편함" : nil, raidDot ? "레이드" : nil].compactMap { $0 })   // 3.8: something waits there (4.0: a raid's ball stage)
         func row(_ n: String) -> MenuModel.Row { off && needs.contains(n) ? .init(name: n, note: "연결되면 할 수 있어요", off: true) : .init(name: n, note: notes[n] ?? "", dot: dots.contains(n)) }

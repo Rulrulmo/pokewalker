@@ -90,6 +90,11 @@ struct MailPickModel: Equatable {
 /// 포켓몬 레이더: the four bushes as on the LCD, the one rustling marked.
 struct RadarModel: Equatable { var live: Int?; var cursor: Int; var chain: Int; var season = Season.summer }
 /// 트레이너 카드: its three pages as tabs; 3.9: the 칭호 and 장식 over them (15 §6 C).
+/// 5.0 (content5): 도감 업적 — a row each (전국, the regions, 해금): its count of what it asks, its half mark, a line, the steps paid (전국), 이로치.
+struct GoalsModel: Equatable {
+    struct Row: Equatable { var name: String; var have, of: Int; var half: Int?; var note: String; var marks: Int?; var of2: Int?; var shiny: String?; var done: Bool }
+    var rows: [Row]; var sel: Int; var paid: Int; var hint: String
+}
 struct CardModel: Equatable {
     var page: Int; var title: String? = nil; var deco: String? = nil; var stones: String? = nil   // stones (5.0): 메가스톤 n/48
     var titles: [String] = [], picked: String? = nil, picking = false                            // 5.0: two or more 칭호 (newest first), the one picked (nil: the newest), the list open
@@ -253,6 +258,7 @@ struct PaneContent: Equatable {
     var trades: TradeListModel? = nil, offer: TradeOfferModel? = nil, pick: TradePickModel? = nil
     var raid: RaidModel? = nil
     var raidTier: RaidTierModel? = nil, raidBalls: RaidBallsModel? = nil
+    var goals: GoalsModel? = nil                                       // 5.0: 도감 업적
     var friendReqs: FriendReqModel? = nil, board: MarketBoardModel? = nil, post: MarketPostModel? = nil
     var duel: DuelModel? = nil, hold: HoldModel? = nil, visits: VisitsModel? = nil
     var squad: SquadModel? = nil, duelHub: DuelHubModel? = nil
@@ -265,6 +271,6 @@ extension PaneContent {
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 472 : grid?.regions != nil ? 448 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 472 : dex != nil ? (dex!.form != nil ? 420 : 390) : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
             : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil || raidTier != nil || raidBalls != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446 : mailList != nil || mailOpen != nil || mailPick != nil ? 466
-            : radar != nil ? 327 : card != nil ? (card!.picking ? 270 + 30 * CGFloat(card!.titles.count + 1) : card!.title != nil || card!.deco != nil || card!.stones != nil ? 254 : 230) : learn != nil ? 444 : tower != nil ? 400 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
+            : radar != nil ? 327 : goals != nil ? 466 : card != nil ? (card!.picking ? 270 + 30 * CGFloat(card!.titles.count + 1) : card!.title != nil || card!.deco != nil || card!.stones != nil ? 254 : 230) : learn != nil ? 444 : tower != nil ? 400 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
     }
 }

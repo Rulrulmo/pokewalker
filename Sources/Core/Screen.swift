@@ -4,7 +4,7 @@ import Foundation
 // MARK: - screens
 /// 3.9: the menu in two steps (docs/plans/15 §6 G) — the first page's 8 tiles (2 x 4), each a feature or a group (▸) of them.
 var menuTiles: [(name: String, items: [String])] {                       // 5.0 (content5): 메가 레이드 after 레이드
-    [("포켓 레이더", []), ("코스", []), ("포켓몬", []), ("기록", ["도감", "트레이너 카드"]), ("배틀", ["배틀 타워", "레이드"] + (Content.gen6 ? ["메가 레이드"] : []) + ["대전"]),
+    [("포켓 레이더", []), ("코스", []), ("포켓몬", []), ("기록", ["도감"] + (Content.gen6 ? ["도감 업적"] : []) + ["트레이너 카드"]), ("배틀", ["배틀 타워", "레이드"] + (Content.gen6 ? ["메가 레이드"] : []) + ["대전"]),
      ("친구", ["친구", "교환"]), ("상점", ["상점", "BP 교환소"]), ("우편함", [])]
 }
 /// Every feature on the menu, in order.
@@ -49,6 +49,7 @@ indirect enum Screen {
     case squad(Squad)                                                  // 3.8 (14 §4–5): several of ours in order — the 대전 파티, a raid's party, a duel's 3 of my 6
     case say([String], next: Screen, since: Date)                      // any button or 3 s
     case evolve(from: Mon, to: Mon, since: Date)                       // already applied to the state; this is the show
+    case goals(Int)                                                    // 5.0 (content5): 도감 업적 — the row picked (0 전국, 1… the regions, last 해금: GoalsView.swift)
     case dex(Int, filter: Int, detail: Bool)                           // the pick's dex number; filter = the grid's tab (전체 / 잡음 / 못 잡음 / 이 코스); detail = the entry page
     case box(Int, act: Int?, confirm: Bool, detail: Bool = false)      // 포켓몬: a ref (-1 the companion, -2-i caught[i], i box[i]; the grid shows boxOrder); act = the ● menu's selection; confirm = "release?"; detail = its page
     case hatch(Mon, since: Date)                                       // already kept; this is the show
