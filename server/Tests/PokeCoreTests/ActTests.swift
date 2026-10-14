@@ -1025,7 +1025,7 @@ extension SaveDB {
         }
         try await db.setRaidRunsFrom(0)
         let l = try await lobby(), week = await db.megaWeek(base.addingTimeInterval(t))
-        #expect(l.bosses.map(\.stone) == week.map(\.stone) && l.bosses.allSatisfy { $0.had == false } && l.bosses.count == 2 && l.pity == 0 && l.pityNeed == 30 && l.odds == [3, 5, 8, 10, 20] && l.today.max == 3)
+        #expect(l.bosses.map(\.stone) == week.map(\.stone) && l.bosses.allSatisfy { $0.had == false && $0.wins == 0 } && l.bosses.count == 2 && l.pity == 0 && l.pityNeed == 20 && l.odds == [3, 5, 8, 10, 20] && l.today.max == 3)
         #expect(MegaRaid.bosses.count == 48 && !MegaRaid.bosses.contains { $0.dex == 384 || $0.dex == 719 })
         #expect(try await go(.megaRaid(tier: 1, boss: 0), app: "4.1").out.cannot == "메가 레이드는\n아직 열리지 않았어요")
         // a ★1 run: the boss Mega from the start, 10 bars, no balls
@@ -1037,24 +1037,41 @@ extension SaveDB {
         }
         #expect(o.out.end?.result == "won")
         #expect(try await db.count("SELECT count(*) AS n FROM raid_runs WHERE kind = 'mega' AND won = 1 AND balls = 0") == 1)
-        let after = try await lobby(); #expect(after.mine.wins == 1 && after.pity == 1 && after.today.used == 1 && after.runs.count == 1)
+        let after = try await lobby(), first = after.bosses[0]                                         // (its ★1 3 %: then its stone came, the count 0)
+        #expect(after.mine.wins == 1 && after.today.used == 1 && after.runs.count == 1 && after.bosses[1].wins == 0
+                && (first.had == false ? first.wins == 1 && after.pity == 1 : first.wins == 0 && after.pity == 0))
         #expect(try await go(.raidBall).out.cannot == "던질 볼이 없어요")                                       // no ball stage
-        // the pick: 30 wins, one of the week's two not had
-        for _ in 0..<29 { try await db.sql("INSERT INTO raid_runs (week, key, day, tier, boss, party, won, at, ended_at, kind) VALUES ('x', '앨리스', 'x', 1, '{}', '[]', 1, 0, 0, 'mega')") }
-        #expect(try await go(.megaPick(stone: "생명의구슬")).out.cannot == "이번 주 보스의\n스톤이 아니에요")
-        let picked = try await go(.megaPick(stone: week[0].stone))
-        let reset = try await lobby().pity
-        #expect(picked.out.cannot == nil && picked.walk?.bag.contains(week[0].stone) == true && reset == 0)
-        #expect(try await go(.megaPick(stone: week[1].stone)).out.cannot == "아직 30승이\n안 됐어요")
-        // the stone at a win: ★5 20 % (a hundred wins: some), one had → BP
+        // a boss's 20 wins (the user, 10-14: "보스별로 20번"): its stone by mail, said, the count back to 0; the other's apart; no pick
+        let st = week[1].stone
+        for _ in 0..<19 { try await db.megaWon("앨리스", stone: st, tier: 1, drop: false, walk: Walk(), now: 0) }
+        let at19 = try await lobby().bosses[1]
+        let titles19 = try await db.mailTitles("앨리스")
+        #expect(at19.wins == 19 && at19.had == false && !titles19.contains { $0.contains(st) })
+        try await db.megaWon("앨리스", stone: st, tier: 2, drop: false, walk: Walk(), now: 0)
+        let at20 = try await lobby(), titles20 = try await db.mailTitles("앨리스")
+        #expect(titles20.last == MegaRaid.winsTitle(st) && at20.bosses[1].had == true && at20.bosses[1].wins == 0)    // (on its way: had)
+        let bodies = try await db.count("SELECT count(*) AS n FROM mail WHERE key = '앨리스' AND body LIKE '%20번 이겨서%' AND gifts LIKE '%\(st)%'")
+        #expect(bodies == 1)
+        try await db.megaWon("앨리스", stone: st, tier: 3, drop: true, walk: Walk(), now: 0)                 // had: no count, the dice's BP
+        let bpTitle = try await db.mailTitles("앨리스").last, st0 = try await db.megaWins("앨리스")[st]
+        #expect(bpTitle == "\(st) 대신 BP" && st0 == 0)
+        #expect(try await go(.megaPick(stone: week[0].stone)).out.cannot == "스톤은 그 보스를 20번\n이기면 우편으로 와요")
+        // the dice: the stone at once (the count 0); one in the bag counts nothing
+        try await db.megaWon("앨리스", stone: "리자몽나이트Y", tier: 4, drop: true, walk: Walk(), now: 0)
+        var had = Walk(); had.box = [{ var m = Mon(dex: 130, level: 50, female: false); m.item = "갸라도스나이트"; return m }()]
+        try await db.megaWon("앨리스", stone: "갸라도스나이트", tier: 1, drop: false, walk: had, now: 0)
+        let ws = try await db.megaWins("앨리스"), titlesY = try await db.mailTitles("앨리스")
+        #expect(titlesY.contains("리자몽나이트Y를 얻었다!") && ws["리자몽나이트Y"] == 0 && ws["갸라도스나이트"] == nil)
+        // a raid's end rolls the dice: ★5 20 %, a hundred wins — the stone (dice or 20th), then BP (it's in the mail, unclaimed)
         for _ in 0..<100 {
             try await db.sql("INSERT INTO raid_runs (week, key, day, tier, boss, party, at, kind) VALUES ('x', '앨리스', 'x', 5, :b, '[]', 0, 'mega')", ["b": .text(#"{"dex":6,"level":120,"female":false,"item":"리자몽나이트X"}"#)])
-            var had = Walk(); had.bag = ["리자몽나이트X"]
-            try await db.raidRunEnded("앨리스", end: BattleEnd(result: "won", bars: 10), walk: Bool.random() ? had : Walk(), now: 0)
+            try await db.raidRunEnded("앨리스", end: BattleEnd(result: "won", bars: 10), walk: Walk(), now: 0)
         }
         let titles = try await db.mailTitles("앨리스")
-        #expect(titles.contains("리자몽나이트X를 얻었다!") && titles.contains("리자몽나이트X 대신 BP"))
+        #expect(titles.filter { $0 == "리자몽나이트X를 얻었다!" || $0 == MegaRaid.winsTitle("리자몽나이트X") }.count == 1 && titles.contains("리자몽나이트X 대신 BP"))
     }
+    #expect(MegaRaid.bossWins == 20 && MegaRaid.winsTitle("쪽빛구슬") == "20승! 쪽빛구슬을 얻었다!" && MegaRaid.winsTitle("리자몽나이트X") == "20승! 리자몽나이트X를 얻었다!")
+    #expect(MegaRaid.winsBody(MegaBoss(dex: 6, form: 2, stone: "리자몽나이트Y")) == "메가리자몽Y를 20번 이겨서 스톤이 왔어요." && MegaRaid.winsBody(MegaBoss(dex: 383, form: 1, stone: "주홍구슬")) == "원시그란돈을 20번 이겨서 스톤이 왔어요.")
     #expect(MegaRaid.stoneOdds == [3, 5, 8, 10, 20])
     #expect(MegaRaid.mailTitle("쪽빛구슬", had: false) == "쪽빛구슬을 얻었다!" && MegaRaid.mailTitle("리자몽나이트Y", had: false) == "리자몽나이트Y를 얻었다!" && MegaRaid.mailTitle("주홍구슬", had: true) == "주홍구슬 대신 BP")
 }

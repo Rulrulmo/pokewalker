@@ -152,9 +152,8 @@ extension SaveDB {
                         if let why { out.cannot = why; w = was } else if w != was { out.changed = true }
                     case .raidQuit:                                                                     // 16 §4.2: the ball stage given up
                         try raidRunQuit(id.key, now: now)
-                    case .megaPick(let stone):                                                          // 5.0: the 30 wins' stone (ServerRaid.swift)
-                        let was = w
-                        if let why = try megaPick(id.key, stone, walk: &w, now: now) { out.cannot = why; w = was } else { out.changed = true }
+                    case .megaPick:                                                                     // (10-13's pick: since 10-14 a boss's 20th win mails its stone)
+                        out.cannot = "스톤은 그 보스를 \(MegaRaid.bossWins)번\n이기면 우편으로 와요"
                     default: break
                     }
                 }

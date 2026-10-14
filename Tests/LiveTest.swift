@@ -818,8 +818,8 @@ import Foundation
     // 메가 레이드: the lobby (the week's two, 스톤까지 n/30), ★1 with the strongest three, played to its end, its 내 판
     toHome(); w.openFeature("메가 레이드"); c.megaRaidDue = true; run(15) { !c.megaRaidDue && idle() && w.waiting == nil }
     let lob = c.megaRaid
-    check(w.raidMega && lob?.bosses.count == 2 && lob?.pityNeed == 30 && lob?.today.max == RaidRules.perDay,
-          "live 5.0 메가 레이드: \(lob?.week ?? "-") — \(lob?.bosses.map { w.megaName($0) + " (\($0.stone))" } ?? []), 스톤까지 \(lob?.pity ?? -1)/\(lob?.pityNeed ?? -1), today \(lob?.today.used ?? -1)/\(lob?.today.max ?? -1)")
+    check(w.raidMega && lob?.bosses.count == 2 && lob?.pityNeed == MegaRaid.bossWins && lob?.bosses.allSatisfy { $0.wins != nil } == true && lob?.today.max == RaidRules.perDay,
+          "live 5.0 메가 레이드: \(lob?.week ?? "-") — \(lob?.bosses.map { w.megaName($0) + " (\($0.stone)) \($0.had == true ? "보유" : "\($0.wins ?? -1)/\(lob?.pityNeed ?? -1)")" } ?? []), today \(lob?.today.used ?? -1)/\(lob?.today.max ?? -1)")
     let runs0 = lob?.mine.runs ?? 0
     w.calmAt = .distantPast; w.pageTap(7010); w.pageTap(7020); w.pageTap(7020)
     if case .squad(var q) = w.screen {
@@ -845,7 +845,7 @@ import Foundation
     let lines = says(); w.press(1); run(3) { false }
     c.megaRaidDue = true; run(15) { !c.megaRaidDue && idle() }
     check(!w.inBattle && !lines.isEmpty && (c.megaRaid?.mine.runs ?? 0) == runs0 + 1 && c.megaRaid?.runs.first?.tier == 1,
-          "live 5.0 메가 레이드: over — \(lines); 내 판 \(runs0) → \(c.megaRaid?.mine.runs ?? -1), 스톤까지 \(c.megaRaid?.pity ?? -1)/30")
+          "live 5.0 메가 레이드: over — \(lines); 내 판 \(runs0) → \(c.megaRaid?.mine.runs ?? -1), 스톤까지 \(c.megaRaid?.bosses.map { $0.had == true ? "보유" : "\($0.wins ?? -1)/\(MegaRaid.bossWins)" } ?? [])")
 
     // 5.0's pictures: the box's and the 도감's past 493 (hg-engine's)
     check(spriteCount > 721 && (0..<80).contains { spritePixel(658, back: false, $0, 79, shiny: false) != 0 } && !w.compose(Date()).sprites.isEmpty, "live 5.0: pictures past 493 (\(spriteCount) in the bundle)")

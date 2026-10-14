@@ -77,7 +77,8 @@ extension Mon {
 // MARK: - 5.0 (content5): the Mega raid (docs/plans/18 §6.4)
 // Apart from the raid: its own menu and its own two bosses a week, the same power and 3 a day (both raids count them, and the weekly mail's
 // wins); the same tiers. The boss comes as its Mega (or 원시) form; no balls — a win may give that boss's stone (★1 3 % … ★5 20 %; one had:
-// ★×5 BP instead), and every 30 Mega raid wins (any boss, any tier) one stone of the week's two is the trainer's to pick (megaPick).
+// ★×5 BP instead), and 20 wins on one boss while its stone is missing (any tier, any week) bring that stone by mail (the user, 10-14:
+// "보스별로 20번", in place of 10-13's 30 shared wins and a pick).
 enum MegaRaid {
     static let app = "5.0"
     /// The rotation (monForms' order): every Mega with a stone but 메가디안시 (not in 5.0), and both 원시 — 48 (메가레쿠쟈 has none: 화룡점정).
@@ -123,10 +124,14 @@ enum MegaRaid {
         return max(0, (cal.dateComponents([.day], from: a, to: s).day ?? 0) / 7)
     }
     static let stoneOdds = [3, 5, 8, 10, 20]                    // % a win, ★1–★5 (the user, 10-13)
-    static let pity = 30                                        // wins for one pick
+    static let bossWins = 20                                    // wins on one boss (its stone missing) for that stone, by mail
+    static let pity = 30                                        // (10-13's shared count: only the app's FakeCloud · pick screen still read it, till the Mac's change)
     static func duplicateBP(_ tier: Int) -> Int { 5 * tier }
     /// A win's stone mail title (one had: its BP instead). 쪽빛구슬 · 주홍구슬 take 을.
     static func mailTitle(_ stone: String, had: Bool) -> String { had ? "\(stone) 대신 BP" : josa(stone, "을", "를") + " 얻었다!" }
+    /// The 20 wins' stone mail: its title (ends as a drop's: "…를 얻었다!") and line.
+    static func winsTitle(_ stone: String) -> String { "\(bossWins)승! " + josa(stone, "을", "를") + " 얻었다!" }
+    static func winsBody(_ b: MegaBoss) -> String { josa(Forms.of(b.dex, b.form)?.name ?? b.stone, "을", "를") + " \(bossWins)번 이겨서 스톤이 왔어요." }
     /// Its Mega's own move: 메가뮤츠 사이코브레이크, 원시가이오가 근원의파동, 원시그란돈 단애의칼 (in the place of the weakest attack).
     static let signature: [Int: Int] = [150: 540, 382: 618, 383: 619]
     /// A run's boss: the species at the tier's level and IVs with its stone (it fights as its Mega: RaidBoss.mega).
@@ -142,9 +147,10 @@ enum MegaRaid {
     /// The stones a trainer has: in the bag, on the walker, held by any of theirs.
     static func stonesHad(_ w: Walk) -> Set<String> { Set(w.bag + w.items + ([w.companion] + w.caught + w.box).compactMap(\.item)) }
 }
-struct MegaBoss: Codable, Equatable { var dex, form: Int; var stone: String; var had: Bool? = nil }
+struct MegaBoss: Codable, Equatable { var dex, form: Int; var stone: String; var had: Bool? = nil; var wins: Int? = nil }   // (the lobby's: had, its count of bossWins)
 /// POST /v2/raid with kind "mega" (5.0): the week's two (had: that stone already), next week's, the day's runs (both raids'), the week's Mega
-/// runs, the pick's count (pity of pityNeed), the odds by tier.
+/// runs, each boss's count (MegaBoss.wins of pityNeed: bossWins), the odds by tier. (pity: the larger of the week's two counts, for the app's
+/// pick screen till the Mac's change.)
 struct MegaRaidLobby: Codable, Equatable {
     var week: String; var bosses: [MegaBoss]; var next: [MegaBoss]; var ends: Int
     var today: RaidToday; var resetAt: Int

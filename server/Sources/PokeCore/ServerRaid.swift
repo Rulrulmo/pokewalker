@@ -15,7 +15,7 @@ let raidSchema = """
       boss TEXT NOT NULL, party TEXT NOT NULL, bars INTEGER NOT NULL DEFAULT 0, won INTEGER NOT NULL DEFAULT 0, balls INTEGER NOT NULL DEFAULT 0,
       caught INTEGER NOT NULL DEFAULT 0, at INTEGER NOT NULL, ended_at INTEGER, kind TEXT);
     CREATE INDEX IF NOT EXISTS raid_runs_key ON raid_runs (key, week);
-    CREATE TABLE IF NOT EXISTS mega_picks (key TEXT NOT NULL, week TEXT NOT NULL, stone TEXT NOT NULL, at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS mega_wins (key TEXT NOT NULL, stone TEXT NOT NULL, wins INTEGER NOT NULL, PRIMARY KEY (key, stone));
     CREATE TABLE IF NOT EXISTS settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
     """
 let raidRotation = [249, 382, 383, 384, 483, 484, 487]                    // 루기아 가이오가 그란돈 레쿠쟈 디아루가 펄기아 기라티나 (ISO week % 7)
@@ -203,12 +203,8 @@ extension SaveDB {
         try db.rows("UPDATE raid_runs SET bars = :b, won = :w, balls = :n, ended_at = :now WHERE id = :id",
                     ["b": .int(end.bars ?? 0), "w": .int(won ? 1 : 0), "n": .int(mega ? 0 : end.balls ?? RaidRules.balls), "now": .int(now), "id": .int(id)])   // (a Mega raid: no balls)
         if mega, won, let tier = run.int("tier"), let stone = run.text("boss").flatMap({ try? JSONDecoder().decode(Mon.self, from: Data($0.utf8)) })?.item {
-            var g = SystemRandomNumberGenerator()
-            if Int.random(in: 0..<100, using: &g) < MegaRaid.stoneOdds[max(0, min(4, tier - 1))] {    // 5.0: the stone, or BP for one had
-                let had = w.map { MegaRaid.stonesHad($0).contains(stone) } ?? false
-                try sendMail(key, kind: "raid", from: "메가 레이드", title: MegaRaid.mailTitle(stone, had: had),
-                             gifts: had ? [.bp(amount: MegaRaid.duplicateBP(tier))] : [.items(name: stone, count: 1)], now: now)
-            }
+            var g = SystemRandomNumberGenerator()                                                 // 5.0: the stone (the dice, or its 20th win), or BP for one had
+            try megaWon(key, stone: stone, tier: tier, drop: Int.random(in: 0..<100, using: &g) < MegaRaid.stoneOdds[max(0, min(4, tier - 1))], walk: w, now: now)
         }
         try db.rows("UPDATE raid_runs SET ended_at = :now WHERE key = :k AND ended_at IS NULL", ["now": .int(now), "k": .text(key)])   // (none should be)
         guard won else { return }
@@ -335,26 +331,38 @@ extension SaveDB {
         let since = ((try? content5Since()) ?? nil).map { Date(timeIntervalSince1970: TimeInterval($0)) } ?? now
         return MegaRaid.week(MegaRaid.round(now, from: since, cal))
     }
-    /// The pick's count: every Mega raid win (any week, boss, tier), 30 off for each stone picked.
-    func megaPity(_ key: String) throws -> Int {
-        let wins = try db.rows("SELECT count(*) AS n FROM raid_runs WHERE key = :k AND kind = 'mega' AND won = 1", ["k": .text(key)]).first?.int("n") ?? 0
-        let picks = try db.rows("SELECT count(*) AS n FROM mega_picks WHERE key = :k", ["k": .text(key)]).first?.int("n") ?? 0
-        return wins - MegaRaid.pity * picks
+    /// Each boss's count (by its stone): wins on it while its stone was missing, since that stone last came (the user, 10-14: "보스별로 20번").
+    func megaWins(_ key: String) throws -> [String: Int] {
+        Dictionary(try db.rows("SELECT stone, wins FROM mega_wins WHERE key = :k", ["k": .text(key)]).compactMap { r in r.text("stone").map { ($0, r.int("wins") ?? 0) } }) { $1 }
     }
-    /// megaPick: one of the week's two stones not had yet, for 30 wins. Returns why not (w unchanged), or nil with the stone in the bag.
-    func megaPick(_ key: String, _ stone: String, walk w: inout Walk, now: Date) throws -> String? {
-        guard Content.gen6, megaWeek(now).contains(where: { $0.stone == stone }) else { return "이번 주 보스의\n스톤이 아니에요" }
-        guard !MegaRaid.stonesHad(w).contains(stone) else { return "이미 가지고 있어요" }
-        guard try megaPity(key) >= MegaRaid.pity else { return "아직 \(MegaRaid.pity)승이\n안 됐어요" }
-        try db.rows("INSERT INTO mega_picks (key, week, stone, at) VALUES (:k, :w, :s, :now)",
-                    ["k": .text(key), "w": .text(raidWeek(key, now)), "s": .text(stone), "now": .int(Int(now.timeIntervalSince1970))])
-        w.bag.append(stone); return nil
+    /// The stones a trainer has or has coming: theirs (MegaRaid.stonesHad) and the ones in mail not claimed yet.
+    func megaHad(_ key: String, _ w: Walk?) throws -> Set<String> {
+        let mailed = try db.rows("SELECT gifts FROM mail WHERE key = :k AND claimed_at IS NULL", ["k": .text(key)]).flatMap { r -> [String] in
+            (r.text("gifts").flatMap { try? JSONDecoder().decode([Gift].self, from: Data($0.utf8)) } ?? []).compactMap { if case .items(let n, _) = $0 { n } else { nil } }
+        }
+        return (w.map(MegaRaid.stonesHad) ?? []).union(mailed.filter(Forms.stones.contains))
+    }
+    /// A Mega raid win on the boss holding `stone` (drop: the dice's). One had (or on its way): no count, the dice give ★×5 BP. Missing: +1, and
+    /// the dice or the bossWins-th win mail the stone (its count back to 0, should it ever go missing again).
+    func megaWon(_ key: String, stone: String, tier: Int, drop: Bool, walk w: Walk?, now: Int) throws {
+        if try megaHad(key, w).contains(stone) {
+            if drop { try sendMail(key, kind: "raid", from: "메가 레이드", title: MegaRaid.mailTitle(stone, had: true), gifts: [.bp(amount: MegaRaid.duplicateBP(tier))], now: now) }
+            return
+        }
+        let n = (try megaWins(key)[stone] ?? 0) + 1, full = n >= MegaRaid.bossWins
+        if drop || full {
+            try sendMail(key, kind: "raid", from: "메가 레이드", title: drop ? MegaRaid.mailTitle(stone, had: false) : MegaRaid.winsTitle(stone),
+                         body: drop ? nil : MegaRaid.bosses.first { $0.stone == stone }.map(MegaRaid.winsBody), gifts: [.items(name: stone, count: 1)], now: now)
+        }
+        try db.rows("INSERT INTO mega_wins (key, stone, wins) VALUES (:k, :s, :n) ON CONFLICT (key, stone) DO UPDATE SET wins = :n",
+                    ["k": .text(key), "s": .text(stone), "n": .int(drop || full ? 0 : n)])
     }
     /// POST /v2/raid, kind "mega": the Mega raid's lobby.
     func megaRaidLobby(_ r: RaidReq, now: Date) -> Reply {
         readGate(r.id, r.session) { key in
             try closeCutRuns(key, now: now)
-            let week = raidWeek(key, now), had = (try db.rows("SELECT walk FROM trainers WHERE key = :k", ["k": .text(key)]).first?.text("walk").flatMap(decodeWalk)).map(MegaRaid.stonesHad) ?? []
+            let week = raidWeek(key, now), had = try megaHad(key, try db.rows("SELECT walk FROM trainers WHERE key = :k", ["k": .text(key)]).first?.text("walk").flatMap(decodeWalk))
+            let wins = try megaWins(key)
             var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
             let ends = Int(cal.dateInterval(of: .weekOfYear, for: now)?.end.timeIntervalSince1970 ?? now.timeIntervalSince1970)
             let reset = Int(cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now))?.timeIntervalSince1970 ?? now.timeIntervalSince1970)
@@ -365,10 +373,11 @@ extension SaveDB {
                 return RaidRunRow(dex: b.dex, tier: x.int("tier") ?? 0, shiny: false, bars: x.int("bars") ?? 0, won: x.int("won") == 1, caught: false, at: x.int("at") ?? 0)
             }
             let mine = RaidWeek(runs: runs.count, wins: runs.filter(\.won).count, best: runs.filter(\.won).map(\.tier).max())
-            func mark(_ bs: [MegaBoss]) -> [MegaBoss] { bs.map { var b = $0; b.had = had.contains(b.stone); return b } }
-            let lobby = MegaRaidLobby(week: week, bosses: mark(megaWeek(now)), next: mark(megaWeek(now.addingTimeInterval(7 * 86400))), ends: ends,
+            func mark(_ bs: [MegaBoss]) -> [MegaBoss] { bs.map { var b = $0; b.had = had.contains(b.stone); b.wins = wins[b.stone] ?? 0; return b } }
+            let these = mark(megaWeek(now))
+            let lobby = MegaRaidLobby(week: week, bosses: these, next: mark(megaWeek(now.addingTimeInterval(7 * 86400))), ends: ends,
                                       today: RaidToday(used: try raidRunsToday(key, now: now), max: RaidRules.perDay), resetAt: reset, mine: mine, runs: runs,
-                                      pity: max(0, try megaPity(key)), pityNeed: MegaRaid.pity, odds: MegaRaid.stoneOdds, tiers: RaidRules.tiers)
+                                      pity: these.filter { $0.had != true }.compactMap(\.wins).max() ?? 0, pityNeed: MegaRaid.bossWins, odds: MegaRaid.stoneOdds, tiers: RaidRules.tiers)
             let e = JSONEncoder(); e.outputFormatting = .sortedKeys
             return try e.encode(lobby)
         }

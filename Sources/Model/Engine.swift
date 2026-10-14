@@ -23,7 +23,7 @@ enum Act: Codable, Equatable {
                                                                  // 4.0 (docs/plans/16): a run at a tier (RaidRules.tiers), a ball at that run's boss
     case raidQuit                                                // 4.0: give up a run's ball stage (its balls go, the boss with them)
     case megaRaid(party: [Int]? = nil, tier: Int, boss: Int)     // 5.0 (docs/plans/18 §6.4): a Mega raid run at a tier against the week's boss 0 / 1
-    case megaPick(stone: String)                                 // 5.0: the 30 wins' stone, one of the week's two
+    case megaPick(stone: String)                                 // 5.0 (10-13's 30 wins' pick; refused since 10-14's per-boss 20: the Mac takes it out with the pick screen)
     case friendRequest(to: String), friendAccept(from: String), friendDecline(from: String), friendRemove(name: String)   // 친구 (12 §2.4, 3.5)
     case marketList(give: Int, wish: [Int], note: String? = nil), marketUnlist(id: Int)    // 교환 게시판 (12 §3.3, 3.5): put one up (wished species shown; 3.8: a note), take it down
     case marketBid(listing: Int, give: Int), marketWithdraw(bid: Int), marketAccept(bid: Int)   // offer one of ours for it, take that back; the poster picks one
