@@ -12,6 +12,7 @@ import AppKit                                                                   
     }
     func at(_ day: Int, _ hour: Int = 12) -> Date { Calendar.current.date(from: DateComponents(year: 2026, month: 3, day: day, hour: hour))! }
     var r = Seeded(s: 42)
+    check(settings is JSONSettings && settings.int("ui.lastTile", -7) == -7, "the self-test's settings are in memory: nothing an app on this machine kept (회사: a menu tile kept turned the menu checks)")
 
     // 1 persistence
     let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-selftest-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)

@@ -12,27 +12,6 @@ let resourceDir: URL? = {
     return URL(fileURLWithPath: String(decoding: path[..<n], as: UTF16.self)).deletingLastPathComponent().appendingPathComponent("Resources", isDirectory: true)
 }()
 
-/// The menu's choices as JSON (the Mac's UserDefaults keys; bools 0 / 1), written on each change; no file = in memory (the self-test, --render).
-final class JSONSettings: Settings {
-    var values: [String: Int] = [:]
-    let file: URL?
-    init(file: URL?) {
-        self.file = file
-        if let file, let d = try? Data(contentsOf: file), let v = try? JSONDecoder().decode([String: Int].self, from: d) { values = v }
-    }
-    func bool(_ key: String, _ def: Bool) -> Bool { values[key].map { $0 != 0 } ?? def }
-    func int(_ key: String, _ def: Int) -> Int { values[key] ?? def }
-    func set(_ key: String, _ v: Bool) { set(key, v ? 1 : 0) }
-    func set(_ key: String, _ v: Int) {
-        guard values[key] != v else { return }
-        values[key] = v
-        guard let file else { return }
-        let e = JSONEncoder(); e.outputFormatting = [.sortedKeys, .prettyPrinted]
-        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? e.encode(values).write(to: file, options: .atomic)
-    }
-}
-
 @MainActor func windowsMain() -> Never {
     SetConsoleOutputCP(UINT(CP_UTF8))                                                             // the Korean check names, readable in a console / the CI log
     let args = CommandLine.arguments

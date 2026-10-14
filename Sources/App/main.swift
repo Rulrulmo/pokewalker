@@ -4,7 +4,11 @@ import AppKit
 import UserNotifications
 
 // MARK: - app
-settings = UserDefaults.standard                                                               // before anything reads a setting (the look's globals)
+// The settings, before anything reads one (the look's globals): a headless run's in memory — the self-test, the shots and live tests never read what
+// this Mac's app kept (회사: a menu tile kept by the app turned the self-test's menu and radar checks); a build run from the repository its own, in
+// PokeWalker Dev (as its save) — never the installed app's UserDefaults (its saveSigned, its window, its tabs).
+let headless = CommandLine.arguments.contains { $0 == "--selftest" || $0 == "--shots" || $0.hasPrefix("--live-") }
+settings = headless ? JSONSettings(file: nil) : Store.devBuild(Bundle.main.bundleURL) ? JSONSettings(file: Store.dir.appendingPathComponent("settings.json")) : UserDefaults.standard as any Settings
 fonts = MacFonts()                                                                             // before anything lays out text
 if CommandLine.arguments.contains("--selftest") { exit(selftest() ? 0 : 1) }
 if let i = CommandLine.arguments.firstIndex(of: "--live-test"), i + 2 < CommandLine.arguments.count {      // a dev build against the real save server (Tests/LiveTest.swift)
@@ -131,10 +135,11 @@ panel.hidesOnDeactivate = false
 panel.becomesKeyOnlyIfNeeded = true
 panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
 panel.contentView = view
-if !panel.setFrameUsingName("pokewalker", force: true), let s = NSScreen.screens.first {          // force: the saved size too (an old 288x288 device), so its screen is found right
+let frameName = Store.devBuild(Bundle.main.bundleURL) ? "pokewalker dev" : "pokewalker"     // (a build run from the repository: its own place on the screen)
+if !panel.setFrameUsingName(frameName, force: true), let s = NSScreen.screens.first {          // force: the saved size too (an old 288x288 device), so its screen is found right
     panel.setFrame(NSRect(x: s.visibleFrame.maxX - size.width - 24, y: s.visibleFrame.minY + 24, width: size.width, height: size.height), display: false)
 }
-panel.setFrameAutosaveName("pokewalker")
+panel.setFrameAutosaveName(frameName)
 do {                                                                                              // grow from the saved top-left, kept on the screen it was on
     let old = panel.frame, top = NSPoint(x: old.minX, y: old.maxY)
     let screen = NSScreen.screens.first { $0.frame.contains(NSPoint(x: top.x, y: top.y - 1)) } ?? panel.screen

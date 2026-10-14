@@ -2,13 +2,36 @@ import Foundation
 // What the logic asks of the platform it runs on. A platform sets `settings` (and `fonts`: Core/Canvas.swift) first thing at launch and gives its Walker a host
 // (the Mac's: Sources/Mac/MacHost.swift).
 
-/// The menu's choices, kept between launches by key; each read passes the default the app has always had. The Mac: UserDefaults (the same keys as ever).
+/// The menu's choices, kept between launches by key; each read passes the default the app has always had. The Mac: UserDefaults (the same keys as ever;
+/// a build run from the repository, JSONSettings in its own folder).
 protocol Settings {
     func bool(_ key: String, _ def: Bool) -> Bool
     func int(_ key: String, _ def: Int) -> Int
     func set(_ key: String, _ v: Bool); func set(_ key: String, _ v: Int)
 }
 @MainActor var settings: (any Settings)! = nil
+
+/// The menu's choices as JSON (the Mac's UserDefaults keys; bools 0 / 1), written on each change; no file = in memory (the self-test, the shots,
+/// --render, live tests). Windows' always; the Mac's for a build run from the repository (PokeWalker Dev's settings.json).
+final class JSONSettings: Settings {
+    var values: [String: Int] = [:]
+    let file: URL?
+    init(file: URL?) {
+        self.file = file
+        if let file, let d = try? Data(contentsOf: file), let v = try? JSONDecoder().decode([String: Int].self, from: d) { values = v }
+    }
+    func bool(_ key: String, _ def: Bool) -> Bool { values[key].map { $0 != 0 } ?? def }
+    func int(_ key: String, _ def: Int) -> Int { values[key] ?? def }
+    func set(_ key: String, _ v: Bool) { set(key, v ? 1 : 0) }
+    func set(_ key: String, _ v: Int) {
+        guard values[key] != v else { return }
+        values[key] = v
+        guard let file else { return }
+        let e = JSONEncoder(); e.outputFormatting = [.sortedKeys, .prettyPrinted]
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? e.encode(values).write(to: file, options: .atomic)
+    }
+}
 
 /// What the walker calls on (Walker.host): the view that shows it, its window, and the system's banners and step counter. The Mac's: WalkerView.
 @MainActor protocol Host: AnyObject {
