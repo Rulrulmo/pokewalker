@@ -100,6 +100,7 @@ extension Walker {
         guard qty != nil else { return }                                                           // a stale click on buttons that are gone
         switch code {
         case 2000: shopStep(-10); case 2001: shopStep(-1); case 2002: shopStep(1); case 2003: shopStep(10); case 2004: shopStep(nil)
+        case 2008: shopAmount()                                                                    // 5.0 (uxV2): typed
         default: if case .shop(_, _, .some) = screen { press(1) }
         }
     }
@@ -202,7 +203,7 @@ extension Walker {
         let now = Date(); lastInput = now; defer { settle(now); host?.redraw(.all) }               // back home: the news go on at once
         if k == 4 {                                           // one key both ways: home opens the menu (on the pane; the LCD stays home), anywhere else it goes home
             if case .raid(.balls) = screen { raidLeave(home: true, now); return }                 // 4.0: the ball stage given up first (asked)
-            if let open = homeKey() { if !open { growthThen = nil }; screen = open ? .menu(group: nil, sel: 0) : .home }   // home means home: the news still play there, then it stays
+            if let open = homeKey() { if !open { growthThen = nil }; screen = open ? .menu(group: nil, sel: uxV2 ? lastTile : 0) : .home }   // home means home: the news still play there, then it stays
             return
         }
         if k == 3 {                                           // ↩ 뒤로 (HGSS's B): one step up; where an answer is due only the cursor moves to the way out — nothing that can't be undone happens
@@ -430,6 +431,7 @@ extension Walker {
     func openFeature(_ name: String) { screen = menuFor(name); press(1) }
     /// A feature on the menu, by its name (as ● on its tile does; tests open features with it too).
     func open(_ name: String, _ now: Date = Date()) {
+        if let t = menuTiles.firstIndex(where: { $0.name == name || $0.items.contains(name) }) { lastTile = t }   // (uxV2: the 메뉴 key comes back here)
         switch name {
         case "포켓 레이더": openRadar(back: menuFor(name), now)                                            // the server's find (docs/plans/11 §3.2)
         case "코스": screen = .course(state.course)

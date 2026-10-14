@@ -54,6 +54,18 @@ import Foundation
         }
         c.append((bad.isEmpty, "5.0 a mail's pick of items: pages of 6 past 7 (21 mints), the pick's row in view, none under the button or past the panel" + (bad.isEmpty ? "" : " — \(bad)")))
     }
+    // the panel's ease (the prototype, uxV2): 홈's quick buttons and rows, the box's pick's buttons, the shop's 최대 — each does something; the
+    // 메뉴 key back on the tile last used
+    do {
+        uxV2 = true; defer { uxV2 = false }
+        var st = Walk(); st.box = [Mon(dex: 16, level: 5, female: false)]; st.watts = 5000; st.bag = ["상처약"]
+        @MainActor func walker(_ s: Screen) -> () -> Walker { { let w = Walker(state: st); w.persist = false; w.screen = s; return w } }
+        let dead = [("홈", deadHits(walker(.home))), ("상자", deadHits(walker(.box(0, act: nil, confirm: false)), skip: [4100])), ("상점 수량", deadHits(walker(.shop(bp: false, sel: 0, qty: 1)), skip: [2008, 2100]))]   // (the tab it's on; the row picked)
+            .filter { !$0.1.isEmpty }
+        let w = Walker(state: st); w.persist = false; w.screen = .home; w.open("배틀 타워"); w.screen = .home; w.calmAt = .distantPast; w.press(4)
+        let back: Bool = { if case .menu(nil, let sel) = w.screen { return menuTiles[sel].items.contains("배틀 타워") }; return false }()
+        c.append((dead.isEmpty && back, "5.0 (uxV2) the panel's ease: 홈's quick buttons and rows, the box's pick's buttons, the shop's 최대 all do something; the 메뉴 key comes back on the tile last used" + (dead.isEmpty ? "" : " — dead: \(dead)")))
+    }
     let hud = hudOverlaps()                                                                       // (the user: "겹침은 해결해주고")
     c.append((hud.isEmpty, "5.0 a fight's HP boxes clear of every picture: theirs front-on with each animation frame (in its stage), ours from behind (\(spriteCount) pictures)" + (hud.isEmpty ? "" : " — \(hud.prefix(6))")))
     Content.$testing.withValue(true) {

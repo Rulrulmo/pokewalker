@@ -321,6 +321,10 @@ extension Walker {
         case (.box(let i, _, _, true), 4401) where i >= 0: screen = .box(i, act: 0, confirm: true, detail: true)     // 놓아줄까? 아니오 first
         case (.box(let i, _, _, true), 4402): screen = .box(i, act: nil, confirm: false, detail: true)
         case (.box(let i, _, true, true), 4403): screen = .box(i, act: 1, confirm: true, detail: true); press(1)
+        case (.box(let i, _, _, false), 4600) where i != -1: screen = .box(i, act: 0, confirm: false, detail: true); press(1)   // 5.0 (uxV2): the pick's 함께 걷기
+        case (.box(let i, _, _, false), 4601): screen = .hold(ref: i, sel: 0)                                                         // … 도구 주기
+        case (.box(let i, _, _, false), 4602): screen = .box(i, act: nil, confirm: false, detail: true)                              // … its page
+        case (.dex, 4170): dexFind()                                                                                                    // 5.0 (uxV2): 찾기
         case (.box(let i, _, _, true), 4409): screen = .relearn(ref: i, slot: 0, at: nil)                                          // 기술 바꾸기
         case (.box(let i, _, _, true), 4411): if let f = formAction(i) { _ = keyItemOn(f.item, i) }                                // 5.0: its form, straight from its page
         case (.box(let i, _, _, true), 4410): screen = .hold(ref: i, sel: 0)                                                       // 3.7: 지니게 하기 · 빼기
@@ -410,6 +414,8 @@ extension Walker {
         switch (screen, code) {
         case (.radar(let b, _, let since, let chain), 5000...5003): screen = .radar(bush: b, cursor: code - 5000, since: since, chain: chain); press(1)
         case (.card, 5200...5202): titlePick = false; screen = .card(code - 5200)
+        case (.home, 9300...9319): if let row = paneContent(Date()).status?.rows[safe: code - 9300], let l = Walker.homeLinks[row.key] { quickOpen(l) }   // 5.0 (uxV2)
+        case (.home, 9320...9323): quickOpen(Walker.quick[code - 9320])
         case (.goals(let s), 9100...9120): if code - 9100 == s { goalsPress(1, s) } else { screen = .goals(code - 9100) }   // 5.0: a row; the picked one again opens it
         case (.card, 5209): titlePick.toggle()                                                     // 5.0: the 칭호 pill → the 칭호 to show (two or more)
         case (.card, 5210...5229):                                                                // … 가장 최근 (nil), or one of them, newest first
