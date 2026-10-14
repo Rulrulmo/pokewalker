@@ -981,8 +981,8 @@ import AppKit                                                                   
     #else
     let viewed = true
     #endif
-    check(homeH == 406 && menuH == 406 && gridH == 422 && fightH == 316 && gk.cardH == 406 && viewed && hudUp,
-          "the card grows down to the page: 홈's status sheet 406 and the menu the same (the 메뉴 / 홈 key never resizes it), battle 316 (3.8.2: a move's line under the four), a grid 422 (the page under the band)", "\(homeH) \(menuH) \(gridH) \(fightH) \(gk.cardH)")
+    check(homeH == 446 && menuH == 446 && gridH == 422 && fightH == 316 && gk.cardH == 446 && viewed && hudUp,
+          "the card grows down to the page: 홈's status sheet 446 (5.0: its quick buttons) and the menu the same (the 메뉴 / 홈 key never resizes it), battle 316 (3.8.2: a move's line under the four), a grid 422 (the page under the band)", "\(homeH) \(menuH) \(gridH) \(fightH) \(gk.cardH)")
     check(foldH == 199 && foldChev == false && gk.chevron == true, "⌄ folds home's status sheet: the idle card (199); open again: 406", "\(foldH)")
     SIZE = 3; check(PX == 3 && 422 * K < 850, "크게: 3 pt a dot, its tallest page still under a 13-inch screen's height"); SIZE = size0
     let pv = Walker(state: { var s = Walk(); s.box = [Mon(dex: 16, level: 5, female: false)]; return s }()); pv.persist = false; pv.statusOpen = true; pv.rng = Seeded(s: 61)
@@ -1183,7 +1183,7 @@ import AppKit                                                                   
           "… a chain: its next bush is asked for after the evolution (free), its window starting then")
     pt.openFeature("포켓몬"); let g0 = pt.paneContent(Date()).grid
     check(pts { if case .box(-1, nil, false, false) = $0 { return true }; return false } && g0?.party.map(\.dex) == [25, 16] && g0?.partySel == 0 && g0?.items == 1
-          && pt.paneContent(Date()).height == 472, "포켓몬: the companion (picked first) and the walker's in a row over the box, then the items' chip")
+          && pt.paneContent(Date()).height == 508, "포켓몬: the companion (picked first) and the walker's in a row over the box, then the items' chip; under the grid the pick's buttons (5.0)")
     pt.gridTap(4510); let itemsUp = pt.paneContent(Date()).items?.rows.map(\.name) == ["상처약"] && pts { if case .items = $0 { return true }; return false }; pt.press(3)
     pt.gridTap(4501); let walkerPicked = pt.paneContent(Date()).grid?.partySel == 1; pt.gridTap(4501); let walkerPage = walkerPicked && pt.paneContent(Date()).mon?.place == 1; pt.gridTap(4400); drain(pt)
     check(itemsUp && walkerPage && pt.state.companion.dex == 16 && pt.state.caught.first?.dex == 25, "… the items' chip opens the 도구 page; on one of the walker's, 함께 걷기 makes it the companion")

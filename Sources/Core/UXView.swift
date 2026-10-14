@@ -1,11 +1,9 @@
 import Foundation
-// 5.0's quality pass, the panel's ease (the user: "하단패널 내가 원한건 디자인 뿐만 아니라 편의성도 개선했으면 했던건데") — a prototype behind
-// uxV2 (the shots' UX_V2=1), for the user to pick from: fewer clicks for what's done most. 홈's sheet with quick buttons (포켓 레이더 · 포켓몬
+// 5.0's quality pass, the panel's ease (the user: "하단패널 내가 원한건 디자인 뿐만 아니라 편의성도 개선했으면 했던건데", then "전부다 포함해서
+// 진행"): fewer clicks for what's done most. 홈's sheet with quick buttons (포켓 레이더 · 포켓몬
 // · 도구 · 우편함, its red dot) and its rows opening their pages; the menu back on the tile last used, each tile's number key; the box's pick
 // with its actions under the grid (함께 걷기 · 도구 주기 · 자세히) — no second click for its page; the shop's amount 최대; the 도감's
 // 찾기 (a name or a number). Docs: lcd-mockups docs/mockups/ux-5.0.
-
-@MainActor var uxV2 = false
 
 extension Walker {
     /// 홈's quick buttons: a feature each, its red dot (something waits there).

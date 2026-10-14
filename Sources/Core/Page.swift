@@ -272,7 +272,7 @@ extension Canvas {
             }
             top += 50
         }
-        if uxV2, g.items == nil {                                                                  // 5.0 (UXView.swift): the 도감's 찾기 by its tabs
+        if g.items == nil {                                                                        // 5.0 (UXView.swift): the 도감's 찾기 by its tabs
             tabs(g.tabs, g.tab, top, span: X1 - X0 - 50)
             let rc = r(X1 - 46, top, 46, 22); c.pill(rc, Ink.tint(Ink.red, 0.12)); c.say("찾기", rc.midX, rc.midY, font(10, .bold), Ink.red, 0.5); hits.append((rc, 4170))
         } else { tabs(g.tabs, g.tab, top) }
@@ -300,7 +300,7 @@ extension Canvas {
             hits.append((cell, 10000 + g.first + k))
         }
         pager("\(g.page) / \(g.pages)", top + 198, prev: g.pages > 1, next: g.pages > 1)   // the last page's ▶ goes round to #1
-        if uxV2, g.items != nil, g.sel != nil || g.partySel != nil {                                // 5.0 (UXView.swift): the pick's own buttons — no second click for its page
+        if g.items != nil, g.sel != nil || g.partySel != nil {                                     // 5.0 (UXView.swift): the pick's own buttons — no second click for its page
             let labels = [g.partySel == 0 ? nil : "함께 걷기", "도구 주기", "자세히 ›"].compactMap { $0 }, codes = g.partySel == 0 ? [4601, 4602] : [4600, 4601, 4602]
             let bw = (X1 - X0 - CGFloat(labels.count - 1) * 4) / CGFloat(labels.count)
             for (k, t) in labels.enumerated() {
@@ -483,20 +483,20 @@ extension Canvas {
         guard let q = s.qty else {
             let rc = r(X0, by, X1 - X0, 30); c.pill(rc, Ink.tile); c.say(s.hint, rc.midX, rc.midY, font(9, .medium), Ink.sub, 0.5, maxW: rc.width - x(16)); return
         }
-        let narrow = uxV2, step = r(X0, by, narrow ? 76 : 94, 30); c.pill(step, Ink.tile)
-        if narrow {                                                                                // 5.0 (UXView.swift): +10 and 최대 by the amount
+        let step = r(X0, by, 76, 30); c.pill(step, Ink.tile)
+        do {                                                                                       // 5.0 (UXView.swift): 최대 by the amount
             let rc = r(X0 + 80, by, 34, 30), on = q < s.most                                         // (+10: ↑ ↓, the wheel)
             c.pill(rc, Ink.tile); c.say("최대", rc.midX, rc.midY, font(9.5, .bold), on ? Ink.ink : Ink.line, 0.5); if on { hits.append((rc, 2004)) }
         }
-        for (cx, plus, on, code) in [(X0 + 16, false, q > 1, 2001), (X0 + (narrow ? 60 : 78), true, q < s.most, 2002)] {
+        for (cx, plus, on, code) in [(X0 + 16, false, q > 1, 2001), (X0 + 60, true, q < s.most, 2002)] {
             let ink = on ? Ink.ink : Ink.line, hr = CGRect(x: x(cx - 13), y: step.minY, width: x(26), height: step.height)
             c.fill(CGRect(x: x(cx - 4), y: step.midY - 0.8 * K, width: x(8), height: 1.6 * K), ink)
             if plus { c.fill(CGRect(x: x(cx) - 0.8 * K, y: step.midY - x(4), width: 1.6 * K, height: x(8)), ink) }
             if on { hits.append((hr, code)) }
         }
         c.say("\(q)개", step.midX, step.midY, font(11, .bold), Ink.ink, 0.5)
-        if uxV2 { hits.append((CGRect(x: step.midX - x(16), y: step.minY, width: x(32), height: step.height), 2008)) }   // 5.0 (UXView.swift): the amount typed
-        let buy = r(X0 + (narrow ? 118 : 100), by, X1 - X0 - (narrow ? 118 : 100), 30); c.pill(buy, Ink.red); c.say("\(s.total) 사기", buy.midX, buy.midY, font(11, .bold), .white, 0.5, maxW: buy.width - x(12)); hits.append((buy, 2005))
+        hits.append((CGRect(x: step.midX - x(16), y: step.minY, width: x(32), height: step.height), 2008))   // 5.0 (UXView.swift): the amount typed
+        let buy = r(X0 + 118, by, X1 - X0 - 118, 30); c.pill(buy, Ink.red); c.say("\(s.total) 사기", buy.midX, buy.midY, font(11, .bold), .white, 0.5, maxW: buy.width - x(12)); hits.append((buy, 2005))
     }
 
     // MARK: 메뉴 (3.9: two steps): the first page's 8 tiles (2 x 4; a group ▸ says what's in it), or a group's features a row each; the pick red
@@ -519,7 +519,7 @@ extension Canvas {
         let rh: CGFloat = 44, gap: CGFloat = 4, cw = (X1 - X0 - 4) / 2                            // 4 rows of 44 (the page = home's status sheet, PaneContent.home)
         for (i, row) in m.rows.enumerated() {
             let rc = r(X0 + CGFloat(i % 2) * (cw + 4), 203 + CGFloat(i / 2) * (rh + gap), cw, rh), on = i == m.sel, group = !row.items.isEmpty
-            defer { if uxV2 { c.say("\(i + 1)", rc.maxX - x(7), rc.maxY - x(8), font(8, .bold), on ? Ink.onRed : Ink.faint, 1) } }   // 5.0 (uxV2): its number key
+            defer { c.say("\(i + 1)", rc.maxX - x(7), rc.maxY - x(8), font(8, .bold), on ? Ink.onRed : Ink.faint, 1) }   // 5.0: its number key
             c.fill(.rounded(rc, 9 * K), on ? Ink.red : Ink.tile)
             let fg = on ? Color.white : row.off ? Ink.sub : Ink.ink, sub = on ? Ink.onRed : Ink.sub
             if group {                                                                            // 기록 ▸ / 도감 · 트레이너 카드 / a line of how things are
@@ -528,10 +528,10 @@ extension Canvas {
                 let short = [row.items, row.items.replacingOccurrences(of: "배틀 타워", with: "타워"), row.items.replacingOccurrences(of: "배틀 타워", with: "타워").replacingOccurrences(of: "메가 레이드", with: "메가")]
                 let items = short.first { width($0, font(6.5, .semibold)) <= rc.width - x(14) } ?? short.last!   // 5.0: whole (배틀's own 타워 · 메가 say it)
                 c.say(items, rc.minX + x(9), rc.minY + x(23), font(8, .semibold), sub, maxW: rc.width - x(14))
-                c.say(row.note, rc.minX + x(9), rc.minY + x(34), font(8, .medium), sub, maxW: rc.width - x(uxV2 ? 22 : 14))   // (uxV2: its number key at the end)
+                c.say(row.note, rc.minX + x(9), rc.minY + x(34), font(8, .medium), sub, maxW: rc.width - x(22))   // (its number key at the end)
             } else {
                 c.say(row.name, rc.minX + x(9), rc.minY + x(15), font(10.5, .bold), fg, maxW: rc.width - x(20))
-                c.say(row.note, rc.minX + x(9), rc.minY + x(29), font(8, .medium), sub, maxW: rc.width - x(uxV2 ? 22 : 14))
+                c.say(row.note, rc.minX + x(9), rc.minY + x(29), font(8, .medium), sub, maxW: rc.width - x(22))
             }
             if row.dot { dot(rc, on) }
             hits.append((rc, 3000 + i))
@@ -560,7 +560,7 @@ extension Canvas {
             if i > 0 { c.fill(CGRect(x: x(X0 + CGFloat(i) * cw), y: y(yy + 2), width: max(0.5, 0.5 * K), height: x(26)), Ink.line) }
         }
         yy += 36; rule(y(yy)); yy += 6
-        if uxV2 {                                                                                  // 5.0 (UXView.swift): the quick buttons, a red dot where something waits
+        do {                                                                                       // 5.0 (UXView.swift): the quick buttons, a red dot where something waits
             let bw = (X1 - X0 - 3 * 4) / 4
             for (k, name) in Walker.quick.enumerated() {
                 let rc = r(X0 + CGFloat(k) * (bw + 4), yy, bw, 32); c.fill(.rounded(rc, 9 * K), Ink.tile)
@@ -571,7 +571,7 @@ extension Canvas {
             yy += 40
         }
         for (i, row) in s.rows.enumerated() {
-            let link = uxV2 ? Walker.homeLinks[row.key] : nil
+            let link = Walker.homeLinks[row.key]
             c.say(row.key, x(X0 + 2), y(yy + 10), font(9, .medium), Ink.sub)
             c.say(row.value, x(X1 - 2) - (link != nil ? x(10) : 0), y(yy + 10), font(10, .medium), Ink.ink, 1, maxW: x(X1 - X0 - 70))
             if link != nil { c.say("›", x(X1 - 2), y(yy + 10), font(11, .bold), Ink.faint, 1); hits.append((r(X0, yy - 1, X1 - X0, 22), 9300 + i)) }
