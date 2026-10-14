@@ -68,8 +68,12 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     let c5srv = FakeCloud(); c5srv.content5 = true
     _ = online(Walk(), server: c5srv); let on5 = Content.on && Content.gen6 && dexMax == 721
     _ = online(Walk()); let off5 = !Content.on && dexMax == 493
+    let c5new = FakeCloud(); c5new.content5 = true                                                // a new trainer's: create's reply says it too
+    let nh = TestHost(), nw = Walker(state: Walk()); nw.persist = false; nw.host = nh; nh.texts = ["zz910001"]; nh.pins = ["2580", "2580"]; nh.answer = true
+    let nc = Cloud(link: c5new, dir: FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-c5new-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true))
+    nc.seat.trainerID = "zz910001"; nw.startCloud(nc); drain(nw); let made5 = nc.phase == .on && c5new.paths.contains("v1/create") && Content.on && dexMax == 721
     Content.on = false
-    check(on5 && off5, "5.0: content5 in the login turns the Gen VI rules on (dexMax 721); no field, off (493)", "\(on5) \(off5)")
+    check(on5 && off5 && made5, "5.0: content5 in the login (and a new trainer's create) turns the Gen VI rules on (dexMax 721); no field, off (493)", "\(on5) \(off5) \(made5) \(nc.phase) \(c5new.paths)")
 
     // 5.0 (docs/plans/18 §9.6): 메가진화 on the move screen — after the moves (◀ ▶), ● ticks it, a move then goes as .megaFight; the beat's two lines
     // one after the other and its light; the Mega's name on the HP box; once a fight (no button after); none without content5
