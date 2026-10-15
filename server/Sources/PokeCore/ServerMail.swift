@@ -147,7 +147,7 @@ extension SaveDB {
                 try sendMail(key, kind: "dex", from: "도감", title: "도감 업적 \(due.count)개", body: due.map(\.label).joined(separator: " · ") + "에 닿았어요."
                              + (m.picks.isEmpty ? "" : " 민트 고르기는 따로 왔어요."), gifts: m.gifts, now: now)
             }
-            for p in m.picks { try sendMail(key, kind: "dex", from: "도감", title: "도감 업적: \(p.goal.label) · 고르기", body: p.goal.body, gifts: [p.gift], now: now) }
+            for p in m.picks { try sendMail(key, kind: "dex", from: "도감", title: "\(p.goal.label) · 민트 고르기", body: p.goal.body, gifts: [p.gift], now: now) }   // (short: 5.0's LCD band traps at 86–94 dots)
         }
         let keys = Set(paid).union(due.map(\.key)), list = DexGoals.goals().map(\.key).filter(keys.contains)
         if w.dexRewards != list { w.dexRewards = list }

@@ -1051,7 +1051,9 @@ extension SaveDB {
         try await setWalk(db, "도감왕") { w in w.owned = Array(1...151) + Array(152...201) }               // 201: 25–200, 관동 50 · 100, 성도 50
         try await go("도감왕", s)
         let first = try await mails("도감왕")
-        #expect(first.count == 2 && first[0].title == "도감 업적 8개" && first[1].title == "도감 업적: 50종 · 고르기" && first[1].gifts == [.pickItem(items: Walk.mints)])
+        #expect(first.count == 2 && first[0].title == "도감 업적 8개" && first[1].title == "50종 · 민트 고르기" && first[1].gifts == [.pickItem(items: Walk.mints)])
+        #expect(DexGoals.goals().allSatisfy { g in g.gifts.allSatisfy {                             // the pick mail's title says 민트 and "N종": every goal's pick is the mints, on a whole-dex step
+            if case .pickItem(let xs) = $0 { return xs == Walk.mints && g.key.hasPrefix("전국:") }; if case .pickLegend = $0 { return false }; return true } })
         #expect(first[0].gifts == [.items(name: "이상한사탕", count: 3 + 5 + 5 + 5), .items(name: "은색병뚜껑", count: 1), .items(name: "금색병뚜껑", count: 1 + 1), .bp(amount: 20)])   // 25 · 150 · 관동 50 · 성도 50; 100; 200 · 관동 100
         let w1 = try await db.trainer("도감왕")?.walk.flatMap(decodeWalk)
         #expect(w1?.dexRewards == ["전국:25", "전국:50", "전국:100", "전국:150", "전국:200", "관동:50", "관동:100", "성도:50"])
