@@ -222,6 +222,9 @@ actor SaveDB {
         guard deviceOK(r.device) else { return .error(400, "bad_request") }
         if let a = r.app, versionParts(a) == nil { return .error(400, "bad_app") }
         if asksPIN(r.app) || r.pin != nil, !pinOK(r.pin) { return .error(400, "bad_pin") }              // 2.1 on: a new trainer comes with its PIN
+        if let m = minApp, verCmp(r.app ?? "0", m) ?? 0 < 0 {                                          // 5.0.x: as the login (a new trainer of an old app: none)
+            return .error(426, "old_app", ["need": .s(m)], note: "create with app \(r.app ?? "?") < \(m)")
+        }
         return guarded {
             try db.transaction {
                 if try trainer(id.key) != nil { return .error(409, "exists") }

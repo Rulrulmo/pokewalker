@@ -71,7 +71,11 @@ private func act(_ db: SaveDB, _ id: String, _ s: String, _ seq: Int, _ a: Act, 
 
     let path2 = path + ".min"; defer { try? FileManager.default.removeItem(atPath: path2) }
     let gated = try SaveDB(path: path2, create: true, minApp: "3.0")
-    _ = await gated.create(CreateReq(id: "old", device: "pc", device_name: "PC", app: "2.2", pin: "1357"), now: 100)
+    r = await gated.create(CreateReq(id: "old", device: "pc", device_name: "PC", app: "2.2", pin: "1357"), now: 100)
+    #expect(r.status == 426 && string(r, "need") == "3.0")                                       // a new trainer too (10-15: 4.1 under MIN_APP 5.0)
+    #expect(try await gated.trainer("old") == nil)
+    r = await gated.create(CreateReq(id: "old", device: "pc", device_name: "PC", app: "3.0", pin: "1357"), now: 150)
+    #expect(r.status == 200)
     r = await gated.login(LoginReq(id: "old", device: "pc", device_name: "PC", app: "2.2", force: true, pin: "1357"), now: 200)
     #expect(r.status == 426 && string(r, "need") == "3.0")
     r = await gated.login(LoginReq(id: "old", device: "pc", device_name: "PC", app: "3.0", force: true, pin: "1357"), now: 300)
@@ -1179,6 +1183,11 @@ extension SaveDB {
         let c = await db.create(CreateReq(id: "바비", device: "pc2", device_name: "PC2", app: "5.0", pin: "1357"), now: t0 + 200)
         let l = await db.login(LoginReq(id: "바비", device: "pc2", device_name: "PC2", app: "5.0", force: true, pin: "1357"), now: t0 + 300)
         #expect(c.status == 200 && flag(c) == true && l.status == 200 && flag(l) == true)
+        let s2 = try #require(string(l, "session"))                                                       // a new trainer's first act: 5.0, not back to 3.0 (10-15)
+        _ = try reply(await db.act(ActReq(id: "바비", session: s2, seq: 1, steps: 5, act: .steps, app: "5.0"), now: base.addingTimeInterval(400)))
+        #expect(try await db.needAppFor("바비") == "5.0")
+        _ = try reply(await db.act(ActReq(id: "바비", session: s2, seq: 2, steps: 5, act: .steps, app: "5.0"), now: base.addingTimeInterval(410)))
+        #expect(try await db.needAppFor("바비") == "5.0")
     }
     // the updater's report and the hint
     try await db.recordUpdateReport(UpdateReq(app: "5.0", platform: "mac", trainer: "앨리스", staged: "5.0.1", blocked: "translocated", failed: ["5.0.1"], place: "downloads"), now: 100)

@@ -164,7 +164,8 @@ extension SaveDB {
                 out.news += mail.news
                 out.news = out.news.filter { appKnows(r.app, $0) }
                 if let a = r.app { try db.rows("UPDATE trainers SET app_seen = :a WHERE key = :k AND (app_seen IS NULL OR app_seen != :a)", ["a": .text(a), "k": .text(id.key)]) }
-                try raiseOldest(id.key, app: r.app)                                                   // 5.0 (plan 18 §10.2): no old app on another PC after this
+                if verCmp(t.app ?? "0", "3.0") ?? 0 < 0 { try db.rows("UPDATE trainers SET app = '3.0' WHERE key = :k", ["k": .text(id.key)]) }   // acting here: 2.x may not save over it
+                try raiseOldest(id.key, app: r.app)                                                   // 5.0 (plan 18 §10.2): no old app on another PC after this (after the 3.0: never lowered)
                 for (m, kind) in ids.made { try record(id.key, m, kind: kind, state: kind == "radar" || kind == "legend" ? "pending" : "kept", now: unix) }
                 try settleLedger(id.key, w, row.play, now: unix)
 
@@ -178,7 +179,6 @@ extension SaveDB {
                                 ["w": .text(text), "r": .int(rev), "s": .text(r.session), "now": .int(unix), "k": .text(id.key)])
                     try keep(id.key, rev: rev, walk: text, now: unix)
                 }
-                if verCmp(t.app ?? "0", "3.0") ?? 0 < 0 { try db.rows("UPDATE trainers SET app = '3.0' WHERE key = :k", ["k": .text(id.key)]) }   // acting here: 2.x may not save over it
 
                 let e = JSONEncoder(); e.outputFormatting = .sortedKeys
                 let body = try e.encode(ActReply(rev: rev, walk: send ? w.shared : nil, taken: r.steps == nil ? nil : taken, out: out))
