@@ -179,11 +179,19 @@ extension Walker {
             } }
             fb.runs[ti].x += 8
             let right = fb.runs.indices.filter { $0 != ti && fb.runs[$0].y <= 2 && fb.runs[$0].x > r.x }.map { fb.runs[$0].x }.min() ?? 96, by = r.x + 8 + r.w
-            let end = (by..<min(96, x1 + 8)).last { x in (1..<11).contains { fb.px[$0 * 96 + x] != 0 } }.map { $0 + 1 } ?? by
+            let hi = max(by, min(96, x1 + 8))                                                       // 5.0.1 (10-15, a Windows 우편함 quit on '도감 업적: 300종 · 고르기', 86 dots in
+            let lit = (by..<hi).last(where: { x in (1..<11).contains { fb.px[$0 * 96 + x] != 0 } }), end = lit.map { $0 + 1 } ?? by   // GDI): a title past the band (85 dots) has nothing after it — never a range backwards
             if end + 2 > right, !r.small {                                                           // too long for what's on its right (a 칭호, the W): a size smaller, its medal in with it
                 let dx = r.w - textWidth(r.s, small: true)
                 fb.runs[ti].small = true; fb.runs[ti].w -= dx
-                for y in 1..<11 { for x in by..<min(96, x1 + 8) { let i = y * 96 + x; fb.px[i - dx] = fb.px[i]; fb.col[i - dx] = fb.col[i]; fb.px[i] = 0; fb.col[i] = 0 } }
+                for y in 1..<11 { for x in by..<hi { let i = y * 96 + x; fb.px[i - dx] = fb.px[i]; fb.col[i - dx] = fb.col[i]; fb.px[i] = 0; fb.col[i] = 0 } }
+            }
+            let room = 95 - fb.runs[ti].x                                                            // 5.0.1: still past the LCD's edge (a mail's title: the server's words), cut with …
+            if fb.runs[ti].w > room {
+                var t = fb.runs[ti].s; let sm = fb.runs[ti].small
+                while t.count > 1, textWidth(t + "…", small: sm) > room { t.removeLast() }
+                cutTexts?.append("LCD " + fb.runs[ti].s)
+                fb.runs[ti].s = t.trimmingCharacters(in: .whitespaces) + "…"; fb.runs[ti].w = textWidth(fb.runs[ti].s, small: sm)
             }
             for k in fb.runs.indices where fb.runs[k].y <= 2 { fb.runs[k].shade = 3 }             // on the band: full ink (a grey one fades into its colour)
         }

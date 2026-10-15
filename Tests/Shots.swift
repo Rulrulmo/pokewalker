@@ -347,7 +347,7 @@ import AppKit
     fsrv.giveMail(meK, "trade", from: "민수", title: "교환으로 받은 포켓몬", body: "민수와 교환했어요 · 이브이 ↔ 고우스트", [.mon(mon: Mon.wild(94, level: 31, &r38))])
     for r in Tower.rewards.prefix(3) { fsrv.giveMail(meK, "tower", from: "배틀 타워", title: "\(r.wins)연승 달성 보상", body: "배틀 타워에서 처음으로 \(r.wins)연승에 닿았어요.", r.gifts) }
     fsrv.giveMail(meK, "tower", from: "배틀 타워", title: "100연승 달성 보상", body: "배틀 타워에서 처음으로 100연승에 닿았어요.", Tower.rewards.last!.gifts)
-    fsrv.giveMail(meK, "dex", from: "도감", title: "도감 업적: 50종 · 고르기", body: "포켓몬을 50종 잡았어요.", [.pickItem(items: Walk.mints)])   // 5.0: a long pick (21 mints)
+    fsrv.giveMail(meK, "dex", from: "도감", title: "50종 · 민트 고르기", body: "포켓몬을 50종 잡았어요.", [.pickItem(items: Walk.mints)])   // 5.0: a long pick (21 mints)
     if let i = fsrv.postBox[meK]?.indices { for k in i { fsrv.postBox[meK]![k].at = tsF - [86_400 * 3, 90_000, 4000, 400, 7200, 3600, 1800, 600][k % 8] } }
     fme.cloud!.mailDue = true; drain(fme); drain(fme)
     let mails38 = fme.mails, pick14 = mails38.first { $0.title == "14연승 달성 보상" }?.id ?? 0, pick100 = mails38.first { $0.title == "100연승 달성 보상" }?.id ?? 0
@@ -358,10 +358,20 @@ import AppKit
     take("mail_open_notice", fme) { v in v.screen = .mail(.open(id: mails38.first { $0.kind == "notice" }?.id ?? 0)) }
     take("mail_pick_item", fme) { v in v.screen = .mail(.pick(id: pick14, at: 2, ask: nil)) }
     take("mail_pick_item_ask", fme) { v in v.screen = .mail(.pick(id: pick14, at: 2, ask: true)) }
-    let mintPick = mails38.first { $0.title.hasSuffix("· 고르기") }?.id ?? 0
+    let mintPick = mails38.first { $0.title.hasSuffix("· 민트 고르기") }?.id ?? 0
     for at in [0, 8, 20] { take("mail_pick_mints_\(at)", fme) { v in v.screen = .mail(.pick(id: mintPick, at: at, ask: nil)) } }   // its pages: the pick in view, clear of the button
     take("mail_pick_legend", fme) { v in v.screen = .mail(.pick(id: pick100, at: 3, ask: nil)) }
     take("mail_pick_legend_p2", fme) { v in v.screen = .mail(.pick(id: pick100, at: 27, ask: false)) }
+    // 5.0.1 (10-15, a Windows 우편함 quit on a title past the LCD's band): such a title a size smaller (메가메타그로스 ★5 첫 승리!, 91 dots), then … (an
+    // operator's long one: its "cut" line here is meant)
+    let metagross = MegaRaid.bosses.first { MegaRaid.name($0) == "메가메타그로스" } ?? MegaRaid.bosses[0]
+    fsrv.giveMail(meK, "raid", from: "메가 레이드", title: MegaRaid.firstTitle(metagross, tier: 5), body: MegaRaid.firstBody(metagross, tier: 5), [.items(name: "금색병뚜껑", count: 1)])
+    fsrv.giveMail(meK, "admin", from: "운영자", title: "운영자 선물: 전설 포켓몬 선택권과 금색병뚜껑 묶음", body: "5.0 출시를 기념해서 보내 드려요.", [.items(name: "금색병뚜껑", count: 2)])
+    fme.cloud!.mailDue = true; drain(fme); drain(fme)
+    for (k, m) in fme.mails.filter({ $0.kind == "raid" || $0.kind == "admin" }).enumerated() {
+        take("mail_long_title_\(k)", fme) { v in v.screen = .mail(.list(sel: v.mails.firstIndex { $0.id == m.id } ?? 0)) }
+        take("mail_long_title_open_\(k)", fme) { v in v.screen = .mail(.open(id: m.id)) }
+    }
     take("market_board_39", fme) { v in v.screen = .market(.board(tab: 1, sel: 0)) }
     take("menu_market_dot", fme) { v in v.screen = menuFor("교환") }
     take("market_post_note", fme) { v in v.screen = .market(.post(id: 1, sel: nil)) }

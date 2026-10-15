@@ -217,3 +217,49 @@ import Foundation
     }
     return [(cut.isEmpty, "5.0 the focus pages' item lines: \(names.count) items (sold, BP, Mega stones, mints) in 50 dots, two rows (three on a mail's pick), no … and no 한 / 번 split, as if the font ran 15 % wider too" + (cut.isEmpty ? "" : " — \(cut.prefix(5))"))]
 }
+
+/// 5.0.1 (10-15, a Windows 5.0 quit as its 우편함 opened: 김지훈): the LCD's title band — a title past it (85 dots after its mark) made the band's
+/// range backwards, a trap; '도감 업적: 300종 · 고르기' is 84 dots here and 86 in Windows' GDI, and 32 of the server's titles were past it here (112
+/// there). Every title the server mails, the old 고르기 and the new, and a very long one, at the font as is and 15 % · 30 % wider (Windows' runs
+/// ~4 % wider), on the 우편함's list and the mail: drawn, its title inside the LCD (a size smaller, then …). Then a 150-dot title and one of
+/// 86–94 on every page with a band.
+@MainActor func bandChecks() -> [(Bool, String)] {
+    let long = String(repeating: "운영자가 보내는 아주 긴 공지 제목 ", count: 5)
+    var titles = ["교환으로 받은 포켓몬", "돌아온 포켓몬", MegaRaid.masterTitle, "5.0 기념 선물: 쁘사이저나이트", "운영자 선물: 전설 포켓몬 선택권", long]
+    titles += DexGoals.goals().map(\.title) + DexGoals.goals().flatMap { ["도감 업적: \($0.label) · 고르기", "\($0.label) · 민트 고르기"] } + (2...17).map { "도감 업적 \($0)개" }
+    titles += (1...20).map { "레이드 이번 주 \($0)승 보상" } + (Tower.rewards.map(\.wins) + [150, 1000]).map { "\($0)연승 달성 보상" }
+    for b in MegaRaid.bosses { titles += [MegaRaid.mailTitle(b.stone, had: false), MegaRaid.mailTitle(b.stone, had: true), MegaRaid.winsTitle(b.stone)] + (1...5).map { MegaRaid.firstTitle(b, tier: $0) } }
+    titles = Array(Set(titles)).sorted()
+    func band(_ fb: FB) -> TextRun? { fb.runs.first { $0.y <= 1 && $0.x <= 11 } }
+    var bad: [String] = [], drawn = 0, listed = 0, pages: [String] = []
+    let was = (lcdDeco, lcdStyle, smoothText); lcdDeco = true; lcdStyle = 0; smoothText = true
+    defer { (lcdDeco, lcdStyle, smoothText) = was; textWidthScale = 1 }
+    Content.$testing.withValue(true) {
+        let srv = FakeCloud(), v = online(Walk(), server: srv), (_, key) = server(v)
+        for t in titles { srv.giveMail(key, "admin", from: "운영자", title: t, [.items(name: "이상한사탕", count: 1)]) }
+        v.openMail(Date()); drain(v); drain(v); listed = v.mails.count
+        for k in [1.0, 1.15, 1.3] {
+            textWidthScale = k
+            for (i, m) in v.mails.enumerated() {
+                for s in [Screen.mail(.list(sel: i)), .mail(.open(id: m.id))] {
+                    v.screen = s; let fb = v.compose(Date()); drawn += 1
+                    guard let r = band(fb) else { bad.append("\(m.title) ×\(k): no title"); continue }
+                    if r.x + r.w > 95 || (r.s.hasSuffix("…") && textWidth(m.title, small: true) <= 85) { bad.append("\(m.title) ×\(k): \(r.s) \(r.x)+\(r.w)") }
+                }
+            }
+        }
+        textWidthScale = 1
+        let mid = (1...long.count).map { String(long.prefix($0)) }.first { (86...94).contains(textWidth($0)) } ?? long
+        let screens: [Screen] = [.dex(25, filter: 0, detail: false), .goals(0), .mail(.list(sel: 0)), .box(-1, act: nil, confirm: false), .formPick(ref: -1, item: "로토무카탈로그", sel: 0),
+                                 .team(sel: 0, tab: 0, card: false), .shop(bp: false, sel: 0, qty: nil), .items(0), .tower(pick: nil), .raid(.lobby(tab: 0)), .card(0), .course(0)]
+        for s in screens { for t in [long, mid] {
+            let w = Walker(state: Walk()); w.persist = false; w.screen = s
+            guard let g = w.pageGroup() else { bad.append("\(s): no page group"); continue }
+            var fb = FB(); fb.text(t, 2, 0); w.decorate(&fb, Date())
+            guard let r = band(fb) else { bad.append("\(g) \(t.count): no title"); continue }
+            if r.x + r.w > 95 || (t == mid) != (r.small && !r.s.hasSuffix("…")) { bad.append("\(g) \(textWidth(t)) dots: \(r.s) \(r.x)+\(r.w) small \(r.small)") }
+            if t == long { pages.append("\(g)") }
+        } }
+    }
+    return [(bad.isEmpty && listed == titles.count, "5.0.1 the LCD's title band: \(titles.count) mail titles (the server's, the 고르기 old and new, a very long one) on the 우편함's list and the mail, at the font as is and 15 % · 30 % wider (\(drawn) drawn): inside the LCD, a size smaller then …, never a trap; a 150-dot title and one of 86–94 on every page with a band (\(Set(pages).sorted().joined(separator: " · ")))" + (bad.isEmpty ? "" : " — \(bad.prefix(6))") + (listed == titles.count ? "" : " — \(listed) listed"))]
+}

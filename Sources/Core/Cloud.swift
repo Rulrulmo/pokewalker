@@ -1134,7 +1134,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         else if due.count > 1 {
             let m = DexGoals.merged(due)
             if !m.gifts.isEmpty { giveMail(key, "dex", from: "도감", title: "도감 업적 \(due.count)개", body: due.map(\.label).joined(separator: " · ") + "에 닿았어요.", m.gifts) }
-            for p in m.picks { giveMail(key, "dex", from: "도감", title: "도감 업적: \(p.goal.label) · 고르기", body: p.goal.body, [p.gift]) }
+            for p in m.picks { giveMail(key, "dex", from: "도감", title: "\(p.goal.label) · 민트 고르기", body: p.goal.body, [p.gift]) }
         }
         dexPaid[key, default: []].formUnion(due.map(\.key))
         let list = DexGoals.goals().map(\.key).filter { (dexPaid[key] ?? []).contains($0) }
