@@ -78,6 +78,30 @@ private func act(_ db: SaveDB, _ id: String, _ s: String, _ seq: Int, _ a: Act, 
     #expect(r.status == 200)
 }
 
+@Test func reloginOnce() async throws {   // pokeserver relogin (10-15): a 5.0 session from before it, once, at a plain steps act — not with the radar shown
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let s = try await newTrainer(db, "앱유저")
+    func go(_ s: String, _ seq: Int, _ a: Act, steps: Int? = nil, app: String = "5.0", at sec: Double) async -> Reply {
+        await db.act(ActReq(id: "앱유저", session: s, seq: seq, steps: steps, act: a, app: app), now: base.addingTimeInterval(sec))
+    }
+    var r = await go(s, 1, .steps, steps: 8_000, at: 600); #expect(r.status == 200)
+    _ = try await db.setRelogin(Int(base.timeIntervalSince1970) + 700)
+    r = await go(s, 2, .steps, steps: 10, app: "4.1", at: 710); #expect(r.status == 200)            // 5.0's only (4.x: the route's 426)
+    r = await go(s, 3, .radar, at: 720); let shown = try reply(r).out.radar; #expect(r.status == 200 && shown != nil)   // not a steps act: as ever
+    r = await go(s, 4, .steps, steps: 10, at: 730); #expect(r.status == 200)                       // the radar shown: not now
+    r = await go(s, 5, .radarPick(bush: -1), at: 740); #expect(r.status == 200)
+    r = await go(s, 6, .steps, steps: 300, at: 800)
+    #expect(r.status == 409 && string(r, "error") == "seq")                                         // the app: its steps kept, logs in again
+    let walked = try await db.count("SELECT n FROM steps_day WHERE key = '앱유저'")
+    let l = await db.login(LoginReq(id: "앱유저", device: "mac", device_name: "MAC", app: "5.0", force: false, pin: "2468"), now: Int(base.timeIntervalSince1970) + 801)
+    let s2 = try #require(string(l, "session")); #expect(l.status == 200)
+    r = await go(s2, 1, .steps, steps: 300, at: 802); let taken = try reply(r).taken
+    let walkedNow = try await db.count("SELECT n FROM steps_day WHERE key = '앱유저'")
+    #expect(r.status == 200 && taken == 300 && walkedNow == walked + 300)                            // the same steps, all of them
+    r = await go(s2, 2, .steps, steps: 10, at: 900); #expect(r.status == 200)                       // never twice
+    _ = try await db.setRelogin(nil); let off = try await db.reloginBefore(); #expect(off == nil)
+}
+
 @Test func actFightThroughTheServer() async throws {
     let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
     let s = try await newTrainer(db, "fighter")

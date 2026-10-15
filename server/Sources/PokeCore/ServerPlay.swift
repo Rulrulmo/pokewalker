@@ -64,6 +64,7 @@ extension SaveDB {
                 var row = try playRow(id.key, session: r.session, since: Double(t.updatedAt), now: now)
                 if r.seq == row.seq, let body = row.reply { return Reply(raw: row.status, Data(body.utf8), note: "seq \(r.seq) again: its reply") }   // the reply was lost
                 guard r.seq == row.seq + 1 else { return .error(409, "seq", ["last": .i(row.seq)], note: "seq \(r.seq) after \(row.seq)") }
+                if try asksRelogin(id.key, r, row.play) { return .error(409, "seq", ["last": .i(row.seq)], note: "relogin: a session from before relogin_before") }   // nothing taken
 
                 var w: Walk
                 if let text = t.walk {

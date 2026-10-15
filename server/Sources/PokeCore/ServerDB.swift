@@ -126,6 +126,7 @@ actor SaveDB {
             for col in ["party_a TEXT", "party_b TEXT", "pick_a TEXT", "pick_b TEXT", "kind TEXT"] { try? c.exec("ALTER TABLE duels ADD COLUMN \(col)") }
             try? c.exec("ALTER TABLE trainers ADD COLUMN app_seen TEXT")
             try? c.exec("ALTER TABLE raid_runs ADD COLUMN kind TEXT")                                // 5.0: NULL = the legend raid, 'mega' (plan 18 §6.4)
+            try? c.exec("ALTER TABLE trainers ADD COLUMN session_at INTEGER")                        // 5.0.x: when the session began (pokeserver relogin)
         }   // tables added since (flags) come in on any open: IF NOT EXISTS
         db = c; self.path = path; self.reject = reject; self.rejectTests = rejectTests; self.minApp = minApp
         self.viewAll = Set(viewAll.compactMap { trainerID($0)?.key })
@@ -202,8 +203,8 @@ actor SaveDB {
                 var (rev, walk) = (t.rev, t.walk)
                 if asksPIN(r.app), let g = try grandfather(id.key, now: now) { (rev, walk) = (g.rev, g.walk) }    // 10 §4.3: a 2.0 trainer's first 2.1 login
                 let session = newSession()
-                try db.rows("UPDATE trainers SET session = :s, device = :d, last_device = :n WHERE key = :k",
-                            ["s": .text(session), "d": .text(r.device), "n": .text(String(r.device_name.prefix(64))), "k": .text(id.key)])
+                try db.rows("UPDATE trainers SET session = :s, session_at = :now, device = :d, last_device = :n WHERE key = :k",
+                            ["s": .text(session), "now": .int(now), "d": .text(r.device), "n": .text(String(r.device_name.prefix(64))), "k": .text(id.key)])
                 var reply: [String: JSON] = ["exists": .b(true), "name": .s(t.name), "rev": .i(rev), "walk": .str(walk), "session": .s(session),
                                              "last_device": .str(t.lastDevice), "updated_at": .i(t.updatedAt)]   // who had it, until when: before this login
                 if let token { reply["trust"] = .s(token) }
@@ -232,7 +233,7 @@ actor SaveDB {
                 }
                 let issues = asksPIN(r.app) || r.pin != nil                                         // 2.1 (only 2.1 sends a PIN, with or without "app")
                 if issues { var s = Walk.starter; s.uid = firstUID; try record(id.key, s, kind: "starter", now: now) }   // 10 §4.1: the starter is issued too
-                try db.rows("INSERT INTO trainers (key, name, rev, session, device, last_device, created_at, updated_at) VALUES (:k, :n, 0, :s, :d, :dn, :now, :now)",
+                try db.rows("INSERT INTO trainers (key, name, rev, session, session_at, device, last_device, created_at, updated_at) VALUES (:k, :n, 0, :s, :now, :d, :dn, :now, :now)",
                             ["k": .text(id.key), "n": .text(id.name), "s": .text(session), "d": .text(r.device), "dn": .text(String(r.device_name.prefix(64))), "now": .int(now)])
                 var reply: [String: JSON] = ["rev": .i(0), "session": .s(session)]
                 if let token { reply["trust"] = .s(token) }
