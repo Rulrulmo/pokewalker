@@ -75,6 +75,45 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     Content.on = false
     check(on5 && off5 && made5, "5.0: content5 in the login (and a new trainer's create) turns the Gen VI rules on (dexMax 721); no field, off (493)", "\(on5) \(off5) \(made5) \(nc.phase) \(c5new.paths)")
 
+    // 5.0 turned on while the app runs (10-15: the server, at its turn-on, gives a session from before one 409 seq — the user: "현재 켜져있는 인원들
+    // 전부다 한번 껐다키도록"): the new login's content5 turns it all on at once, nothing kept from before — the page open (the 도감) redrawn to 721
+    // with its regions, the menu's 도감 업적 · 메가 레이드, the shop's 로토무카탈로그 under 기타, 로토무's 모습 바꾸기, the Mega button, the 도감 업적
+    // dot; the steps walked meanwhile and the save kept
+    do {
+        let sw = FakeCloud()
+        var zard = Mon(dex: 6, level: 60, female: false); zard.item = "리자몽나이트X"
+        let sv = online({ var s = Walk(); s.watts = 5000; s.companion = zard; s.box = [Mon(dex: 479, level: 30, female: false)]; s.bag = ["로토무카탈로그"]; s.dexRewards = ["관동:50"]; return s }(), server: sw)
+        let sk = server(sv).1
+        func seen() -> [Bool] {
+            let ws = { var s = Walk(); s.watts = 5000; return s }().wares(bp: false, shells: Engine.bpShells)
+            return [menuItems.contains("도감 업적"), menuItems.contains("메가 레이드"), sv.dexList(0).count == 721, sv.pane.grid?.regions != nil,
+                    ws.contains { $0.kind == .item("로토무카탈로그") && Walk.shopTab($0, bp: false) == "기타" }, sv.formAction(0) != nil,
+                    Battle(wild: Mon(dex: 16, level: 5, female: false), companion: sv.state.companion).canMega(.me), sv.goalsDot]
+        }
+        sv.screen = .dex(1, filter: 0, detail: false); sv.refreshPane(Date(), force: true)
+        let before = seen(), total = sv.state.total
+        sw.content5 = true; sw.rows[sk]?.seq = 40                                                 // the server: content5 on, this session's acts out of step
+        sv.cloud!.addSteps(7); _ = sv.state.walk(7, at: Date()); sv.cloud!.saveNow(); drain(sv); drain(sv)
+        sv.cloud!.saveNow(); drain(sv)
+        let after = seen(), relogged = sw.paths.filter { $0 == "v1/login" }.count == 2
+        check(before.allSatisfy { !$0 } && after.allSatisfy { $0 } && relogged && sv.cloud!.phase == .on && served(sv)?.total == total + 7 && sv.state.total == total + 7
+              && legendDex == Set(coursesGen6.flatMap(\.legends)),
+              "5.0 on while the app runs: the server's 409 seq → a new login, content5 on at once (the open 도감 721 with regions, 도감 업적 · 메가 레이드, 로토무카탈로그 under 기타, 모습 바꾸기, the Mega button, the dot); the 7 steps and the save kept",
+              "\(before) \(after) \(relogged) \(sv.cloud!.phase) \(total) \(served(sv)?.total ?? -1) \(sv.state.total)")
+        Content.on = false
+    }
+    do {                                                                                          // the act that meets the 409 seq a 포켓 레이더 (not steps): not run, no W gone, nothing stuck — pressed again, it goes
+        let rw = FakeCloud(), rv = online({ var s = Walk(); s.watts = 50; return s }(), server: rw), rk = server(rv).1
+        rw.content5 = true; rw.rows[rk]?.seq = 40
+        rv.openFeature("포켓 레이더"); drain(rv); drain(rv)
+        let missed = rv.waiting == nil && !rv.frozen && rv.cloud!.phase == .on && served(rv)?.watts == 50 && Content.on && { if case .radar = rv.screen { return false }; return true }()
+        rv.screen = .home; rv.openFeature("포켓 레이더"); drain(rv)
+        let again: Bool = { if case .radar = rv.screen { return served(rv)?.watts == 40 }; return false }()
+        check(missed && again, "5.0 on while the app runs: a 포켓 레이더 meeting the 409 seq isn't run (no W spent, nothing stuck, content5 on after the login); pressed again, it goes (10 W)",
+              "\(missed) \(again) \(rv.screen) \(rv.waiting.map { "\($0)" } ?? "-") \(served(rv)?.watts ?? -1)")
+        Content.on = false
+    }
+
     // 5.0 (docs/plans/18 §9.6): 메가진화 on the move screen — after the moves (◀ ▶), ● ticks it, a move then goes as .megaFight; the beat's two lines
     // one after the other and its light; the Mega's name on the HP box; once a fight (no button after); none without content5
     var zard = Mon(dex: 6, level: 60, female: false); zard.known = [53, 19, 337, 89]; zard.item = "리자몽나이트X"

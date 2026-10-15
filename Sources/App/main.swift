@@ -51,6 +51,10 @@ if let i = CommandLine.arguments.firstIndex(of: "--live-five"), i + 2 < CommandL
     guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-five: a build run from the repository only"); exit(2) }
     exit(liveFiveTest(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2]) ? 0 : 1)
 }
+if let i = CommandLine.arguments.firstIndex(of: "--live-switch"), i + 2 < CommandLine.arguments.count {  // a dev build: 5.0 turned on while it runs, on a local server (POKEWALKER_SERVER, SWITCH_CMD) (Tests/LiveTest.swift)
+    guard Store.devBuild(Bundle.main.bundleURL) else { print("--live-switch: a build run from the repository only"); exit(2) }
+    exit(liveSwitchTest(CommandLine.arguments[i + 1], CommandLine.arguments[i + 2]) ? 0 : 1)
+}
 if let i = CommandLine.arguments.firstIndex(of: "--shots"), i + 1 < CommandLine.arguments.count {          // a dev build: screens to look at, as PNGs (Tests/Shots.swift)
     guard Store.devBuild(Bundle.main.bundleURL) else { print("--shots: a build run from the repository only"); exit(2) }
     print("\(shots(CommandLine.arguments[i + 1])) shots"); exit(0)

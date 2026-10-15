@@ -852,3 +852,61 @@ import Foundation
     print(failed == 0 ? "PASS live five" : "FAIL \(failed)")
     return failed == 0
 }
+
+/// `PokeWalker --live-switch <id> <pin>` (a dev build only, against a LOCAL server — POKEWALKER_SERVER, content5 off at the start — and SWITCH_CMD,
+/// the shell command that turns it on: `pokeserver content5 on` on that server's DB): 5.0 turned on while the app runs (10-15: at its turn-on the
+/// server gives a session from before one 409 seq; the user: "현재 켜져있는 인원들 전부다 한번 껐다키도록"). The app logs in with content5 off
+/// (4.1's pages); the server turns it on; an act from elsewhere on the same session puts the app's next one out of step, as the server's 409 seq at
+/// its turn-on; the new login's content5 turns it all on at once — the page open (the 도감: 721, its regions), the menu's 도감 업적 · 메가 레이드,
+/// the shop's 로토무카탈로그 under 기타 — and the steps walked meanwhile and the save are kept. A new zz ID each run. SWITCH_SEQ=server: the
+/// server's own 409 seq (SWITCH_CMD runs `pokeserver relogin now` too), not two acts from elsewhere.
+@MainActor func liveSwitchTest(_ id: String, _ pin: String) -> Bool {
+    var failed = 0
+    func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
+    let env = ProcessInfo.processInfo.environment
+    guard let cmd = env["SWITCH_CMD"], env["POKEWALKER_SERVER"] != nil else { print("--live-switch: a local server (POKEWALKER_SERVER) and SWITCH_CMD"); return false }
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-liveswitch-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
+    let c = Cloud(link: HTTPLink(), dir: tmp); h.texts = [id]; h.pins = [pin, pin, pin]; h.answer = true
+    w.startCloud(c, file: tmp.appendingPathComponent("state.json"), bak: tmp.appendingPathComponent("state.json.bak"))
+    @discardableResult func run(_ secs: Double, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end { w.tick(Date()); if done() { return true }; Thread.sleep(forTimeInterval: 0.1) }
+        return done()
+    }
+    func idle() -> Bool { w.waiting == nil && c.inFlight == nil && c.queued == nil && c.out == nil && c.asking == nil }
+    /// What content5 shows, read off the walker as it stands (the 도감 page open: its pane as last drawn).
+    func shown() -> [String: Bool] {
+        let ws = w.wares(false)
+        return ["메뉴 도감 업적": menuItems.contains("도감 업적"), "메뉴 메가 레이드": menuItems.contains("메가 레이드"), "도감 721": w.dexList(0).count == 721,
+                "열린 도감의 지방 탭": w.pane.grid?.regions != nil, "상점 로토무카탈로그 (기타)": ws.contains { $0.kind == .item("로토무카탈로그") && Walk.shopTab($0, bp: false) == "기타" },
+                "Content.on": Content.on]
+    }
+    print("server: \(HTTPLink.base)")
+    check(run(40) { c.phase == .on && c.base != nil && idle() }, "live switch: \(id) logged in (\(c.phase))")
+    w.screen = .dex(1, filter: 0, detail: false); run(1) { false }
+    let before = shown(), session = c.seat.session, total = w.state.total, uid = w.state.companion.uid
+    check(!before.values.contains(true), "live switch: content5 off — 4.1's pages: \(before.filter(\.value).keys.sorted())")
+
+    let p = Process(); p.executableURL = URL(fileURLWithPath: "/bin/sh"); p.arguments = ["-c", cmd]; try? p.run(); p.waitUntilExit()
+    check(p.terminationStatus == 0, "live switch: the server's content5 on (SWITCH_CMD → \(p.terminationStatus))")
+    run(12) { false }                                                                             // (the running server takes it within 10 s: content5Every)
+    final class Got: @unchecked Sendable { var status: [Int] = [] }
+    let got = Got(), sem = DispatchSemaphore(value: 0), byServer = env["SWITCH_SEQ"] == "server"   // server: SWITCH_CMD also runs `pokeserver relogin now` (its own 409 seq)
+    if !byServer { for k in 1...2 {                                                                              // two: the app's next seq would be a resend of the first (its stored reply)
+        let req = ActReq(id: c.seat.trainerID ?? id, session: session ?? "", seq: c.seq + k, act: .steps, app: appVersion)
+        HTTPLink().post("v2/act", (try? JSONEncoder().encode(req)) ?? Data()) { s, _ in got.status.append(s); sem.signal() }; sem.wait()
+    }
+    check(got.status == [200, 200], "live switch: two acts from elsewhere on the session (seq \(c.seq + 1), \(c.seq + 2) → \(got.status)): the app's next one out of step") }
+
+    c.addSteps(9); _ = w.state.walk(9, at: Date()); c.saveNow()                                  // the app's next act: the server's 409 seq
+    let relogged = run(40) { c.seat.session != session && c.phase == .on && idle() }
+    c.saveNow(); run(15, until: idle)
+    let after = shown()
+    check(relogged, "live switch: 409 seq → a new login (\(c.phase), session \(session == c.seat.session ? "same" : "new"))")
+    check(!after.values.contains(false), "live switch: content5 on at once — \(after.filter { !$0.value }.keys.sorted().isEmpty ? "all on" : "off: \(after.filter { !$0.value }.keys.sorted())") (\(after.keys.sorted().joined(separator: " · ")))")
+    check(w.state.total == total + 9 && w.state.companion.uid == uid, "live switch: the 9 steps walked meanwhile and the save kept (total \(total) → \(w.state.total), companion uid \(uid ?? -1) → \(w.state.companion.uid ?? -1))")
+    print(failed == 0 ? "PASS live switch" : "FAIL \(failed)")
+    return failed == 0
+}
