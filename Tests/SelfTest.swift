@@ -135,6 +135,18 @@ import AppKit                                                                   
     check(share(0) == [0, 0, 100], "0 steps: only group C", "\(share(0))")
     let mid = share(500); check(abs(mid[1] - 75) < 1.5 && abs(mid[2] - 25) < 1.5, "500+: B 75 / C 25", "\(mid)")
     let top = share(2000); check(abs(top[0] - 70) < 1.5 && abs(top[1] - 22.5) < 1.5 && abs(top[2] - 7.5) < 1, "2000+: A 70 / B 22.5 / C 7.5", "\(top)")
+    // plan 21 (5.1.2; the server's slot-odds on): A 20 · B 30 · C 50 from the first step — no steps, no type bonus in it; a radar chain moves C's
+    // to A (4 a link) and B (1), 8 links at most (52 · 38 · 10). Off (above): as before.
+    Content.$testingSlots.withValue(true) {
+        func near(_ a: [Double], _ b: [Double]) -> Bool { zip(a, b).allSatisfy { abs($0 - $1) < 1.5 } }
+        let s0 = share(0), s9 = share(9000)
+        check(near(s0, [20, 30, 50]) && near(s9, [20, 30, 50]), "slot odds on: A 20 / B 30 / C 50 from step 0, steps change nothing", "\(s0) \(s9)")
+        w.companion = Mon(dex: 4, level: 5, female: false); let fire = share(0); w.companion = Mon(dex: 7, level: 5, female: false)   // 상쾌한 들판 has fire: no bonus here
+        var n = [0, 0, 0]; w.courseSteps = 0; for _ in 0..<20000 { n[w.here.group(of: w.encounter(&r, chain: 8, guests: false))!] += 1 }
+        let chained = n.map { Double($0) / 200 }
+        check(near(fire, [20, 30, 50]) && near(chained, [52, 38, 10]) && Walk.groupShares(12) == [52, 38, 10] && Walk.groupShares(3) == [32, 33, 35],
+              "slot odds on: the companion's type changes nothing; a chain of 8: A 52 / B 38 / C 10 (and no further)", "\(fire) \(chained)")
+    }
     w.companion = Mon(dex: 4, level: 5, female: false); w.courseSteps = 1500    // charmander: fire is a course type
     check(w.bonus && w.effSteps == 2000, "type bonus: 25 % fewer steps")
     w = Walk(); check((0..<50).allSatisfy { _ in w.courseItem(&r) == "상처약" }, "a find at 0 steps: only the common item")
