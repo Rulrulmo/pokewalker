@@ -19,15 +19,19 @@ let raidSchema = """
     CREATE TABLE IF NOT EXISTS mega_clears (key TEXT NOT NULL, stone TEXT NOT NULL, tier INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (key, stone, tier));
     CREATE TABLE IF NOT EXISTS settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
     """
-let raidRotation = [249, 382, 383, 384, 483, 484, 487]                    // 루기아 가이오가 그란돈 레쿠쟈 디아루가 펄기아 기라티나 (ISO week % 7)
+let raidRotation = [249, 382, 383, 384, 483, 484, 487]                    // 루기아 가이오가 그란돈 레쿠쟈 디아루가 펄기아 기라티나 (by raidDex)
 let raidLevel = 70, raidBarsPerFighter = 4, raidCatchOdds = 0.30, raidApp = "3.4"         // 4 bars a fighter: the user, 10-04 (14 was too many; 14 §4)
 
 struct RaidRow { let week: String, dex: Int, boss: Mon, total: Int, bar: Int, cleared: Int? }
 
-/// The week's boss species (and next week's): by the ISO week number.
+/// The week's boss species (and next week's): by the weeks since 2026-W42 (루기아), the order the ISO week number gave through 2026's W52.
+/// plan 19 §5: the number itself would go W52 레쿠쟈 → W53 디아루가 → 2027-W1 가이오가, skipping 펄기아 · 기라티나 · 루기아 for a round.
 func raidDex(_ now: Date) -> Int {
     var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
-    return raidRotation[cal.component(.weekOfYear, from: now) % raidRotation.count]
+    guard let a = cal.date(from: DateComponents(weekOfYear: 42, yearForWeekOfYear: 2026)).flatMap({ cal.dateInterval(of: .weekOfYear, for: $0)?.start }),
+          let s = cal.dateInterval(of: .weekOfYear, for: now)?.start else { return raidRotation[0] }
+    let weeks = Int((s.timeIntervalSince(a) / (7 * 86400)).rounded()), n = raidRotation.count
+    return raidRotation[(weeks % n + n) % n]
 }
 /// The raid this trainer is in this week: the team's, or (a test ID) the testers'.
 func raidWeek(_ key: String, _ now: Date) -> String { weekDays(now).key + (isTestID(key) ? "-test" : "") }
