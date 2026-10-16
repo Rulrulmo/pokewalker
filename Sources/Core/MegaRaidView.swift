@@ -14,8 +14,9 @@ extension Walker {
     var megaLeftToday: Int? { megaLobby.map { max(0, $0.today.max - $0.today.used) } }
     /// The menu tile's line.
     var megaNote: String {
-        guard let r = megaLobby else { return "파워 \(raidCells)칸 · 하루 \(RaidRules.perDay)판" }
+        guard let r = megaLobby else { return "파워 \(raidCells)칸" + (raidDaily ? "" : " · 하루 \(RaidRules.perDay)판") }
         let near = r.bosses.filter { $0.had != true }.max { ($0.wins ?? 0) < ($1.wins ?? 0) }          // (the week's boss nearest its stone)
+        if raidDaily { return "파워 \(raidCells)칸 · " + (near.map { megaWinsText($0, r) } ?? "스톤 모두 보유") }   // 5.1 (plan 20)
         return (megaLeftToday == 0 ? "오늘 끝 · " : "오늘 \(megaLeftToday ?? 0)판 · ") + (near.map { megaWinsText($0, r) } ?? "스톤 모두 보유")
     }
 
@@ -36,11 +37,13 @@ extension Walker {
         if left == 0 { hint = "오늘은 \(r.today.max)판을 다 했어요 · 내일 0시에 다시" }
         else if raidCells == 0 { hint = "파워가 부족해요 (\(Engine.raidPowerCost.formatted())걸음마다 1칸)" }
         else { go = "도전 · 파워 1칸" }
-        return PaneContent(raid: RaidModel(boss: megaName(b), left: raidLeft(r.ends, now), todayUsed: r.today.used, todayMax: r.today.max,
-                                           todayText: left == 0 ? "내일 다시" : "\(left)판 남음", power: power, powerText: powerText,
-                                           week: ["\(r.mine.runs)판 · \(r.mine.wins)승", megaWinsText(b, r)],   // (this boss's; the week's stones: the tabs' ✓)
+        let daily = raidDaily                                                                       // 5.1 (plan 20): today's two, the day's cells, midnight
+        return PaneContent(raid: RaidModel(boss: megaName(b), left: daily ? (hoursLeft(r.ends, now) <= 1 ? "곧 자정" : "자정까지 \(hoursLeft(r.ends, now))시간") : raidLeft(r.ends, now), todayUsed: r.today.used, todayMax: r.today.max,
+                                           todayText: left == 0 ? "내일 다시" : "\(left)판 남음", power: power, powerText: daily ? dailyPower(r.today.used) : powerText,
+                                           week: [(daily ? "이번 주 " : "") + "\(r.mine.runs)판 · \(r.mine.wins)승", megaWinsText(b, r)],   // (this boss's; the week's stones: the tabs' ✓)
                                            tabs: r.bosses.map { megaName($0) + ($0.had == true ? " ✓" : "") }, tab: tab, rows: Array(rows),
-                                           empty: "이번 주에 이 보스와 한 판이 없어요", go: go, hint: hint, ranks: false, roomy: true,
+                                           empty: "이번 주에 이 보스와 한 판이 없어요", go: go, hint: hint,
+                                           tomorrow: daily ? r.next.map { megaName($0) }.joined(separator: " · ") : nil, cells: daily ? RaidDaily.maxRuns : 3, ranks: false, roomy: true,
                                            rule: "이기면 확률로 메가스톤 · 같은 보스 \(r.pityNeed)승이면 확정"))   // 5.0 (the user: 처음 보는 사람도 바로)
     }
     /// A tier's first-win reward for this boss (the user, 10-14: ★4 은색병뚜껑 · ★5 금색병뚜껑, once a boss and tier): its item, its words, whether
@@ -61,9 +64,10 @@ extension Walker {
         let m = megaMon(b)
         fb.text(megaName(b), 2, 0); fb.fill(0, 12, 96, 1, 2)
         fb.mon(m, half, 0, 2, anim: animT("mega raid \(tab)", m.art, now))
-        fb.text("메가 레이드", 94, 15, 2, right: true, small: true)
-        fb.text(raidLeft(r.ends, now), 94, 26, 2, right: true, small: true)
-        fb.text((megaLeftToday ?? 0) == 0 ? "내일 다시" : "오늘 \(megaLeftToday ?? 0)판", 94, 37, (megaLeftToday ?? 0) > 0 ? 3 : 1, right: true, small: true)
+        fb.text(raidDaily ? "오늘의 보스" : "메가 레이드", 94, 15, 2, right: true, small: true)
+        fb.text(raidDaily ? (hoursLeft(r.ends, now) <= 1 ? "곧 자정" : "\(hoursLeft(r.ends, now))시간 남음") : raidLeft(r.ends, now), 94, 26, 2, right: true, small: true)
+        if raidDaily { fb.text("파워 \(raidCells)칸", 94, 37, raidCells > 0 ? 3 : 1, right: true, small: true) } else {   // 5.1 (plan 20): the day's power, no 3 a day
+        fb.text((megaLeftToday ?? 0) == 0 ? "내일 다시" : "오늘 \(megaLeftToday ?? 0)판", 94, 37, (megaLeftToday ?? 0) > 0 ? 3 : 1, right: true, small: true) }
         fb.text(megaWinsText(b, r), 94, 52, b.had == true ? 2 : 3, right: true, small: true)
     }
     /// The lobby's ● (and its button): a run — its tier first. ◀ ▶: the other boss.

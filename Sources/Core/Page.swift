@@ -1309,9 +1309,20 @@ extension Page {
     /// The lobby: today's runs and power on one card, my week in four, a tab of rows, the button (or why not).
     func drawRaid(_ m: RaidModel) {
         let lw = c.say(m.left, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
-        c.say("이번 주 보스 · " + m.boss, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - lw)
+        c.say((m.tomorrow != nil ? "오늘의 보스 · " : "이번 주 보스 · ") + m.boss, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - lw)
         let card = r(X0, 215, X1 - X0, 46); c.fill(.rounded(card, 10 * K), Ink.tile)               // today (3 a day) and power (3 칸 of 10,000 steps)
         let r1 = card.minY + x(13), r2 = card.minY + x(33)
+        if m.tomorrow != nil {                                                                       // 5.1 (plan 20): by the day — the power, the day's cells across (no 3 a day)
+            let cost = Engine.raidPowerCost, full = m.power / cost
+            let lw2 = c.say("파워", card.minX + x(9), r1, font(9, .bold), Ink.sub)
+            c.say("\(full)칸", card.minX + x(9) + lw2 + x(5), r1, font(10, .bold), full > 0 ? Ink.red : Ink.sub)
+            c.say(m.powerText, card.maxX - x(9), r1, font(8.5, .semibold), Ink.ink, 1, maxW: card.width - x(80))
+            let n = max(1, m.cells), gap = x(3), w = (card.width - x(18) - gap * CGFloat(n - 1)) / CGFloat(n)
+            for k in 0..<n {
+                let seg = CGRect(x: card.minX + x(9) + CGFloat(k) * (w + gap), y: r2 - x(4), width: w, height: x(8)), f = CGFloat(min(cost, max(0, m.power - cost * k))) / CGFloat(cost)
+                c.pill(seg, Ink.line); if f > 0 { c.pill(CGRect(x: seg.minX, y: seg.minY, width: max(x(8), seg.width * f), height: seg.height), f >= 1 ? Ink.red : Ink.tint(Ink.red, 0.45)) }
+            }
+        } else {
         c.say("오늘", card.minX + x(9), r1, font(9, .bold), Ink.sub)
         for k in 0..<max(0, m.todayMax) {
             let d = CGRect(x: card.minX + x(36) + CGFloat(k) * x(13), y: r1 - x(4), width: x(8), height: x(8))
@@ -1325,6 +1336,7 @@ extension Page {
             c.pill(seg, Ink.line); if f > 0 { c.pill(CGRect(x: seg.minX, y: seg.minY, width: max(x(8), seg.width * f), height: seg.height), f >= 1 ? Ink.red : Ink.tint(Ink.red, 0.45)) }
         }
         c.say(m.powerText, card.maxX - x(9), r2, font(8.5, .semibold), Ink.ink, 1, maxW: card.width - x(100))
+        }
         if !m.week.isEmpty {                                                                          // my week: 판 · 승 · 잡음 · 이로치
             let gap: CGFloat = 4, bw = (X1 - X0 - gap * CGFloat(m.week.count - 1)) / CGFloat(m.week.count)
             for (i, t) in m.week.enumerated() {
@@ -1346,7 +1358,7 @@ extension Page {
             xr -= c.say(row.value, xr, rc.midY, font(8.5 + big, .semibold), m.tab == 0 && m.ranks ? Ink.ink : Ink.sub, 1) + x(6)
             c.say(row.name, xl, rc.midY, fitFont(row.name, [9.5 + big, 8.5 + big, 8], xr - xl, .bold), Ink.ink, maxW: xr - xl)   // (5.0: a long ID a size smaller, whole)
         }
-        if let rule = m.rule { c.say(rule, x(Layout.w / 2), y(414), font(9, .semibold), Ink.c(132, 64, 196), 0.5, maxW: x(X1 - X0 - 4)) }   // 5.0: the Mega raid's in a line
+        if let rule = m.rule { c.say(rule, x(Layout.w / 2), y(414), font(9, .semibold), m.tomorrow != nil && m.ranks ? (m.late ? Ink.red : Ink.sub) : Ink.c(132, 64, 196), 0.5, maxW: x(X1 - X0 - 4)) }   // (5.1: the day's line — red near midnight)   // 5.0: the Mega raid's in a line
         let rc = r(X0, 428, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.go == nil ? Ink.tile : Ink.red)
         c.say(m.go ?? m.hint, rc.midX, rc.midY, font(m.go == nil ? 10 : 11, .bold), m.go == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.go != nil { hits.append((rc, 7010)) }
     }

@@ -143,6 +143,8 @@ import AppKit
         msrv.megaWins[mkey] = [MegaRaid.week(0)[0].stone: 19, MegaRaid.week(0)[1].stone: 7]
         mrw.cloud!.megaRaidDue = true; drain(mrw); drain(mrw)
         take("mega_raid_near", mrw) { v in v.screen = .raid(.lobby(tab: 0)) }
+        Content.$testingDaily.withValue(true) { mrw.cloud!.megaRaidDue = true; drain(mrw); take("mega_raid_daily", mrw) { v in v.state.raidPower = 46_800; v.screen = .raid(.lobby(tab: 0)) } }   // 5.1 (plan 20)
+        mrw.cloud!.megaRaidDue = true; drain(mrw)
         for (name, first) in [("mega_stone_twenty", "같은 보스 \(MegaRaid.bossWins)승!"), ("mega_stone_drop", "행운의 메가스톤!")] {
             let stone = MegaRaid.week(0)[name.hasSuffix("drop") ? 1 : 0].stone, got = [first, josa(stone, "을", "를"), "얻었다!", "우편함에서 받아요"]
             take(name, mrw) { v in v.sayStone = (got, stone); v.screen = .say(got, next: .raid(.lobby(tab: 0)), since: .distantFuture) }
@@ -231,6 +233,20 @@ import AppKit
     take("raid_runs", rme) { v in v.screen = .raid(.lobby(tab: 1)) }
     take("raid_no_power", rme) { v in v.state.raidPower = Engine.raidPowerCost * 64 / 100; v.screen = .raid(.lobby(tab: 0)) }
     take("raid_full_power", rme) { v in v.state.raidPower = Engine.raidPowerMax; v.screen = .raid(.lobby(tab: 0)) }
+    Content.$testingDaily.withValue(true) {                                                       // 5.1 (plan 20): by the day — 오늘의 보스 · 내일, the day's 10 cells, midnight
+        let p0 = rme.state.raidPower, k = rme.myName.lowercased(), runs = rsrv.raidRuns[k]
+        rme.cloud!.raidDue = true; drain(rme)
+        take("raid_daily", rme) { v in v.state.raidPower = 46_800; v.screen = .raid(.lobby(tab: 0)) }
+        take("raid_daily_runs", rme) { v in v.state.raidPower = 46_800; v.screen = .raid(.lobby(tab: 1)) }
+        take("raid_daily_home", rme) { v in v.state.raidPower = 46_800; v.screen = .home }
+        rsrv.raidRuns[k] = runs?.filter { $0.day != Walk.key(Date()) }; rme.cloud!.raidDue = true; drain(rme)   // 0시 직후: none today, 2칸
+        take("raid_daily_morning", rme) { v in v.state.raidPower = 20_000; v.screen = .raid(.lobby(tab: 0)) }
+        rsrv.raidRuns[k] = runs; rsrv.raidEnds = Int(Date().timeIntervalSince1970) + 2 * 3600 + 60; rme.cloud!.raidDue = true; drain(rme)
+        take("raid_daily_night", rme) { v in v.state.raidPower = 30_000; v.screen = .raid(.lobby(tab: 0)) }
+        take("raid_daily_night_menu", rme) { v in v.state.raidPower = 30_000; v.screen = menuFor("레이드") }
+        rsrv.raidEnds = nil; rme.state.raidPower = p0; rme.cloud!.raidDue = true
+    }
+    drain(rme)
     take("raid_tier", rme) { v in v.state.raidPower = Engine.raidPowerCost * 234 / 100; v.screen = .raid(.tier(sel: 2)) }
     take("raid_tier_top", rme) { v in v.screen = .raid(.tier(sel: RaidRules.tiers.count - 1)) }
     take("raid_squad", rme) { v in v.raidTier = 3; v.screen = .squad(Squad(kind: .raid, picked: [v.state.caught[0].uid ?? 0], at: 0)) }

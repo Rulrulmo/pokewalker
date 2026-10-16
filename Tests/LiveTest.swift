@@ -277,7 +277,7 @@ import Foundation
     }
     check(run(40) { ca.phase == .on && cb.phase == .on && ca.base != nil && cb.base != nil }, "live raid: \(a) and \(b) logged in (\(ca.phase), \(cb.phase); asked \(ha.asked), \(hb.asked))")
     lobby(wa, ca); lobby(wb, cb)
-    let open = ca.raid.map { $0.opens == nil && $0.today.max == RaidRules.perDay } ?? false
+    let open = ca.raid.map { $0.opens == nil && [RaidRules.perDay, RaidDaily.maxRuns].contains($0.today.max) } ?? false   // (5.1: by the day, 10)
     check(open && wa.raidCells >= 2 && wb.raidCells >= 1, "live /v2/raid (4.0): \(ca.raid?.week ?? "-") \(ca.raid.map { monNames[$0.boss.dex] } ?? "-"), today \(ca.raid?.today.used ?? -1)/\(ca.raid?.today.max ?? -1); power A \(wa.raidPower), B \(wb.raidPower)")
     guard open else { print("FAIL \(failed)"); return false }
 
@@ -818,7 +818,7 @@ import Foundation
     // 메가 레이드: the lobby (the week's two, 스톤까지 n/30), ★1 with the strongest three, played to its end, its 내 판
     toHome(); w.openFeature("메가 레이드"); c.megaRaidDue = true; run(15) { !c.megaRaidDue && idle() && w.waiting == nil }
     let lob = c.megaRaid
-    check(w.raidMega && lob?.bosses.count == 2 && lob?.pityNeed == MegaRaid.bossWins && lob?.bosses.allSatisfy { $0.wins != nil } == true && lob?.today.max == RaidRules.perDay,
+    check(w.raidMega && lob?.bosses.count == 2 && lob?.pityNeed == MegaRaid.bossWins && lob?.bosses.allSatisfy { $0.wins != nil } == true && [RaidRules.perDay, RaidDaily.maxRuns].contains(lob?.today.max ?? 0),
           "live 5.0 메가 레이드: \(lob?.week ?? "-") — \(lob?.bosses.map { w.megaName($0) + " (\($0.stone)) \($0.had == true ? "보유" : "\($0.wins ?? -1)/\(lob?.pityNeed ?? -1)")" } ?? []), today \(lob?.today.used ?? -1)/\(lob?.today.max ?? -1)")
     let runs0 = lob?.mine.runs ?? 0
     w.calmAt = .distantPast; w.pageTap(7010); w.pageTap(7020); w.pageTap(7020)

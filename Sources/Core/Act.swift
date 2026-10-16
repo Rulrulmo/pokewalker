@@ -36,6 +36,7 @@ extension Walker {
         switch a { case .friendRequest, .friendAccept, .friendDecline, .friendRemove: cloud?.teamDue = true; default: break }
         news += w?.quiet == true ? r.out.news.filter { if case .level = $0 { return false }; return true } : r.out.news
         if let why = r.out.cannot {
+            if why.hasPrefix("보스가 바뀌었어요") { cloud?.raidDue = true; cloud?.megaRaidDue = true }      // 5.1 (plan 20): a lobby from before midnight — today's again
             if case .battle = a, why == "배틀 중이 아니에요", inBattle, !duelOn { fightGone(now); return }   // 3.8.6: the server has none (a new session ended it): no fight left on screen
             if let w { screen = .say(why.components(separatedBy: "\n"), next: w.back, since: now) }; return
         }

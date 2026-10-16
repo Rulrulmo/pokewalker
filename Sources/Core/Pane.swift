@@ -238,6 +238,7 @@ struct RaidModel: Equatable {
     var week: [String]
     var tabs: [String]; var tab: Int; var rows: [Row]; var empty: String
     var go: String?; var hint: String
+    var tomorrow: String? = nil; var cells = 3; var late = false      // 5.1 (plan 20): by the day — tomorrow's boss, the day's cells, midnight near (its line in red)
     var ranks = true                                                   // 5.0: false = the Mega raid's (its tabs are bosses: no rank column)
     var roomy = false                                                  // 5.0: bigger rows (the Mega raid's runs, three)
     var rule: String? = nil                                            // 5.0: how it goes, a line over the button (the Mega raid's stones)

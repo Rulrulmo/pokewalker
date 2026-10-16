@@ -96,6 +96,10 @@ extension Walker {
 
     // MARK: the red dots (5.0): the power full with runs left today, one of ours ready to evolve by an item in the bag, a 도감 업적 not looked at
     func powerDot(mega: Bool) -> Bool {
+        if raidDaily {                                                                              // 5.1 (plan 20): power that midnight would take (3 hours before it)
+            guard raidPower >= Engine.raidPowerCost, cloud?.online == true, let e = mega ? megaLobby?.ends : raidLobby?.ends else { return false }
+            return hoursLeft(e) <= 3 && (mega ? Content.gen6 && (megaLeftToday ?? 1) > 0 : (raidLeftToday ?? 1) > 0)
+        }
         guard raidPower >= Engine.raidPowerMax, cloud?.online == true else { return false }
         if mega { return Content.gen6 && (megaLeftToday ?? 1) > 0 }
         return (raidLeftToday ?? 1) > 0

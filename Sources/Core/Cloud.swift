@@ -93,7 +93,10 @@ final class CloudInbox: @unchecked Sendable {
     private(set) var market: MarketReply? = nil; var marketDue = false
     // 3.9 (15 §2): the 우편함 as the server last listed it (a read); mails opened since, sent as read with the next one
     private(set) var mail: MailReply? = nil; var mailDue = false, mailRead: Set<Int> = []
-    private(set) var expedition: ExpReply? = nil; var expeditionDue = false   // 5.1 (docs/plans/19 §9): the team events (/v2/expedition), with the team every 3 minutes
+    private(set) var expedition: ExpReply? = nil; var expeditionDue = false
+    private var dailyAsked = 0, megaDailyAsked = 0                       // 5.1 (plan 20): the lobby's end we asked again for (once)
+    /// 5.1 (plan 20): the raids by the day are the server's switch alone — its lobby says so (10 a day): the app's power rules (Walk.rollover's 2칸, the 10칸 bank) follow.
+    private func daily(_ t: RaidToday) { if Content.testingDaily == nil { Content.onDaily = t.max >= RaidDaily.maxRuns } }   // 5.1 (docs/plans/19 §9): the team events (/v2/expedition), with the team every 3 minutes
     var marketSeen: Int? = nil                                             // 3.8 (14 §2.2): one of my posts just opened — its offers count as seen (sent with the next read)
     // 12 §5 (3.6): a live battle's polls — a lane of their own (a long poll holds up to 25 s; acts and steps don't wait for it)
     var duelPoll: DuelReq? = nil                                           // the next one to send (the walker's: since, wait, version)
@@ -172,6 +175,11 @@ final class CloudInbox: @unchecked Sendable {
     func tick(_ now: Date) {
         if case .pin(.locked(let until)) = phase, now >= until { phase = .pin(.enter(wrong: false)) }   // the lock's over: the box again
         take(now)
+        if Content.raidDaily {                                                                     // 5.1 (plan 20): midnight's bosses — the lobbies again once theirs ended
+            let t = Int(now.timeIntervalSince1970)
+            if let r = raid, t >= r.ends, dailyAsked != r.ends { dailyAsked = r.ends; raidDue = true }
+            if let m = megaRaid, t >= m.ends, megaDailyAsked != m.ends { megaDailyAsked = m.ends; megaRaidDue = true }
+        }
         if phase == .on, base != nil, !duelInFlight, now >= duelRetryAt, var q = duelPoll, let id = seat.trainerID {   // the duel's lane: whatever else is out
             duelPoll = nil; q.id = id; q.session = seat.session ?? ""; duelInFlight = true
             link.post("v2/duel", (try? JSONEncoder().encode(q)) ?? Data()) { [inbox] s, b in inbox.put((.duel, s, b)) }
@@ -285,8 +293,8 @@ final class CloudInbox: @unchecked Sendable {
                 if let r = try? JSONDecoder().decode(TradesReply.self, from: body) { trades = r; tradesNews = true }
             case (.box(let of), 200):
                 if let r = try? JSONDecoder().decode(BoxReply.self, from: body) { box = r; tradesNews = true } else { boxGone = of }
-            case (.raid, 200): if let r = try? JSONDecoder().decode(RaidLobby.self, from: body) { raid = r; tradesNews = true; raidNews = true }
-            case (.megaRaid, 200): if let r = try? JSONDecoder().decode(MegaRaidLobby.self, from: body) { megaRaid = r; tradesNews = true; raidNews = true }
+            case (.raid, 200): if let r = try? JSONDecoder().decode(RaidLobby.self, from: body) { raid = r; tradesNews = true; raidNews = true; daily(r.today) }
+            case (.megaRaid, 200): if let r = try? JSONDecoder().decode(MegaRaidLobby.self, from: body) { megaRaid = r; tradesNews = true; raidNews = true; daily(r.today) }
             case (.market, 200): if let r = try? JSONDecoder().decode(MarketReply.self, from: body) { market = r; tradesNews = true }
             case (.mail, 200): if let r = try? JSONDecoder().decode(MailReply.self, from: body) { mail = r; tradesNews = true }
             case (.expedition, 200): if let r = try? JSONDecoder().decode(ExpReply.self, from: body) { expedition = r; tradesNews = true }
@@ -905,6 +913,16 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     struct FakeVisit { var id: Int; var owner, ownerName, host, hostName: String; var mon: Mon; var steps = 0; var on = true; var ends: Int; var bp = 0; var paid = false }
     var visitList: [FakeVisit] = [], nextVisit = 1, viewAll: Set<String> = []
     var expEvents: [TeamEventView] = []                                // 5.1: /v2/expedition's team events (a test's)
+    var raidEnds: Int? = nil, raidEndsOnce: Int? = nil                 // 5.1 (plan 20): a lobby's end to show (a shot's: midnight near; once: the next lobby only); nil = the next 0:00 KST by the day
+    var fakePerDay: Int { Content.raidDaily ? RaidDaily.maxRuns : RaidRules.perDay }
+    /// The lobbies' end: by the day, the next 0:00 KST (else, as before, 3 days 5 hours on).
+    func lobbyEnds(_ at: Date) -> Int {
+        guard Content.raidDaily else { return Int(at.timeIntervalSince1970) + 3 * 86400 + 5 * 3600 }
+        if let e = raidEndsOnce { raidEndsOnce = nil; return e }
+        if let e = raidEnds { return e }
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "Asia/Seoul")!
+        return Int(cal.startOfDay(for: at).timeIntervalSince1970) + 86_400
+    }
     func visitAct(_ a: Act, _ key: String, _ name: String, _ w: inout Walk, _ news: inout [News]) -> String? {
         switch a {
         case .visitSend(let raw, let uid):
@@ -1121,7 +1139,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         raidCut(key)
         if raidPending(key) != nil { return (nil, "남은 볼이 있어요") }
         let today = Walk.key(now ?? Date())
-        if (raidRuns[key] ?? []).filter({ $0.day == today }).count >= RaidRules.perDay { return (nil, "오늘은 \(RaidRules.perDay)판을\n다 했어요") }
+        if (raidRuns[key] ?? []).filter({ $0.day == today }).count >= fakePerDay { return (nil, "오늘은 \(fakePerDay)판을\n다 했어요") }
         guard let t = RaidRules.tier(tier) else { return (nil, "난이도를\n골라 주세요") }
         let shiny = raidShinies.isEmpty ? rng.next() % UInt64(RaidRules.shinyOdds) == 0 : raidShinies.removeFirst()
         let boss = RaidRules.boss(raidDex, t, shiny: shiny, &rng)
@@ -1132,7 +1150,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         guard Content.gen6 else { return (nil, "메가 레이드는\n아직 열리지 않았어요") }
         raidCut(key)
         if raidPending(key) != nil { return (nil, "남은 볼이 있어요") }
-        if (raidRuns[key] ?? []).filter({ $0.day == Walk.key(now ?? Date()) }).count >= RaidRules.perDay { return (nil, "오늘은 \(RaidRules.perDay)판을\n다 했어요") }
+        if (raidRuns[key] ?? []).filter({ $0.day == Walk.key(now ?? Date()) }).count >= fakePerDay { return (nil, "오늘은 \(fakePerDay)판을\n다 했어요") }
         guard let t = RaidRules.tier(tier) else { return (nil, "난이도를\n골라 주세요") }
         guard let b = MegaRaid.week(megaWeekNo)[safe: k] else { return (nil, "그 보스는\n이번 주에 없어요") }
         return (RaidBoss(week: "2026-W42", boss: MegaRaid.boss(b, t, &rng), left: 1, tier: t.tier, mega: b.form), nil)
@@ -1227,8 +1245,8 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             let these = mark(MegaRaid.week(megaWeekNo))
             let mega = (raidRuns[k] ?? []).filter { $0.mega && $0.ended }.reversed()
             let runs = mega.map { RaidRunRow(dex: $0.boss.dex, tier: $0.tier, shiny: false, bars: $0.bars, won: $0.won, caught: false, at: $0.at) }
-            let lobby = MegaRaidLobby(week: "2026-W42", bosses: these, next: mark(MegaRaid.week(megaWeekNo + 1)), ends: Int(at.timeIntervalSince1970) + 3 * 86400 + 5 * 3600,
-                                      today: RaidToday(used: (raidRuns[k] ?? []).filter { $0.day == today }.count, max: RaidRules.perDay), resetAt: Int(at.timeIntervalSince1970) + 8 * 3600,
+            let lobby = MegaRaidLobby(week: "2026-W42", bosses: these, next: mark(MegaRaid.week(megaWeekNo + 1)), ends: lobbyEnds(at),
+                                      today: RaidToday(used: (raidRuns[k] ?? []).filter { $0.day == today }.count, max: fakePerDay), resetAt: Int(at.timeIntervalSince1970) + 8 * 3600,
                                       mine: RaidWeek(runs: runs.count, wins: runs.filter(\.won).count, best: runs.filter(\.won).map(\.tier).max()), runs: Array(runs),
                                       pityNeed: MegaRaid.bossWins, odds: MegaRaid.stoneOdds, tiers: RaidRules.tiers)
             return (200, (try? JSONEncoder().encode(lobby)) ?? Data())
@@ -1240,8 +1258,8 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         }
         let runs = (raidRuns[k] ?? []).filter(\.ended).reversed().map { RaidRunRow(dex: $0.boss.dex, tier: $0.tier, shiny: $0.boss.shiny == true, bars: $0.bars, won: $0.won, caught: $0.caught, at: $0.at) }
         let p = raidPending(k).map { raidRuns[k]![$0] }
-        let lobby = RaidLobby(week: "2026-W42", boss: Mon(dex: raidDex, level: 70, female: false), next: 382, ends: Int(at.timeIntervalSince1970) + 3 * 86400 + 5 * 3600,
-                              today: RaidToday(used: raidOpens == nil ? (raidRuns[k] ?? []).filter { $0.day == today }.count : 0, max: raidOpens == nil ? RaidRules.perDay : 0),
+        let lobby = RaidLobby(week: "2026-W42", boss: Mon(dex: raidDex, level: 70, female: false), next: Content.raidDaily ? 250 : 382, ends: lobbyEnds(at),
+                              today: RaidToday(used: raidOpens == nil ? (raidRuns[k] ?? []).filter { $0.day == today }.count : 0, max: raidOpens == nil ? fakePerDay : 0),
                               resetAt: Int(at.timeIntervalSince1970) + 8 * 3600, mine: raidWeek(k) ?? RaidWeek(), runs: Array(runs), friends: friends,
                               pending: p.map { RaidPending(boss: $0.boss, tier: $0.tier, bars: $0.bars, won: $0.won, balls: $0.balls) }, tiers: RaidRules.tiers, opens: raidOpens)
         return (200, (try? JSONEncoder().encode(lobby)) ?? Data())

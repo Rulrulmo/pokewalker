@@ -24,20 +24,33 @@ extension Walker {
     var raidStatus: String {
         guard let r = raidLobby else { return "파워 \(raidCells)칸" }
         if let p = raidWaiting { return "잡을 기회가 남았어요! · " + bossName(p.boss) }
+        if raidDaily { let h = hoursLeft(r.ends); return "오늘 " + monNames[r.boss.dex] + " · 파워 \(raidCells)칸" + (h <= 3 && raidCells > 0 ? " · \(h)시간" : "") }   // 5.1 (plan 20)
         if r.opens != nil { return "새 레이드 곧 열려요" }
         if raidLeftToday == 0 { return "오늘 끝 · 내일 다시 · " + monNames[r.boss.dex] }
         return "오늘 \(raidLeftToday ?? 0)판 · 파워 \(raidCells)칸 · " + monNames[r.boss.dex]
     }
     /// The menu tile's line.
     var raidNote: String {
-        guard raidLobby != nil else { return "파워 \(raidCells)칸 · 하루 \(RaidRules.perDay)판" }
+        guard raidLobby != nil else { return "파워 \(raidCells)칸" + (raidDaily ? "" : " · 하루 \(RaidRules.perDay)판") }
         if raidWaiting != nil { return "잡을 기회가 남았어요!" }
+        if raidDaily, let r = raidLobby { return hoursLeft(r.ends) <= 3 && raidCells > 0 ? "파워 \(raidCells)칸 · 자정에 사라져요" : "오늘 " + monNames[r.boss.dex] + " · 파워 \(raidCells)칸" }   // 5.1 (plan 20)
         if raidLobby?.opens != nil { return "곧 열려요" }
         if raidLeftToday == 0 { return "오늘 끝 · 내일 다시" }
         return "오늘 \(raidLeftToday ?? 0)판 · 파워 \(raidCells)칸"
     }
     /// The menu's red dot: a ball stage waiting.
     var raidDot: Bool { raidWaiting != nil }
+    /// 5.1 (plan 20, the server's raid-daily — its lobby says: Cloud.daily): the raids by the day.
+    var raidDaily: Bool { Content.raidDaily }
+    /// Hours to midnight (the lobby's end), rounded up.
+    func hoursLeft(_ ends: Int, _ now: Date = Date()) -> Int { max(0, (ends - Int(now.timeIntervalSince1970) + 3_599) / 3_600) }
+    /// The day's power line: today's runs, the next cell (or the day's 10 full).
+    func dailyPower(_ used: Int) -> String {
+        let p = raidPower, cost = Engine.raidPowerCost
+        return "오늘 \(used)판 · " + (p >= Engine.raidPowerMax ? "가득 찼어요" : "다음 칸까지 \((cost - p % cost).formatted())걸음")
+    }
+    /// The line above the button: midnight, what it does to the power.
+    func midnightLine(_ ends: Int, _ now: Date = Date()) -> String { let h = hoursLeft(ends, now); return (h <= 1 ? "곧 자정" : "자정까지 \(h)시간") + " · 남은 파워는 0시에 사라지고 2칸부터 다시" }
     /// What's left of the week: days, or hours on its last day.
     func raidLeft(_ ends: Int, _ now: Date = Date()) -> String {
         let s = max(0, ends - Int(now.timeIntervalSince1970))
@@ -94,11 +107,18 @@ extension Walker {
         else if left == 0 { hint = "오늘은 \(r.today.max)판을 다 했어요 · 내일 0시에 다시" }
         else if raidCells == 0 { hint = "파워가 부족해요 (\(Engine.raidPowerCost.formatted())걸음마다 1칸)" }
         else { go = "도전 · 파워 1칸" }
-        return PaneContent(raid: RaidModel(boss: monNames[r.boss.dex], left: raidLeft(r.ends, now), todayUsed: r.today.used, todayMax: r.today.max,
-                                           todayText: r.opens != nil ? "곧 열려요" : left == 0 ? "내일 다시" : "\(left)판 남음", power: power, powerText: powerText,
-                                           week: ["\(m.runs)판", "\(m.wins)승", "잡음 \(m.caught)", "이로치 \(m.shiny)"],
-                                           tabs: Walker.raidTabs, tab: tab, rows: rows,
-                                           empty: tab == 0 ? "아직 친구가 없어요" : "이번 주에 한 판이 없어요", go: go, hint: hint))
+        var model = RaidModel(boss: monNames[r.boss.dex], left: raidLeft(r.ends, now), todayUsed: r.today.used, todayMax: r.today.max,
+                              todayText: r.opens != nil ? "곧 열려요" : left == 0 ? "내일 다시" : "\(left)판 남음", power: power, powerText: powerText,
+                              week: ["\(m.runs)판", "\(m.wins)승", "잡음 \(m.caught)", "이로치 \(m.shiny)"],
+                              tabs: Walker.raidTabs, tab: tab, rows: rows,
+                              empty: tab == 0 ? "아직 친구가 없어요" : "이번 주에 한 판이 없어요", go: go, hint: hint)
+        if raidDaily {                                                                               // 5.1 (plan 20): today's boss · tomorrow's, the day's 10 cells, midnight's line
+            model.tomorrow = monNames[r.next]; model.cells = RaidDaily.maxRuns; model.left = "내일 " + monNames[r.next]; model.powerText = dailyPower(r.today.used)
+            model.week = ["이번 주 \(m.runs)판", "\(m.wins)승", "잡음 \(m.caught)", "이로치 \(m.shiny)"]; model.rule = midnightLine(r.ends, now); model.late = hoursLeft(r.ends, now) <= 3
+            if model.rows.count > 4 { let me = model.rows.first(where: \.me); model.rows = Array(model.rows.prefix(4)); if let me, !model.rows.contains(where: \.me) { model.rows[3] = me } }   // (four: the line above the button)
+            if raidWaiting == nil, r.opens == nil, left > 0, raidCells == 0 { model.hint = "파워가 부족해요 (1만 걸음마다 1칸)" }
+        }
+        return PaneContent(raid: model)
     }
 
     /// The tier to fight at: the lobby's tiers (the server's), the pick, its button.
@@ -137,6 +157,11 @@ extension Walker {
         fb.text(monNames[r.boss.dex], 2, 0); fb.fill(0, 12, 96, 1, 2)
         fb.mon(r.boss, half, 0, 2, anim: animT("raid", r.boss.art, now))
         let left = raidLeftToday ?? 0
+        if raidDaily {                                                                               // 5.1 (plan 20)
+            let h = hoursLeft(r.ends, now)
+            fb.text("오늘의 보스", 94, 15, 2, right: true, small: true); fb.text(h <= 1 ? "곧 자정" : "\(h)시간 남음", 94, 26, h <= 3 ? 3 : 2, right: true, small: true)
+            fb.text("내일 " + monNames[r.next], 94, 37, 2, right: true, small: true); fb.text("파워 \(raidCells)칸", 94, 52, raidCells > 0 ? 3 : 1, right: true, small: true); return
+        }
         fb.text("레이드", 94, 15, 2, right: true, small: true)
         fb.text(raidLeft(r.ends, now), 94, 26, 2, right: true, small: true)
         fb.text(r.opens != nil ? "곧 열림" : left == 0 ? "내일 다시" : "오늘 \(left)판", 94, 37, left > 0 && r.opens == nil ? 3 : 1, right: true, small: true)
@@ -198,7 +223,8 @@ extension Walker {
     /// A run at the tier picked, with the party picked (1–3): the server takes 1칸 and makes its boss; it plays on the battle screens (raidOn:
     /// its menu, lines, HUD) — a shiny boss's line after it appears (raidShown).
     func raidFight(party: [Int]? = nil, back: Screen, _ now: Date) {
-        act(raidMega ? .megaRaid(party: party, tier: raidTier, boss: raidMegaBoss) : .raid(party: party, tier: raidTier), back: back, now, lines: [raidMega ? "메가 레이드" : "레이드", "보스에게 가는 중..."], quiet: true) { [weak self] o, now in
+        let mb = raidMega ? megaLobby?.bosses[safe: raidMegaBoss] : nil                               // 5.1 (plan 20): the boss shown, by its dex and form (the index may be yesterday's)
+        act(raidMega ? .megaRaid(party: party, tier: raidTier, boss: raidMegaBoss, dex: mb?.dex, form: mb?.form) : .raid(party: party, tier: raidTier), back: back, now, lines: [raidMega ? "메가 레이드" : "레이드", "보스에게 가는 중..."], quiet: true) { [weak self] o, now in
             guard let self, let f = o.battle else { return nil }
             raidOn = true; raidStage = nil; fight = f; freshFight()
             return (o.beats ?? []).isEmpty ? .battle(f, sel: 0) : .beats(f, Walker.raidShown(o.beats!, from: f), since: now, from: f)

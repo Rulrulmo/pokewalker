@@ -144,6 +144,30 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
               "\(offButton) \(toToggle) \(ticked) \(kept) \(sent) \(lines) \(glow) \(String(describing: after?.mine[0].mega)) \(String(describing: name))")
         calm(mz)
     }
+    // 5.1 (docs/plans/20, the user via 회사 10-16: "하루에 한번 로테이션 … 하루 파워 두개는 기본으로"): the raids by the day — the lobby's 오늘의 보스 ·
+    // 내일, the day's 10 cells, midnight's line (red near it, the red dot, the menu's words), four friends; a lobby over asked again by itself; the
+    // Mega start with the boss's dex and form; "보스가 바뀌었어요" asks both lobbies again
+    Content.$testing.withValue(true) { Content.$testingDaily.withValue(true) {
+        let rd = online({ var s = Walk(); s.companion = Mon(dex: 25, level: 40, female: false); s.raidPower = 46_800; return s }())
+        let (dsrv, _) = server(rd), t = Int(Date().timeIntervalSince1970)
+        serve(rd) { $0.raidPower = 46_800 }                                                         // (a new day gave it 2칸: 4칸 and some now)
+        rd.cloud!.raidDue = true; drain(rd); rd.screen = .raid(.lobby(tab: 0))
+        let m = rd.paneContent(Date()).raid
+        let lobbyOK = m?.tomorrow == "칠색조" && m?.cells == RaidDaily.maxRuns && m?.left == "내일 칠색조" && m?.rule?.contains("남은 파워는 0시에 사라지고 2칸부터 다시") == true
+            && m?.powerText.hasPrefix("오늘 0판 · 다음 칸까지 3,200걸음") == true && rd.raidStatus.hasPrefix("오늘 ") && rd.title().1 == "내일 칠색조"
+        dsrv.raidEnds = t + 2 * 3600 + 60; rd.cloud!.raidDue = true; drain(rd)
+        let late = rd.paneContent(Date()).raid?.late == true && rd.powerDot(mega: false) && rd.raidNote == "파워 4칸 · 자정에 사라져요"
+        dsrv.raidEnds = nil; dsrv.raidEndsOnce = t - 60; rd.cloud!.raidDue = true; drain(rd)        // a lobby already over: the tick asks again by itself
+        rd.tick(Date()); drain(rd)
+        let fresh = (rd.cloud?.raid?.ends ?? 0) > t
+        rd.raidMega = true; rd.cloud!.megaRaidDue = true; drain(rd)
+        let b = rd.megaLobby?.bosses.first
+        rd.raidMegaBoss = 0; rd.raidTier = 1; rd.raidFight(back: .raid(.lobby(tab: 0)), Date()); drain(rd)
+        let sentDex = b != nil && dsrv.acts.contains(.megaRaid(party: nil, tier: 1, boss: 0, dex: b?.dex, form: b?.form))
+        calm(rd); rd.raidMega = false
+        check(lobbyOK && late && fresh && sentDex, "5.1 레이드 by the day: 오늘의 보스 · 내일 칠색조, the day's 10 cells, midnight's line (red, the dot, 자정에 사라져요 3 hours before), a lobby over asked again, the Mega start with its dex and form",
+              "\(String(describing: m)) \(late) \(fresh) \(sentDex)")
+    } }
     // 5.1 (the Mac's 10-16 find, the user: "5.1에서 고치고"): a duel's Mega · 원시회귀 · form beats seen from the other side (its side, its words — a Mega's
     // or a primal's own name whole), and no 메가진화 button in a duel (the server refuses it there)
     Content.$testing.withValue(true) {
@@ -248,7 +272,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
             && lobby?.week.contains("스톤까지 0/\(MegaRaid.bossWins)") == true && lobby?.go == "도전 · 파워 1칸"
         mr.press(1); let tierUp = { if case .raid(.tier) = mr.screen { return true }; return false }() && mr.paneContent(Date()).raidTier?.note2.contains(wk[0].stone) == true
         mr.raidTier = 1; mr.raidFight(back: .raid(.lobby(tab: 0)), Date()); drain(mr)
-        let started = ms.acts.last == .megaRaid(party: nil, tier: 1, boss: 0) && mr.fight.map { $0.theirs.count == RaidRules.bars && $0.theirs.allSatisfy { $0.mega == 1 } } == true
+        let started = ms.acts.last == .megaRaid(party: nil, tier: 1, boss: 0, dex: wk[0].dex, form: wk[0].form) && mr.fight.map { $0.theirs.count == RaidRules.bars && $0.theirs.allSatisfy { $0.mega == 1 } } == true
         for _ in 0..<40 {
             playOut(mr)
             if case .battle(let b, _) = mr.screen { mr.screen = .moves(b, sel: 0); mr.press(1); drain(mr) } else { break }
