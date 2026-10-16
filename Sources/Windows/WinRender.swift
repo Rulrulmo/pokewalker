@@ -179,6 +179,33 @@ import Foundation
         take("box_vivillon", lcd: true) { v in var b = Mon(dex: 666, level: 20, female: false); b.form = 7; v.state.box = [b]; v.screen = .box(0, act: nil, confirm: false) }
     }
     take("battle_size3", size: 3) { v in let f = wildFight(v); still(v, "foe 0", 6); v.screen = .battle(f.b, sel: 0) }
+    // 5.1 (content51 · the raids by the day): the menu's eight, 친구 ▸, 홈's sixth row (2 · 3 · 4), 전설 원정, 랭킹, 우편 지우기, the day's lobby,
+    // 특성패치, 그라시데아꽃, the 메가진화 tick, the 5 · 6세대 words — Windows' glyphs beside the Mac's
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) {
+        let t0 = Int(T.timeIntervalSince1970)
+        tsrv.expEvents = [TeamEventView(id: 1, legend: 494, starts: t0 - 4 * 86_400, ends: t0 + 3 * 86_400 - 600, goal: 1_500_000, min: 20_000, team: 931_200, mine: 12_400, got: false)]
+        tsrv.giveMail(tme.myName.lowercased(), "notice", from: "운영자", title: "5.1 업데이트 안내", body: "전설 원정이 열렸어요.", [])
+        tme.cloud!.expeditionDue = true; tme.cloud!.mailDue = true; tme.cloud!.teamDue = true; drain(tme); drain(tme)
+        take("w51_menu", on: tme) { v in v.screen = .menu(group: nil, sel: 5) }
+        take("w51_menu_friends", on: tme) { v in v.screen = menuFor("랭킹") }
+        for sz in [2, 3, 4] as [CGFloat] { take("w51_home_s\(Int(sz))", size: sz, on: tme) { v in v.screen = .home } }
+        take("w51_exp_team", on: tme) { v in v.screen = .expedition(0) }
+        take("w51_exp_start", on: tme) { v in v.screen = .expedition(1) }
+        take("w51_exp_later", lcd: true, on: tme) { v in v.screen = .expedition(2) }
+        take("w51_friends", on: tme) { v in v.screen = .team(sel: 0, tab: TeamTab.friends, card: false) }
+        take("w51_rank_raid", on: tme) { v in v.screen = .rank(tab: 3, sel: 0, all: false) }
+        take("w51_rank_mega", on: tme) { v in v.screen = .rank(tab: 4, sel: 0, all: false) }
+        take("w51_mail", on: tme) { v in v.screen = .mail(.list(sel: 0)) }
+        if let m = tme.mails.first(where: { $0.gifts.isEmpty }) { take("w51_mail_open", on: tme) { v in v.screen = .mail(.open(id: m.id)) } }
+        Content.$testingDaily.withValue(true) { tme.cloud!.raidDue = true; drain(tme); take("w51_raid_daily", on: tme) { v in v.state.raidPower = 46_800; v.screen = .raid(.lobby(tab: 0)) } }
+        tme.cloud!.raidDue = true; drain(tme)
+        var r9 = Seeded(s: 9), zard = Mon.wild(6, level: 60, &r9); zard.known = [53, 19, 337, 89]; zard.item = "리자몽나이트X"
+        var ch = Mon.wild(658, level: 60, &r9); ch.known = [561, 557, 573, 532]; let cross = Mon.wild(214, level: 60, &r9)
+        take("w51_mega_tick") { v in let b = Battle(wild: cross, companion: zard); v.state.companion = zard; v.megaOn = true; v.fight = b; v.screen = .moves(b, sel: 0) }
+        take("w51_movetext") { v in let b = Battle(wild: cross, companion: ch); v.state.companion = ch; v.fight = b; v.screen = .moves(b, sel: 0) }
+        take("w51_patch") { v in v.state.bag.append("특성패치"); v.screen = .itemOn(ItemOn(item: "특성패치", pick: -1, at: 0)) }
+        take("w51_flower") { v in var sh = Mon(dex: 492, level: 50, female: false); sh.uid = 9_001; v.state.caught.append(sh); v.state.bag.append("그라시데아꽃"); v.screen = .formPick(ref: -4, item: "그라시데아꽃", sel: 1) }
+    } }
     return n
 }
 #endif

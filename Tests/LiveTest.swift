@@ -910,3 +910,102 @@ import Foundation
     print(failed == 0 ? "PASS live switch" : "FAIL \(failed)")
     return failed == 0
 }
+
+/// `PokeWalker --live-51 <id> <pin> <off|on|claim>` (a dev build only, against a LOCAL server — POKEWALKER_SERVER — with content5 on): 5.1 on a real
+/// server, before it ships (회사 10-16: "스위치가 꺼진 서버에서 5.1 앱이 5.0.1처럼 정상으로 도는지 … 켜진 서버에서 다 보이는지").
+/// off — content51 · raid-daily off: no 모험 (코스), 홈 446 and five rows, the week's raid, no team events asked; the new menu, 친구's tabs, 랭킹 all the same.
+/// on — content51 · raid-daily on, the team events scheduled, an admin's notice mailed, BP 300 · 5,000 W set: the login's flags, 모험 ▸, 홈 468 with
+/// 전설 원정, the team event's row, 지가르데 started and steps on a 칼로스 course counted, 특성패치 bought and used, 그라시데아꽃 bought, the notice
+/// deleted, the day's lobbies (daily, 10, tomorrow's), 랭킹's cards. claim — 50 cells set: 조립하기 → the show → 지가르데 in the box, 특성패치 its first.
+@MainActor func live51Test(_ id: String, _ pin: String, _ phase: String) -> Bool {
+    var failed = 0
+    func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-live51-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
+    let c = Cloud(link: HTTPLink(), dir: tmp); h.texts = [id]; h.pins = [pin, pin, pin]; h.answer = true
+    w.startCloud(c, file: tmp.appendingPathComponent("state.json"), bak: tmp.appendingPathComponent("state.json.bak"))
+    @discardableResult func run(_ secs: Double, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end { w.tick(Date()); if done() { return true }; Thread.sleep(forTimeInterval: 0.1) }
+        return done()
+    }
+    func idle() -> Bool { w.waiting == nil && c.inFlight == nil && c.queued == nil && c.out == nil }
+    func settle() { run(15, until: idle) }
+    func says() -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func toHome() { run(20) { if !w.news.isEmpty || !idle() { return false }; if case .home = w.screen { return true }; w.screen = .home; return false } }
+    print("server: \(HTTPLink.base) · phase \(phase)")
+    check(run(40) { c.phase == .on && c.base != nil }, "live 5.1: \(id) logged in (\(c.phase))")
+    check(Content.gen6, "live 5.1: content5 on (the server as the team's)")
+    let names = menuTiles.map(\.name)
+    switch phase {
+    case "off":
+        check(!Content.on51 && !Content.raidDaily, "off: the login's content51 · raidDaily off")
+        check(names == ["포켓 레이더", "코스", "포켓몬", "기록", "배틀", "레이드", "친구", "상점"] && PaneContent.home == 446 && w.statusModel().rows.count == 5 && !menuItems.contains("전설 원정"),
+              "off: no 모험 (코스, \(names)), 홈 446 with five rows, no 전설 원정")
+        w.openFeature("레이드"); settle(); run(10) { c.raid != nil }
+        let lobby = c.raid, model = w.paneContent(Date()).raid
+        check(lobby?.daily == nil && lobby?.today.max == RaidRules.perDay && model?.tomorrow == nil && !Content.raidDaily, "off: the raid by the week (daily \(String(describing: lobby?.daily)), \(lobby?.today.max ?? -1) a day, 이번 주 보스)")
+        run(5) { false }
+        check(c.expedition == nil, "off: no team events asked (content51 off)")
+        w.openFeature("랭킹"); settle(); run(10) { c.team != nil }
+        check(w.rankRows(0, false).contains { w.isMe($0.card) } && w.teamTabLabels.prefix(3) == ["친구", "신청", "맡기기"], "off: 랭킹 has me; 친구's tabs \(w.teamTabLabels)")
+    case "on":
+        check(Content.v51 && Content.raidDaily, "on: the login's content51 · raidDaily on")
+        check(names[1] == "모험" && PaneContent.home == 468 && w.statusModel().rows.last?.key == "전설 원정", "on: 모험 ▸, 홈 468, its sixth row \(String(describing: w.statusModel().rows.last))")
+        w.openFeature("전설 원정"); run(15) { c.expedition != nil && idle() }
+        let ev = c.expedition?.events.first, rows = w.expPane(0).exp?.rows ?? []
+        check(ev != nil && rows.first?.name == ev.map { w.teamName($0) }, "on: the team events (\(c.expedition?.events.count ?? 0); first \(ev.map { "\(w.teamName($0)) \($0.team)/\($0.goal), mine \($0.mine)" } ?? "-")) — the page's first row \(rows.first?.name ?? "-")")
+        if let zi = w.expEntries.firstIndex(where: { if case .personal(let e) = $0 { return e.id == "지가르데" }; return false }) {
+            w.screen = .expedition(zi); w.calmAt = .distantPast; w.press(1); settle()
+            check(w.state.expeditions?["지가르데"]?.on == true && w.state.expeditions?["지가르데"]?.mon != nil, "on: 지가르데 started (\(says()))")
+        } else { check(false, "on: no 지가르데 row") }
+        if let k = courses.indices.first(where: { courses[$0].region == 650...721 && w.state.unlocked($0) }) {
+            toHome(); w.screen = .course(k); w.calmAt = .distantPast; w.press(1); settle()
+            let s0 = w.state.expeditions?["지가르데"]?.steps ?? 0
+            c.addSteps(240); run(22) { false }; c.saveNow(); settle(); run(10) { idle() }
+            let s1 = w.state.expeditions?["지가르데"]?.steps ?? 0
+            check(w.state.course == k && s1 > s0, "on: steps on \(courses[k].name) counted for 지가르데 (\(s0) → \(s1))")
+        } else { check(false, "on: no 칼로스 course open") }
+        toHome()
+        if let k = w.wares(true).firstIndex(where: { $0.kind == .item("특성패치") }) {
+            let before = w.state.count("특성패치"); w.screen = .shop(bp: true, sel: k, qty: 1); w.calmAt = .distantPast; w.press(1); settle()
+            check(w.state.count("특성패치") == before + 1, "on: 특성패치 bought (100 BP; bag \(before) → \(w.state.count("특성패치")))")
+            let ab0 = w.state.companion.ability ?? 0, name0 = w.state.companion.abilityName
+            toHome(); w.pickFor("특성패치"); w.calmAt = .distantPast; w.press(1); settle()
+            check(w.itemNot("특성패치", -1) != nil || (w.state.companion.ability ?? 0) != ab0, "on: 특성패치 on the companion — \(name0) → \(w.state.companion.abilityName) (\(says()))")
+        } else { check(false, "on: no 특성패치 in the BP shop") }
+        toHome()
+        if let k = w.wares(false).firstIndex(where: { $0.kind == .item("그라시데아꽃") }) {
+            w.screen = .shopConfirm(bp: false, sel: k, yes: true); w.calmAt = .distantPast; w.press(1); settle()
+            check(w.state.count("그라시데아꽃") == 1, "on: 그라시데아꽃 bought (3,000 W)")
+        } else { check(false, "on: no 그라시데아꽃 in the shop") }
+        toHome(); c.mailDue = true; run(10) { c.mail != nil && idle() }
+        if let n = w.mails.first(where: { $0.gifts.isEmpty }) {
+            w.screen = .mail(.open(id: n.id)); w.calmAt = .distantPast; w.pageTap(8841); settle(); c.mailDue = true; run(10) { idle() }; run(3) { false }; c.mailDue = true; run(10) { idle() }
+            check(!w.mails.contains { $0.id == n.id }, "on: the notice deleted (\(says())), gone from the server's list too")
+        } else { check(false, "on: no notice to delete (mail it first)") }
+        toHome(); w.openFeature("레이드"); settle(); run(10) { c.raid != nil && idle() }
+        let lobby = c.raid
+        check(lobby?.daily == true && lobby?.today.max == RaidDaily.maxRuns && w.paneContent(Date()).raid?.tomorrow != nil, "on: the raid by the day (daily, \(lobby?.today.max ?? -1) a day, 내일 \(lobby.map { monNames[$0.next] } ?? "-"), ends in \(lobby.map { w.hoursLeft($0.ends) } ?? -1) h)")
+        w.calmAt = .distantPast; w.press(3); toHome(); w.openFeature("메가 레이드"); c.megaRaidDue = true; run(15) { c.megaRaid != nil && idle() }
+        check(c.megaRaid?.daily == true && c.megaRaid?.bosses.count == 2 && c.megaRaid?.next.count == 2, "on: the Mega raid by the day (today's \(c.megaRaid?.bosses.map { w.megaName($0) } ?? []), tomorrow's \(c.megaRaid?.next.map { w.megaName($0) } ?? []))")
+        w.raidMega = false; toHome(); w.openFeature("랭킹"); c.teamDue = true; run(10) { idle() }
+        check(w.rankRows(4, false).contains { w.isMe($0.card) } && w.rankAll, "on: 랭킹's 메가 레이드 (\(w.rankRows(4, false).first.map { w.rankValue($0.card, 4) } ?? "-")), 전체 there")
+    case "claim":
+        let p = w.state.expeditions?["지가르데"]
+        check(p?.n ?? 0 >= 50 && p?.mon != nil, "claim: 50 cells set (\(p?.n ?? 0))")
+        let patches = w.state.count("특성패치"), boxed = w.state.box.filter { $0.dex == 718 }.count
+        w.openFeature("전설 원정"); run(15) { c.expedition != nil && idle() }                                 // (the team event's row first: then 지가르데's place)
+        if let zi = w.expEntries.firstIndex(where: { if case .personal(let e) = $0 { return e.id == "지가르데" }; return false }) {
+            w.screen = .expedition(zi); w.calmAt = .distantPast; w.press(1); settle()
+            var shown = false; if case .assemble(let m, _) = w.screen { shown = m.dex == 718 }
+            w.tick(Date() + 6)
+            check(shown && w.state.box.filter { $0.dex == 718 }.count == boxed + 1 && w.state.count("특성패치") == patches + 1 && w.state.expeditions?["지가르데"]?.done == 1,
+                  "claim: 조립하기 → the show → 지가르데 in the box, 특성패치 its first (\(says()))")
+        }
+    default: print("--live-51: off | on | claim"); return false
+    }
+    print(failed == 0 ? "PASS live 5.1 (\(phase))" : "FAIL \(failed)")
+    return failed == 0
+}
