@@ -16,6 +16,10 @@ enum Content {
     nonisolated(unsafe) static var onDaily = false
     @TaskLocal static var testingDaily: Bool? = nil
     static var raidDaily: Bool { testingDaily ?? onDaily }
+    /// docs/plans/21: the course draw without steps, by group shares (pokeserver slot-odds) — Walk.groupShares; the server's alone (the app never draws).
+    nonisolated(unsafe) static var onSlots = false
+    @TaskLocal static var testingSlots: Bool? = nil
+    static var slotOdds: Bool { testingSlots ?? onSlots }
 }
 
 private func patched<T>(_ base: [T], _ changes: [Int: T]) -> [T] { var a = base; for (k, v) in changes { a[k] = v }; return a }

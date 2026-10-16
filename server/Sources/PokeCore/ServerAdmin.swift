@@ -40,6 +40,7 @@ let usage = """
       event-schedule <yyyy-MM-dd>        5.1: the six weeks from that day (0:00 KST), every other week, and the encore two weeks after the last
       event-cancel <id>                  5.1: one not begun goes; one on ends now
       raid-daily [on|off]                5.1 (docs/plans/20): both raids by the day — bosses each day, 2칸 at 0:00 + 1 a 10,000 steps, 10 runs a day
+      slot-odds [on|off]                 docs/plans/21: a course's Pokémon without steps — group A 20 · B 30 · C 50 %, a radar chain to A 52 · B 38 · C 10
     --db: else $DB_PATH, else /var/lib/pokewalker/pokewalker.db
     """
 
@@ -395,6 +396,10 @@ public func run(_ arguments: [String]) async -> Int32 {
         case ("raid-daily", 1):
             guard ["on", "off"].contains(rest[0]) else { return fail("raid-daily: on | off") }
             out = try await db.setRaidDaily(rest[0] == "on")
+        case ("slot-odds", 0): out = "slot-odds " + ((try await db.slotOdds()) ? "on" : "off")
+        case ("slot-odds", 1):
+            guard ["on", "off"].contains(rest[0]) else { return fail("slot-odds: on | off") }
+            out = try await db.setSlotOdds(rest[0] == "on")
         case ("events", 0): out = try await db.teamEventsReport(now: unixNow())
         case ("event-schedule", 1): out = try await db.scheduleTeamEvents(from: rest[0])
         case ("event-cancel", 1):

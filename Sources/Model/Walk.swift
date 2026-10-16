@@ -312,6 +312,10 @@ struct Walk: Codable, Equatable {
     /// chain = radar chain length: +20 % per link on the A/B groups (up to 8 links), stopping at 90 % so no group shuts the rest out.
     /// A radar chain's wild ones come stronger: +2 levels a link, up to +20 (10 links, where the 이로치 odds stop rising too).
     static func chainLevel(_ chain: Int) -> Int { 2 * min(max(chain, 0), 10) }
+    /// docs/plans/21 (slot-odds; the user 10-16: "걸음수 조건을 없애는게 낫겟는데" · "A그룹 20퍼센트 B그룹 30퍼센트 C그룹 50퍼센트"): no course steps
+    /// before a slot can come, the group by its share (%) — A 20 · B 30 · C 50, a radar chain moving C's to A (4 a link) and B (1), up to 8 links:
+    /// A 52 · B 38 · C 10. The guests' 10 % first and the weather's 1.5x inside the group as before.
+    static func groupShares(_ chain: Int) -> [Double] { let k = Double(min(max(chain, 0), 8)); return [20 + 4 * k, 30 + k, 50 - 5 * k] }
     func encounter<R: RandomNumberGenerator>(_ r: inout R, chain: Int = 0, guests: Bool = true) -> Slot {
         if guests, !here.guests.isEmpty, Double.random(in: 0..<1, using: &r) < guestOdds {       // a visitor, at the C group's level + 2
             let d = here.guests.randomElement(using: &r)!
@@ -323,6 +327,11 @@ struct Walk: Codable, Equatable {
             var k = Double.random(in: 0..<w.reduce(0, +), using: &r)
             for (s, x) in zip(c, w) { if k < x { return s }; k -= x }
             return c.last!
+        }
+        if Content.slotOdds {                                                                       // plan 21: by share, every slot from the first step
+            let s = Walk.groupShares(chain); var k = Double.random(in: 0..<100, using: &r)
+            for g in 0..<2 { if k < s[g] { return pick(here.group(g)) }; k -= s[g] }
+            return pick(here.group(2))
         }
         for g in 0..<2 {
             let c = here.group(g).filter { effSteps >= $0.steps }
