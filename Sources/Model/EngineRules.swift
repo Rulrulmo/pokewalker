@@ -8,7 +8,7 @@ enum Engine {
     static let bpShells: [(name: String, bp: Int)] = [("배틀 골드", 40)]   // the device colours the BP 교환소 sells (Core's shells with a bp)
     static let raidPowerCost = 10_000, raidTurns = 0, raidBars = 3      // 12 §4.2: a fight is 1칸 of power (3.8: 10,000 steps, was 1,000 — docs/plans/14 ⑧), 3 bars at most;
                                                                         // turns: 0 = no limit (3.8.3, the user: 6 was too short) — over when ours are all down, it's left, or 3 bars fall
-    static let raidPowerMax = 3 * raidPowerCost                         // what the power bank holds (3칸)
+    static var raidPowerMax: Int { Content.raidDaily ? RaidDaily.maxRuns * raidPowerCost : 3 * raidPowerCost }   // what the power bank holds (3칸; by the day: 10)
 
     /// A new trainer's first save (the server makes it): the starter with its issued uid, today, the 1.x one-time jobs marked done.
     static func fresh(now: Date, starter uid: Int) -> Walk {
@@ -93,7 +93,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .expStart(let id): return expStart(id)                                                // 5.1 (docs/plans/19): ExpeditionRules.swift
         case .expClaim(let id): return expClaim(id)
         case .raid(let party, _): return raid(party)                                               // (the tier: the server's boss, p.raidBoss)
-        case .megaRaid(let party, _, _): return raid(party)                                        // (5.0: its boss, the server's, as its Mega)
+        case .megaRaid(let party, _, _, _, _): return raid(party)                                  // (5.0: its boss, the server's, as its Mega)
         }
     }
 

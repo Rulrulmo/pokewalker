@@ -3,18 +3,22 @@ import Foundation
 // In the order of Expeditions.personal, so the server's dice go the same way every time.
 
 extension EngineRun {
-    /// expStart: begin (or, once done, begin again) — its legend rolled now and kept in the progress.
+    /// expStart: the one going on (one at a time: plan 19 §6.3, the user 10-16 — the team events aside). Another going on stops where it is
+    /// (kept: `on` false, its legend still rolled); one stopped goes on from there; one not begun (or done) begins, its legend rolled now.
     mutating func expStart(_ id: String) -> String? {
         guard Content.v51, let e = Expeditions.of(id) else { return "없는 원정이에요" }
         var x = w.expeditions?[id] ?? ExpProgress()
         guard !x.on else { return "이미 하고 있는\n원정이에요" }
-        x.on = true; x.n = 0; x.steps = 0; x.mon = Expeditions.legend(e.legend, &r)
+        for k in (w.expeditions ?? [:]).keys.sorted() where w.expeditions?[k]?.on == true { w.expeditions?[k]?.on = false }   // stopped, kept
+        if x.mon == nil { x.n = 0; x.steps = 0; x.mon = Expeditions.legend(e.legend, &r) }
+        x.on = true
         w.expeditions = (w.expeditions ?? [:]).merging([id: x]) { $1 }
         return nil
     }
     /// expClaim: all gathered — its legend into the box (Outcome.mon), the progress back to the start (done + 1); a kind's first finish: its gift.
+    /// One begun counts, going on or stopped.
     mutating func expClaim(_ id: String) -> String? {
-        guard Content.v51, let e = Expeditions.of(id), var x = w.expeditions?[id], x.on else { return "하고 있는 원정이\n아니에요" }
+        guard Content.v51, let e = Expeditions.of(id), var x = w.expeditions?[id], x.mon != nil else { return "하고 있는 원정이\n아니에요" }
         guard x.n >= e.need else { return "아직 모자라요\n(\(x.n)/\(e.need))" }
         var m = x.mon ?? Expeditions.legend(e.legend, &r)
         issue(&m, "expedition"); _ = w.keep(m); out.mon = m

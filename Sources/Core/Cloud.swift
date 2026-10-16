@@ -594,7 +594,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         let taken = min(q.steps ?? 0, stepCap ?? .max)
         var refused: String? = nil                                                                         // 16: the server's no before the engine (its steps still walk)
         if case .raid(_, let tier) = q.act, r.play.battle == nil { let s = raidStart(id.key, tier, w); if let why = s.why { refused = why } else { r.play.raidBoss = s.boss } }
-        if case .megaRaid(_, let tier, let boss) = q.act, r.play.battle == nil { let s = megaRaidStart(id.key, tier, boss); if let why = s.why { refused = why } else { r.play.raidBoss = s.boss } }
+        if case .megaRaid(_, let tier, let boss, _, _) = q.act, r.play.battle == nil { let s = megaRaidStart(id.key, tier, boss); if let why = s.why { refused = why } else { r.play.raidBoss = s.boss } }
         let fightWeek = r.play.raid
         var o = Engine.apply(refused == nil ? q.act : .steps, steps: taken, walk: &w, play: &r.play, rng: &rng, now: now ?? Date(), ids: &ids)
         if let why = refused { o.cannot = why }

@@ -12,6 +12,10 @@ enum Content {
     nonisolated(unsafe) static var on51 = false
     @TaskLocal static var testing51: Bool? = nil
     static var v51: Bool { gen6 && (testing51 ?? on51) }
+    /// 5.1 (docs/plans/20): the raids by the day (pokeserver raid-daily) — RaidDaily; the server's alone (the app reads the lobby).
+    nonisolated(unsafe) static var onDaily = false
+    @TaskLocal static var testingDaily: Bool? = nil
+    static var raidDaily: Bool { testingDaily ?? onDaily }
 }
 
 private func patched<T>(_ base: [T], _ changes: [Int: T]) -> [T] { var a = base; for (k, v) in changes { a[k] = v }; return a }

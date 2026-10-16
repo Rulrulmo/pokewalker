@@ -18,7 +18,14 @@ extension SaveDB {
     /// When content5 first went on (unix; nil: never): the Mega raid's rotation counts its weeks from that one (MegaRaid.round).
     func content5Since() throws -> Int? { try db.rows("SELECT value FROM settings WHERE name = 'content5_since'").first?.text("value").flatMap { Int($0) } }
     /// Content.on (and 5.1's on51) from the settings: at start, then every few seconds (pokeserver content5 runs in another process).
-    func syncContent() { Content.on = (try? content5()) ?? false; Content.on51 = (try? content51()) ?? false }
+    func syncContent() { Content.on = (try? content5()) ?? false; Content.on51 = (try? content51()) ?? false; Content.onDaily = (try? raidDaily()) ?? false }
+
+    // MARK: 5.1's raids by the day (docs/plans/20): bosses each day, 2칸 at 0:00, 10 runs a day
+    func raidDaily() throws -> Bool { try db.rows("SELECT value FROM settings WHERE name = 'raid_daily'").first?.text("value") == "on" }
+    func setRaidDaily(_ on: Bool) throws -> String {
+        try db.rows("INSERT INTO settings (name, value) VALUES ('raid_daily', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(on ? "on" : "off")])
+        return "raid-daily " + (on ? "on" : "off") + " — the running server takes it within \(content5Every) s (a save's 2칸 comes at its next 0:00)"
+    }
 
     // MARK: 5.1's switch (docs/plans/19): the 전설 원정, on top of content5
     func content51() throws -> Bool { try db.rows("SELECT value FROM settings WHERE name = 'content51'").first?.text("value") == "on" }

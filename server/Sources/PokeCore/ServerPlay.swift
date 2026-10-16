@@ -32,7 +32,7 @@ func actName(_ a: Act) -> String {
     case .battle(let c): "battle \(c)"; case .buy(let bp, let i, let l, let s, let q): "buy \(i ?? l.map { "legend \($0)" } ?? s ?? "?") ×\(q)\(bp ? " (BP)" : "")"
     case .use(let i, _, let on): "use \(i)" + (on.map { " on \($0)" } ?? ""); case .sellAll: "sell all"; case .mon(let op): "mon \(op)"; case .course(let c): "course \(c)"; case .greet(let to): "greet \(to)"
     case .tradeOffer(let to, let g, let wnt): "trade offer → \(to) \(g)\(wnt.map { " for \($0)" } ?? "")"; case .tradeAccept(let i, let g): "trade accept #\(i)\(g.map { " with \($0)" } ?? "")"
-    case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"; case .raid(let p, let tier): "raid" + (tier.map { " ★\($0)" } ?? "") + (p.map { " with \($0)" } ?? ""); case .raidBall: "raid ball"; case .raidQuit: "raid quit"; case .megaRaid(let p, let tier, let boss): "mega raid #\(boss) ★\(tier)" + (p.map { " with \($0)" } ?? "")
+    case .tradeDecline(let i): "trade decline #\(i)"; case .tradeCancel(let i): "trade cancel #\(i)"; case .raid(let p, let tier): "raid" + (tier.map { " ★\($0)" } ?? "") + (p.map { " with \($0)" } ?? ""); case .raidBall: "raid ball"; case .raidQuit: "raid quit"; case .megaRaid(let p, let tier, let boss, let dex, let form): "mega raid #\(boss)" + (dex.map { " (\($0)/\(form ?? 0))" } ?? "") + " ★\(tier)" + (p.map { " with \($0)" } ?? "")
     case .friendRequest(let to): "friend request → \(to)"; case .friendAccept(let f): "friend accept \(f)"; case .friendDecline(let f): "friend decline \(f)"
     case .friendRemove(let n): "friend remove \(n)"; case .marketList(let g, let w, _): "market list \(g) wish \(w)"; case .marketUnlist(let i): "market unlist #\(i)"
     case .marketBid(let l, let g): "market bid #\(l) with \(g)"; case .marketWithdraw(let b): "market withdraw bid #\(b)"; case .marketAccept(let b): "market accept bid #\(b)"
@@ -95,8 +95,8 @@ extension SaveDB {
                     let s = try raidStart(id.key, tier: tier, app: r.app, now: now)
                     if let why = s.why { refused = why } else { row.play.raidBoss = s.boss }
                 }
-                if case .megaRaid(_, let tier, let boss) = r.act, row.play.battle == nil {           // 5.0: a Mega raid run (plan 18 §6.4)
-                    let s = try raidStart(id.key, tier: tier, app: r.app, now: now, mega: boss)
+                if case .megaRaid(_, let tier, let boss, let dex, let form) = r.act, row.play.battle == nil {   // 5.0: a Mega raid run (plan 18 §6.4)
+                    let s = try raidStart(id.key, tier: tier, app: r.app, now: now, mega: boss, megaDex: dex.map { ($0, form) })
                     if let why = s.why { refused = why } else { row.play.raidBoss = s.boss }
                 }
                 let fightWeek = row.play.raid

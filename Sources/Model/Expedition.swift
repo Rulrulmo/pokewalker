@@ -42,10 +42,10 @@ enum Expeditions {
 
 /// A personal expedition's progress (Walk.expeditions[id]). Fields added later must be optional (an older save has none).
 struct ExpProgress: Codable, Equatable {
-    var on = false                       // started and not finished
+    var on = false                       // the one going on (one at a time); begun but not on = stopped, kept (`mon` set)
     var n = 0                            // gathered (cells)
     var steps = 0                        // steps towards the next one
-    var mon: Mon? = nil                  // what it gives, rolled at the start (no uid until it comes)
+    var mon: Mon? = nil                  // what it gives, rolled at the start (no uid until it comes); nil = not begun (or done)
     var done = 0                         // finished this many times (다시 하기: plan 19 §6.1-3)
     init(on: Bool = false, n: Int = 0, steps: Int = 0, mon: Mon? = nil, done: Int = 0) { self.on = on; self.n = n; self.steps = steps; self.mon = mon; self.done = done }
     init(from d: Decoder) throws {

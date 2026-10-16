@@ -48,6 +48,13 @@ struct RaidFriend: Codable, Equatable { var name: String; var dex: Int; var runs
 /// A ball stage not finished (cut off): that run's boss and the balls left. The lobby goes straight back to it; a new run waits for it.
 struct RaidPending: Codable, Equatable { var boss: Mon; var tier, bars: Int; var won: Bool; var balls: Int }
 struct RaidToday: Codable, Equatable { var used, max: Int }
+/// 5.1 (docs/plans/20, the user 10-16: "하루에 한번 로테이션 … 하루 파워 두개는 기본으로"): both raids' bosses change each day at 0:00 (KST) — the
+/// legend raid's 7 in 7 days, the Mega raid's 2 a day (24 days a round); power is 2칸 at 0:00, +1 a 10,000 steps, gone at the next 0:00;
+/// 10 runs a day at most (a 5.0.1 app draws today.max dots). BP, the stones' odds and each boss's 20 as they were; the weekly mail by the ISO week.
+enum RaidDaily {
+    static let base = 2, maxRuns = 10
+    static var on: Bool { Content.raidDaily }
+}
 /// POST /v2/raid for 4.0 (the request's `app`): this week's species (Lv.70, plain), next week's, when it ends; today's runs
 /// (resetAt: tomorrow 0:00 KST); my week, my runs, my friends' weeks; a cut-off ball stage; the tiers. opens: runs start then (unix; until then
 /// nothing can start — the team before the server turns them on; test IDs have them always).
@@ -119,6 +126,10 @@ enum MegaRaid {
     static func week(_ n: Int) -> [MegaBoss] { [order[(2 * n) % order.count], order[(2 * n + 1) % order.count]] }
     /// The rotation's week: weeks since the one content5 first went on in (its two the first: settings' content5_since), not the ISO week's
     /// number, which goes 52 → 53 → 1 at a year's end (2026 has 53) and would show some pairs twice and skip others. Before it: 0.
+    /// By the day (plan 20): days since the day content5 first went on (its two the first).
+    static func roundDays(_ now: Date, from start: Date, _ cal: Calendar) -> Int {
+        max(0, cal.dateComponents([.day], from: cal.startOfDay(for: start), to: cal.startOfDay(for: now)).day ?? 0)
+    }
     static func round(_ now: Date, from start: Date, _ cal: Calendar) -> Int {
         guard let a = cal.dateInterval(of: .weekOfYear, for: start)?.start, let s = cal.dateInterval(of: .weekOfYear, for: now)?.start else { return 0 }
         return max(0, (cal.dateComponents([.day], from: a, to: s).day ?? 0) / 7)

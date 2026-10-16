@@ -23,7 +23,8 @@ enum Act: Codable, Equatable {
     case raid(party: [Int]? = nil, tier: Int? = nil), raidBall    // the raid (12 §4): a fight with this week's boss (1칸 of power; 3.8: the 1–3 picked, 14 §4); a ball once the team beat it
                                                                  // 4.0 (docs/plans/16): a run at a tier (RaidRules.tiers), a ball at that run's boss
     case raidQuit                                                // 4.0: give up a run's ball stage (its balls go, the boss with them)
-    case megaRaid(party: [Int]? = nil, tier: Int, boss: Int)     // 5.0 (docs/plans/18 §6.4): a Mega raid run at a tier against the week's boss 0 / 1
+    case megaRaid(party: [Int]? = nil, tier: Int, boss: Int, dex: Int? = nil, form: Int? = nil)   // 5.0 (docs/plans/18 §6.4): a Mega raid run at a tier against the week's boss 0 / 1
+                                                                 // 5.1 (plan 20): and which one it is (dex, form) — the day's two change at 0:00
     case friendRequest(to: String), friendAccept(from: String), friendDecline(from: String), friendRemove(name: String)   // 친구 (12 §2.4, 3.5)
     case marketList(give: Int, wish: [Int], note: String? = nil), marketUnlist(id: Int)    // 교환 게시판 (12 §3.3, 3.5): put one up (wished species shown; 3.8: a note), take it down
     case marketBid(listing: Int, give: Int), marketWithdraw(bid: Int), marketAccept(bid: Int)   // offer one of ours for it, take that back; the poster picks one

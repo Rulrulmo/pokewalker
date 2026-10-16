@@ -18,6 +18,7 @@ let raidSchema = """
     CREATE TABLE IF NOT EXISTS mega_wins (key TEXT NOT NULL, stone TEXT NOT NULL, wins INTEGER NOT NULL, PRIMARY KEY (key, stone));
     CREATE TABLE IF NOT EXISTS mega_clears (key TEXT NOT NULL, stone TEXT NOT NULL, tier INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (key, stone, tier));
     CREATE TABLE IF NOT EXISTS settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS raid_lobby_seen (key TEXT NOT NULL, kind TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (key, kind));
     """
 let raidRotation = [249, 382, 383, 384, 483, 484, 487]                    // 루기아 가이오가 그란돈 레쿠쟈 디아루가 펄기아 기라티나 (by raidDex)
 let raidLevel = 70, raidBarsPerFighter = 4, raidCatchOdds = 0.30, raidApp = "3.4"         // 4 bars a fighter: the user, 10-04 (14 was too many; 14 §4)
@@ -26,13 +27,29 @@ struct RaidRow { let week: String, dex: Int, boss: Mon, total: Int, bar: Int, cl
 
 /// The week's boss species (and next week's): by the weeks since 2026-W42 (루기아), the order the ISO week number gave through 2026's W52.
 /// plan 19 §5: the number itself would go W52 레쿠쟈 → W53 디아루가 → 2027-W1 가이오가, skipping 펄기아 · 기라티나 · 루기아 for a round.
+/// 5.1 (plan 20, raid-daily on): by the day instead — days since that Monday, 7 in 7 days.
 func raidDex(_ now: Date) -> Int {
     var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
+    if RaidDaily.on, let a = cal.date(from: DateComponents(weekOfYear: 42, yearForWeekOfYear: 2026)).flatMap({ cal.dateInterval(of: .weekOfYear, for: $0)?.start }) {
+        let n = raidRotation.count, days = cal.dateComponents([.day], from: a, to: cal.startOfDay(for: now)).day ?? 0
+        return raidRotation[(days % n + n) % n]
+    }
     guard let a = cal.date(from: DateComponents(weekOfYear: 42, yearForWeekOfYear: 2026)).flatMap({ cal.dateInterval(of: .weekOfYear, for: $0)?.start }),
           let s = cal.dateInterval(of: .weekOfYear, for: now)?.start else { return raidRotation[0] }
     let weeks = Int((s.timeIntervalSince(a) / (7 * 86400)).rounded()), n = raidRotation.count
     return raidRotation[(weeks % n + n) % n]
 }
+/// The next boss's time (the lobby's `next`): tomorrow by the day, else next week.
+func raidNext(_ now: Date) -> Date { now.addingTimeInterval(RaidDaily.on ? 86400 : 7 * 86400) }
+/// When this boss goes (the lobby's `ends`): the next 0:00 by the day, else the week's end.
+func raidEnds(_ now: Date) -> Int {
+    var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
+    let end = RaidDaily.on ? cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) : cal.dateInterval(of: .weekOfYear, for: now)?.end
+    return Int(end?.timeIntervalSince1970 ?? now.timeIntervalSince1970)
+}
+/// Runs a day: 3, by the day 10.
+var raidRunsADay: Int { RaidDaily.on ? RaidDaily.maxRuns : RaidRules.perDay }
+let raidStaleWhy = "보스가 바뀌었어요\n다시 열어 주세요"
 /// The raid this trainer is in this week: the team's, or (a test ID) the testers'.
 func raidWeek(_ key: String, _ now: Date) -> String { weekDays(now).key + (isTestID(key) ? "-test" : "") }
 
@@ -165,12 +182,28 @@ extension SaveDB {
         try db.rows("INSERT INTO settings (name, value) VALUES ('raid_runs_from', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(String(unix))])
     }
     /// Before a raid act: the run's boss, or why not (the act then walks its steps only). Before W43 an old app fights the team's boss as ever.
-    func raidStart(_ key: String, tier: Int?, app: String?, now: Date, mega: Int? = nil) throws -> (boss: RaidBoss?, why: String?) {
-        if let k = mega {                                                                         // 5.0 (plan 18 §6.4): a Mega raid run
+    /// 5.1 (plan 20): by the day, a run begins only from a lobby fetched since 0:00 — a 5.0.1 app names its Mega boss 0 / 1 of the lobby it has
+    /// open, which by then may be yesterday's (the Mac, 10-16). A 5.1 app names it (dex, form): that's enough when it's one of today's.
+    func raidLobbySeen(_ key: String, _ kind: String, now: Date) throws {
+        try db.rows("INSERT INTO raid_lobby_seen (key, kind, at) VALUES (:k, :t, :now) ON CONFLICT (key, kind) DO UPDATE SET at = :now",
+                    ["k": .text(key), "t": .text(kind), "now": .int(Int(now.timeIntervalSince1970))])
+    }
+    func raidLobbyStale(_ key: String, _ kind: String, now: Date) throws -> Bool {
+        guard RaidDaily.on else { return false }
+        var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
+        let seen = try db.rows("SELECT at FROM raid_lobby_seen WHERE key = :k AND kind = :t", ["k": .text(key), "t": .text(kind)]).first?.int("at") ?? 0
+        return seen < Int(cal.startOfDay(for: now).timeIntervalSince1970)
+    }
+    func raidStart(_ key: String, tier: Int?, app: String?, now: Date, mega: Int? = nil, megaDex: (Int, Int?)? = nil) throws -> (boss: RaidBoss?, why: String?) {
+        if var k = mega {                                                                         // 5.0 (plan 18 §6.4): a Mega raid run
             guard Content.gen6, knows(app, MegaRaid.app) else { return (nil, "메가 레이드는\n아직 열리지 않았어요") }
+            if let (d, f) = megaDex {                                                             // 5.1: which one (today's, or it changed)
+                guard let i = megaWeek(now).firstIndex(where: { $0.dex == d && $0.form == (f ?? 0) || $0.dex == d && f == nil }) else { return (nil, raidStaleWhy) }
+                k = i
+            } else if try raidLobbyStale(key, "mega", now: now) { return (nil, raidStaleWhy) }
             try closeCutRuns(key, now: now)
             if try raidPending(key, now: now) != nil { return (nil, raidPendingWhy) }
-            if try raidRunsToday(key, now: now) >= RaidRules.perDay { return (nil, "오늘은 \(RaidRules.perDay)판을\n다 했어요") }
+            if try raidRunsToday(key, now: now) >= raidRunsADay { return (nil, "오늘은 \(raidRunsADay)판을\n다 했어요") }
             guard let t = RaidRules.tier(tier) else { return (nil, "난이도를\n골라 주세요") }
             guard let b = megaWeek(now)[safe: k] else { return (nil, "그 보스는\n이번 주에 없어요") }
             var g = SystemRandomNumberGenerator()
@@ -180,9 +213,10 @@ extension SaveDB {
             return knows(app, RaidRules.app) ? (nil, "새 레이드는\n곧 열려요") : (try raidBoss(key, now: now), nil)
         }
         guard knows(app, RaidRules.app) else { return (nil, raidUpdate) }
+        if try raidLobbyStale(key, "legend", now: now) { return (nil, raidStaleWhy) }                  // 5.1 (plan 20): today's boss, seen
         try closeCutRuns(key, now: now)
         if try raidPending(key, now: now) != nil { return (nil, raidPendingWhy) }
-        if try raidRunsToday(key, now: now) >= RaidRules.perDay { return (nil, "오늘은 \(RaidRules.perDay)판을\n다 했어요") }
+        if try raidRunsToday(key, now: now) >= raidRunsADay { return (nil, "오늘은 \(raidRunsADay)판을\n다 했어요") }
         guard let t = RaidRules.tier(tier) else { return (nil, "난이도를\n골라 주세요") }
         var g = SystemRandomNumberGenerator()
         let shiny = Int.random(in: 0..<RaidRules.shinyOdds, using: &g) == 0
@@ -271,9 +305,10 @@ extension SaveDB {
             let p = try db.rows("SELECT session, state FROM play WHERE key = :k", ["k": .text(key)]).first
             let fighting = p?.text("session") == r.session && (p?.text("state").flatMap { try? JSONDecoder().decode(Play.self, from: Data($0.utf8)) }?.battle?.raidTier != nil)
             if !fighting { try closeCutRuns(key, now: now) }
+            try raidLobbySeen(key, "legend", now: now)
             let open = try raidRuns(key, now), week = raidWeek(key, now)
             var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
-            let ends = Int(cal.dateInterval(of: .weekOfYear, for: now)?.end.timeIntervalSince1970 ?? now.timeIntervalSince1970)
+            let ends = raidEnds(now)
             let reset = Int(cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now))?.timeIntervalSince1970 ?? now.timeIntervalSince1970)
             let runs = try db.rows("SELECT boss, tier, bars, won, caught, at FROM raid_runs WHERE key = :k AND week = :w AND ended_at IS NOT NULL AND kind IS NULL ORDER BY id DESC",
                                    ["k": .text(key), "w": .text(week)]).compactMap { x -> RaidRunRow? in
@@ -286,8 +321,8 @@ extension SaveDB {
                 return RaidFriend(name: t.text("name") ?? k, dex: dex, runs: wk.runs, wins: wk.wins, caught: wk.caught, shiny: wk.shiny, best: wk.best)
             }
             let pend = try raidPending(key, now: now).map { RaidPending(boss: $0.boss, tier: $0.tier, bars: $0.bars, won: $0.won, balls: $0.balls) }
-            let lobby = RaidLobby(week: week, boss: Mon(dex: raidDex(now), level: raidLevel, female: false), next: raidDex(now.addingTimeInterval(7 * 86400)), ends: ends,
-                                  today: RaidToday(used: open ? try raidRunsToday(key, now: now) : 0, max: open ? RaidRules.perDay : 0), resetAt: reset,
+            let lobby = RaidLobby(week: week, boss: Mon(dex: raidDex(now), level: raidLevel, female: false), next: raidDex(raidNext(now)), ends: ends,
+                                  today: RaidToday(used: open ? try raidRunsToday(key, now: now) : 0, max: open ? raidRunsADay : 0), resetAt: reset,
                                   mine: try raidWeekOf(key, now: now) ?? RaidWeek(), runs: runs, friends: friends, pending: pend, tiers: RaidRules.tiers,
                                   opens: open ? nil : try raidRunsFrom())
             let e = JSONEncoder(); e.outputFormatting = .sortedKeys
@@ -299,7 +334,7 @@ extension SaveDB {
         readGate(r.id, r.session) { key in
             var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
             let ends = Int(cal.dateInterval(of: .weekOfYear, for: now)?.end.timeIntervalSince1970 ?? now.timeIntervalSince1970)
-            return try JSONEncoder().encode(RaidReply(week: raidWeek(key, now), boss: Mon(dex: raidDex(now), level: raidLevel, female: false), next: raidDex(now.addingTimeInterval(7 * 86400)),
+            return try JSONEncoder().encode(RaidReply(week: raidWeek(key, now), boss: Mon(dex: raidDex(now), level: raidLevel, female: false), next: raidDex(raidNext(now)),
                                                        hpTotal: 1, hpLeft: 1, barHP: 1, ends: ends, fighters: [], recent: [],
                                                        mine: RaidMine(dealt: 0, fights: 0, balls: nil, caught: false, canCatch: false)))
         }
@@ -335,7 +370,7 @@ extension SaveDB {
     func megaWeek(_ now: Date) -> [MegaBoss] {                                                // the rotation from content5's first week (MegaRaid.round)
         var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
         let since = ((try? content5Since()) ?? nil).map { Date(timeIntervalSince1970: TimeInterval($0)) } ?? now
-        return MegaRaid.week(MegaRaid.round(now, from: since, cal))
+        return MegaRaid.week(RaidDaily.on ? MegaRaid.roundDays(now, from: since, cal) : MegaRaid.round(now, from: since, cal))   // (5.1, plan 20: or today's)
     }
     /// Each boss's count (by its stone): wins on it while its stone was missing, since that stone last came (the user, 10-14: "보스별로 20번").
     func megaWins(_ key: String) throws -> [String: Int] {
@@ -384,10 +419,11 @@ extension SaveDB {
     func megaRaidLobby(_ r: RaidReq, now: Date) -> Reply {
         readGate(r.id, r.session) { key in
             try closeCutRuns(key, now: now)
+            try raidLobbySeen(key, "mega", now: now)
             let week = raidWeek(key, now), had = try megaHad(key, try db.rows("SELECT walk FROM trainers WHERE key = :k", ["k": .text(key)]).first?.text("walk").flatMap(decodeWalk))
             let wins = try megaWins(key), firsts = try megaFirsts(key)
             var cal = Calendar(identifier: .iso8601); cal.timeZone = .current
-            let ends = Int(cal.dateInterval(of: .weekOfYear, for: now)?.end.timeIntervalSince1970 ?? now.timeIntervalSince1970)
+            let ends = raidEnds(now)
             let reset = Int(cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now))?.timeIntervalSince1970 ?? now.timeIntervalSince1970)
             let rows = try db.rows("SELECT boss, tier, bars, won, caught, at FROM raid_runs WHERE key = :k AND week = :w AND ended_at IS NOT NULL AND kind = 'mega' ORDER BY id DESC",
                                    ["k": .text(key), "w": .text(week)])
@@ -398,8 +434,8 @@ extension SaveDB {
             let mine = RaidWeek(runs: runs.count, wins: runs.filter(\.won).count, best: runs.filter(\.won).map(\.tier).max())
             func mark(_ bs: [MegaBoss]) -> [MegaBoss] { bs.map { var b = $0; b.had = had.contains(b.stone); b.wins = wins[b.stone] ?? 0; b.firstGot = firsts[b.stone] ?? []; return b } }
             let these = mark(megaWeek(now))
-            let lobby = MegaRaidLobby(week: week, bosses: these, next: mark(megaWeek(now.addingTimeInterval(7 * 86400))), ends: ends,
-                                      today: RaidToday(used: try raidRunsToday(key, now: now), max: RaidRules.perDay), resetAt: reset, mine: mine, runs: runs,
+            let lobby = MegaRaidLobby(week: week, bosses: these, next: mark(megaWeek(raidNext(now))), ends: ends,
+                                      today: RaidToday(used: try raidRunsToday(key, now: now), max: raidRunsADay), resetAt: reset, mine: mine, runs: runs,
                                       pityNeed: MegaRaid.bossWins, odds: MegaRaid.stoneOdds, tiers: RaidRules.tiers)
             let e = JSONEncoder(); e.outputFormatting = .sortedKeys
             return try e.encode(lobby)

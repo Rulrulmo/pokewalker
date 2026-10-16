@@ -66,6 +66,26 @@ private var kalos: Int { courses.firstIndex { $0.region == 650...721 }! }
     }
 }
 
+@Test func oneExpeditionAtATime() throws {                                                       // plan 19 §6.3 (the user, 10-16): one going on, the others stopped and kept
+    try both {
+        var d = Desk(); d.w.course = kalos
+        let other = Mon(dex: 641, level: 50, female: false)
+        d.w.expeditions = ["다른": ExpProgress(on: true, n: 3, steps: 10, mon: other)]              // (5.1 has one; a second as the save would have it)
+        #expect(d.act(.expStart(id: "지가르데")).cannot == nil)
+        #expect(d.w.expeditions?["다른"] == ExpProgress(on: false, n: 3, steps: 10, mon: other))      // stopped where it was
+        d.act(.steps, steps: 30_000)
+        let z = try #require(d.w.expeditions?["지가르데"])
+        #expect(z.on && z.n == 10 && d.w.expeditions?["다른"]?.n == 3)
+        d.w.expeditions?["지가르데"]?.on = false; d.w.expeditions?["다른"]?.on = true                   // as if the other went on again
+        d.act(.steps, steps: 30_000)
+        #expect(d.w.expeditions?["지가르데"]?.n == 10)                                                 // stopped: no cells
+        #expect(d.act(.expStart(id: "지가르데")).cannot == nil)                                        // goes on from 10, the same legend
+        #expect(d.w.expeditions?["지가르데"]?.n == 10 && d.w.expeditions?["지가르데"]?.mon == z.mon && d.w.expeditions?["다른"]?.on == false)
+        d.w.expeditions?["지가르데"]?.n = 50; d.w.expeditions?["지가르데"]?.on = false
+        #expect(d.act(.expClaim(id: "지가르데")).mon == z.mon.map { var m = $0; m.uid = d.ids.made.last?.mon.uid; return m })   // stopped and full: claimed all the same
+    }
+}
+
 @Test func expProgressDecodesWhatItHas() throws {                                                 // a later field must be optional: an older save has none
     let x = try JSONDecoder().decode(ExpProgress.self, from: Data(#"{"n": 4}"#.utf8))
     #expect(x == ExpProgress(n: 4))

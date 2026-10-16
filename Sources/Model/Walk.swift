@@ -71,6 +71,7 @@ struct Walk: Codable, Equatable {
             history = Array(history.prefix(7)); days += gap
         }
         today = 0; day = k
+        if Content.raidDaily { raidPower = RaidDaily.base * Engine.raidPowerCost }          // 5.1 (plan 20): a new day's 2칸, yesterday's gone
     }
 
     /// Returns true when the companion levelled up.
