@@ -191,6 +191,29 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
               "\(opened) \(rows) \(heat) \(partners) \(fused) \(unOpt) \(apart) \(keyKind) \(rotomAb) \(zardAb)")
         calm(ro)
     }
+    // 5.1 (docs/plans/19 §3 · §9): 특성패치 — the bag's 쓰기 → who (one without a hidden ability dimmed, its why), before → after; ● sends .use with the
+    // companion's uid too (the server's rule: no uid is 5.0's 팔기), and its line after; 그라시데아꽃 — 쉐이미's page offers 모습, the forms page
+    // (랜드폼 · 스카이폼, the one it is dimmed), ● sends .form and it changes
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) {
+        var saur = Mon(dex: 3, level: 52, female: false); saur.ability = 0
+        let pt = online({ var s = Walk(); s.companion = saur; s.caught = [Mon(dex: 151, level: 50, female: false), Mon(dex: 492, level: 50, female: false)]; s.bag = ["특성패치", "그라시데아꽃"]; return s }())
+        pt.pickFor("특성패치")
+        let line = pt.paneContent(Date()).pick?.boxTitle, mewWhy = pt.itemNot("특성패치", -2)
+        pt.press(1); drain(pt)
+        let sent = server(pt).0.acts.contains(.use(item: "특성패치", stat: nil, on: pt.state.companion.uid))
+        let said = { if case .say(let l, _, _) = pt.screen { return l }; return [] }()
+        let patched = pt.state.companion.ability == 2 && said.prefix(2) == ["이상해꽃의 특성이", "엽록소로 바뀌었다!"] && !pt.state.bag.contains("특성패치")
+        calm(pt)
+        let offered = pt.formAction(-3)?.label == "모습 바꾸기" && pt.formAction(-2) == nil
+        _ = pt.keyItemOn("그라시데아꽃", -3); let forms = pt.formOptions(-3, "그라시데아꽃")
+        pt.press(1); drain(pt)
+        let sky = pt.state.caught[1].form == 1 && pt.state.bag.contains("그라시데아꽃") && server(pt).0.acts.last == .mon(op: .form(uid: pt.state.caught[1].uid ?? 0, item: "그라시데아꽃", form: 1))
+        check(line == "이상해꽃 · 특성 심록 → 엽록소(숨겨진특성)" && mewWhy == "숨겨진특성이 없어요" && sent && patched && offered
+              && forms.map(\.label) == ["랜드폼", "스카이폼"] && forms[0].why == "지금 모습이에요" && forms[1].note == "풀 · 비행 · 특성 하늘의은총" && sky,
+              "5.1 특성패치 (who, 심록 → 엽록소(숨겨진특성), 뮤 dimmed, .use with the companion's uid, its line) · 그라시데아꽃 (쉐이미's 모습, 랜드폼 · 스카이폼, .form, kept)",
+              "\(String(describing: line)) \(String(describing: mewWhy)) \(sent) \(said) \(patched) \(offered) \(forms.map(\.label)) \(sky)")
+        calm(pt)
+    } }
     // 5.0: the 상점's 로토무카탈로그 under a 기타 tab of its own (it was under no tab: never shown) — ● → × 1 → 정말 살까? → 예, then 보유; off: no 기타
     let tabsOff = online(Walk()).shopTabs(false)
     Content.$testing.withValue(true) {

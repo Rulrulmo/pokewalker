@@ -558,6 +558,23 @@ import AppKit
         let ex = online(Walk())                                                                   // nothing at all
         for (name, s) in [("stress_empty_items", Screen.items(0)), ("stress_empty_hold", .hold(ref: -1, sel: 0)), ("stress_empty_goals", .goals(0)), ("stress_empty_card", .card(0))] { take(name, ex) { v in v.screen = s } }
     }
+    // 5.1 (docs/plans/19 §3 · §9, content51): 특성패치 — BP 교환소, who (before → after; one without a hidden ability dimmed), its line after, the page;
+    // 그라시데아꽃 — the shop's 기타, 쉐이미's 모습, the forms page, 스카이폼
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) {
+        var r7 = Seeded(s: 11), saur = Mon.wild(3, level: 52, &r7); saur.ability = 0; saur.nature = 3
+        let pw = online({ var s = base(); s.companion = saur; s.caught = [Mon.wild(25, level: 40, &r7), Mon.wild(151, level: 50, &r7), Mon.wild(492, level: 50, &r7)]
+                          s.bag = ["특성패치", "특성패치", "그라시데아꽃"]; s.bp = 260; s.watts = 6420; return s }())
+        take("patch_bp_shop", pw) { v in v.screen = .shop(bp: true, sel: v.wares(true).firstIndex { $0.kind == .item("특성패치") } ?? 0, qty: nil) }
+        take("patch_pick", pw) { v in v.screen = .itemOn(ItemOn(item: "특성패치", pick: -1, at: 0)) }
+        take("patch_pick_back", pw) { v in v.state.caught[0].ability = 2; v.screen = .itemOn(ItemOn(item: "특성패치", pick: -2, at: 1)) }
+        take("patch_pick_none", pw) { v in v.screen = .itemOn(ItemOn(item: "특성패치", pick: nil, at: 2)) }
+        take("patch_done", pw) { v in v.state.companion.ability = 2; v.screen = .say(["이상해꽃의 특성이", "엽록소로 바뀌었다!", "숨겨진특성이에요"], next: .home, since: Date()) }
+        take("patch_mon_page", pw) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
+        take("flower_shop", pw) { v in v.state.bag.removeAll { $0 == "그라시데아꽃" }; v.screen = .shop(bp: false, sel: v.wares(false).firstIndex { $0.kind == .item("그라시데아꽃") } ?? 0, qty: nil) }
+        take("flower_mon_page", pw) { v in v.state.bag.append("그라시데아꽃"); v.screen = .box(-4, act: 0, confirm: false, detail: true) }
+        take("flower_pick", pw) { v in v.screen = .formPick(ref: -4, item: "그라시데아꽃", sel: 1) }
+        take("flower_sky_page", pw) { v in v.state.caught[2].form = 1; v.screen = .box(-4, act: nil, confirm: false, detail: true) }
+    } }
     return n
 }
 #endif

@@ -9,7 +9,7 @@ struct ItemOn: Equatable { var item: String; var pick: Int? = nil; var at = 0 }
 extension Walker {
     /// Items the 도구 page gives to one of ours (picked): the rest are used as they are (sold) or only in a fight.
     static func targeted(_ kind: ItemKind) -> Bool {
-        switch kind { case .candy, .vitamin, .evReset, .berry, .bottleCap, .evolution, .mint, .held, .key: true; default: false }   // 5.0: .key — FormView's
+        switch kind { case .candy, .vitamin, .evReset, .berry, .bottleCap, .evolution, .mint, .held, .key, .abilityPatch: true; default: false }   // 5.0: .key — FormView's
     }
     /// Ours in the picker's order: the companion, the walker's, then the box as the 포켓몬 grid has it.
     var itemRefs: [Int] { [-1] + state.caught.indices.map { -2 - $0 } + boxOrder }
@@ -27,7 +27,10 @@ extension Walker {
         case .evolution: return state.stoneEvolutions(Date(), ref: ref).contains { $0.item == item } ? nil : "이 도구로 진화하지 않아요"
         case .mint(let k): return (m.mint ?? m.nature ?? 0) == k ? "이미 그 성격 효과" : nil
         case .held: return m.item == item ? "이미 지니고 있어요" : nil
-        case .key: return item == "로토무카탈로그" ? (m.dex == 479 ? nil : "로토무에게만") : item == "유전자쐐기" ? (m.dex == 646 ? nil : "큐레무에게만") : "여기서는 쓸 수 없어요"   // 5.0
+        case .key:
+            if let dexes = Walk.formItems[item] { return !Content.v51 ? "여기서는 쓸 수 없어요" : dexes.contains(m.dex) ? nil : dexes.sorted().map { monNames[$0] }.joined(separator: "·") + "만" }   // 5.1: the form items
+            return item == "로토무카탈로그" ? (m.dex == 479 ? nil : "로토무에게만") : item == "유전자쐐기" ? (m.dex == 646 ? nil : "큐레무에게만") : "여기서는 쓸 수 없어요"   // 5.0
+        case .abilityPatch: return Content.gen6 && (m.formInfo?.hidden ?? hiddenAbility[m.dex]) > 0 ? nil : "숨겨진특성이 없어요"   // 5.1 (plan 19 §3): the hidden one ↔ the first
         default: return "여기서는 쓸 수 없어요"
         }
     }
@@ -42,6 +45,8 @@ extension Walker {
         let inv = state.inventory, tabs = itemTabs, name = inv[safe: min(sel, max(0, inv.count - 1))].map(Walk.bagTab) ?? tabs.first ?? ""
         return (tabs.firstIndex(of: name) ?? 0, itemOrder.filter { Walk.bagTab(inv[$0]) == name })
     }
+    /// 5.1 (plan 19 §3): what 특성패치 makes of it — the hidden one ↔ the first (the server's Walk.useAbilityPatch).
+    func patched(_ m: Mon) -> Mon { var x = m; x.ability = m.ability == 2 ? 0 : 2; return x }
     /// The 도구 page's button for one of those: who gets it (the companion first, if it can).
     func pickFor(_ item: String) { screen = .itemOn(ItemOn(item: item, pick: itemNot(item, -1) == nil ? -1 : nil, at: 0)) }
 
@@ -64,6 +69,7 @@ extension Walker {
             case .bottleCap: return "지금 \(m.perfectIVs)V"
             case .held: return "지금 " + (m.item ?? "지닌 도구 없음")
             case .candy: return "Lv.\(m.level) → Lv.\(min(100, m.level + 1))"
+            case .abilityPatch: let x = patched(m); return "특성 " + m.abilityName + " → " + x.abilityName + (x.ability == 2 ? "(숨겨진특성)" : "")   // 5.1
             default: return nil
             }
         }
@@ -85,6 +91,7 @@ extension Walker {
             case .mint: return natures[m.mint ?? m.nature ?? 0].name
             case .bottleCap: return "\(m.perfectIVs)V"
             case .held: return m.item ?? "지닌 도구 없음"
+            case .abilityPatch: return m.abilityName                                              // 5.1
             default: return r == -1 ? "동료" : r < -1 ? "워커" : "상자"
             }
         }()

@@ -53,6 +53,15 @@ private func drawnItem(_ name: String) -> Pic {
                     "gGoRRRRYYYYYRRRRRo.", ".goRRRRRRRRRRRRRRo.", "gGoRRRRRRRRRRRRRRo.", ".goooooooooooooooo.", "..sssssssssssssss.."],
                    ["o": o, "R": rgb(236, 112, 56), "w": rgb(255, 250, 236), "B": rgb(70, 140, 236), "Y": rgb(255, 214, 90), "g": rgb(150, 156, 170), "G": rgb(210, 214, 222), "s": argb(70, rgb(40, 40, 50))])   // (its rings, its cover's window: Rotom's bolt)
     }
+    if name == "특성패치" {                                                                          // 5.1 (plan 19 §3): PokeAPI has no sprite — a stitched patch, a star
+        return Pic(["....oooooo....", "..ooMMMMMMoo..", ".oMsMsMsMsMMo.", ".oMMLLLLLLMso.", "oMsLLLYYLLLMMo", "oMMLLYYYYLLsMo", "oMsLYYYYYYLMMo", "oMMLLYYYYLLsMo", "oMsLLYLLYLLMMo",
+                    ".oMMLLLLLLMso.", ".oMsMsMsMsMMo.", "..ooMMMMMMoo..", "....oooooo...."],
+                   ["o": o, "M": rgb(160, 92, 196), "s": rgb(240, 214, 250), "L": rgb(212, 164, 232), "Y": rgb(255, 214, 90)])
+    }
+    if name == "지가르데셀" {                                                                        // 5.1 (plan 19 §1.4): a cell — no sprite anywhere (a count, never a bag item)
+        return Pic(["....ooooo....", "..ooLLGGGoo..", ".oLLLGGGGGDo.", ".oLLooooGGDo.", "oLLoHHHHoGGDo", "oLGoHWHHoGDDo", "oGGoHHHHoGDDo", "oGGGooooGGDDo", ".oGGGGGGGDDo.", ".oDGGGGGDDDo.", "..ooDDDDDoo..", "....ooooo...."],
+                   ["o": rgb(28, 60, 36), "L": rgb(150, 236, 120), "G": rgb(76, 196, 84), "D": rgb(40, 140, 60), "H": rgb(30, 110, 50), "W": rgb(200, 255, 170)])
+    }
     if name == "순백떡" {
         return Pic(["....oooooo....", "..ooWWWWWWoo..", ".oWWWWWWWWWWo.", "oWWWWWWWWWWWWo", "oWWWWWPWWWWWSo", "oWWWWWWWWWWSSo", ".oSWWWWWWWSSo.", "GGooSSSSSSooGG", ".GGGooooooGGG.", "...GGGGGGGG..."],
                    ["o": o, "W": rgb(255, 255, 250), "S": rgb(222, 222, 214), "P": rgb(255, 170, 190), "G": rgb(110, 176, 92)])

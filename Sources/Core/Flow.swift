@@ -528,7 +528,7 @@ extension Walker {
     }
     /// A bag item's use (the server's): a line for what it did, then `then` (the bag where it was, or home); an evolution plays at home.
     func useItem(_ name: String, on ref: Int = -1, back: Screen, then: @escaping @MainActor () -> Screen = { .home }, _ now: Date = Date()) {
-        let target = state.mon(ref) ?? state.companion, me = monNames[target.dex], kind = ItemKind.of(name), uid = ref == -1 ? nil : target.uid
+        let target = state.mon(ref) ?? state.companion, me = monNames[target.dex], kind = ItemKind.of(name), uid = ref == -1 && kind != .abilityPatch ? nil : target.uid   // (5.1: 특성패치 always says who: the server's rule)
         let quiet: Bool = { if case .candy = kind { return true }; return false }()
         act(.use(item: name, stat: nil, on: uid), back: back, now, quiet: quiet) { [weak self] o, now in
             guard let self else { return nil }
@@ -539,6 +539,7 @@ extension Walker {
             case .vitamin(let k, _): return .say([josa(me, "은", "는") + " " + josa(name, "을", "를"), "먹었다!", "노력치 \((after.evs ?? [])[safe: k] ?? 0)"], next: then(), since: now)
             case .evReset: return .say([josa(me, "은", "는") + " 순백떡을", "먹었다!", "노력치가 0이 되었다"], next: then(), since: now)
             case .berry: return .say([josa(me, "이", "가") + " " + josa(name, "을", "를"), "맛있게 먹었다!"], next: then(), since: now)
+            case .abilityPatch: return .say([me + "의 특성이", josa(after.abilityName, "으로", "로") + " 바뀌었다!"] + (after.ability == 2 ? ["숨겨진특성이에요"] : []), next: then(), since: now)   // 5.1
             case .sell: return .say([name + " 판매", "+\(o.watts ?? 0)W"], next: then(), since: now)
             default: return .home                                                                   // 진화의 돌: home shows it
             }

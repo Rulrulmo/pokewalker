@@ -172,8 +172,8 @@ func typePill(_ c: UInt32, _ w: Int) -> Pic {
 @MainActor func focusChecks() -> [(Bool, String)] {
     var c: [(Bool, String)] = []
     let sold = (Walk().wares(bp: false, shells: []) + Walk().wares(bp: true, shells: Engine.bpShells)).compactMap { if case .item(let i) = $0.kind { i } else { nil } }
-    let bare = Set(sold + Forms.stones).filter { !itemPacked($0) && !$0.hasSuffix("민트") && !["로토무카탈로그", "순백떡"].contains($0) }.sorted()
-    c.append((bare.isEmpty, "5.0 focus: every item sold and every Mega stone has its own picture (items.bin; the mints, 로토무카탈로그 and 순백떡 drawn)" + (bare.isEmpty ? "" : " — none: \(bare)")))
+    let bare = Set(sold + Forms.stones).filter { !itemPacked($0) && !$0.hasSuffix("민트") && !["로토무카탈로그", "순백떡", "특성패치"].contains($0) }.sorted()
+    c.append((bare.isEmpty, "5.0 focus: every item sold and every Mega stone has its own picture (items.bin; the mints, 로토무카탈로그, 순백떡 and 5.1's 특성패치 drawn)" + (bare.isEmpty ? "" : " — none: \(bare)")))
     let was = (lcdFocus, lcdDeco, lcdStyle); lcdFocus = true; lcdDeco = true; lcdStyle = 0
     defer { lcdFocus = was.0; lcdDeco = was.1; lcdStyle = was.2 }
     var st = Walk(); st.watts = 99_999; st.bp = 9_999; st.bag = ["구애머리띠", "이상한사탕", "오랭열매"]

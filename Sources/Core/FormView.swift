@@ -5,6 +5,8 @@ import Foundation
 
 extension Walker {
     struct FormOption: Equatable { var label: String; var note: String; var why: String?; var dex: Int; var form: Int?; var op: MonOp? }
+    /// 5.1: a form item's own form by name (the other's is Forms.of(dex, 1)).
+    static let formOwn: [Int: String] = [492: "랜드폼", 641: "화신폼", 642: "화신폼", 645: "화신폼", 720: "굴레에 갇힌 후파"]
     /// What the item can do for the one at ref, a row each (why: not that one, dimmed).
     func formOptions(_ ref: Int, _ item: String) -> [FormOption] {
         guard let m = state.mon(ref), let u = m.uid else { return [] }
@@ -13,6 +15,13 @@ extension Walker {
                 let mv = f.flatMap { moveTable[Walk.rotomMoves[$0 - 1]]?.name }
                 return FormOption(label: f.flatMap { Forms.of(479, $0)?.name } ?? "로토무", note: mv.map { "기술: " + $0 } ?? "폼 기술이 빠져요",
                                   why: (m.form ?? 0) == (f ?? 0) ? "지금 모습이에요" : nil, dex: 479, form: f, op: .rotom(uid: u, form: f))
+            }
+        }
+        if let dexes = Walk.formItems[item], dexes.contains(m.dex) {                                // 5.1: its own form ↔ the other (a type and an ability each)
+            return [nil, 1].map { f in
+                var x = m; x.form = f
+                return FormOption(label: f == nil ? Walker.formOwn[m.dex] ?? "원래 모습" : Forms.of(m.dex, 1)?.name ?? "다른 모습", note: x.typing.map { typeKo[$0] ?? $0 }.joined(separator: " · ") + " · 특성 " + x.abilityName,
+                                  why: (m.form ?? 0) == (f ?? 0) ? "지금 모습이에요" : nil, dex: m.dex, form: f, op: .form(uid: u, item: item, form: f))
             }
         }
         if let p = m.fused?.first {
@@ -30,12 +39,13 @@ extension Walker {
         guard Content.gen6, let m = state.mon(ref) else { return nil }
         let has = { (i: String) in (self.state.bag + self.state.items).contains(i) }
         if m.dex == 479, has("로토무카탈로그") { return ("로토무카탈로그", "모습 바꾸기", "모습") }
+        if Content.v51, let item = Walk.formItems.first(where: { $0.value.contains(m.dex) })?.key, has(item) { return (item, "모습 바꾸기", "모습") }   // 5.1
         if m.dex == 646, has("유전자쐐기") { return m.fused == nil ? ("유전자쐐기", "합체하기", "합체") : ("유전자쐐기", "분리하기", "분리") }
         return nil
     }
     /// Instead of using it at once: this item asks what next (true = this page is up).
     func keyItemOn(_ item: String, _ ref: Int) -> Bool {
-        guard ["로토무카탈로그", "유전자쐐기"].contains(item) else { return false }
+        guard ["로토무카탈로그", "유전자쐐기"].contains(item) || Walk.formItems[item] != nil else { return false }   // (5.1: the form items)
         let o = formOptions(ref, item)
         screen = .formPick(ref: ref, item: item, sel: o.firstIndex { $0.why == nil } ?? 0); return true
     }
@@ -50,7 +60,7 @@ extension Walker {
     func formPickLCD(_ fb: inout FB, _ ref: Int, _ item: String, _ sel: Int, _ now: Date) {
         guard let m = state.mon(ref) else { return }
         let o = formOptions(ref, item)
-        fb.text(item == "유전자쐐기" ? (m.fused == nil ? "합체" : "분리") : "로토무의 모습", 2, 1, 3, small: true); fb.fill(0, 10, 96, 1, 2)
+        fb.text(item == "유전자쐐기" ? (m.fused == nil ? "합체" : "분리") : monNames[m.dex] + "의 모습", 2, 1, 3, small: true); fb.fill(0, 10, 96, 1, 2)
         if o.isEmpty { fb.text("레시라무 · 제크로무가", 0, 24, 2, center: true, small: true); fb.text("워커나 상자에 없어요", 0, 35, 2, center: true, small: true); return }
         if lcdFocus { formFocusLCD(&fb, m, o, sel); return }                                      // 5.0 (prototype): the form it'd make, big (FocusView.swift)
         let top = max(0, min(o.count - 5, sel - 2))
@@ -73,6 +83,7 @@ extension Walker {
         act(.mon(op: op), back: here, now) { [weak self] _, now in
             let lines: [String] = switch op {
             case .rotom(_, let f): f == nil ? [josa(name, "은", "는") + " 원래 모습으로", "돌아왔다!"] : [josa(name, "은", "는"), josa(x.label, "으로", "로") + " 바뀌었다!"]
+            case .form(_, _, let f): f == nil ? [josa(name, "은", "는") + " " + josa(x.label, "으로", "로"), "돌아왔다!"] : [josa(name, "은", "는"), josa(x.label, "으로", "로") + " 바뀌었다!"]   // 5.1: 랜드폼으로 돌아왔다!
             case .fuse: [josa(name, "과", "와") + " " + josa(x.label.components(separatedBy: " ").first ?? "", "이", "가"), "합체했다!"]
             default: [josa(name, "과", "와") + " " + josa(partner ?? "", "의", "의"), "합체를 풀었다!"]
             }
