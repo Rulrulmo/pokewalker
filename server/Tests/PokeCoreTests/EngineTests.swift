@@ -277,8 +277,9 @@ private struct Desk {
     #expect(end?.result == "lost" && d.w.count("부활초") == 1)
 }
 
-@Test func moveTexts() {                                                                             // 3.8.1: every Gen IV move has its Korean description
-    #expect((1...467).allSatisfy { moveText($0) != nil } && moveText(0) == nil && moveText(468) == nil)
+@Test func moveTexts() {                                                                             // 3.8.1: every Gen IV move has its Korean description (5.1: to 621, 5.0's)
+    #expect((1...621).allSatisfy { moveText($0) != nil } && moveText(0) == nil && moveText(622) == nil)
+    #expect(moveText(618)?.contains("광선") == true && moveText(620)?.contains("강하") == true)
     #expect(moveText(194)?.contains("기절") == true && moveText(33)?.hasPrefix("상대를 향해서") == true)
 }
 
