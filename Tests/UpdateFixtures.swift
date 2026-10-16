@@ -109,6 +109,24 @@ final class FakeUpdates: CloudLink, @unchecked Sendable {
     for k in 0..<4 { uw.tick(t0 + 0.5 * Double(k)) }
     c.append((uc.phase == .oldApp && link3.paths == ["v1/update"], "update: 426 from the save server (새 버전이 필요해요) asks for an update at once"))
 
+    // docs/plans/22 (5.1.2): an update note in a reply — /v1/update at once (not the hourly round), urgent taken; the same version not again within
+    // 10 minutes; one not newer than this app: nothing
+    let nsv = FakeCloud(), nwk = Walker(state: Walk()); nwk.persist = false
+    let ncl = Cloud(link: nsv, dir: tmp.appendingPathComponent("n")); ncl.seat.trainerID = "zz000010"; nwk.startCloud(ncl)
+    let nlk = FakeUpdates(); nlk.manifest = nil; nlk.sig = nil
+    nwk.updater = Updater(link: nlk, dir: tmp.appendingPathComponent("u6"), app: shipped, platform: "mac", now: t0)
+    nsv.updateNoteSent = ["v": "99.0", "urgent": true]
+    for k in 0..<4 { nwk.tick(t0 + 0.5 * Double(k)) }
+    let noteAsks = nlk.paths, noteRead = nsv.paths == ["v1/login"]                              // (the login's reply carried it)
+    ncl.updateNote = UpdateNote(v: "99.0", urgent: true); for k in 0..<4 { nwk.tick(t0 + 60 + 0.5 * Double(k)) }
+    let noteOnce = nlk.paths.count                                                                // (urgent: /v1/update's own answer says)
+    ncl.updateNote = UpdateNote(v: "99.0", urgent: false); for k in 0..<4 { nwk.tick(t0 + 700 + 0.5 * Double(k)) }
+    let noteAgain = nlk.paths.count
+    ncl.updateNote = UpdateNote(v: "1.0", urgent: false); for k in 0..<4 { nwk.tick(t0 + 1400 + 0.5 * Double(k)) }
+    c.append((noteAsks == ["v1/update"] && noteRead && noteOnce == 1 && noteAgain == 2 && nlk.paths.count == 2,
+              "5.1.2 update note: a reply's {update: {v, urgent}} asks /v1/update at once; the same version not again within 10 minutes; an older one: nothing"))
+    if !(noteAsks == ["v1/update"] && noteRead && noteOnce == 1 && noteAgain == 2 && nlk.paths.count == 2) { print("note: \(noteAsks) \(noteOnce) \(noteAgain) \(nlk.paths) — \(nsv.paths)") }
+
     // the menu's update row: a staged one installs at a click (no question); else one click checks, downloads and installs; greyed while busy
     let ih = TestHost(), iw = Walker(state: Walk()); iw.persist = false; iw.host = ih
     let idir = tmp.appendingPathComponent("menu", isDirectory: true)

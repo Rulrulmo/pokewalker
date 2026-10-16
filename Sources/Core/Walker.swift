@@ -55,6 +55,7 @@ import Foundation
     var oldApps: [String] = []                                             // 5.0: older PokeWalker.app copies on this Mac (OldApps.swift: the menu's row)
     var tipsOn = false, tipBits = 0                                        // 5.0: the first-time tips (Tips.swift): the app's walker only; which were said
     var relaunchAfterQuit = false, notedUpdate: String? = nil, updateNotices = 0   // the menu's 업데이트 설치: the quit starts the new version; the version a banner said was ready
+    var noteAsked: (v: String, at: Date)? = nil                            // docs/plans/22 (5.1.2): the update note last acted on (once in 10 minutes a version)
     var installWhenStaged = false, installAt: Date? = nil                  // 업데이트 확인 · 설치 clicked: what it finds goes in; the install's moment (after the LCD says so)
     /// What the quit runs to put a staged update in (relaunch: start it after); the self-test's stub records it instead.
     var installUpdate: @MainActor (_ relaunch: Bool) -> Bool = { r in Update.appURL.map { Update.install(dir: Update.dir, app: $0, relaunch: r) } ?? false }

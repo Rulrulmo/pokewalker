@@ -360,6 +360,12 @@ extension Walker {
     /// The tick's: a click's check answered — staged: in (once nothing's in progress); nothing newer, or it didn't work: said. Then the install itself.
     func updateTick(_ now: Date) {
         guard let u = updater else { return }
+        if let n = cloud?.updateNote {                                                              // docs/plans/22 (5.1.2): a reply said a newer one is out — ask now
+            cloud?.updateNote = nil
+            if verCmp(n.v, appVersion) == 1, n.v != noteAsked?.v || now.timeIntervalSince(noteAsked?.at ?? .distantPast) >= 600 {   // the same one: once in 10 minutes
+                noteAsked = (n.v, now); if n.urgent { u.urgent = true }; u.checkNow()
+            }
+        }
         let staged = stagedUpdate; updateWaits = staged                                             // (ready.json read once a tick; 5.0: home's NEW tag)
         if let v = u.staged { u.staged = nil; if !installWhenStaged { noteStaged(v) } }                // (a click's own download: no banner, it goes in)
         if let v = u.available, let why = u.blocked, v != notedUpdate, !installWhenStaged {           // 3.8.5: out, can't go in here — a banner, once a version

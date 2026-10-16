@@ -302,11 +302,19 @@ final class CloudInbox: @unchecked Sendable {
     }
 
     // MARK: replies (08b §10's table; docs/plans/11 §3)
+    /// docs/plans/22 (5.1.2): the server's word, first in any reply, that a newer app is out for this one (pokeserver update-note) — the walker
+    /// asks /v1/update at once (Walker.updateTick). nil: none heard (an older server, the switch off, or this app is the newest).
+    var updateNote: UpdateNote? = nil
+    private func noteUpdate(_ s: Int, _ j: [String: Any]?) {
+        guard (200..<300).contains(s), let u = j?["update"] as? [String: Any], let v = u["v"] as? String else { return }
+        updateNote = UpdateNote(v: v, urgent: u["urgent"] as? Bool ?? false)
+    }
     private func take(_ now: Date) {
         for (a, s, body) in inbox.take() {
             if a == .duel {                                                                         // the duel's lane: its own in-flight, its own retry
                 duelInFlight = false
                 let j = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+                noteUpdate(s, j)
                 if s == 200, let r = try? JSONDecoder().decode(DuelReply.self, from: body) { duelReplies.append(r.duel); if let rec = r.record { duelRecord = rec; teamNews = true } }
                 else if s == 409, j?["reason"] as? String == "replaced" { drop(); phase = .replaced }
                 else { duelRetryAt = now.addingTimeInterval(3); duelReplies.append(nil) }      // (no answer: again in a moment)
@@ -315,6 +323,7 @@ final class CloudInbox: @unchecked Sendable {
             inFlight = nil
             guard s != 0, s < 500, let j = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] else { offline(a, now); continue }
             backoff = 0; retryAt = .distantPast                                                  // the server answered: online
+            noteUpdate(s, j)
             switch (a, s) {
             case (.act(let n), 200):
                 guard let o = out, o.seq == n else { continue }                                     // (an old session's: dropped already)
@@ -625,6 +634,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     var down = false, html: Int? = nil, lose = false, hold = false, old: String? = nil, pins = false
     var content5 = false                                                                         // 5.0: the login says content5 (pokeserver content5 on)
     var content51 = false, raidDaily = false                                                     // 5.1: … content51 (plan 19), raidDaily (plan 20)
+    var updateNoteSent: [String: Any]? = nil                                                     // 5.1.2 (plan 22): pokeserver update-note on, a newer app out
     var rng = Seeded(s: 77), nextUID = 1_000_001, now: Date? = nil, stepCap: Int? = nil       // stepCap: the steps allowance (the real one fills at 15 a second)
     var lastAct: [String: Date] = [:], inbox: [String: [News]] = [:], greeted: [String: Date] = [:]   // 12 §2 (M1): each trainer's last act, its undelivered 인사, a pair's last one
     // 4.0 (docs/plans/16): raid runs, as the server's ServerRaid.swift — this week's species; each trainer's runs (open: its fight on; a ball stage:
@@ -649,6 +659,9 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if path == "v2/duel" { duelRead(json, done); return }                                                   // (its long poll may wait: its own answer)
         if path == "v2/act" { (s, d) = act(json); flushDuelWaiters() } else if path == "v2/team" { (s, d) = team(json) } else if path == "v2/trades" { (s, d) = trades(json) } else if path == "v2/box" { (s, d) = box(json) } else if path == "v2/raid" { (s, d) = raidLobby(json) } else if path == "v2/market" { (s, d) = marketBoard(json) } else if path == "v2/mail" { (s, d) = mailBox(json) } else if path == "v2/expedition" { (s, d) = expeditionEvents(json) }
         else { let (st, body) = answer(path, (try? JSONSerialization.jsonObject(with: json)) as? [String: Any] ?? [:]); (s, d) = (st, (try? JSONSerialization.data(withJSONObject: body)) ?? Data()) }
+        if let n = updateNoteSent, (200..<300).contains(s), var o = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] {   // 5.1.2 (plan 22): first in any reply
+            o["update"] = n; d = (try? JSONSerialization.data(withJSONObject: o)) ?? d
+        }
         if lose { lose = false; s = 0; d = Data() }
         let st = s, dd = d
         if hold { held.append { done(st, dd) } } else { done(st, dd) }
