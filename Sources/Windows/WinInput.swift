@@ -34,9 +34,9 @@ extension WinCard {
         } }) else { return nil }
         var inner = RECT(); _ = GetClientRect(box, &inner)
         let cw = inner.right - inner.left, pad = px(12), font = GetStockObject(DEFAULT_GUI_FONT)
-        let text = message.replacingOccurrences(of: "\n", with: "\r\n")
+        let said = message.replacingOccurrences(of: "\n", with: "\r\n")
         var need = RECT(left: 0, top: 0, right: cw - 2 * pad, bottom: 0)                             // 5.1.2: a longer message (the login that didn't read) grows the box
-        if let dc = GetDC(box) { let old = SelectObject(dc, font); _ = wide(text) { DrawTextW(dc, $0, -1, &need, UINT(DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX)) }; _ = SelectObject(dc, old); _ = ReleaseDC(box, dc) }
+        if let dc = GetDC(box) { let old = SelectObject(dc, font); _ = wide(said) { DrawTextW(dc, $0, -1, &need, UINT(DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX)) }; _ = SelectObject(dc, old); _ = ReleaseDC(box, dc) }
         let msgH = max(px(40), need.bottom - need.top + px(4)), grow = msgH - px(40)
         if grow > 0 { _ = SetWindowPos(box, nil, x, max(mi.rcWork.top, y - grow / 2), w, h + grow, UINT(SWP_NOZORDER | SWP_NOACTIVATE)); _ = GetClientRect(box, &inner) }
         func child(_ kind: String, _ text: String, _ style: Int32, _ x: Int32, _ y: Int32, _ w: Int32, _ h: Int32, _ id: Int32) -> HWND? {
@@ -46,7 +46,7 @@ extension WinCard {
             _ = SendMessageW(c, UINT(WM_SETFONT), WPARAM(UInt(bitPattern: font)), 1)
             return c
         }
-        _ = child("STATIC", text, 0, pad, pad, cw - 2 * pad, msgH, 0)
+        _ = child("STATIC", said, 0, pad, pad, cw - 2 * pad, msgH, 0)
         let edit = child("EDIT", "", WS_TABSTOP | ES_AUTOHSCROLL | (pin ? ES_PASSWORD | ES_NUMBER : 0), pad, pad + msgH + px(6), pin ? px(90) : cw - 2 * pad, px(26), 100)
         if pin { _ = SendMessageW(edit, UINT(EM_LIMITTEXT), 4, 0) }
         let bw = px(88), bh = px(28), by = inner.bottom - pad - bh
