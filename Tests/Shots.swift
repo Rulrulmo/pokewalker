@@ -575,6 +575,34 @@ import AppKit
         take("flower_pick", pw) { v in v.screen = .formPick(ref: -4, item: "그라시데아꽃", sel: 1) }
         take("flower_sky_page", pw) { v in v.state.caught[2].form = 1; v.screen = .box(-4, act: nil, confirm: false, detail: true) }
     } }
+    // 5.1 (docs/plans/19 §1 · §9, content51): 전설 원정 — 모험 ▸, 홈's sixth row (a team event, the cells, 조립), the page (시작 전 · 지금 · 50), a cell's
+    // card, the cells put together
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) {
+        var r8 = Seeded(s: 12), saur = Mon.wild(3, level: 52, &r8); saur.ability = 0
+        let ew = online({ var s = base(); s.companion = saur; s.caught = [Mon.wild(25, level: 40, &r8)]; s.watts = 6420; s.today = 12_400; s.total = 1_284_300; return s }())
+        let (esrv, _) = server(ew), t0 = Int(Date().timeIntervalSince1970)
+        esrv.expEvents = [TeamEventView(id: 1, legend: 494, starts: t0 - 4 * 86_400, ends: t0 + 3 * 86_400 - 600, goal: 1_500_000, min: 20_000, team: 931_200, mine: 12_400, got: false)]
+        ew.cloud!.expeditionDue = true; drain(ew)
+        take("exp_menu_first", ew) { v in v.screen = .menu(group: nil, sel: 1) }
+        take("exp_menu_group", ew) { v in v.screen = menuFor("전설 원정") }
+        take("exp_home_team", ew) { v in v.screen = .home }
+        take("exp_list_team", ew) { v in v.screen = .expedition(0) }
+        take("exp_list_start", ew) { v in v.screen = .expedition(1) }
+        take("exp_list_later", ew) { v in v.screen = .expedition(2) }
+        serve(ew) { $0.expeditions = ["지가르데": ExpProgress(on: true, n: 23, steps: 1_760, mon: Mon(dex: 718, level: 50, female: false))] }
+        take("exp_list_cells", ew) { v in v.screen = .expedition(1) }
+        esrv.expEvents = []; ew.cloud!.expeditionDue = true; drain(ew)
+        take("exp_home_cells", ew) { v in v.screen = .home }
+        let found = ["지가르데 셀을", "모았다!", "24/50"]
+        take("exp_cell_found", ew) { v in v.sayStone = (found, "지가르데셀"); v.screen = .say(found, next: .home, since: Date()) }
+        ew.sayStone = nil
+        serve(ew) { $0.expeditions?["지가르데"]?.n = 50 }
+        take("exp_list_ready", ew) { v in v.screen = .expedition(0) }
+        take("exp_home_ready", ew) { v in v.screen = .home }
+        take("exp_menu_ready", ew) { v in v.screen = .menu(group: nil, sel: 1) }
+        for u in [0.9, 2.3, 3.3, 4.6] { take("exp_assemble_\(Int(u * 10))", ew) { v in v.screen = .assemble(Mon(dex: 718, level: 50, female: false), since: Date().addingTimeInterval(-u)) } }
+        take("exp_assembled", ew) { v in v.screen = .say(["지가르데를", "상자에 보냈다!", "특성패치를 받았다!"], next: .expedition(0), since: Date()) }
+    } }
     return n
 }
 #endif

@@ -128,6 +128,7 @@ extension Canvas {
         else if let t = p.team { drawTeam(t) } else if let t = p.teamCard { drawTeamCard(t) }
         else if let t = p.trades { drawTrades(t) } else if let o = p.offer { drawOffer(o) } else if let k = p.pick { drawPick(k) }
         else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let v = p.visits { drawVisits(v) } else if let s = p.squad { drawSquad(s) } else if let h = p.duelHub { drawDuelHub(h) } else if let m = p.mailList { drawMailList(m) } else if let m = p.mailOpen { drawMailOpen(m) } else if let m = p.mailPick { drawMailPick(m) } else if let r = p.raid { drawRaid(r) } else if let r = p.raidTier { drawRaidTier(r) } else if let g = p.goals { drawGoals(g) } else if let r = p.raidBalls { drawRaidBalls(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
+        else if let e = p.exp { drawExp(e) }
         else if let s = p.status { drawStatus(s) }
         if let f = flash, Date().timeIntervalSince(f.at) < 0.15, let rc = hits.first(where: { $0.1 == f.code })?.0 {   // 5.0: the press, seen
             c.fill(.rounded(rc, min(10 * K, rc.height / 2)), Color(white: 0, alpha: 0.12))
@@ -599,7 +600,8 @@ extension Canvas {
         for (i, row) in s.rows.enumerated() {
             let link = Walker.homeLinks[row.key]
             c.say(row.key, x(X0 + 2), y(yy + 10), font(9, .medium), Ink.sub)
-            c.say(row.value, x(X1 - 2) - (link != nil ? x(10) : 0), y(yy + 10), font(10, .medium), Ink.ink, 1, maxW: x(X1 - X0 - 70))
+            let vw = c.say(row.value, x(X1 - 2) - (link != nil ? x(10) : 0), y(yy + 10), font(10, .medium), Ink.ink, 1, maxW: x(X1 - X0 - 70))
+            if let b = row.bar { let x0 = x(X0 + 2) + width(row.key, font(9, .medium)) + x(8), x1 = x(X1 - 2) - (link != nil ? x(10) : 0) - vw - x(8); if x1 - x0 > x(16) { c.bar(x0, x1, y(yy + 10), CGFloat(b), b >= 1 ? Ink.gold : Ink.red, h: x(4)) } }   // 5.1: 전설 원정's
             if link != nil { c.say("›", x(X1 - 2), y(yy + 10), font(11, .bold), Ink.faint, 1); hits.append((r(X0, yy - 1, X1 - X0, 22), 9300 + i)) }
             yy += 22
         }
@@ -1365,6 +1367,30 @@ extension Page {
             hits.append((rc, 9100 + i))
         }
         if !m.hint.isEmpty { c.say(m.hint, x(Layout.w / 2), y(216 + CGFloat(m.rows.count) * 30 + 10), font(9, .medium), Ink.sub, 0.5) }
+    }
+    // MARK: 전설 원정 (5.1, ExpView.swift): a row each — its legends' icons (a shadow till it opens), name, kind, a bar (a team event's: mine under it),
+    // what's next; the pick's two lines and its button (9230)
+    func drawExp(_ m: ExpModel) {
+        c.say("전설 원정", x(X0 + 2), y(206), font(12, .bold), Ink.ink)
+        c.say(m.got, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
+        for (i, row) in m.rows.enumerated() {
+            let rc = r(X0, 216 + CGFloat(i) * 30, X1 - X0, 27); tile(rc, 8, on: i == m.sel)
+            for (k, d) in row.dex.prefix(3).enumerated().reversed() {
+                monIcon(d, shiny: false, CGRect(x: rc.minX + x(1 + CGFloat(k) * 8), y: rc.midY - x(13), width: x(26), height: x(26)), side: 26 * K, shadow: row.off)
+            }
+            let tx = rc.minX + x(44), fg = row.off ? Ink.sub : row.ready ? Ink.red : row.done ? Ink.c(150, 96, 16) : Ink.ink
+            let cw = c.say(row.chip, rc.maxX - x(8), rc.minY + x(8.5), font(8, .medium), row.ready ? Ink.red : Ink.sub, 1)
+            c.say(row.name, tx, rc.minY + x(8.5), font(10, .bold), fg, maxW: rc.maxX - x(14) - cw - tx)
+            if row.off { c.say(row.note, tx, rc.minY + x(19.5), font(8, .medium), Ink.faint); hits.append((rc, 9200 + i)); continue }
+            let bx1 = tx + rc.width * 0.3
+            c.bar(tx, bx1, rc.minY + x(row.mine == nil ? 19 : 17.5), CGFloat(row.frac), row.done ? Ink.gold : Ink.red, h: x(4))
+            if let mine = row.mine { c.bar(tx, bx1, rc.minY + x(22.5), CGFloat(mine), mine >= 1 ? Ink.green : Ink.blue, h: x(2.5)) }
+            c.say(row.note, bx1 + x(6), rc.minY + x(19.5), font(8, .medium), row.ready ? Ink.red : Ink.sub, maxW: rc.maxX - bx1 - x(14))
+            hits.append((rc, 9200 + i))
+        }
+        var yy = 216 + CGFloat(m.rows.count) * 30 + 6
+        for l in m.detail { c.say(l, x(X0 + 4), y(yy + 4), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 8)); yy += 13 }
+        if let go = m.go { let rc = r(X0, 428, X1 - X0, 28); c.fill(.rounded(rc, 10 * K), Ink.red); c.say(go, rc.midX, rc.midY, font(11, .bold), .white, 0.5, maxW: rc.width - x(10)); hits.append((rc, 9230)) }
     }
     func drawRaidTier(_ m: RaidTierModel) {
         let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)

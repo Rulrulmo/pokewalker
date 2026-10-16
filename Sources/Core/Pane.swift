@@ -24,7 +24,7 @@ struct ShopModel: Equatable {
 }
 /// The status sheet (home's page, and any screen without one of its own): the companion, today, then the rest.
 struct StatusModel: Equatable {
-    struct Row: Equatable { var key, value: String }
+    struct Row: Equatable { var key, value: String; var bar: Double? = nil }   // bar (5.1): 전설 원정's, between the key and the words
     var art: Int; var name, sex, level, toNext, nature: String; var female: Bool; var v: Int; var exp: CGFloat; var numbers: [Row]; var rows: [Row]
 }
 /// 메뉴: the LCD's pages as tiles, the one on the LCD picked.
@@ -264,6 +264,7 @@ struct PaneContent: Equatable {
     var raid: RaidModel? = nil
     var raidTier: RaidTierModel? = nil, raidBalls: RaidBallsModel? = nil
     var goals: GoalsModel? = nil                                       // 5.0: 도감 업적
+    var exp: ExpModel? = nil                                           // 5.1: 전설 원정
     var friendReqs: FriendReqModel? = nil, board: MarketBoardModel? = nil, post: MarketPostModel? = nil
     var duel: DuelModel? = nil, hold: HoldModel? = nil, visits: VisitsModel? = nil
     var squad: SquadModel? = nil, duelHub: DuelHubModel? = nil
@@ -272,10 +273,10 @@ struct PaneContent: Equatable {
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
     static let tallest: CGFloat = 484                                                              // a Pokémon's page: the size menu keeps it on the screen
-    static let home: CGFloat = 446                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size; 5.0: 홈's quick buttons)
+    static var home: CGFloat { Content.v51 ? 468 : 446 }   // (5.1: 홈's sixth row, 전설 원정 — the user: "그냥 한줄 늘리는게 낫지 않아?")                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size; 5.0: 홈's quick buttons)
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 508 : grid?.regions != nil ? 448 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 472 : dex != nil ? (dex!.form != nil ? 420 : 390) : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
             : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil || raidTier != nil || raidBalls != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446 : mailList != nil || mailOpen != nil || mailPick != nil ? 466
-            : radar != nil ? 327 : goals != nil ? 466 : card != nil ? (card!.picking ? 270 + 30 * CGFloat(card!.titles.count + 1) : card!.title != nil || card!.deco != nil || card!.stones != nil ? 254 : 230) : learn != nil ? 444 : tower != nil ? 400 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
+            : radar != nil ? 327 : goals != nil || exp != nil ? 466 : card != nil ? (card!.picking ? 270 + 30 * CGFloat(card!.titles.count + 1) : card!.title != nil || card!.deco != nil || card!.stones != nil ? 254 : 230) : learn != nil ? 444 : tower != nil ? 400 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
     }
 }

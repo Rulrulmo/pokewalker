@@ -9,7 +9,7 @@ extension Walker {
     /// 홈's quick buttons: a feature each, its red dot (something waits there).
     static let quick = ["포켓 레이더", "포켓몬", "도구", "우편함"]
     /// 홈's rows → the page each opens (the status sheet's 알 · 배틀 타워 · 도감 · 레이드 · 친구).
-    static let homeLinks: [String: String] = ["알": "트레이너 카드", "배틀 타워": "배틀 타워", "도감": "도감", "레이드": "레이드", "친구": "친구"]
+    static let homeLinks: [String: String] = ["전설 원정": "전설 원정", "알": "트레이너 카드", "배틀 타워": "배틀 타워", "도감": "도감", "레이드": "레이드", "친구": "친구"]
     func quickOpen(_ name: String) {
         guard !frozen, waiting == nil else { return }
         lastInput = Date(); host?.redraw(.all)
@@ -53,7 +53,7 @@ extension Walker {
 
     // MARK: the shortcuts (5.0): 1–8 the menu's tiles (a group's page: its rows), R 포켓 레이더, B 포켓몬, I 도구, / 찾기 (도감, 상자)
     func shortcut(_ k: Key) -> Bool {
-        let calmPage: Bool = { switch screen { case .home, .menu, .dex(_, _, false), .box(_, .none, _, false), .items, .card, .goals, .course: true; default: false } }()
+        let calmPage: Bool = { switch screen { case .home, .menu, .dex(_, _, false), .box(_, .none, _, false), .items, .card, .goals, .course, .expedition: true; default: false } }()
         guard calmPage else { return false }
         switch k {
         case .digit(let n) where (1...8).contains(n):

@@ -50,7 +50,7 @@ final class CloudInbox: @unchecked Sendable {
     /// The PIN the server wants (docs/plans/10 §3): this trainer's (wrong: the last one wasn't), a new one (a 2.0 ID has none yet), or none for a while (too many wrong).
     enum PinAsk: Equatable { case enter(wrong: Bool), set, locked(until: Date) }
     /// A request out, kept to read its reply by: an act carries its seq.
-    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, legacy, setPin, act(Int), team, trades, box(String), raid, megaRaid, market, duel, mail }
+    enum Ask: Sendable, Equatable { case login(force: Bool, resume: Bool), create, legacy, setPin, act(Int), team, trades, box(String), raid, megaRaid, market, duel, mail, expedition }   // expedition (5.1): the team events
     /// This PC's, in cloud.json next to the save: the ID as typed, the server's session, a random id made once, whether the 1.x save went up, the
     /// server's trust token for this PC (the PIN goes in once a PC: 10 §3), and steps walked here that haven't gone up yet (a quit while offline).
     struct Seat: Codable, Equatable { var trainerID: String? = nil, session: String? = nil, device: String? = nil, legacyUploaded: Bool? = nil, trust: String? = nil, steps: Int? = nil }
@@ -93,6 +93,7 @@ final class CloudInbox: @unchecked Sendable {
     private(set) var market: MarketReply? = nil; var marketDue = false
     // 3.9 (15 §2): the 우편함 as the server last listed it (a read); mails opened since, sent as read with the next one
     private(set) var mail: MailReply? = nil; var mailDue = false, mailRead: Set<Int> = []
+    private(set) var expedition: ExpReply? = nil; var expeditionDue = false   // 5.1 (docs/plans/19 §9): the team events (/v2/expedition), with the team every 3 minutes
     var marketSeen: Int? = nil                                             // 3.8 (14 §2.2): one of my posts just opened — its offers count as seen (sent with the next read)
     // 12 §5 (3.6): a live battle's polls — a lane of their own (a long poll holds up to 25 s; acts and steps don't wait for it)
     var duelPoll: DuelReq? = nil                                           // the next one to send (the walker's: since, wait, version)
@@ -182,12 +183,13 @@ final class CloudInbox: @unchecked Sendable {
         if let a = queued { queued = nil; sendAct(a, now); return }
         if legacy != nil, seat.legacyUploaded != true { send(.legacy); return }
         if unsent > 0 || base == nil, now >= stepsAt { sendAct(.steps, now); return }           // (no save yet: a new trainer's comes with its first act)
-        if base != nil, teamDue || teamAt.map({ now.timeIntervalSince($0) > Cloud.teamEvery }) ?? true { teamDue = false; teamAt = teamAt ?? now; tradesDue = true; raidDue = true; marketDue = true; mailDue = true; send(.team); return }   // (every 3 minutes: who's walking now; the offers after it)
+        if base != nil, teamDue || teamAt.map({ now.timeIntervalSince($0) > Cloud.teamEvery }) ?? true { teamDue = false; teamAt = teamAt ?? now; tradesDue = true; raidDue = true; marketDue = true; mailDue = true; expeditionDue = Content.v51; send(.team); return }   // (every 3 minutes: who's walking now; the offers after it)
         if base != nil, tradesDue { tradesDue = false; send(.trades); return }
         if base != nil, let b = boxDue { boxDue = nil; send(.box(b)); return }
         if base != nil, raidDue { raidDue = false; send(.raid); return }
         if base != nil, megaRaidDue { megaRaidDue = false; send(.megaRaid); return }
         if base != nil, marketDue { marketDue = false; send(.market); return }
+        if base != nil, expeditionDue { expeditionDue = false; send(.expedition); return }
         if base != nil, mailDue { mailDue = false; send(.mail) }
     }
     /// Quitting: the steps go up (after the act out), waiting at most `timeout`. The reply comes on URLSession's queue, so the main thread can wait.
@@ -231,6 +233,7 @@ final class CloudInbox: @unchecked Sendable {
         case .team: post(a, "v2/team", (try? JSONEncoder().encode(TeamReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .market: post(a, "v2/market", (try? JSONEncoder().encode(MarketReq(id: id, session: seat.session ?? "", seen: marketSeen))) ?? Data()); marketSeen = nil
         case .duel: break                                                                         // (its own lane: tick)
+        case .expedition: post(a, "v2/expedition", (try? JSONEncoder().encode(ExpReq(id: id, session: seat.session ?? ""))) ?? Data())
         case .mail: post(a, "v2/mail", (try? JSONEncoder().encode(MailReq(id: id, session: seat.session ?? "", read: mailRead.isEmpty ? nil : mailRead.sorted()))) ?? Data()); mailRead = []
         case .raid: post(a, "v2/raid", (try? JSONEncoder().encode(RaidReq(id: id, session: seat.session ?? "", app: appVersion))) ?? Data())   // (4.0: the runs' lobby by the app)
         case .megaRaid: post(a, "v2/raid", (try? JSONEncoder().encode(RaidReq(id: id, session: seat.session ?? "", app: appVersion, kind: "mega"))) ?? Data())
@@ -286,9 +289,10 @@ final class CloudInbox: @unchecked Sendable {
             case (.megaRaid, 200): if let r = try? JSONDecoder().decode(MegaRaidLobby.self, from: body) { megaRaid = r; tradesNews = true; raidNews = true }
             case (.market, 200): if let r = try? JSONDecoder().decode(MarketReply.self, from: body) { market = r; tradesNews = true }
             case (.mail, 200): if let r = try? JSONDecoder().decode(MailReply.self, from: body) { mail = r; tradesNews = true }
+            case (.expedition, 200): if let r = try? JSONDecoder().decode(ExpReply.self, from: body) { expedition = r; tradesNews = true }
             case (.box(let of), 404): boxGone = of; tradesNews = true                              // theirs isn't there (ours being gone: the next act says so)
-            case (.team, 409), (.trades, 409), (.box, 409), (.raid, 409), (.market, 409), (.mail, 409): if j["reason"] as? String == "replaced" { drop(); phase = .replaced }
-            case (.team, 403), (.trades, 403), (.box, 403), (.raid, 403), (.market, 403), (.mail, 403): if j["error"] as? String == "pin_needed" { phase = .pin(.set) }
+            case (.team, 409), (.trades, 409), (.box, 409), (.raid, 409), (.market, 409), (.mail, 409), (.expedition, 409): if j["reason"] as? String == "replaced" { drop(); phase = .replaced }
+            case (.team, 403), (.trades, 403), (.box, 403), (.raid, 403), (.market, 403), (.mail, 403), (.expedition, 403): if j["error"] as? String == "pin_needed" { phase = .pin(.set) }
             case (_, 426): phase = .oldApp; NSLog("pokewalker: cloud: the server wants app %@ (this is %@)", j["need"] as? String ?? "?", appVersion)
             case (.login(_, let resume), 200): loggedIn(j, resume: resume, now)
             case (.create, 200) where j["session"] is String:
@@ -314,7 +318,7 @@ final class CloudInbox: @unchecked Sendable {
                 switch a {
                 case .login, .create: asking = a
                 case .legacy: legacy = nil
-                case .team, .trades, .box, .raid, .megaRaid, .market, .duel, .mail: break                                  // (again in 3 minutes; a box when asked again)
+                case .team, .trades, .box, .raid, .megaRaid, .market, .duel, .mail, .expedition: break                                  // (again in 3 minutes; a box when asked again)
                 case .act: if let o = out { answers.append((o.act, nil)) }; out = nil; sending = 0   // not one the server will take: dropped
                 case .setPin: pendingPIN = nil; phase = .pin(.set)
                 }
@@ -346,7 +350,7 @@ final class CloudInbox: @unchecked Sendable {
         case .login(_, true): phase = .replaced                                               // 여기서 계속 again, once it's back
         case .login where seat.session != nil && base != nil: phase = .on; asking = a          // played here before: steps pile up, acts wait for the server
         case .login, .create: asking = a
-        case .legacy, .team, .trades, .box, .raid, .megaRaid, .market, .duel, .mail: break
+        case .legacy, .team, .trades, .box, .raid, .megaRaid, .market, .duel, .mail, .expedition: break
         case .setPin: phase = .pin(.set)                                                        // the button again, once it's back
         case .act: if let o = out { answers.append((o.act, nil)) }; if let q = queued { answers.append((q, nil)); queued = nil }
         }
@@ -572,7 +576,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if let h = html { done(h, Data("<html><body>Bad gateway</body></html>".utf8)); return }          // Cloudflare's own: the server never saw it
         var (s, d): (Int, Data)
         if path == "v2/duel" { duelRead(json, done); return }                                                   // (its long poll may wait: its own answer)
-        if path == "v2/act" { (s, d) = act(json); flushDuelWaiters() } else if path == "v2/team" { (s, d) = team(json) } else if path == "v2/trades" { (s, d) = trades(json) } else if path == "v2/box" { (s, d) = box(json) } else if path == "v2/raid" { (s, d) = raidLobby(json) } else if path == "v2/market" { (s, d) = marketBoard(json) } else if path == "v2/mail" { (s, d) = mailBox(json) }
+        if path == "v2/act" { (s, d) = act(json); flushDuelWaiters() } else if path == "v2/team" { (s, d) = team(json) } else if path == "v2/trades" { (s, d) = trades(json) } else if path == "v2/box" { (s, d) = box(json) } else if path == "v2/raid" { (s, d) = raidLobby(json) } else if path == "v2/market" { (s, d) = marketBoard(json) } else if path == "v2/mail" { (s, d) = mailBox(json) } else if path == "v2/expedition" { (s, d) = expeditionEvents(json) }
         else { let (st, body) = answer(path, (try? JSONSerialization.jsonObject(with: json)) as? [String: Any] ?? [:]); (s, d) = (st, (try? JSONSerialization.data(withJSONObject: body)) ?? Data()) }
         if lose { lose = false; s = 0; d = Data() }
         let st = s, dd = d
@@ -900,6 +904,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     // 3.8 (14 §3): 맡겨 키우기 — one away per owner, three guests per host; the host's steps raise it; home through the 받기 함
     struct FakeVisit { var id: Int; var owner, ownerName, host, hostName: String; var mon: Mon; var steps = 0; var on = true; var ends: Int; var bp = 0; var paid = false }
     var visitList: [FakeVisit] = [], nextVisit = 1, viewAll: Set<String> = []
+    var expEvents: [TeamEventView] = []                                // 5.1: /v2/expedition's team events (a test's)
     func visitAct(_ a: Act, _ key: String, _ name: String, _ w: inout Walk, _ news: inout [News]) -> String? {
         switch a {
         case .visitSend(let raw, let uid):
@@ -1014,6 +1019,12 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             giveMail(key, "tower", from: "배틀 타워", title: "\(r.wins)연승 달성 보상", body: "배틀 타워에서 처음으로 \(r.wins)연승에 닿았어요.", r.gifts)
         }
         if let paid = towerPaid[key], Set(w.towerRewards ?? []) != paid { w.towerRewards = paid.sorted() }
+    }
+    /// POST /v2/expedition (5.1, docs/plans/19 §9): the team events as this trainer sees them — the tests' own (expEvents), as the server orders them.
+    func expeditionEvents(_ d: Data) -> (Int, Data) {
+        guard let q = try? JSONDecoder().decode(ExpReq.self, from: d), let id = trainerID(q.id), let r = rows[id.key] else { return err(404, ["error": "no_trainer"]) }
+        guard q.session == r.session else { return err(409, ["error": "conflict", "reason": "replaced"]) }
+        return (200, (try? JSONEncoder().encode(ExpReply(events: expEvents))) ?? Data())
     }
     /// POST /v2/mail: gifts waiting first, then the newest; read = the ones just opened.
     func mailBox(_ d: Data) -> (Int, Data) {

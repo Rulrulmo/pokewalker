@@ -24,6 +24,7 @@ import Foundation
     var lastTile = min(max(settings.int("ui.lastTile", 0), 0), 7) { didSet { if persist { settings.set("ui.lastTile", lastTile) } } }   // 5.0: the menu's tile last opened (the 메뉴 key comes back to it; kept)
     var boxQuery = ""                                                      // 5.0: the 상자 grid's 찾기 (names, numbers, types, 이로치, 3V, 도구: UXView.swift)
     var goalsSeen = settings.int("ui.goalsSeen", 0)                        // 5.0: how many 도감 업적 were mailed when the page was last opened (its red dot)                                                  // 5.0: the card's 칭호 list open (two or more: pick the one shown)                   // 5.0: the message saying a Mega stone came, and its stone (drawn big on its card: LCDDeco)
+    var expAfter: Screen? = nil                                            // 5.1: after 지가르데's show (Screen.assemble): its line, then the page
     var megaOn = false                                                     // 5.0 (docs/plans/18 §9.6): 메가진화 ticked on the move screen: the move goes as .megaFight
     var chainNote: String? = nil                                           // "+6W · 기력의조각" under "연쇄 3!"
     var keyShown: Bool?? = .none                                           // the 메뉴 / 홈 key as last shown (see homeKey)
@@ -110,8 +111,9 @@ import Foundation
         case .say(_, let next, let since) where now.timeIntervalSince(since) > 3: screen = next
         case .evolve(_, _, let since) where now.timeIntervalSince(since) > 6.5: screen = .home
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
+        case .assemble(_, let since) where now.timeIntervalSince(since) > 5.5: screen = expAfter ?? .home; expAfter = nil   // 5.1: then its line, back on the page
         case .traded(_, _, _, let since) where now.timeIntervalSince(since) > 6: screen = .home
-        case .menu, .card, .items, .dex, .goals, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid(.lobby), .raid(.tier), .itemOn, .hold, .visitPick: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
+        case .menu, .card, .items, .dex, .goals, .expedition, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid(.lobby), .raid(.tier), .itemOn, .hold, .visitPick: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
         case .trade, .market, .mail: if now.timeIntervalSince(lastInput) > 60 { screen = .home }       // (a trade is weighed up: longer)
         case .raid(.balls): if now.timeIntervalSince(lastInput) > 120 { screen = .home }               // 4.0: left alone, not given up — the stage waits (the lobby goes back to it)
         default: break
@@ -123,7 +125,7 @@ import Foundation
         tipTick(now)                                                                               // 5.0: a first-time tip, at home
     }
     /// Fights, shows and animations play at 30 fps; the rest (the walking sprite too: HGSS steps it every 0.15 s) at the tick's 10.
-    var busy: Bool { switch screen { case .beats, .hatch, .evolve, .radar, .traded: true; default: animating || waiting != nil } }   // (an act out: its dots)
+    var busy: Bool { switch screen { case .beats, .hatch, .evolve, .radar, .traded, .assemble: true; default: animating || waiting != nil } }   // (an act out: its dots)
 
     /// The keys as the walker knows them: ◀ ▶ ↑ ↓, page up / down, tab, ● (return / space), ↩ (esc), 메뉴 / 홈 (M).
     enum Key: Hashable { case left, right, up, down, pageUp, pageDown, tab, enter, back, menu, digit(Int), letter(Character) }   // 5.0: 1–8 the menu's tiles, R · B · I · / (UXView.swift)
@@ -188,6 +190,7 @@ import Foundation
         let when = "\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · \((state.weather ?? .sunny).name)"
         switch sc {
         case .dex: return ("도감", "잡음 \(dexCount) · 봤음 \(seenList.count)")
+        case .expedition: return ("전설 원정", "전설 \(Walker.expLegends.filter { (state.owned ?? []).contains($0) }.count)/\(Walker.expLegends.count)종")
         case .goals: return ("도감 업적", "받은 업적 \((state.dexRewards ?? []).count)개")
         case .box(let i, _, _, true) where state.mon(i)?.ot != nil: return ("포켓몬", "어버이: " + (state.mon(i)?.ot ?? ""))   // a traded one: who it came from first
         case .box, .items: return ("포켓몬", "워커 \(state.caught.count) · 상자 \(state.box.count.formatted()) · 도구 \(state.items.count + state.bag.count)")

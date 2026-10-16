@@ -149,7 +149,7 @@ extension Walker {
         case .tower(nil): return .tower
         case .raid(.lobby), .raid(.tier): return raidMega ? .mega : .raid
         case .card: return .card
-        case .course: return .course
+        case .course, .expedition: return .course
         default: return nil
         }
     }
@@ -249,6 +249,10 @@ extension Walker {
         fb.pic("deco|scene|notice" + tone, 96, 64, under: true) { ready(LCDScenes.scene(.notice)) }
         fb.pic("deco|veil" + tone, 96, 64, under: true) { ready(LCDScenes.veil()) }
         fb.pic("deco|card|\(k)|\(w)|\(h)" + tone, 96, y0 + y1, under: true) { ready(LCDScenes.noticeCard(k, w, h)) }
+        if stone == "지가르데셀" {                                                                   // 5.1: a 지가르데 셀 come, big on the card's left
+            fb.pic("deco|glow|cell" + tone, 42, y0 + y1, scale: 0.95 + 0.05 * sin(Date().timeIntervalSinceReferenceDate * 3), under: true) { ready(LCDDeco.glow(rgb(150, 240, 140))) }
+            fb.pic("deco|cell" + tone, 42, y0 + y1, scale: 2.5, under: true) { ready(itemPic("지가르데셀")) }; return
+        }
         guard let stone, let b = MegaRaid.bosses.first(where: { $0.stone == stone }) else { return }
         let type = (Forms.of(b.dex, b.form)?.types ?? monTypes[b.dex]).first ?? "normal", t = Date().timeIntervalSinceReferenceDate
         fb.pic("deco|glow|stone" + tone, 42, y0 + y1, scale: 0.95 + 0.05 * sin(t * 3), under: true) { ready(LCDDeco.glow(rgb(255, 214, 90))) }
