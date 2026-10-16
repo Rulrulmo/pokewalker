@@ -90,6 +90,7 @@ if launch == .installing { exit(0) }
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let loaded = Store.loadChecked(signedBefore: settings.bool("saveSigned", false))             // a save changed by hand: the last one the app made
+Content.atLaunch(loaded.walk)                                                                 // 5.1.1: the server's switches as last heard, before the save is used
 let walker = Walker(state: loaded.walk), view = WalkerView(walker: walker)                  // the view is the walker's host
 walker.startCloud(Cloud.app(persist: walker.persist))                                         // the save server, if on: a 1.x save goes aside first (08 §5)
 walker.updater = Updater.app(persist: walker.persist)

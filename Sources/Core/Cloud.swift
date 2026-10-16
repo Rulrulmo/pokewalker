@@ -98,7 +98,7 @@ final class CloudInbox: @unchecked Sendable {
     private(set) var expedition: ExpReply? = nil; var expeditionDue = false
     private var dailyAsked = 0, megaDailyAsked = 0                       // 5.1 (plan 20): the lobby's end we asked again for (once)
     /// 5.1 (plan 20 §11, the server's cd2317c): the raids by the day — the login says so (raidDaily), and each lobby again (daily: a switch flipped while the app is up); the app's power rules (Walk.rollover's 2칸, the 10칸 bank) follow.
-    private func daily(_ on: Bool?) { if Content.testingDaily == nil { Content.onDaily = on ?? false } }   // 5.1 (docs/plans/19 §9): the team events (/v2/expedition), with the team every 3 minutes
+    private func daily(_ on: Bool?) { if Content.testingDaily == nil { Content.onDaily = on ?? false; Content.keep() } }   // 5.1 (docs/plans/19 §9): the team events (/v2/expedition), with the team every 3 minutes
     var marketSeen: Int? = nil                                             // 3.8 (14 §2.2): one of my posts just opened — its offers count as seen (sent with the next read)
     // 12 §5 (3.6): a live battle's polls — a lane of their own (a long poll holds up to 25 s; acts and steps don't wait for it)
     var duelPoll: DuelReq? = nil                                           // the next one to send (the walker's: since, wait, version)
@@ -308,6 +308,7 @@ final class CloudInbox: @unchecked Sendable {
             case (.create, 200) where j["session"] is String:
                 Content.on = j["content5"] as? Bool ?? false                                          // 5.0: as the login's — a new trainer's first session too
                 Content.on51 = j["content51"] as? Bool ?? false; Content.onDaily = j["raidDaily"] as? Bool ?? false   // 5.1 (plans 19 §9 · 20 §11)
+                Content.keep()                                                                          // 5.1.1: for the next launch
                 drop(); seat.session = j["session"] as? String; seat.trust = j["trust"] as? String ?? seat.trust; pendingPIN = nil
                 base = nil; phase = .on; lastSaved = now; stepsAt = now                                 // its first save (the starter's) comes with the first act
             case (.create, 400) where j["error"] as? String == "bad_pin": pendingPIN = nil; phase = .new(seat.trainerID ?? "")   // (the box checks: not met)
@@ -345,6 +346,7 @@ final class CloudInbox: @unchecked Sendable {
         Content.on = j["content5"] as? Bool ?? false                                          // 5.0 (docs/plans/18 §14.4): the server's rules, before any fight of this session
         Content.on51 = j["content51"] as? Bool ?? false                                       // 5.1 (plan 19 §9): 전설 원정 · 특성패치 · the form items · 모험 ▸
         Content.onDaily = j["raidDaily"] as? Bool ?? false                                    // 5.1 (plan 20 §11): the raids by the day (the lobbies' own `daily` after)
+        Content.keep()                                                                        // 5.1.1: for the next launch (before the login, the save is read with these)
         if let text = j["walk"] as? String {
             guard let w = Cloud.walk(text) else {                                              // one this app can't read: nothing to show it with
                 NSLog("pokewalker: cloud: the server's save doesn't decode"); phase = .login; asking = .login(force: resume, resume: resume); retryAt = now.addingTimeInterval(Cloud.period); return
@@ -1564,3 +1566,17 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     return c
 }
 @MainActor private func isRadar(_ s: Screen) -> Bool { if case .radar = s { return true }; return false }
+
+// MARK: - 5.1.1: the server's switches across launches
+extension Content {
+    /// 5.1.1 (10-16, krackde's dump: Walk.here trapped before the window — a 하나 · 칼로스 course, 35+, read with content5 not known yet): at
+    /// launch, before the save is used, the switches the server gave last (kept in the settings); the login's reply sets them again as now. A PC
+    /// that never heard them (a new install, a 5.1 save): what the save holds says content5 — a course past the 35 or a Pokémon past 493 only came
+    /// with it.
+    @MainActor static func atLaunch(_ w: Walk) {
+        on = settings.bool("content5", false) || w.course >= coursesGen4.count || ([w.companion] + w.caught + w.box).contains { $0.dex > 493 }
+        on51 = settings.bool("content51", false); onDaily = settings.bool("raidDaily", false)
+    }
+    /// The login's, a new trainer's or a lobby's: kept for the next launch.
+    @MainActor static func keep() { settings.set("content5", on); settings.set("content51", on51); settings.set("raidDaily", onDaily) }
+}

@@ -36,6 +36,7 @@ let resourceDir: URL? = {
     if launch == .installing { exit(0) }
     let f = WinFonts(); fonts = f; textMasks = f
     let loaded = Store.loadChecked(signedBefore: settings.bool("saveSigned", false))           // a save changed by hand: the last one the app made
+    Content.atLaunch(loaded.walk)                                                               // 5.1.1: the server's switches as last heard, before the save is used
     let walker = Walker(state: loaded.walk), c = WinCard(walker: walker); card = c              // the card is the walker's host
     walker.startCloud(Cloud.app(persist: walker.persist))                                         // the save server, if on: a 1.x save goes aside first (08 §5)
     walker.updater = Updater.app(persist: walker.persist)

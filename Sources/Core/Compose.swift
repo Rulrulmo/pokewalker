@@ -154,6 +154,7 @@ extension Walker {
                 fb.text("합계 \(state.total)" + (state.bestChain.map { " · 최고 연쇄 \($0)" } ?? ""), 2, 14, 2, small: true)
             }
         case .course(let i):                                                                       // 코스: the pick's picture and name (and what opens it)
+            let i = min(max(0, i), courses.count - 1)                                                // 5.1.1: never past the list (a switch off)
             let c = courses[i], open = state.unlocked(i)
             header("코스")
             fb.course(c.art, 22, 15, weather: i == state.course ? state.weather ?? .sunny : .sunny, t: t, hour: state.hour, season: state.season)
@@ -388,6 +389,7 @@ extension Walker {
             }
             return PaneContent(relearn: RelearnModel(who: (m.shiny == true ? "★ " : "") + monNames[m.dex], slots: m.moves.map(mv), slot: s, pick: pick))
         case .course(let i):
+            let i = min(max(0, i), courses.count - 1)                                                // 5.1.1: never past the list (a switch off)
             let per = CourseModel.perPage, first = i / per * per
             let rows = (first..<min(courses.count, first + per)).map { k -> CourseModel.Row in
                 let c = courses[k], open = state.unlocked(k), kinds = courseSpecies(k), owned = Set(state.owned ?? [])

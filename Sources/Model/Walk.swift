@@ -49,12 +49,13 @@ struct Walk: Codable, Equatable {
 
     /// The 칭호 shown (the card, a duel's opponent): the one picked while it's still earned, else the newest.
     var shownTitle: String? { cardTitle.flatMap { (titles ?? []).contains($0) ? $0 : nil } ?? titles?.last }
-    var here: Course { courses[course] }
+    /// 5.1.1 (10-16): from the whole list — a launch before the login doesn't know content5 yet, and a 하나 · 칼로스 course (35+) trapped there.
+    var here: Course { coursesGen6[safe: course] ?? coursesGen6[0] }
     /// A companion of one of the course's 3 types needs 25 % fewer steps: same as walking 4/3 as far.
     var bonus: Bool { companion.typing.contains { here.types.contains($0) } }
     var effSteps: Int { bonus ? courseSteps * 4 / 3 : courseSteps }
     func unlocked(_ i: Int) -> Bool {
-        let c = courses[i]
+        guard let c = courses[safe: i] else { return false }                                       // 5.1.1: one past this list's end isn't open
         return earned >= c.watts && (c.region.map { r in (owned ?? []).filter { r.contains($0) }.count } ?? (owned ?? []).count) >= c.dex   // (5.0: a region's own count)
     }
 
