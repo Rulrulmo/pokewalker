@@ -87,7 +87,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .raidQuit, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
              .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept,
              .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove, .claim, .visitSend, .visitEnd, .duelQueue, .duelQueueCancel, .duelPick,
-             .mailClaim, .mailClaimAll:
+             .mailClaim, .mailClaimAll, .mailDelete, .mailDeleteAll:
             return nil                                                                              // the server's: other trainers' saves, the inbox, the raid, friends, the board, live battles
         case .duelParty(let uids): return duelParty(uids)
         case .expStart(let id): return expStart(id)                                                // 5.1 (docs/plans/19): ExpeditionRules.swift
@@ -446,7 +446,7 @@ extension Act {
         switch self {
         case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .raidQuit, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
              .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept, .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove,
-             .claim, .visitSend, .visitEnd, .duelParty, .duelQueue, .duelQueueCancel, .duelPick, .mailClaim, .mailClaimAll: true
+             .claim, .visitSend, .visitEnd, .duelParty, .duelQueue, .duelQueueCancel, .duelPick, .mailClaim, .mailClaimAll, .mailDelete, .mailDeleteAll: true
         default: false
         }
     }

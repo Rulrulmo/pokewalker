@@ -84,6 +84,21 @@ extension SaveDB {
         try db.rows("UPDATE mail SET claimed_at = :now, read_at = coalesce(read_at, :now) WHERE id = :i", ["now": .int(now), "i": .int(id)])
         return nil
     }
+    /// 5.1 (plan 19 §9, the user 10-16: "우편함 우편 삭제 기능도"): `mailDelete` — one claimed, or with nothing to claim, out of the list (deleted_at:
+    /// kept for the operator — pw mail-log — and gone with the 30 days' pruning, read from now). One with a gift or a 고르기 waiting can't go.
+    func deleteMail(_ id: Int, key: String, now: Int) throws -> String? {
+        guard let m = try mailRows("id = :i AND key = :k AND deleted_at IS NULL", ["i": .int(id), "k": .text(key)]).first else { return "지울 수 없는\n우편이에요" }
+        guard m.claimed || m.gifts.isEmpty else { return "받을 것이 남은\n우편이에요" }
+        try db.rows("UPDATE mail SET deleted_at = :now, read_at = coalesce(read_at, :now) WHERE id = :i", ["now": .int(now), "i": .int(id)])
+        return nil
+    }
+    /// `mailDeleteAll`: every one claimed or with nothing to claim. Returns how many.
+    func deleteAllMail(key: String, now: Int) throws -> Int {
+        let sel = "key = :k AND deleted_at IS NULL AND (claimed_at IS NOT NULL OR gifts = '[]')"
+        let n = try db.rows("SELECT count(*) AS n FROM mail WHERE " + sel, ["k": .text(key)]).first?.int("n") ?? 0
+        try db.rows("UPDATE mail SET deleted_at = :now, read_at = coalesce(read_at, :now) WHERE " + sel, ["k": .text(key), "now": .int(now)])
+        return n
+    }
     /// `mailClaimAll`: every mail with gifts and no 고르기. Returns how many.
     @discardableResult func claimAllMail(key: String, walk w: inout Walk, news: inout [News], now: Int) throws -> Int {
         var n = 0
@@ -101,7 +116,7 @@ extension SaveDB {
             let unix = Int(now.timeIntervalSince1970)
             for id in r.read ?? [] { try db.rows("UPDATE mail SET read_at = coalesce(read_at, :now) WHERE id = :i AND key = :k", ["now": .int(unix), "i": .int(id), "k": .text(key)]) }
             try pruneMail(key, now: unix)
-            let rows = try mailRows("key = :k ORDER BY id DESC", ["k": .text(key)])
+            let rows = try mailRows("key = :k AND deleted_at IS NULL ORDER BY id DESC", ["k": .text(key)])   // (5.1: a deleted one isn't listed)
             let waiting = rows.filter { !$0.claimed && !$0.gifts.isEmpty }, rest = rows.filter { $0.claimed || $0.gifts.isEmpty }
             let unread = rows.filter { !$0.read || (!$0.claimed && !$0.gifts.isEmpty) }.count
             return try JSONEncoder().encode(MailReply(mails: (waiting + rest).map(\.mail), unread: unread))
@@ -175,9 +190,10 @@ extension SaveDB {
     /// `pw mail-log [n]`: the last mails sent, newest first.
     func mailLog(last n: Int) throws -> String {
         let rows = try mailRows("1 = 1 ORDER BY id DESC LIMIT :n", ["n": .int(n)])
+        let gone = Set(try db.rows("SELECT id FROM mail WHERE deleted_at IS NOT NULL").compactMap { $0.int("id") })   // (5.1: deleted by its trainer)
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm"; f.timeZone = TimeZone(identifier: "Asia/Seoul")
         return (["id     at                to          kind      claimed  title"] + rows.map { m in
-            "\(String(m.id).padding(toLength: 6, withPad: " ", startingAt: 0)) \(f.string(from: Date(timeIntervalSince1970: TimeInterval(m.at))))  \(m.key.padding(toLength: 11, withPad: " ", startingAt: 0)) \(m.kind.padding(toLength: 9, withPad: " ", startingAt: 0)) \(m.claimed ? "yes" : (m.gifts.isEmpty ? "-" : "no ").padding(toLength: 3, withPad: " ", startingAt: 0))      \(m.title)"
+            "\(String(m.id).padding(toLength: 6, withPad: " ", startingAt: 0)) \(f.string(from: Date(timeIntervalSince1970: TimeInterval(m.at))))  \(m.key.padding(toLength: 11, withPad: " ", startingAt: 0)) \(m.kind.padding(toLength: 9, withPad: " ", startingAt: 0)) \(m.claimed ? "yes" : (m.gifts.isEmpty ? "-" : "no ").padding(toLength: 3, withPad: " ", startingAt: 0))      \(m.title)" + (gone.contains(m.id) ? " [지움]" : "")
         }).joined(separator: "\n")
     }
 }

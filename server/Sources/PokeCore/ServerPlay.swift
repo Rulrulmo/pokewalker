@@ -42,6 +42,7 @@ func actName(_ a: Act) -> String {
     case .duelParty(let u): "duel party \(u)"; case .duelQueue: "duel queue"; case .duelQueueCancel: "duel queue cancel"; case .duelPick(let i, let sl): "duel #\(i) pick \(sl)"
     case .mailClaim(let i, let p): "mail claim #\(i)" + (p.map { " pick \($0)" } ?? ""); case .mailClaimAll: "mail claim all"
     case .expStart(let i): "expedition start \(i)"; case .expClaim(let i): "expedition claim \(i)"
+    case .mailDelete(let i): "mail delete #\(i)"; case .mailDeleteAll: "mail delete all"
     }
 }
 /// News kinds an app before 3.8 can't read are kept from it (the inbox's min_app does the same for teammates' mail).
@@ -144,6 +145,10 @@ extension SaveDB {
                         if !knows(r.app, mailApp) { out.cannot = "우편함은 3.9부터예요" }
                         else if try claimAllMail(key: id.key, walk: &w, news: &more, now: unix) == 0 { out.cannot = "받을 우편이\n없어요" }
                         else { out.news += more; out.changed = true }
+                    case .mailDelete(let mid):                                                          // 5.1 (plan 19 §9): out of the list (deleted_at)
+                        out.cannot = try deleteMail(mid, key: id.key, now: unix)
+                    case .mailDeleteAll:
+                        if try deleteAllMail(key: id.key, now: unix) == 0 { out.cannot = "지울 우편이\n없어요" }
                     case .visitSend, .visitEnd:                                                         // 14 §3: ServerVisit.swift
                         let was = w; var more: [News] = []
                         if let why = try visitAct(r.act, key: id.key, name: t.name, walk: &w, news: &more, now: unix) { out.cannot = why; w = was }

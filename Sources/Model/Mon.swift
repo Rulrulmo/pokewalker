@@ -89,8 +89,13 @@ extension Mon {
     var relearnable: [Int] {
         let ls = learnset; var out: [Int] = []
         for k in stride(from: 0, to: ls.count, by: 2) where ls[k] <= level && Moves.supported(ls[k + 1]) && !out.contains(ls[k + 1]) { out.append(ls[k + 1]) }
+        if Content.v51, let x = Mon.relearnAdded[dex], level >= x.level, !out.contains(x.move) { out.append(x.move) }
         return out + moves.filter { !out.contains($0) }
     }
+    /// 5.1 (docs/plans/19 §2.3, the user 10-16: "기술바꾸기로 할수 있게"): the Gen VI signature moves the HGSS tables lack, from ORAS's level-up
+    /// level — in 기술 바꾸기 only (not learned on levelling, nor a wild one's, a boss's or a tower foe's four): 가이오가 근원의파동 45, 그란돈
+    /// 단애의칼 45, 뮤츠 사이코브레이크 100. (레쿠쟈's 화룡점정: the 레쿠쟈 원정, 5.2.)
+    static let relearnAdded: [Int: (level: Int, move: Int)] = [382: (45, 618), 383: (45, 619), 150: (100, 540)]
     /// The tower's 좋은 4개 (from 22 wins on, docs/plans/09 §2-3): the two best STAB attacks by power x accuracy (the right side — 물리 / 특수 —
     /// and one-turn ones first), the best other type for coverage, then a heal, a real ailment or a boost; the rest by score. From what it learns by
     /// level up to its level.

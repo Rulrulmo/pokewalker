@@ -217,3 +217,42 @@ private func reply(_ r: Reply) throws -> ActReply { try JSONDecoder().decode(Act
         }
     }
 }
+
+@Test func mailDelete() async throws {                                                           // plan 19 §9 (the user, 10-16): out of the list, never one with a gift waiting
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let s = try await newTrainer(db, "앨리스")
+    var seq = 0
+    func go(_ a: Act) async throws -> ActReply {
+        seq += 1; return try reply(await db.act(ActReq(id: "앨리스", session: s, seq: seq, act: a, app: "5.1"), now: base.addingTimeInterval(Double(seq))))
+    }
+    _ = try await go(.steps)
+    let notice = try await db.sendMail("앨리스", kind: "notice", from: "운영자", title: "공지", now: 10)
+    let gift = try await db.sendMail("앨리스", kind: "admin", from: "운영자", title: "선물", gifts: [.items(name: "이상한사탕", count: 1)], now: 11)
+    let pick = try await db.sendMail("앨리스", kind: "dex", from: "도감", title: "고르기", gifts: [.pickItem(items: Walk.mints)], now: 12)
+    func list() async throws -> MailReply { try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: "앨리스", session: s), now: base).body) }
+    #expect(try await go(.mailDelete(id: gift)).out.cannot == "받을 것이 남은\n우편이에요")
+    #expect(try await go(.mailDelete(id: pick)).out.cannot == "받을 것이 남은\n우편이에요")
+    #expect(try await go(.mailDelete(id: notice)).out.cannot == nil)
+    #expect(try await go(.mailDelete(id: notice)).out.cannot == "지울 수 없는\n우편이에요")             // gone already
+    var l = try await list()
+    #expect(l.mails.map(\.id) == [pick, gift] && l.unread == 2)
+    _ = try await go(.mailClaim(id: gift))
+    let n2 = try await db.sendMail("앨리스", kind: "notice", from: "운영자", title: "공지 2", now: 13)
+    #expect(try await go(.mailDeleteAll).out.cannot == nil)                                       // the claimed one and the notice; the pick stays
+    l = try await list()
+    #expect(l.mails.map(\.id) == [pick] && l.unread == 1)
+    #expect(try await go(.mailDeleteAll).out.cannot == "지울 우편이\n없어요")
+    #expect(try await db.mailLog(last: 10).contains("공지 2 [지움]") && n2 > 0)
+    #expect(try await go(.mailDelete(id: 99_999)).out.cannot == "지울 수 없는\n우편이에요")
+}
+
+@Test func signatureMovesRelearned() throws {                                                     // plan 19 §2.3 (the user, 10-16): 기술 바꾸기 only, ORAS's level
+    func can(_ dex: Int, _ lv: Int, _ mv: Int) -> Bool { Mon(dex: dex, level: lv, female: false).relearnable.contains(mv) }
+    try both {
+        #expect(!can(382, 44, 618) && can(382, 45, 618) && !can(383, 44, 619) && can(383, 70, 619) && !can(150, 99, 540) && can(150, 100, 540))
+        #expect(!Mon.defaultMoves(382, 100).contains(618) && Mon(dex: 382, level: 44, female: false).newMoves(from: 44, to: 100).allSatisfy { $0 != 618 })   // not on levelling, not a wild one's
+        var d = Desk(); var k = Mon(dex: 382, level: 60, female: false); k.uid = 900; d.w.box.append(k)
+        #expect(d.act(.mon(op: .move(uid: 900, slot: 0, move: 618))).cannot == nil && d.w.box[0].moves.first == 618)
+    }
+    Content.$testing.withValue(true) { #expect(!can(382, 100, 618)) }                              // content51 off: not yet
+}

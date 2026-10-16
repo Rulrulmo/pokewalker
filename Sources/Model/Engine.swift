@@ -36,6 +36,7 @@ enum Act: Codable, Equatable {
     case duelQueue, duelQueueCancel, duelPick(id: Int, slots: [Int])   // 3.8 (14 §5.2–3): random matching; the 3 of my 6 for this duel (in order)
     case mailClaim(id: Int, pick: Int? = nil), mailClaimAll      // 3.9 (docs/plans/15 §2): a mail's gifts (pick: which of a 고르기); every one without a pick
     case expStart(id: String), expClaim(id: String)              // 5.1 (docs/plans/19): a personal 전설 원정 begun (its legend rolled), its legend taken once it's all gathered
+    case mailDelete(id: Int), mailDeleteAll                      // 5.1 (plan 19 §9): a mail out of the 우편함 (claimed, or nothing to claim); every such one
 }
 enum BattleCmd: Codable, Equatable { case fight(slot: Int), ball, item(name: String, on: Int? = nil), swap(to: Int), replace(to: Int), run, forfeit
     case megaFight(slot: Int)                                          // 5.0: Mega Evolve, then this move (docs/plans/18 §14.4)
