@@ -65,6 +65,7 @@ struct RaidLobby: Codable, Equatable {
     var pending: RaidPending? = nil
     var tiers: [RaidTier]
     var opens: Int? = nil
+    var daily: Bool? = nil                                             // 5.1 (docs/plans/20): raid-daily on — today's boss, 2칸 at 0:00, 10 a day (nil: by the week)
 }
 /// What /v2/raid takes: who, and (4.0 on) the app's version (else the User-Agent's).
 struct RaidReq: Codable, Equatable { var id, session: String; var app: String? = nil; var kind: String? = nil }   // kind "mega": the Mega raid's lobby (5.0)
@@ -174,4 +175,5 @@ struct MegaRaidLobby: Codable, Equatable {
     var today: RaidToday; var resetAt: Int
     var mine: RaidWeek; var runs: [RaidRunRow]
     var pityNeed: Int; var odds: [Int]; var tiers: [RaidTier]
+    var daily: Bool? = nil                                             // 5.1 (docs/plans/20): raid-daily on (nil: by the week)
 }

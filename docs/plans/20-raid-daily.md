@@ -198,4 +198,8 @@
 - **메가 시작 (dex, form):** `Act.megaRaid(party:tier:boss:dex:form:)`. dex · form은 선택이고, 5.0.1은 보내지 않는다.
   - 보내면 오늘의 둘 중 그 보스로 싸운다(순번은 무시). 오늘 보스가 아니면 위와 같이 거절한다.
   - 보내지 않으면 순번과 로비 시각 검사를 쓴다.
+- **앱이 매일 모드를 아는 법(10-16, Mac 질문):** today.max(10)로 짐작하지 말고 명시 값을 읽는다.
+  - 로그인 · create 응답의 `raidDaily: true`: content5 · content51과 같은 방식으로 `Content.onDaily`를 켠다.
+  - 두 로비(`RaidLobby`, `MegaRaidLobby`)의 `daily: true`: 그 로비가 매일 규칙이라는 뜻이다. 앱이 켜진 채 스위치가 바뀌어도 로비를 받을 때 안다.
+  - 꺼져 있으면 둘 다 없다(nil). 5.0.1은 모르는 필드를 무시한다.
 - 테스트: 파워(2칸, 10칸, 꺼짐), 보스(7일에 한 바퀴, 0시, 메가 하루 2종), 로비(필드 · ends · next · today.max), 거절 · (dex, form) · 10판, 스위치. 서버 137개 통과.

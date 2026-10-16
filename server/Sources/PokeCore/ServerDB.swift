@@ -212,6 +212,7 @@ actor SaveDB {
                 reply["tower"] = .b(try runCarries(id.key))                                          // plan 11: a tower run between fights goes on in this session
                 if Content.gen6 { reply["content5"] = .b(true) }                                     // 5.0 (plan 18 §14.4): the app sets Content.on by it
                 if Content.v51 { reply["content51"] = .b(true) }                                     // 5.1 (plan 19): Content.on51, the same way
+                if Content.raidDaily { reply["raidDaily"] = .b(true) }                               // 5.1 (plan 20): Content.onDaily, the same way
                 return Reply(200, reply,
                              note: t.device != nil && t.device != r.device ? "login from \(r.device_name.prefix(64)), took it from \(t.lastDevice ?? "?")" : nil)
             }
@@ -244,6 +245,7 @@ actor SaveDB {
                 if issues { reply["starter"] = .i(firstUID) }
                 if Content.gen6 { reply["content5"] = .b(true) }                                     // 5.0: as login's — a new trainer's first session too
                 if Content.v51 { reply["content51"] = .b(true) }                                     // 5.1: as login's
+                if Content.raidDaily { reply["raidDaily"] = .b(true) }
                 return Reply(200, reply, note: "new trainer \(id.name) from \(r.device_name.prefix(64))")
             }
         }

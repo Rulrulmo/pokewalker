@@ -327,7 +327,7 @@ extension SaveDB {
             let lobby = RaidLobby(week: week, boss: Mon(dex: raidDex(now), level: raidLevel, female: false), next: raidDex(raidNext(now)), ends: ends,
                                   today: RaidToday(used: open ? try raidRunsToday(key, now: now) : 0, max: open ? raidRunsADay : 0), resetAt: reset,
                                   mine: try raidWeekOf(key, now: now) ?? RaidWeek(), runs: runs, friends: friends, pending: pend, tiers: RaidRules.tiers,
-                                  opens: open ? nil : try raidRunsFrom())
+                                  opens: open ? nil : try raidRunsFrom(), daily: RaidDaily.on ? true : nil)
             let e = JSONEncoder(); e.outputFormatting = .sortedKeys
             return try e.encode(lobby)
         }
@@ -439,7 +439,7 @@ extension SaveDB {
             let these = mark(megaWeek(now))
             let lobby = MegaRaidLobby(week: week, bosses: these, next: mark(megaWeek(raidNext(now))), ends: ends,
                                       today: RaidToday(used: try raidRunsToday(key, now: now), max: raidRunsADay), resetAt: reset, mine: mine, runs: runs,
-                                      pityNeed: MegaRaid.bossWins, odds: MegaRaid.stoneOdds, tiers: RaidRules.tiers)
+                                      pityNeed: MegaRaid.bossWins, odds: MegaRaid.stoneOdds, tiers: RaidRules.tiers, daily: RaidDaily.on ? true : nil)
             let e = JSONEncoder(); e.outputFormatting = .sortedKeys
             return try e.encode(lobby)
         }

@@ -50,7 +50,7 @@ private func noon(_ days: Int) -> Date { cal.date(byAdding: .day, value: days, t
             #expect(x.why == raidStaleWhy && x.boss == nil)
             let r = await db.raidLobby(RaidReq(id: "앨리스", session: s, app: "5.0"), now: noon(0))
             let l = try JSONDecoder().decode(RaidLobby.self, from: r.body)
-            #expect(l.today.max == 10 && l.ends == raidEnds(noon(0)) && l.next == raidDex(noon(1)) && l.boss.dex == raidDex(noon(0)))
+            #expect(l.today.max == 10 && l.ends == raidEnds(noon(0)) && l.next == raidDex(noon(1)) && l.boss.dex == raidDex(noon(0)) && l.daily == true)
             let keys = Set((try JSONSerialization.jsonObject(with: r.body) as? [String: Any] ?? [:]).keys)   // 5.0.1 stops on a missing one (the Mac)
             #expect(["week", "boss", "next", "ends", "today", "resetAt", "mine", "runs", "friends", "tiers"].allSatisfy(keys.contains))
             x = try await db.raidStart("앨리스", tier: 1, app: "5.0", now: noon(0))
@@ -69,7 +69,7 @@ private func noon(_ days: Int) -> Date { cal.date(byAdding: .day, value: days, t
             #expect(y.why == raidStaleWhy)
             let ml = try JSONDecoder().decode(MegaRaidLobby.self, from: await db.raidLobby(RaidReq(id: "앨리스", session: s, app: "5.0", kind: "mega"), now: noon(1)).body)
             let tomorrow = await db.megaWeek(noon(2))
-            #expect(ml.bosses.count == 2 && ml.today.max == 10 && ml.ends == raidEnds(noon(1)) && ml.next.map(\.stone) == tomorrow.map(\.stone))
+            #expect(ml.daily == true && ml.bosses.count == 2 && ml.today.max == 10 && ml.ends == raidEnds(noon(1)) && ml.next.map(\.stone) == tomorrow.map(\.stone))
             y = try await db.raidStart("앨리스", tier: 1, app: "5.0", now: noon(1), mega: 1)
             #expect(y.why == nil && y.boss?.boss.dex == today[1].dex)
             // 10 runs a day
@@ -85,6 +85,12 @@ private func noon(_ days: Int) -> Date { cal.date(byAdding: .day, value: days, t
 
 @Test func raidDailySwitch() async throws {
     let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    func flag(_ r: Reply) -> Bool? { fields(r)["raidDaily"] as? Bool }                            // the app's Content.onDaily (login and create, as content5)
+    #expect(flag(await db.create(CreateReq(id: "꺼진날", device: "mac", device_name: "MAC", app: "5.1", pin: "2468"), now: 100)) == nil)
+    await Content.$testingDaily.withValue(true) {
+        #expect(flag(await db.create(CreateReq(id: "켜진날", device: "mac", device_name: "MAC", app: "5.1", pin: "2468"), now: 100)) == true)
+        #expect(flag(await db.login(LoginReq(id: "켜진날", device: "mac", device_name: "MAC", app: "5.1", force: true, pin: "2468"), now: 200)) == true)
+    }
     #expect(try await db.raidDaily() == false)
     _ = try await db.setRaidDaily(true); #expect(try await db.raidDaily() == true)
     _ = try await db.setRaidDaily(false); #expect(try await db.raidDaily() == false)
