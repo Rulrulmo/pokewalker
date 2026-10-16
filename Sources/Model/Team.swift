@@ -13,6 +13,7 @@ struct TeamCard: Codable, Equatable {
     var title: String? = nil, deco: String? = nil                      // 3.9 (docs/plans/15 §3.2): the newest 칭호, the card's 장식
     var raid: RaidWeek? = nil                                          // 4.0 (docs/plans/16 §4.4): this week's runs (nil: none)
     var megaStones: Int? = nil                                         // 5.0 (docs/plans/18 §6.4, content5): 메가스톤 n / MegaRaid.stones.count
+    var megaWeek: RaidWeek? = nil                                      // 5.1 (docs/plans/19 §9, content51): this week's Mega raid runs (`raid` the legend raid's then)
 
     init(name: String, walk w: Walk, today: Int, week: Int, idle: Int) {
         self.name = name; companion = w.companion; walker = w.caught

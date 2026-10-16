@@ -256,3 +256,23 @@ private func reply(_ r: Reply) throws -> ActReply { try JSONDecoder().decode(Act
     }
     Content.$testing.withValue(true) { #expect(!can(382, 100, 618)) }                              // content51 off: not yet
 }
+
+@Test func rankingRaidWeeks() async throws {                                                      // plan 19 §9 (5.1, the 랭킹): the legend raid's week and the Mega raid's apart
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브")
+    for (who, s) in [("앨리스", a), ("보브", b)] { _ = try reply(await db.act(ActReq(id: who, session: s, seq: 1, steps: 10, act: .steps, app: "5.1"), now: base.addingTimeInterval(60))) }
+    let week = raidWeek("앨리스", base), shiny = #"{"dex":249,"level":70,"female":false,"shiny":true}"#
+    for (kind, won, caught, boss) in [("NULL", 1, 1, shiny), ("NULL", 0, 0, #"{"dex":249,"level":70,"female":false}"#), ("'mega'", 1, 0, #"{"dex":9,"level":90,"female":false}"#)] {
+        try await db.sql("INSERT INTO raid_runs (week, key, day, tier, boss, party, at, ended_at, won, caught, kind) VALUES (:w, '앨리스', 'd', 4, :b, '[]', 0, 1, :won, :c, \(kind))",
+                         ["w": .text(week), "b": .text(boss), "won": .int(won), "c": .int(caught)])
+    }
+    func cards(_ on: Bool) async throws -> TeamReply {
+        try await Content.$testing.withValue(true) { try await Content.$testing51.withValue(on) {
+            try JSONDecoder().decode(TeamReply.self, from: await db.team(TeamReq(id: "보브", session: b), now: base.addingTimeInterval(120)).body)
+        } }
+    }
+    let off = try await cards(false), on = try await cards(true)
+    let x = try #require(off.all?.first { $0.name == "앨리스" }), y = try #require(on.all?.first { $0.name == "앨리스" })
+    #expect(x.raid == RaidWeek(runs: 3, wins: 2, caught: 1, shiny: 1, best: 4) && x.megaWeek == nil)        // 5.0's: both together
+    #expect(y.raid == RaidWeek(runs: 2, wins: 1, caught: 1, shiny: 1, best: 4) && y.megaWeek == RaidWeek(runs: 1, wins: 1, caught: 0, shiny: 0, best: 4))
+}

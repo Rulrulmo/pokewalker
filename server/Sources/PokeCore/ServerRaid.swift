@@ -290,12 +290,15 @@ extension SaveDB {
         if let p = try raidPending(key, now: now) { try db.rows("UPDATE raid_runs SET balls = 0 WHERE id = :id", ["id": .int(p.id)]) }
     }
     /// A trainer's week of runs (nil: none) — the lobby's, a friend's, a TeamCard's.
-    func raidWeekOf(_ key: String, now: Date) throws -> RaidWeek? {
-        guard let r = try db.rows("""
+    /// kind: nil = both raids' runs (the lobby's week, the weekly mail's count), "legend" = the legend raid's, "mega" = the Mega raid's (5.1: the 랭킹).
+    func raidWeekOf(_ key: String, now: Date, kind: String? = nil) throws -> RaidWeek? {
+        let only = kind == "legend" ? " AND kind IS NULL" : kind == "mega" ? " AND kind = 'mega'" : ""
+        let sql = """
             SELECT count(*) AS runs, ifnull(sum(won), 0) AS wins, ifnull(sum(caught), 0) AS caught,
               ifnull(sum(CASE WHEN caught = 1 AND boss LIKE '%"shiny":true%' THEN 1 ELSE 0 END), 0) AS shiny,
               max(CASE WHEN won = 1 THEN tier END) AS best FROM raid_runs WHERE key = :k AND week = :w
-            """, ["k": .text(key), "w": .text(raidWeek(key, now))]).first, let runs = r.int("runs"), runs > 0 else { return nil }
+            """ + only
+        guard let r = try db.rows(sql, ["k": .text(key), "w": .text(raidWeek(key, now))]).first, let runs = r.int("runs"), runs > 0 else { return nil }
         return RaidWeek(runs: runs, wins: r.int("wins") ?? 0, caught: r.int("caught") ?? 0, shiny: r.int("shiny") ?? 0, best: r.int("best"))
     }
 

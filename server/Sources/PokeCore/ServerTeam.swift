@@ -45,7 +45,8 @@ extension SaveDB {
                                             ["k": .text(k)]).first, let w = row.text("walk").flatMap(decodeWalk) else { return nil }
                 let last = max(Double(row.int("updated_at") ?? 0), row.real("bank_at") ?? 0), s = steps[k] ?? (0, 0)
                 var c = TeamCard(name: row.text("name") ?? k, walk: w, today: s.today, week: s.week, idle: max(0, Int(now.timeIntervalSince1970 - last)))
-                c.raid = try raidWeekOf(k, now: now)                                               // 16 §4.4: this week's runs
+                c.raid = try raidWeekOf(k, now: now, kind: Content.v51 ? "legend" : nil)           // 16 §4.4: this week's runs (5.1: the legend raid's alone,
+                if Content.v51 { c.megaWeek = try raidWeekOf(k, now: now, kind: "mega") }          // the Mega raid's apart — plan 19 §9, the 랭킹)
                 return c
             }
             let cards = try keys.compactMap(card)
