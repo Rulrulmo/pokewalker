@@ -8,7 +8,11 @@ enum TeamTab { static let friends = 0, steps = 1, dex = 2, tower = 3, raid = 4, 
 
 extension Walker {
     static let teamTabs = ["친구", "걸음", "도감", "타워", "레이드", "신청", "맡기기", "전체"]    // 3.5: friends, 신청 = requests; 3.8: 맡기기 (14 §3), 전체 (VIEW_ALL only); 4.0: 레이드 (16 §8-6)
-    var teamTabCount: Int { cloud?.team?.all != nil ? 8 : 7 }
+    var teamTabCount: Int { teamTabList.count }
+    /// 5.1 (the user 10-16: "친구창에 있는 걸음,도감,타워,레이드 이것도 랭킹 화면으로"): the 친구 page's tabs as shown — 친구 · 신청 · 맡기기 · 전체 (the ranks
+    /// moved to 친구 ▸ 랭킹: RankView.swift); the tabs keep their TeamTab numbers.
+    var teamTabList: [Int] { [TeamTab.friends, TeamTab.requests, TeamTab.visits] + (cloud?.team?.all != nil ? [TeamTab.all] : []) }
+    func teamTabPos(_ tab: Int) -> Int { teamTabList.firstIndex(of: tab) ?? 0 }
     func isFriend(_ name: String) -> Bool { (cloud?.team?.cards ?? []).contains { trainerID($0.name)?.key == trainerID(name)?.key } }
     /// A teammate is walking now: an act within the last minute (the app sends steps every 15 s).
     static func walkingNow(_ c: TeamCard) -> Bool { c.idle < 60 }
@@ -74,7 +78,7 @@ extension Walker {
         let page = rows[first..<min(rows.count, first + per)].map { r in
             TeamModel.Row(rank: r.rank, name: r.card.name, dex: r.card.companion.dex, shiny: r.card.companion.shiny == true, value: teamValue(r.card, tab), walking: Walker.walkingNow(r.card) && !isMe(r.card), me: isMe(r.card), deco: r.card.deco, title: r.card.title)
         }
-        return PaneContent(team: TeamModel(tabs: teamTabLabels, tab: tab, rows: page, sel: s, first: first, count: rows.count, note: note, week: cloud?.team?.week ?? "",
+        return PaneContent(team: TeamModel(tabs: teamTabLabels, tab: teamTabPos(tab), rows: page, sel: s, first: first, count: rows.count, note: note, week: cloud?.team?.week ?? "",
                                            hint: cloud?.team != nil && friends == 0 ? "신청 탭에서 친구의 ID로 신청해 보세요" : nil))
     }
     /// The LCD on the friends' pages: the picked friend's companion, its name, level, and whether it's walking now (신청: the request picked).

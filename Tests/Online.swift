@@ -74,6 +74,12 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     nc.seat.trainerID = "zz910001"; nw.startCloud(nc); drain(nw); let made5 = nc.phase == .on && c5new.paths.contains("v1/create") && Content.on && dexMax == 721
     Content.on = false
     check(on5 && off5 && made5, "5.0: content5 in the login (and a new trainer's create) turns the Gen VI rules on (dexMax 721); no field, off (493)", "\(on5) \(off5) \(made5) \(nc.phase) \(c5new.paths)")
+    // 5.1 (plans 19 §9 · 20 §11): the login's content51 and raidDaily set theirs (모험 ▸, 홈's sixth row; the raids by the day); a login without them, off
+    let c51 = FakeCloud(); c51.content5 = true; c51.content51 = true; c51.raidDaily = true
+    _ = online(Walk(), server: c51); let on51 = Content.v51 && Content.raidDaily && menuTiles[1].name == "모험" && PaneContent.home == 468
+    _ = online(Walk()); let off51 = !Content.on51 && !Content.raidDaily && menuTiles[1].name == "코스" && PaneContent.home == 446
+    Content.on = false; Content.on51 = false; Content.onDaily = false
+    check(on51 && off51, "5.1: content51 · raidDaily in the login turn 전설 원정 (모험 ▸, 홈 468) and the raids by the day on; no field, off", "\(on51) \(off51)")
 
     // 5.0 turned on while the app runs (10-15: the server, at its turn-on, gives a session from before one 409 seq — the user: "현재 켜져있는 인원들
     // 전부다 한번 껐다키도록"): the new login's content5 turns it all on at once, nothing kept from before — the page open (the 도감) redrawn to 721
@@ -738,14 +744,14 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     let fc = online(Walk(), server: sv)
     let aName = fa.myName, bName = fb.myName, cName = fc.myName
     list(fa); fa.screen = .team(sel: 0, tab: 0, card: false); let alone = fa.teamRows(0).count, note = fa.paneContent(Date()).team?.note
-    fa.openFeature("친구"); drain(fa); fa.pageTap(6000 + TeamTab.requests); ha.texts = [bName]; fa.pageTap(6240); drain(fa)
+    fa.openFeature("친구"); drain(fa); fa.pageTap(6000 + fa.teamTabPos(TeamTab.requests)); ha.texts = [bName]; fa.pageTap(6240); drain(fa)
     check(alone == 1 && note == "아직 친구가 없어요" && says(fa) == [josa(bName, "에게", "에게"), "친구 신청을 했다!"] && sv.friendAsks[bName.lowercased()]?.contains(aName.lowercased()) == true,
           "친구: only me at first; 신청 → ID로 친구 신청 (the box) → the server's request", "\(alone) \(String(describing: note)) \(says(fa))")
     list(fa); let sent = fa.paneContent(Date()).friendReqs?.rows
     act(fb); let heard = says(fb) == [josa(aName, "이", "가") + " 친구 신청을 했다!"]
     let toTab: Bool = { if case .say(_, .team(_, TeamTab.requests, false), _) = fb.screen { return true }; return false }()
     fb.press(1); list(fb); let req = fb.paneContent(Date()).friendReqs; fb.pageTap(6200); drain(fb)
-    check(sent == [.init(name: bName, mine: true)] && heard && toTab && req?.rows == [.init(name: aName, mine: false)] && req?.tabs[safe: TeamTab.requests] == "신청 1" && sv.isFriend(aName.lowercased(), bName.lowercased()),
+    check(sent == [.init(name: bName, mine: true)] && heard && toTab && req?.rows == [.init(name: aName, mine: false)] && req?.tabs[safe: 1] == "신청 1" && sv.isFriend(aName.lowercased(), bName.lowercased()),
           "the request's news on the other side (→ 신청, which says 신청 1); 수락 → friends", "\(String(describing: sent)) \(says(fb)) \(String(describing: req))")
     act(fa); let added = says(fa) == [josa(bName, "과", "와") + " 친구가 되었다!"]; list(fa); list(fb)
     check(added && fa.teamRows(0).count == 2 && fb.teamRows(0).count == 2 && fa.paneContent(Date()).menu == nil,
@@ -1009,7 +1015,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     va.press(1); va.press(1); drain(va); let sent = says(va); va.press(1); team(va)
     va.screen = .team(sel: 0, tab: TeamTab.visits, card: false); let mine = va.paneContent(Date()).visits
     check(card?.visit == "맡기기" && pick?.title == josa(bName, "에게", "에게") + " 맡기기" && pick?.count == 2 && sent == [bName + "에게 이브이를", "맡겼다!", "5시간 뒤 우편함으로 와요"]
-          && !va.state.box.contains { $0.dex == 133 } && mine?.rows.first?.button == "데려오기" && mine?.rows.first?.mine == true && va.teamTabLabels[TeamTab.visits] == "맡기기 1",
+          && !va.state.box.contains { $0.dex == 133 } && mine?.rows.first?.button == "데려오기" && mine?.rows.first?.mine == true && va.teamTabLabels[safe: va.teamTabPos(TeamTab.visits)] == "맡기기 1",
           "a friend walking now: 맡기기 → pick one (the walker's · box's) → it goes (out of my box); my 맡기기 tab has it (데려오기)",
           "\(String(describing: card?.visit)) \(String(describing: pick?.title)) \(sent) \(String(describing: mine))")
     // 3.8.5: one a friend at a time — this one's card says so (its line: what's with it); another friend can have one too
@@ -1020,7 +1026,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     let cj = va.teamRows(0).firstIndex { $0.card.name.lowercased() == vc.myName.lowercased() } ?? 0
     va.screen = .team(sel: cj, tab: 0, card: true); va.pageTap(6034); va.press(1); va.press(1); drain(va); let sent2 = says(va); va.press(1); team(va)
     check(cardB?.visit == "이미 맡겼어요" && cardB?.lines.contains { $0.key == "맡김" && $0.value.hasPrefix("이브이") } == true && stays && sent2.dropFirst().first == "맡겼다!"
-          && va.visitsOut.count == 2 && va.visitTo(vc.myName)?.mon.dex == 143 && va.teamTabLabels[TeamTab.visits] == "맡기기 2",
+          && va.visitsOut.count == 2 && va.visitTo(vc.myName)?.mon.dex == 143 && va.teamTabLabels[safe: va.teamTabPos(TeamTab.visits)] == "맡기기 2",
           "3.8.5: one of mine a friend at a time — that friend's card says so (맡김 · its time left); another friend gets one too", "\(String(describing: cardB?.visit)) \(sent2) \(va.visitsOut.map(\.mon.dex))")
     act(vb); let came = says(vb); vb.press(1); team(vb)
     vb.screen = .team(sel: 0, tab: TeamTab.visits, card: false); let guestRow = vb.paneContent(Date()).visits?.rows.first
@@ -1041,7 +1047,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     sv.viewAll.insert(aName.lowercased()); team(va); team(vb)
     let labels = va.teamTabLabels, all = va.teamRows(TeamTab.all).map { $0.card.name.lowercased() }
     va.screen = .team(sel: all.firstIndex(of: other.myName.lowercased()) ?? 0, tab: TeamTab.all, card: true); let stranger = va.paneContent(Date()).teamCard
-    check(labels.last == "전체" && va.teamTabCount == 8 && vb.teamTabCount == 7 && all.contains(other.myName.lowercased()) && stranger?.duel == nil && stranger?.request == "친구 신청",
+    check(labels.last == "전체" && va.teamTabCount == 4 && vb.teamTabCount == 3 && all.contains(other.myName.lowercased()) && stranger?.duel == nil && stranger?.request == "친구 신청",
           "전체 (VIEW_ALL's): every trainer, a tab of its own only there; a stranger's card: 친구 신청, no 대전", "\(labels) \(all) \(String(describing: stranger))")
     return c
 }
@@ -1131,7 +1137,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     sv.giveMail(key, "tower", from: "배틀 타워", title: "100연승 달성 보상", Tower.rewards.last!.gifts)
     w.screen = .home; w.tick(Date()); drain(w); let heard = w.cloud!.mail != nil
     w.openFeature("우편함"); drain(w)
-    let list = w.paneContent(Date()).mailList, tile = { () -> MenuModel.Row? in let s0 = w.screen; w.screen = .menu(group: nil, sel: 0); defer { w.screen = s0 }; return w.paneContent(Date()).menu?.rows.last }()
+    let list = w.paneContent(Date()).mailList, tile = { () -> MenuModel.Row? in let s0 = w.screen; w.screen = .menu(group: nil, sel: 0); defer { w.screen = s0 }; return w.paneContent(Date()).menu?.rows[safe: 6] }()   // (5.1: 우편함 in 친구 ▸ — its dot and line on 친구's tile)
     check(list?.rows.map(\.title) == ["100연승 달성 보상", "장식 선물", "14연승 달성 보상", "7연승 달성 보상", "3.9 업데이트 안내"] && list?.all == "모두 받기 · 2통" && list?.rows[0].chips == ["칭호", "고르기"]
           && list?.rows.allSatisfy(\.unread) == true && tile?.dot == true && tile?.note == "받을 우편 4통" && heard,
           "우편함: mailNew (an act's news) reads the list; gifts waiting first, then the newest (the server's order); unread dots, chips; 모두 받기 counts the ones without a pick; the 우편함 tile's dot and line", "\(String(describing: list)) \(String(describing: tile))")

@@ -77,11 +77,13 @@ struct MailListModel: Equatable {
     enum Icon: Equatable { case gift, letter, gem, medal(gold: Bool), mon(dex: Int, shiny: Bool), item(String) }   // item (5.0): its own picture
     struct Row: Equatable { var icon: Icon; var title, sub: String; var chips: [String]; var unread, done: Bool }   // unread: not opened, or a gift left (its dot); done: taken (dimmed)
     var rows: [Row]; var sel: Int?; var first, count: Int; var note: String; var all: String?; var empty: String
+    var delAll: String? = nil                                          // 5.1 (the user: "우편 삭제 기능도"): 받은 n통 지우기
 }
 /// One mail: its words, its gifts, 받기 (or 고르기).
 struct MailOpenModel: Equatable {
     struct Gift: Equatable { var icon: MailListModel.Icon; var name, note: String }
     var title, from, body: String; var gifts: [Gift]; var button: String?; var off: String
+    var del: Bool? = nil; var delWhy: String? = nil                   // 5.1: 지우기 (false: dimmed — a gift left, why above it)
 }
 /// A pick (15 §6 D): the held items as rows, or the legends as the 포켓몬 menu's cells; the button, or 받을까요? 아니오 / 예.
 struct MailPickModel: Equatable {
@@ -147,6 +149,7 @@ struct TeamModel: Equatable {
     static let perPage = 6
     var tabs: [String]; var tab: Int; var rows: [Row]; var sel, first, count: Int; var note: String; var week: String
     var hint: String? = nil                                            // under the rows (no friends yet: how to add one)
+    var scope: Int? = nil                                              // 5.1 (랭킹): 친구 0 / 전체 1, its switch at the top right (nil: no 전체)
 }
 /// A friend's card: the walker's three, a few lines, its buttons (대전 · 맡기기 · 친구 끊기; 친구 신청 on someone else's; none on mine).
 struct TeamCardModel: Equatable {

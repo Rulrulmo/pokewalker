@@ -125,6 +125,7 @@ extension Walker {
         case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
         case .goals(let s): goalsLCD(&fb, s)
         case .expedition(let s): expLCD(&fb, s)
+        case .rank(let t, let s, let a): rankLCD(&fb, t, s, a, now)
         case .assemble(let m, let since):
             let u = now.timeIntervalSince(since)
             fb.assembleFX(m, u, bob: half)                                                                 // 5.1: the cells come round and together, 지가르데 out of the light
@@ -370,6 +371,7 @@ extension Walker {
             return PaneContent(radar: RadarModel(live: (1.5...(1.5 + radarWindow(chain))).contains(u) ? b : nil, cursor: c, chain: chain, season: state.season))
         case .goals(let s): return PaneContent(goals: goalsModel(s))
         case .expedition(let s): return expPane(s)
+        case .rank(let t, let s, let a): return rankPane(t, s, a)
         case .card(let p): return PaneContent(card: CardModel(page: p, title: state.shownTitle, deco: state.deco, stones: Content.gen6 ? "메가스톤 \(MegaRaid.collected(state))/\(MegaRaid.stones.count)" : nil,
                                                               titles: (state.titles ?? []).count > 1 ? Array((state.titles ?? []).reversed()) : [], picked: state.cardTitle, picking: titlePick))   // 5.0: two or more 칭호: pick the card's
         case .learn(let sel):
@@ -435,7 +437,8 @@ extension Walker {
             guard k == 0 || name != nil else { break }
             titlePick = false
             if name != state.cardTitle { act(.cardTitle(name: name), back: screen) { _, _ in nil } }
-        case (.team(let sel, _, _), 6000...6007): if code - 6000 < teamTabCount { screen = .team(sel: code - 6000 == 0 ? sel : 0, tab: code - 6000, card: false) }   // a tab (a rank tab from its top; TeamTab)
+        case (.rank, _): rankTap(code)                                                                         // 5.1: 친구 ▸ 랭킹
+        case (.team(let sel, _, _), 6000...6007): if let t = teamTabList[safe: code - 6000] { screen = .team(sel: t == TeamTab.friends ? sel : 0, tab: t, card: false) }   // a tab (a rank tab from its top; TeamTab)
         case (.team(_, TeamTab.visits, false), 6400...6439): visitEnd(code - 6400, Date())                    // 3.8: 데려오기 / 돌려보내기 (the row's own place)
         case (.team(_, TeamTab.visits, false), 6440...6479): screen = .team(sel: code - 6440, tab: TeamTab.visits, card: false)   // 3.8.5: a row: picked (the LCD shows it)
         case (.team(let sel, let tab, true), 6034): if let c = teamRows(tab)[safe: sel]?.card, isFriend(c.name), Walker.walkingNow(c), visitTo(c.name) == nil { startVisit(c.name) }   // 맡기기 (3.8.5: one a friend)
@@ -584,16 +587,17 @@ extension Walker {
     }
     /// A 메뉴 page: the first's 8 tiles (a group's ▸ gathers what's inside: its red dot, dimmed only when all of it needs the server, a line of how things are), or a group's features.
     func menuModel(_ g: Int?, _ i: Int) -> MenuModel {
-        let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드", "메가 레이드", "대전", "우편함"]   // offline: what needs the server, dimmed
+        let off = cloud.map { !$0.online } ?? false, needs: Set = ["포켓 레이더", "상점", "BP 교환소", "배틀 타워", "친구", "교환", "레이드", "메가 레이드", "대전", "우편함", "랭킹"]   // offline: what needs the server, dimmed
         let walking = (cloud?.team?.cards ?? []).filter { Walker.walkingNow($0) && !isMe($0) }.count
-        var notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / \(dexMax)", "도감 업적": "받은 업적 \((state.dexRewards ?? []).count)개", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "친구": friendRequestsIn > 0 ? "친구 신청 \(friendRequestsIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "친구 · 이번 주 순위", "교환": marketNote,
+        var notes = ["포켓 레이더": "10W", "코스": state.here.name, "트레이너 카드": "오늘 \(state.today.formatted())걸음", "포켓몬": "워커 \(state.caught.count) · 상자 \(state.box.count.formatted())", "도감": "\(dexCount) / \(dexMax)", "도감 업적": "받은 업적 \((state.dexRewards ?? []).count)개", "상점": "W로 사기", "BP 교환소": "\((state.bp ?? 0).formatted())BP로 교환", "배틀 타워": "최고 \(state.towerBest ?? 0)연승", "친구": friendRequestsIn > 0 ? "친구 신청 \(friendRequestsIn)건" : walking > 0 ? "지금 걷는 중 \(walking)명" : "친구 \(max(0, (cloud?.team?.cards.count ?? 1) - 1))명", "교환": marketNote,
                      "레이드": raidNote, "메가 레이드": megaNote, "대전": duelNote, "우편함": mailNote]
-        notes["전설 원정"] = expNote                                                                 // 5.1 (content51)
+        notes["전설 원정"] = expNote
+        notes["랭킹"] = rankNote                                                                     // 5.1: 친구 ▸ 랭킹                                                                 // 5.1 (content51)
         let dots: Set<String> = Set([marketDot ? "교환" : nil, friendRequestsIn > 0 ? "친구" : nil, mailDot ? "우편함" : nil, raidDot || powerDot(mega: false) ? "레이드" : nil,
                                      powerDot(mega: true) ? "메가 레이드" : nil, evolveDot ? "포켓몬" : nil, goalsDot ? "도감 업적" : nil, expDot ? "전설 원정" : nil].compactMap { $0 })   // 3.8: something waits there (4.0: a raid's ball stage; 5.0: the power full, one ready to evolve, a new 도감 업적)
         func row(_ n: String) -> MenuModel.Row { off && needs.contains(n) ? .init(name: n, note: "연결되면 할 수 있어요", off: true) : .init(name: n, note: notes[n] ?? "", dot: dots.contains(n)) }
         if let g { return MenuModel(rows: menuTiles[g].items.map(row), sel: i, group: menuTiles[g].name) }
-        let sums = ["모험": state.here.name, "기록": "도감 \(dexCount) · 오늘 \(state.today.formatted())걸음", "배틀": "최고 \(state.towerBest ?? 0)연승 · 파워 \(raidCells)칸", "친구": notes["친구"]!, "상점": "\(state.watts.formatted())W · \((state.bp ?? 0).formatted())BP"]
+        let sums = ["모험": state.here.name, "기록": "도감 \(dexCount) · 오늘 \(state.today.formatted())걸음", "배틀": "최고 \(state.towerBest ?? 0)연승", "레이드": raidNote, "친구": notes["친구"]!, "상점": "\(state.watts.formatted())W · \((state.bp ?? 0).formatted())BP"]
         return MenuModel(rows: menuTiles.map { t in
             guard !t.items.isEmpty else { return row(t.name) }
             let inner = t.items.map(row), lit = inner.first(where: \.dot)

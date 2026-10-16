@@ -247,6 +247,26 @@ import AppKit
         rsrv.raidEnds = nil; rme.state.raidPower = p0; rme.cloud!.raidDue = true
     }
     drain(rme)
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) {                     // 5.1 (the third round): the first page's eight, 레이드 ▸ · 배틀 ▸ · 친구 ▸, 친구's tabs, 랭킹, 우편 지우기
+        let k = rme.myName.lowercased()
+        rsrv.viewAll.insert(k)
+        rsrv.giveMail(k, "event", from: "팀 이벤트", title: "팀 이벤트: 비크티니", [.mon(mon: Mon(dex: 494, level: 50, female: false), steps: nil)])
+        rsrv.giveMail(k, "notice", from: "운영자", title: "5.1 업데이트 안내", body: "전설 원정이 열렸어요.", [])
+        rme.cloud!.teamDue = true; rme.cloud!.mailDue = true; drain(rme); drain(rme)
+        take("menu51_first", rme) { v in v.screen = .menu(group: nil, sel: 5) }
+        take("menu51_raid", rme) { v in v.screen = menuFor("메가 레이드") }
+        take("menu51_battle", rme) { v in v.screen = menuFor("대전") }
+        take("menu51_friends", rme) { v in v.screen = menuFor("랭킹") }
+        take("friends51", rme) { v in v.screen = .team(sel: 0, tab: TeamTab.friends, card: false) }
+        take("friends51_all", rme) { v in v.screen = .team(sel: 0, tab: TeamTab.all, card: false) }
+        for t in 0..<5 { take("rank51_\(t)", rme) { v in v.screen = .rank(tab: t, sel: 0, all: false) } }
+        take("rank51_0_all", rme) { v in v.screen = .rank(tab: 0, sel: 0, all: true) }
+        take("mail51_list", rme) { v in v.screen = .mail(.list(sel: 0)) }
+        if let g = rme.mails.first(where: Walker.claimable) { take("mail51_open_gift", rme) { v in v.screen = .mail(.open(id: g.id)) } }
+        if let n = rme.mails.first(where: { $0.gifts.isEmpty }) { take("mail51_open_notice", rme) { v in v.screen = .mail(.open(id: n.id)) } }
+        take("raid51_lobby", rme) { v in v.screen = .raid(.lobby(tab: 0)) }
+        rsrv.viewAll.remove(k)
+    } }
     take("raid_tier", rme) { v in v.state.raidPower = Engine.raidPowerCost * 234 / 100; v.screen = .raid(.tier(sel: 2)) }
     take("raid_tier_top", rme) { v in v.screen = .raid(.tier(sel: RaidRules.tiers.count - 1)) }
     take("raid_squad", rme) { v in v.raidTier = 3; v.screen = .squad(Squad(kind: .raid, picked: [v.state.caught[0].uid ?? 0], at: 0)) }
@@ -278,8 +298,8 @@ import AppKit
     rme.cloud!.raidDue = true; drain(rme); drain(rme)
     take("raid_done_today", rme) { v in v.raidStage = nil; v.screen = .raid(.lobby(tab: 1)) }
     rme.cloud!.teamDue = true; drain(rme); drain(rme)
-    take("friends_raid", rme) { v in v.screen = .team(sel: 0, tab: TeamTab.raid, card: false) }
-    take("friends_card_raid", rme) { v in v.screen = .team(sel: 0, tab: TeamTab.raid, card: true) }
+    take("friends_raid", rme) { v in v.screen = .rank(tab: 3, sel: 0, all: false) }   // (5.1: 랭킹's 레이드)
+    take("friends_card_raid", rme) { v in v.screen = .team(sel: 0, tab: TeamTab.friends, card: true) }
     // 3.5 (12 §2.4 · 3.3): 친구, the 교환 게시판
     let fsrv = FakeCloud(), fme = online({ var s = base(); s.seen = Array(1...151); s.owned = Array(1...60)
         var r = Seeded(s: 61); s.box = (0..<20).map { k in Mon.wild([19, 41, 133, 147, 4, 1, 95, 129, 16, 25][k % 10], level: 5 + k, shiny: k == 3 ? true : nil, &r) }; return s }(), server: fsrv)
@@ -512,7 +532,7 @@ import AppKit
     }
     zme.cloud!.teamDue = true; drain(zme); drain(zme)
     take("reset_card", zme) { v in v.screen = .card(0) }
-    take("reset_friends_tower", zme) { v in v.screen = .team(sel: 0, tab: TeamTab.tower, card: false) }
+    take("reset_friends_tower", zme) { v in v.screen = .rank(tab: 2, sel: 0, all: false) }   // (5.1: 랭킹's 타워)
     take("reset_friend_card", zme) { v in let i = v.teamRows(0).firstIndex { $0.card.name == "민수" } ?? 0; v.screen = .team(sel: i, tab: 0, card: true) }
     take("reset_tower_lobby", zme) { v in v.towerRun = false; v.screen = .tower(pick: nil) }
     let tyb = Battle(party: dme.state.party().map(\.mon), trainer: Tower.tycoon, foes: Tower.tycoonTeams[Tower.tycoonFights.min()!]!.map { Mon(dex: $0.dex, level: 50, female: $0.dex == 350) })   // its team as it is

@@ -3,9 +3,11 @@ import Foundation
 
 // MARK: - screens
 /// 3.9: the menu in two steps (docs/plans/15 §6 G) — the first page's 8 tiles (2 x 4), each a feature or a group (▸) of them.
-var menuTiles: [(name: String, items: [String])] {                       // 5.0 (content5): 메가 레이드 after 레이드; 5.1 (content51): 모험 ▸ 코스 · 전설 원정 (the user: "모험으로 바꾸고 코스와 전설원정 넣는 방식")
-    [("포켓 레이더", []), Content.v51 ? ("모험", ["코스", "전설 원정"]) : ("코스", []), ("포켓몬", []), ("기록", ["도감"] + (Content.gen6 ? ["도감 업적"] : []) + ["트레이너 카드"]), ("배틀", ["배틀 타워", "레이드"] + (Content.gen6 ? ["메가 레이드"] : []) + ["대전"]),
-     ("친구", ["친구", "교환"]), ("상점", ["상점", "BP 교환소"]), ("우편함", [])]
+var menuTiles: [(name: String, items: [String])] {                       // 5.0 (content5): 메가 레이드; 5.1 (content51): 모험 ▸ 코스 · 전설 원정 (the user: "모험으로 바꾸고 코스와 전설원정 넣는 방식")
+    // 5.1 (the user via 회사 10-16: "레이드를 아에 상위메뉴로 하나 빼고", "우편함을 친구에 같이 넣어버리자", "친구 메뉴에 랭킹을 넣자"): 레이드 ▸ a tile of its
+    // own, 배틀 ▸ 배틀 타워 · 대전, 친구 ▸ 친구 · 교환 · 랭킹 · 우편함 — the first page eight as before
+    [("포켓 레이더", []), Content.v51 ? ("모험", ["코스", "전설 원정"]) : ("코스", []), ("포켓몬", []), ("기록", ["도감"] + (Content.gen6 ? ["도감 업적"] : []) + ["트레이너 카드"]),
+     ("배틀", ["배틀 타워", "대전"]), ("레이드", ["레이드"] + (Content.gen6 ? ["메가 레이드"] : [])), ("친구", ["친구", "교환", "랭킹", "우편함"]), ("상점", ["상점", "BP 교환소"])]
 }
 /// Every feature on the menu, in order.
 var menuItems: [String] { menuTiles.flatMap { $0.items.isEmpty ? [$0.name] : $0.items } }
@@ -49,6 +51,7 @@ indirect enum Screen {
     case squad(Squad)                                                  // 3.8 (14 §4–5): several of ours in order — the 대전 파티, a raid's party, a duel's 3 of my 6
     case say([String], next: Screen, since: Date)                      // any button or 3 s
     case evolve(from: Mon, to: Mon, since: Date)                       // already applied to the state; this is the show
+    case rank(tab: Int, sel: Int, all: Bool)                           // 5.1 (RankView.swift): 친구 ▸ 랭킹 — the tab, the row, 전체 or the friends
     case expedition(Int)                                               // 5.1 (content51, ExpView.swift): 전설 원정 — the row picked
     case assemble(Mon, since: Date)                                    // 5.1: 지가르데's cells put together (already in the box; this is the show)
     case goals(Int)                                                    // 5.0 (content5): 도감 업적 — the row picked (0 전국, 1… the regions, last 해금: GoalsView.swift)

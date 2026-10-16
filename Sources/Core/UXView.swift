@@ -53,7 +53,7 @@ extension Walker {
 
     // MARK: the shortcuts (5.0): 1–8 the menu's tiles (a group's page: its rows), R 포켓 레이더, B 포켓몬, I 도구, / 찾기 (도감, 상자)
     func shortcut(_ k: Key) -> Bool {
-        let calmPage: Bool = { switch screen { case .home, .menu, .dex(_, _, false), .box(_, .none, _, false), .items, .card, .goals, .course, .expedition: true; default: false } }()
+        let calmPage: Bool = { switch screen { case .home, .menu, .dex(_, _, false), .box(_, .none, _, false), .items, .card, .goals, .course, .expedition, .rank: true; default: false } }()
         guard calmPage else { return false }
         switch k {
         case .digit(let n) where (1...8).contains(n):

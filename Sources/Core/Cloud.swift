@@ -93,10 +93,12 @@ final class CloudInbox: @unchecked Sendable {
     private(set) var market: MarketReply? = nil; var marketDue = false
     // 3.9 (15 §2): the 우편함 as the server last listed it (a read); mails opened since, sent as read with the next one
     private(set) var mail: MailReply? = nil; var mailDue = false, mailRead: Set<Int> = []
+    /// 5.1: mail just deleted — out of the list now (the red dot, the lines), before the server's list again.
+    func dropMail(_ ids: Set<Int>) { guard var m = mail else { return }; m.mails.removeAll { ids.contains($0.id) }; m.unread = m.mails.filter { !$0.read || (!$0.claimed && !$0.gifts.isEmpty) }.count; mail = m }
     private(set) var expedition: ExpReply? = nil; var expeditionDue = false
     private var dailyAsked = 0, megaDailyAsked = 0                       // 5.1 (plan 20): the lobby's end we asked again for (once)
-    /// 5.1 (plan 20): the raids by the day are the server's switch alone — its lobby says so (10 a day): the app's power rules (Walk.rollover's 2칸, the 10칸 bank) follow.
-    private func daily(_ t: RaidToday) { if Content.testingDaily == nil { Content.onDaily = t.max >= RaidDaily.maxRuns } }   // 5.1 (docs/plans/19 §9): the team events (/v2/expedition), with the team every 3 minutes
+    /// 5.1 (plan 20 §11, the server's cd2317c): the raids by the day — the login says so (raidDaily), and each lobby again (daily: a switch flipped while the app is up); the app's power rules (Walk.rollover's 2칸, the 10칸 bank) follow.
+    private func daily(_ on: Bool?) { if Content.testingDaily == nil { Content.onDaily = on ?? false } }   // 5.1 (docs/plans/19 §9): the team events (/v2/expedition), with the team every 3 minutes
     var marketSeen: Int? = nil                                             // 3.8 (14 §2.2): one of my posts just opened — its offers count as seen (sent with the next read)
     // 12 §5 (3.6): a live battle's polls — a lane of their own (a long poll holds up to 25 s; acts and steps don't wait for it)
     var duelPoll: DuelReq? = nil                                           // the next one to send (the walker's: since, wait, version)
@@ -293,8 +295,8 @@ final class CloudInbox: @unchecked Sendable {
                 if let r = try? JSONDecoder().decode(TradesReply.self, from: body) { trades = r; tradesNews = true }
             case (.box(let of), 200):
                 if let r = try? JSONDecoder().decode(BoxReply.self, from: body) { box = r; tradesNews = true } else { boxGone = of }
-            case (.raid, 200): if let r = try? JSONDecoder().decode(RaidLobby.self, from: body) { raid = r; tradesNews = true; raidNews = true; daily(r.today) }
-            case (.megaRaid, 200): if let r = try? JSONDecoder().decode(MegaRaidLobby.self, from: body) { megaRaid = r; tradesNews = true; raidNews = true; daily(r.today) }
+            case (.raid, 200): if let r = try? JSONDecoder().decode(RaidLobby.self, from: body) { raid = r; tradesNews = true; raidNews = true; daily(r.daily) }
+            case (.megaRaid, 200): if let r = try? JSONDecoder().decode(MegaRaidLobby.self, from: body) { megaRaid = r; tradesNews = true; raidNews = true; daily(r.daily) }
             case (.market, 200): if let r = try? JSONDecoder().decode(MarketReply.self, from: body) { market = r; tradesNews = true }
             case (.mail, 200): if let r = try? JSONDecoder().decode(MailReply.self, from: body) { mail = r; tradesNews = true }
             case (.expedition, 200): if let r = try? JSONDecoder().decode(ExpReply.self, from: body) { expedition = r; tradesNews = true }
@@ -305,6 +307,7 @@ final class CloudInbox: @unchecked Sendable {
             case (.login(_, let resume), 200): loggedIn(j, resume: resume, now)
             case (.create, 200) where j["session"] is String:
                 Content.on = j["content5"] as? Bool ?? false                                          // 5.0: as the login's — a new trainer's first session too
+                Content.on51 = j["content51"] as? Bool ?? false; Content.onDaily = j["raidDaily"] as? Bool ?? false   // 5.1 (plans 19 §9 · 20 §11)
                 drop(); seat.session = j["session"] as? String; seat.trust = j["trust"] as? String ?? seat.trust; pendingPIN = nil
                 base = nil; phase = .on; lastSaved = now; stepsAt = now                                 // its first save (the starter's) comes with the first act
             case (.create, 400) where j["error"] as? String == "bad_pin": pendingPIN = nil; phase = .new(seat.trainerID ?? "")   // (the box checks: not met)
@@ -340,6 +343,8 @@ final class CloudInbox: @unchecked Sendable {
         if j["busy"] as? Bool == true { phase = .busy(device: j["last_device"] as? String ?? "", at: j["updated_at"] as? Int ?? 0); return }
         guard let session = j["session"] as? String, let rev = j["rev"] as? Int else { asking = .login(force: resume, resume: resume); retryAt = now.addingTimeInterval(Cloud.period); return }
         Content.on = j["content5"] as? Bool ?? false                                          // 5.0 (docs/plans/18 §14.4): the server's rules, before any fight of this session
+        Content.on51 = j["content51"] as? Bool ?? false                                       // 5.1 (plan 19 §9): 전설 원정 · 특성패치 · the form items · 모험 ▸
+        Content.onDaily = j["raidDaily"] as? Bool ?? false                                    // 5.1 (plan 20 §11): the raids by the day (the lobbies' own `daily` after)
         if let text = j["walk"] as? String {
             guard let w = Cloud.walk(text) else {                                              // one this app can't read: nothing to show it with
                 NSLog("pokewalker: cloud: the server's save doesn't decode"); phase = .login; asking = .login(force: resume, resume: resume); retryAt = now.addingTimeInterval(Cloud.period); return
@@ -562,6 +567,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     var rows: [String: Row] = [:], paths: [String] = [], acts: [Act] = [], steps: [Int] = [], held: [() -> Void] = [], clock = 10_000
     var down = false, html: Int? = nil, lose = false, hold = false, old: String? = nil, pins = false
     var content5 = false                                                                         // 5.0: the login says content5 (pokeserver content5 on)
+    var content51 = false, raidDaily = false                                                     // 5.1: … content51 (plan 19), raidDaily (plan 20)
     var rng = Seeded(s: 77), nextUID = 1_000_001, now: Date? = nil, stepCap: Int? = nil       // stepCap: the steps allowance (the real one fills at 15 a second)
     var lastAct: [String: Date] = [:], inbox: [String: [News]] = [:], greeted: [String: Date] = [:]   // 12 §2 (M1): each trainer's last act, its undelivered 인사, a pair's last one
     // 4.0 (docs/plans/16): raid runs, as the server's ServerRaid.swift — this week's species; each trainer's runs (open: its fight on; a ball stage:
@@ -651,12 +657,13 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         let at = now ?? Date()
         let cards = rows.keys.sorted().compactMap { k -> TeamCard? in
             guard k == id.key || isFriend(id.key, k), let row = rows[k], let w = row.walk.flatMap(Cloud.walk) else { return nil }   // 3.5: me and my friends
-            var c = TeamCard(name: row.name, walk: w, today: w.today, week: w.today, idle: lastAct[k].map { Int(at.timeIntervalSince($0)) } ?? 999_999); c.raid = raidWeek(k); return c   // 4.0: its week of runs
+            var c = TeamCard(name: row.name, walk: w, today: w.today, week: w.today, idle: lastAct[k].map { Int(at.timeIntervalSince($0)) } ?? 999_999); c.raid = raidWeek(k, mega: Content.v51 ? false : nil); if Content.v51 { c.megaWeek = raidWeek(k, mega: true) }; return c   // 4.0: its week of runs
         }
         let asked = (friendAsks[id.key] ?? []).sorted().compactMap { rows[$0]?.name }, sent = friendAsks.filter { $0.value.contains(id.key) }.keys.sorted().compactMap { rows[$0]?.name }
         let all = viewAll.contains(id.key) ? rows.keys.sorted().compactMap { k -> TeamCard? in
             guard let row = rows[k], let w = row.walk.flatMap(Cloud.walk) else { return nil }
-            return TeamCard(name: row.name, walk: w, today: w.today, week: w.today, idle: lastAct[k].map { Int(at.timeIntervalSince($0)) } ?? 999_999)
+            var c = TeamCard(name: row.name, walk: w, today: w.today, week: w.today, idle: lastAct[k].map { Int(at.timeIntervalSince($0)) } ?? 999_999)
+            c.raid = raidWeek(k, mega: Content.v51 ? false : nil); if Content.v51 { c.megaWeek = raidWeek(k, mega: true) }; return c   // (5.1: the 랭킹's 전체, as the server's)
         } : nil
         return (200, (try? JSONEncoder().encode(TeamReply(week: "2026-W40", cards: cards, requests: asked, sent: sent, visits: visitsOf(id.key), all: all))) ?? Data())
     }
@@ -1025,6 +1032,14 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             let all = (postBox[key] ?? []).indices.filter { !postBox[key]![$0].claimed && !postBox[key]![$0].gifts.isEmpty && !postBox[key]![$0].picks }
             guard !all.isEmpty else { return "받을 우편이\n없어요" }
             for i in all { _ = claim(i, nil) }
+        case .mailDelete(let id):                                                                      // 5.1 (plan 19 §9): as the server's — claimed, or nothing to claim
+            guard let i = postBox[key]?.firstIndex(where: { $0.id == id }) else { return "지울 수 없는\n우편이에요" }
+            if !postBox[key]![i].claimed, !postBox[key]![i].gifts.isEmpty { return "받을 것이 남은\n우편이에요" }
+            postBox[key]!.remove(at: i)
+        case .mailDeleteAll:
+            let n = postBox[key]?.count ?? 0
+            postBox[key]?.removeAll { $0.claimed || $0.gifts.isEmpty }
+            if (postBox[key]?.count ?? 0) == n { return "지울 우편이\n없어요" }
         default: break
         }
         return nil
@@ -1209,8 +1224,8 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         for i in (raidRuns[key] ?? []).indices where !raidRuns[key]![i].ended { raidRuns[key]![i].ended = true; raidRuns[key]![i].balls = RaidRules.balls }
     }
     func raidPending(_ key: String) -> Int? { raidRuns[key]?.lastIndex { $0.ended && $0.balls > 0 && !$0.caught } }
-    func raidWeek(_ key: String) -> RaidWeek? {
-        let runs = raidRuns[key] ?? []
+    func raidWeek(_ key: String, mega: Bool? = nil) -> RaidWeek? {                                   // 5.1 (the server's 8342e2f): mega — those runs alone (nil: both, the lobby's)
+        let runs = (raidRuns[key] ?? []).filter { r in mega.map { r.mega == $0 } ?? true }
         guard !runs.isEmpty else { return nil }
         return RaidWeek(runs: runs.count, wins: runs.filter(\.won).count, caught: runs.filter(\.caught).count, shiny: runs.filter { $0.caught && $0.boss.shiny == true }.count,
                         best: runs.filter(\.won).map(\.tier).max())
@@ -1248,7 +1263,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             let lobby = MegaRaidLobby(week: "2026-W42", bosses: these, next: mark(MegaRaid.week(megaWeekNo + 1)), ends: lobbyEnds(at),
                                       today: RaidToday(used: (raidRuns[k] ?? []).filter { $0.day == today }.count, max: fakePerDay), resetAt: Int(at.timeIntervalSince1970) + 8 * 3600,
                                       mine: RaidWeek(runs: runs.count, wins: runs.filter(\.won).count, best: runs.filter(\.won).map(\.tier).max()), runs: Array(runs),
-                                      pityNeed: MegaRaid.bossWins, odds: MegaRaid.stoneOdds, tiers: RaidRules.tiers)
+                                      pityNeed: MegaRaid.bossWins, odds: MegaRaid.stoneOdds, tiers: RaidRules.tiers, daily: Content.raidDaily ? true : nil)
             return (200, (try? JSONEncoder().encode(lobby)) ?? Data())
         }
         let friends = ([k] + rows.keys.filter { isFriend(k, $0) }.sorted()).compactMap { f -> RaidFriend? in
@@ -1261,7 +1276,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         let lobby = RaidLobby(week: "2026-W42", boss: Mon(dex: raidDex, level: 70, female: false), next: Content.raidDaily ? 250 : 382, ends: lobbyEnds(at),
                               today: RaidToday(used: raidOpens == nil ? (raidRuns[k] ?? []).filter { $0.day == today }.count : 0, max: raidOpens == nil ? fakePerDay : 0),
                               resetAt: Int(at.timeIntervalSince1970) + 8 * 3600, mine: raidWeek(k) ?? RaidWeek(), runs: Array(runs), friends: friends,
-                              pending: p.map { RaidPending(boss: $0.boss, tier: $0.tier, bars: $0.bars, won: $0.won, balls: $0.balls) }, tiers: RaidRules.tiers, opens: raidOpens)
+                              pending: p.map { RaidPending(boss: $0.boss, tier: $0.tier, bars: $0.bars, won: $0.won, balls: $0.balls) }, tiers: RaidRules.tiers, opens: raidOpens, daily: Content.raidDaily ? true : nil)   // (5.1: as the server's — by the day: true, else none)
         return (200, (try? JSONEncoder().encode(lobby)) ?? Data())
     }
     /// POST /v2/trades: the trainer's open offers, to it and its own.
@@ -1287,7 +1302,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             if path == "v1/create" {
                 guard !pins || Cloud.validPIN(pin) else { return (400, ["error": "bad_pin"]) }
                 rows[id.key] = Row(name: id.name, session: session, device: device, at: clock, pin: pins ? pin : nil, trusts: pins ? [device: token] : [:])   // its save: at its first act
-                return (200, ["rev": 0, "session": session, "trust": token, "starter": 1_000_000].merging(content5 ? ["content5": true] : [:]) { $1 })   // (5.0: as the login's)
+                return (200, ["rev": 0, "session": session, "trust": token, "starter": 1_000_000].merging(content5 ? ["content5": true] : [:]) { $1 }.merging((content51 ? ["content51": true] : [:]).merging(raidDaily ? ["raidDaily": true] : [:]) { $1 }) { $1 })   // (5.0: as the login's; 5.1 too)
             }
             return path == "v1/login" ? (200, ["exists": false]) : (404, ["error": "no_trainer"])
         }
@@ -1316,6 +1331,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             var b: [String: Any] = ["exists": true, "name": r.name, "rev": r.rev, "walk": (r.walk as Any?) ?? NSNull(), "session": session, "last_device": was.device, "updated_at": was.at, "tower": carry]
             b["trust"] = trust; if pins, r.pin == nil { b["pin_needed"] = true }
             if content5 { b["content5"] = true }                                                  // (off: no field, as the server)
+            if content51 { b["content51"] = true }; if raidDaily { b["raidDaily"] = true }
             return (200, b)
         case "v1/pin":
             guard j["session"] as? String == r.session else { return (409, ["error": "conflict", "reason": "replaced"]) }
@@ -1397,10 +1413,10 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     v.screen = menuFor("포켓 레이더"); let tiles = v.paneContent(Date()).menu?.rows ?? []; v.press(1)
     let refused = says(v) == Walker.offlineLines && v.waiting == nil, row = v.cloudMenuTitle
     v.screen = menuFor("도감"); let inRecord = v.paneContent(Date()).menu?.rows.filter(\.off) ?? []; v.screen = menuFor("배틀 타워"); let inBattle = v.paneContent(Date()).menu?.rows.filter(\.off).count
-    let dimmed = tiles.filter(\.off).map(\.name) == ["포켓 레이더", "배틀", "친구", "상점", "우편함"] && tiles.first { $0.off }?.note == "연결되면 할 수 있어요" && inRecord.isEmpty && inBattle == 3
+    let dimmed = tiles.filter(\.off).map(\.name) == ["포켓 레이더", "배틀", "레이드", "친구", "상점"] && tiles.first { $0.off }?.note == "연결되면 할 수 있어요" && inRecord.isEmpty && inBattle == 2
     vs.down = false; v.tick(Date() + 121); drain(v)
     chk(refused && dimmed && row.hasSuffix("연결 안 됨 · 올릴 걸음 30") && served(v)?.total == 37 && v.cloud!.ahead == 0,
-              "3.0 offline: what needs the server dimmed on the menu (연결되면 할 수 있어요; 3.9: a group only when all of it does — 기록 not, 배틀 and its three), and says so at once; steps pile up (the right-click: 연결 안 됨 · 올릴 걸음 n); back, they go up", row)
+              "3.0 offline: what needs the server dimmed on the menu (연결되면 할 수 있어요; 3.9: a group only when all of it does — 기록 not, 배틀 and its two; 5.1: 레이드 · 친구 with 랭킹 · 우편함), and says so at once; steps pile up (the right-click: 연결 안 됨 · 올릴 걸음 n); back, they go up", row)
     let bs = FakeCloud(); bs.add("zz000099", Walk())
     let bo = Cloud(link: bs, dir: tmp.appendingPathComponent("bo", isDirectory: true)); bo.seat.trainerID = "zz000099"; bo.login(force: true); var bt = Date(); bo.tick(bt); bo.tick(bt)
     var waits2: [TimeInterval] = []; bo.addSteps(5)

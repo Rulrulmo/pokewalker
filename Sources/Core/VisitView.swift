@@ -27,7 +27,7 @@ extension Walker {
         }
         let note = cloud?.team == nil ? "불러오는 중…" : "보낸 포켓몬 \(visitsOut.count) · 맡은 포켓몬 \(guests.count)/\(Walker.guestsMax)"
         let s = min(sel, max(0, rows.count - 1)), first = max(0, min(s - 2, rows.count - VisitsModel.shown))
-        return PaneContent(visits: VisitsModel(tabs: teamTabLabels, tab: TeamTab.visits, rows: rows, note: note,
+        return PaneContent(visits: VisitsModel(tabs: teamTabLabels, tab: teamTabPos(TeamTab.visits), rows: rows, note: note,
                                                hint: "지금 걷는 친구의 카드에서 맡기기 · 친구마다 1마리 · 5시간 · 키운 걸음만큼 경험치 · 맡은 쪽은 2,000걸음마다 1BP (최대 5)", first: first, sel: s))
     }
     func visitsLCD(_ fb: inout FB, _ sel: Int, _ now: Date) {

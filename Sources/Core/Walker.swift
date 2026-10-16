@@ -71,7 +71,10 @@ import Foundation
     var raidOn = false, raidThen: Screen? = nil, raidPicked: [Int] = []   // 12 (M3): a raid fight is on (its menu, lines, HUD); where a raid ball's show goes after; 3.8: the last raid party (uids), offered first
     var raidStage: RaidPending? = nil, raidTier = 0                       // 4.0 (16 §8-4): the run's ball stage on screen (its boss, balls left); the tier picked for the next run (0: none yet)
 
-    init(state: Walk) { self.state = state }
+    init(state: Walk) {
+        self.state = state
+        if settings.int("ui.menuLayout", 0) != 51 { settings.set("ui.menuLayout", 51); settings.set("ui.lastTile", 0); lastTile = 0 }   // 5.1: the tiles moved (레이드 its own, 우편함 in 친구): 5.0's remembered tile isn't the same one
+    }
 
     /// The pane now: its page (and the card's height), the LCD's HP boxes, the 메뉴 / 홈 key, the title row; the host redraws what changed.
     func refreshPane(_ now: Date, force: Bool = false) {
@@ -113,7 +116,7 @@ import Foundation
         case .hatch(_, let since) where now.timeIntervalSince(since) > 5.5: screen = .home
         case .assemble(_, let since) where now.timeIntervalSince(since) > 5.5: screen = expAfter ?? .home; expAfter = nil   // 5.1: then its line, back on the page
         case .traded(_, _, _, let since) where now.timeIntervalSince(since) > 6: screen = .home
-        case .menu, .card, .items, .dex, .goals, .expedition, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid(.lobby), .raid(.tier), .itemOn, .hold, .visitPick: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
+        case .menu, .card, .items, .dex, .goals, .expedition, .rank, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid(.lobby), .raid(.tier), .itemOn, .hold, .visitPick: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
         case .trade, .market, .mail: if now.timeIntervalSince(lastInput) > 60 { screen = .home }       // (a trade is weighed up: longer)
         case .raid(.balls): if now.timeIntervalSince(lastInput) > 120 { screen = .home }               // 4.0: left alone, not given up — the stage waits (the lobby goes back to it)
         default: break
@@ -146,7 +149,11 @@ import Foundation
         if case .hold(let r, let s) = screen, let d = [Key.up: -1, .down: 1, .pageUp: -6, .pageDown: 6][k] { let n = holdRows(r).count; if n > 0 { screen = .hold(ref: r, sel: max(0, min(n - 1, s + d))); lastInput = Date(); host?.redraw(.all) }; return true }
         if case .team(let s, let t, false) = screen {                                             // 팀: ↑ ↓ a row, page up / down a page, tab the next tab
             if let d = [Key.up: -1, .down: 1, .pageUp: -TeamModel.perPage, .pageDown: TeamModel.perPage][k] { teamStep(d, wrap: false); return true }
-            if k == .tab { let n = teamTabCount; screen = .team(sel: 0, tab: (t + (shift ? n - 1 : 1)) % n, card: false); _ = s; host?.redraw(.all); return true }
+            if k == .tab { let l = teamTabList, i = l.firstIndex(of: t) ?? 0; screen = .team(sel: 0, tab: l[(i + (shift ? l.count - 1 : 1)) % l.count], card: false); _ = s; host?.redraw(.all); return true }
+        }
+        if case .rank(let t, let s, let a) = screen {                                             // 5.1 랭킹: ↑ ↓ a row, tab the next tab
+            if let d = [Key.up: -1, .down: 1, .pageUp: -TeamModel.perPage, .pageDown: TeamModel.perPage][k] { let n = max(1, rankRows(t, a).count); screen = .rank(tab: t, sel: max(0, min(n - 1, s + d)), all: a); host?.redraw(.all); return true }
+            if k == .tab { let n = Walker.rankTabs.count; screen = .rank(tab: (t + (shift ? n - 1 : 1)) % n, sel: 0, all: a); host?.redraw(.all); return true }
         }
         if case .trade = screen, tradeKey(k, shift: shift) { return true }
         if case .market = screen, marketKey(k, shift: shift) { return true }
@@ -190,6 +197,7 @@ import Foundation
         let when = "\(state.season.name) \(state.gameDay % seasonDays + 1)일째 · \((state.weather ?? .sunny).name)"
         switch sc {
         case .dex: return ("도감", "잡음 \(dexCount) · 봤음 \(seenList.count)")
+        case .rank(let t, _, let a): return ("랭킹", "이번 주 · " + Walker.rankTabs[t] + (a && rankAll ? " · 전체" : " · 친구"))
         case .expedition: return ("전설 원정", "전설 \(Walker.expLegends.filter { (state.owned ?? []).contains($0) }.count)/\(Walker.expLegends.count)종")
         case .goals: return ("도감 업적", "받은 업적 \((state.dexRewards ?? []).count)개")
         case .box(let i, _, _, true) where state.mon(i)?.ot != nil: return ("포켓몬", "어버이: " + (state.mon(i)?.ot ?? ""))   // a traded one: who it came from first

@@ -789,8 +789,14 @@ extension Page {
         return 24
     }
     func drawTeam(_ m: TeamModel) {
-        c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 60))
-        if !m.week.isEmpty { c.say(m.week, x(X1 - 2), y(206), font(9, .medium), Ink.faint, 1) }
+        if let sc = m.scope {                                                                        // 5.1 (랭킹): 친구 | 전체 (6090 · 6091)
+            for (k, t) in ["친구", "전체"].enumerated() {
+                let rc = r(X1 - 76 + CGFloat(k) * 38, 199, 38, 15); c.fill(.rounded(rc, 7 * K), k == sc ? Ink.red : Ink.tile)
+                c.say(t, rc.midX, rc.midY, font(8.5, .bold), k == sc ? .white : Ink.sub, 0.5); hits.append((rc, 6090 + k))
+            }
+        }
+        c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - (m.scope != nil ? 84 : 60)))
+        if !m.week.isEmpty, m.scope == nil { c.say(m.week, x(X1 - 2), y(206), font(9, .medium), Ink.faint, 1) }
         let d = teamTabs(m.tabs, m.tab)
         if m.rows.isEmpty { c.say(m.note, x(Layout.w / 2), y(300 + d), font(10, .medium), Ink.sub, 0.5); return }
         if let h = m.hint { c.say(h, x(Layout.w / 2), y(242 + d + CGFloat(m.rows.count) * 29 + 14), font(9, .medium), Ink.faint, 0.5) }   // only me: how to add one
@@ -942,7 +948,7 @@ extension Page {
     // MARK: 친구's 신청 tab (12 §2.4): requests to me (수락 · 거절), mine (거두기), 친구 신청 by ID
     func drawFriendReqs(_ m: FriendReqModel) {
         c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
-        let d = teamTabs(m.tabs, TeamTab.requests)
+        let d = teamTabs(m.tabs, m.tabs.firstIndex { $0.hasPrefix("신청") } ?? 1)   // (5.1: its place among 친구 · 신청 · 맡기기 · 전체)
         if m.rows.isEmpty {
             c.say("친구 신청이 없어요", x(Layout.w / 2), y(300 + d), font(10, .medium), Ink.sub, 0.5)
             c.say("친구의 트레이너 ID로 신청해 보세요", x(Layout.w / 2), y(318 + d), font(9, .medium), Ink.faint, 0.5)
@@ -1187,8 +1193,10 @@ extension Page {
         }
         let per = MailListModel.perPage, pages = max(1, (m.count + per - 1) / per)
         pager("\(m.first / per + 1) / \(pages)", 404, prev: pages > 1, next: pages > 1, codes: (8820, 8821))
-        let rc = r(X0, 428, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.all == nil ? Ink.tile : Ink.red)
+        let dw: CGFloat = m.delAll != nil ? 82 : 0                                                     // 5.1: 받은 n통 지우기 beside it (8831)
+        let rc = r(X0, 428, X1 - X0 - (dw > 0 ? dw + 5 : 0), 30); c.fill(.rounded(rc, 10 * K), m.all == nil ? Ink.tile : Ink.red)
         c.say(m.all ?? "고르기 우편은 하나씩 받아요", rc.midX, rc.midY, font(m.all == nil ? 9.5 : 11, .bold), m.all == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.all != nil { hits.append((rc, 8830)) }
+        if let d = m.delAll { let dr = r(X1 - dw, 428, dw, 30); c.fill(.rounded(dr, 10 * K), Ink.tile); c.stroke(.rounded(dr, 10 * K), Ink.line, width: 1 * K); c.say(d, dr.midX, dr.midY, font(9.5, .bold), Ink.ink, 0.5, maxW: dr.width - x(8)); hits.append((dr, 8831)) }
     }
     func drawMailOpen(_ m: MailOpenModel) {
         c.say(m.title, x(X0 + 2), y(207), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 4))
@@ -1214,8 +1222,12 @@ extension Page {
             if !g.note.isEmpty { c.say(g.note, rc.minX + x(38), rc.midY + x(6.5), font(8, .medium), Ink.sub, maxW: rc.width - x(46)) }
             yy += 33
         }
-        let rc = r(X0, 428, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.button == nil ? Ink.tile : Ink.red)
+        let dw: CGFloat = m.del != nil ? 64 : 0                                                         // 5.1: 지우기 beside it (8841; dimmed: a gift left, why above)
+        if let why = m.delWhy { c.say(why, x(X1 - 2), y(414), font(8.5, .medium), Ink.sub, 1, maxW: x(X1 - X0 - 4)) }
+        let rc = r(X0, 428, X1 - X0 - (dw > 0 ? dw + 5 : 0), 30); c.fill(.rounded(rc, 10 * K), m.button == nil ? Ink.tile : Ink.red)
         c.say(m.button ?? m.off, rc.midX, rc.midY, font(m.button == nil ? 9.5 : 11, .bold), m.button == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.button != nil { hits.append((rc, 8840)) }
+        if let on = m.del { let dr = r(X1 - dw, 428, dw, 30); c.fill(.rounded(dr, 10 * K), Ink.tile); if on { c.stroke(.rounded(dr, 10 * K), Ink.red, width: 1.2 * K) }
+            c.say("지우기", dr.midX, dr.midY, font(10.5, .bold), on ? Ink.red : Ink.faint, 0.5); if on { hits.append((dr, 8841)) } }
     }
     func drawMailPick(_ m: MailPickModel) {
         let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)

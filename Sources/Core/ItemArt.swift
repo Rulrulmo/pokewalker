@@ -98,7 +98,7 @@ enum PanelArt {
         case "포켓 레이더": nil
         case "코스", "모험", "전설 원정": .course; case "포켓몬": .pokemon; case "기록", "도감", "도감 업적": .dex; case "트레이너 카드": .card
         case "배틀", "배틀 타워", "대전": .tower; case "레이드": .raid; case "메가 레이드": .mega
-        case "친구", "교환": .social; case "상점", "BP 교환소": .shop; case "우편함": .mail
+        case "친구", "교환", "랭킹": .social; case "상점", "BP 교환소": .shop; case "우편함": .mail
         default: nil
         }
         if name == "포켓 레이더" { return radar }

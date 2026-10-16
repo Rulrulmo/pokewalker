@@ -29,7 +29,7 @@ extension Walker {
     /// The 팀 tabs as shown: 교환's with how many wait for me.
     var teamTabLabels: [String] {
         let n = visitsOut.count + guests.count
-        return Array(Walker.teamTabs.prefix(TeamTab.requests)) + [friendRequestsIn > 0 ? "신청 \(friendRequestsIn)" : "신청", n > 0 ? "맡기기 \(n)" : "맡기기"] + (teamTabCount > TeamTab.all ? ["전체"] : [])
+        return teamTabList.map { t in t == TeamTab.requests ? (friendRequestsIn > 0 ? "신청 \(friendRequestsIn)" : "신청") : t == TeamTab.visits ? (n > 0 ? "맡기기 \(n)" : "맡기기") : Walker.teamTabs[t] }   // 5.1: 친구 · 신청 · 맡기기 · 전체
     }
     static func isTrade(_ a: Act) -> Bool { switch a { case .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel: true; default: false } }
     func monLine(_ m: Mon) -> String { (m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)" }

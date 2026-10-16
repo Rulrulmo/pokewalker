@@ -144,7 +144,7 @@ extension Walker {
         case .dex, .goals: return .dex
         case .mail: return .mail
         case .box, .itemOn, .hold, .formPick, .train, .relearn, .learn, .visitPick: return .pokemon
-        case .team, .trade, .market, .duel, .squad: return .social
+        case .team, .trade, .market, .duel, .squad, .rank: return .social
         case .shop, .shopConfirm, .items: return .shop
         case .tower(nil): return .tower
         case .raid(.lobby), .raid(.tier): return raidMega ? .mega : .raid

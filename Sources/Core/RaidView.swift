@@ -8,7 +8,7 @@ import Foundation
 enum RaidStep: Equatable { case lobby(tab: Int), tier(sel: Int), balls }
 
 extension Walker {
-    static let raidTabs = ["친구 이번 주", "내 판"]
+    static let raidTabs = ["레이드 · 메가 합계", "내 판"]                 // 5.1 (회사, 8342e2f): the lobby's friends count both raids (랭킹's 레이드 the legend raid alone)
     var raidPower: Int { state.raidPower ?? 0 }
     var raidCells: Int { raidPower / Engine.raidPowerCost }
     var raidLobby: RaidLobby? { cloud?.raid }

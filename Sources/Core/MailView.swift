@@ -103,8 +103,10 @@ extension Walker {
             }
             let take = ms.filter { Walker.claimable($0) && !$0.picks }.count
             let note = cloud?.mail == nil ? (cloud?.online == false ? "연결되면 볼 수 있어요" : "불러오는 중…") : "받을 우편 \(ms.filter(Walker.claimable).count)통 · 전체 \(ms.count)통"
-            return PaneContent(mailList: MailListModel(rows: rows, sel: ms.isEmpty ? nil : sel, first: first, count: ms.count, note: note,
-                                                       all: take > 0 ? "모두 받기 · \(take)통" : nil, empty: cloud?.mail == nil ? note : "우편이 없어요"))
+            var list = MailListModel(rows: rows, sel: ms.isEmpty ? nil : sel, first: first, count: ms.count, note: note,
+                                     all: take > 0 ? "모두 받기 · \(take)통" : nil, empty: cloud?.mail == nil ? note : "우편이 없어요")
+            let gone = ms.filter { !Walker.claimable($0) }.count; list.delAll = gone > 0 ? "받은 \(gone)통 지우기" : nil   // 5.1: what's taken (or has nothing to take)
+            return PaneContent(mailList: list)
         case .open(let id):
             guard let m = mail(id) else { return mailPane(.list(sel: 0), now) }
             let gifts = m.gifts.map { g -> MailOpenModel.Gift in
@@ -119,8 +121,10 @@ extension Walker {
                 }
             }
             let button: String? = m.gifts.isEmpty ? nil : m.claimed ? nil : m.picks ? "고르기" : "받기"
-            return PaneContent(mailOpen: MailOpenModel(title: m.title, from: mailFrom(m, now), body: m.body ?? "", gifts: gifts, button: button,
-                                                       off: m.gifts.isEmpty ? "공지 · 받을 것이 없는 우편이에요" : "받았어요"))
+            var open = MailOpenModel(title: m.title, from: mailFrom(m, now), body: m.body ?? "", gifts: gifts, button: button,
+                                     off: m.gifts.isEmpty ? "공지 · 받을 것이 없는 우편이에요" : "받았어요")
+            let left = Walker.claimable(m); open.del = !left; open.delWhy = left ? "받을 것이 남아 있어요 · 받은 뒤에 지울 수 있어요" : nil   // 5.1
+            return PaneContent(mailOpen: open)
         case .pick(let id, let at, let ask):
             guard let m = mail(id), let g = m.gifts.first(where: { if case .pickItem = $0 { return true }; if case .pickLegend = $0 { return true }; return false }) else { return mailPane(.list(sel: 0), now) }
             switch g {
@@ -260,6 +264,23 @@ extension Walker {
         }
     }
     /// 모두 받기: every mail without a pick.
+    /// 5.1 (plan 19 §9; the user 10-16: "우편함 우편 삭제 기능도 추가해줘"): one mail out — claimed, or nothing to claim (the server's rule; a gift left: dimmed).
+    func mailDelete(_ m: Mail, _ now: Date) {
+        guard !Walker.claimable(m) else { return }
+        act(.mailDelete(id: m.id), back: .mail(.open(id: m.id)), now) { [weak self] _, now in
+            self?.cloud?.dropMail([m.id]); self?.cloud?.mailDue = true
+            return .say(["우편을 지웠다"], next: .mail(.list(sel: 0)), since: now)
+        }
+    }
+    /// Every one claimed or with nothing to claim, asked first.
+    func mailDeleteAll(_ now: Date) {
+        let gone = mails.filter { !Walker.claimable($0) }
+        guard !gone.isEmpty, host?.confirm("받은 우편 \(gone.count)통을 지울까요?", "받을 것이 남은 우편은 남아요. 지운 우편은 되돌릴 수 없어요.", ok: "지우기") ?? true else { return }
+        act(.mailDeleteAll, back: .mail(.list(sel: 0)), now) { [weak self] _, now in
+            self?.cloud?.dropMail(Set(gone.map(\.id))); self?.cloud?.mailDue = true
+            return .say(["받은 우편 \(gone.count)통을", "지웠다"], next: .mail(.list(sel: 0)), since: now)
+        }
+    }
     func mailClaimAll(_ now: Date) {
         let n = mails.filter { Walker.claimable($0) && !$0.picks }.count
         guard n > 0 else { return }
@@ -312,6 +333,8 @@ extension Walker {
             let n = mails.count, pages = max(1, (n + per - 1) / per)
             screen = .mail(.list(sel: min(max(0, n - 1), ((sel / per + (code == 8820 ? pages - 1 : 1)) % pages) * per)))
         case (.list, 8830): mailClaimAll(now)
+        case (.list, 8831): mailDeleteAll(now)                                                          // 5.1
+        case (.open(let id), 8841): if let m = mail(id) { mailDelete(m, now) }
         case (.open(let id), 8840): if let m = mail(id) { mailTake(m, now) }
         case (.pick(let id, let at, _), 8850..<8880):
             guard let m = mail(id), let n = pickCount(m) else { return }

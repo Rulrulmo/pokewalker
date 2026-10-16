@@ -234,6 +234,7 @@ extension Walker {
             case .course: screen = menuFor("코스")
             case .goals: screen = menuFor("도감 업적")
             case .expedition: screen = menuFor("전설 원정")
+            case .rank: screen = menuFor("랭킹")
             case .train: screen = .items(state.inventory.firstIndex(of: "은색병뚜껑") ?? 0); trainRef = -1
             case .tower(let p): screen = p != nil ? .tower(pick: nil) : menuFor("배틀 타워")                    // the picker → the lobby → the menu; a run stays on: ● in the lobby goes on
             case .learn: screen = .learn(sel: 4)                                                    // onto 배우지 않는다; ● decides
@@ -252,7 +253,8 @@ extension Walker {
         case .menu(let g, let i):
             let names = menuNames(g)
             if k != 1 { screen = .menu(group: g, sel: (i + (k == 0 ? names.count - 1 : 1)) % names.count); return }   // ◀ ▶ go round the page's tiles
-            if g == nil, !menuTiles[i].items.isEmpty { screen = .menu(group: i, sel: menuSlot[i] ?? 0) } else { open(names[i], now) }   // a group (▸): its page, on the tile last used there
+            guard names.indices.contains(i) else { screen = .menu(group: g, sel: 0); return }                // (5.1: a row past the page's: none)
+            if g == nil, !menuTiles[i].items.isEmpty { screen = .menu(group: i, sel: min(menuSlot[i] ?? 0, menuTiles[i].items.count - 1)) } else { open(names[i], now) }   // a group (▸): its page, on the tile last used there
         case .radar(let b, let c, let since, let chain):
             if k != 1 { screen = .radar(bush: b, cursor: (c + (k == 0 ? 3 : 1)) % 4, since: since, chain: chain); return }
             pickBush(b, cursor: c, since: since, chain: chain, now)
@@ -346,6 +348,7 @@ extension Walker {
         case .card(let p): screen = k == 1 ? menuFor("트레이너 카드") : .card((p + (k == 0 ? 2 : 1)) % 3)
         case .goals(let s): goalsPress(k, s)
         case .expedition(let s): expPress(k, s, now)
+        case .rank(let t, let s, let a): rankPress(k, t, s, a)
         case .team(let s, let t, let card):                                                      // ◀ ▶ a teammate (on a card: the next one's card), ● its card / 인사
             if k != 1 { teamStep(k == 0 ? -1 : 1); return }
             if t == TeamTab.requests, !card { if let r = friendReqRows[safe: s], !r.mine { friendReq(r, accept: true, now) } else if friendReqRows.isEmpty { askFriend(now) }; return }   // 신청: ● accepts (none: ID로 신청)
@@ -438,6 +441,7 @@ extension Walker {
         case "포켓 레이더": openRadar(back: menuFor(name), now)                                            // the server's find (docs/plans/11 §3.2)
         case "코스": screen = .course(state.course)
         case "트레이너 카드": screen = .card(0)
+        case "랭킹": screen = .rank(tab: 0, sel: 0, all: false); cloud?.wantTeam(now)                    // 5.1: 친구 ▸ 랭킹 (the cards fresh)
         case "전설 원정": screen = .expedition(0); cloud?.expeditionDue = true                      // 5.1 (content51): the team events fresh
         case "도감 업적": screen = .goals(0)                                                          // 5.0 (content5)
         case "포켓몬": screen = .box(-1, act: nil, confirm: false)                                  // the companion first

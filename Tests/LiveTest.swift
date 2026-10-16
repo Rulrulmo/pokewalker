@@ -371,7 +371,7 @@ import Foundation
 
     // 친구 (from scratch: a friendship from an earlier run undone first)
     lists(wa, ca); if wa.teamRows(0).count > 1 { wa.screen = .home; wa.act(.friendRemove(name: b), back: .home); settle(wa, ca) }
-    wa.openFeature("친구"); settle(wa, ca); wa.pageTap(6000 + TeamTab.requests); ha.texts = [b]; wa.pageTap(6240); settle(wa, ca)
+    wa.openFeature("친구"); settle(wa, ca); wa.pageTap(6000 + wa.teamTabPos(TeamTab.requests)); ha.texts = [b]; wa.pageTap(6240); settle(wa, ca)
     check(says(wa) == [josa(b, "에게", "에게"), "친구 신청을 했다!"], "live friendRequest: A asks B by ID — \(says(wa))")
     let asked = next(wb, cb) { says(wb).first == josa(a, "이", "가") + " 친구 신청을 했다!" }
     wb.press(1); lists(wb, cb); let row = wb.friendReqRows.first

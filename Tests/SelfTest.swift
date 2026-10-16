@@ -681,7 +681,7 @@ import AppKit                                                                   
     let v = online(s0w, rng: 14)
     v.press(1); v.press(2); let homeStays = on(v) { if case .home = $0 { return true }; return false } && v.emote?.kind == 1
     v.press(4); let menuUp = on(v) { onMenu($0, "포켓 레이더") } && v.compose(Date()).sprites.count == 1 && v.homeKey() == false; v.press(0)
-    check(homeStays && menuUp && on(v) { onMenu($0, "우편함") }, "home: ● pats (♥), ▶ does nothing; the 메뉴 key opens the menu on the pane (the LCD stays home); ◀ goes round")
+    check(homeStays && menuUp && on(v) { if case .menu(nil, 7) = $0 { return true }; return false }, "home: ● pats (♥), ▶ does nothing; the 메뉴 key opens the menu on the pane (the LCD stays home); ◀ goes round (onto 상점, the last: 5.1's 우편함 is in 친구 ▸)")
     v.press(4); check(on(v) { if case .home = $0 { return true }; return false } && v.homeKey() == true, "… the same key again: home"); v.press(4)
     let sv = Walker(state: Walk()); sv.persist = false; sv.screen = .home
     sv.strollX = sv.strollRange.upperBound - 0.5; sv.strollRight = true; sv.lastStep = Date(); sv.strollAt = Date().addingTimeInterval(-0.2); sv.stroll(Date())
@@ -725,10 +725,11 @@ import AppKit                                                                   
     let backOn = on(v) { if case .menu(nil, 3) = $0 { return true }; return false }; v.press(1); let kept = on(v) { onMenu($0, "트레이너 카드") }; v.press(1)
     let card = on(v) { if case .card = $0 { return true }; return false }; v.press(3); let cardBack = on(v) { onMenu($0, "트레이너 카드") }
     v.press(4); let homeFromGroup = on(v) { if case .home = $0 { return true }; return false }
-    check(eight?.rows.map(\.name) == ["포켓 레이더", "코스", "포켓몬", "기록", "배틀", "친구", "상점", "우편함"] && eight?.rows[3].items == "도감 · 트레이너 카드" && eight?.group == nil && eight?.rows[4].items == "배틀 타워 · 레이드 · 대전"
+    check(eight?.rows.map(\.name) == ["포켓 레이더", "코스", "포켓몬", "기록", "배틀", "레이드", "친구", "상점"] && eight?.rows[3].items == "도감 · 트레이너 카드" && eight?.group == nil && eight?.rows[4].items == "배틀 타워 · 대전"
+          && eight?.rows[6].items == "친구 · 교환 · 랭킹 · 우편함"
           && record?.group == "기록" && record?.rows.map(\.name) == ["도감", "트레이너 카드"] && record?.sel == 0 && recTitle == ("메뉴", "기록") && backOn && kept && card && cardBack && homeFromGroup,
-          "3.9 메뉴: 8 tiles (기록 · 배틀 · 친구 · 상점 groups ▸ say what's in them); ● opens 기록's page, ↩ goes back onto 기록 and its page keeps the last tile; a feature's ↩ lands on its group's page; 메뉴 / 홈 key: home")
-    v.screen = menuFor("교환"); v.menuTap(99); let tapBack = on(v) { if case .menu(nil, 5) = $0 { return true }; return false }; v.menuTap(4); let tapGroup = on(v) { onMenu($0, "배틀 타워") }
+          "3.9 메뉴: 8 tiles (기록 · 배틀 · 친구 · 상점 groups ▸ say what's in them; 5.1: 레이드 its own, 우편함 in 친구 ▸); ● opens 기록's page, ↩ goes back onto 기록 and its page keeps the last tile; a feature's ↩ lands on its group's page; 메뉴 / 홈 key: home")
+    v.screen = menuFor("교환"); v.menuTap(99); let tapBack = on(v) { if case .menu(nil, 6) = $0 { return true }; return false }; v.menuTap(4); let tapGroup = on(v) { onMenu($0, "배틀 타워") }
     v.lastInput = Date() - 21; v.tick(Date()); check(tapBack && tapGroup && on(v) { if case .home = $0 { return true }; return false }, "… a click: ‹ 메뉴 back, a group's tile opens its page; 20 s idle on a group's page: home")
     // ↩ 뒤로: one step up; where an answer is due only the cursor moves; nothing that can't be undone
     let bk = online({ var s = Walk(); s.watts = 500; s.bp = 40; return s }(), rng: 51)
@@ -1236,7 +1237,7 @@ import AppKit                                                                   
     #else
     let frameTimer = { (_: Walker) -> [(Bool, String)] in [] }                                    // P3: Windows' SetTimer shell
     #endif
-    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks(timer: frameTimer) + notebookChecks() + stepGateChecks() + signChecks() + ed25519Checks() + cloudChecks() + actChecks() + tradeChecks() + raidChecks() + socialChecks() + itemChecks() + duelChecks() + visitChecks() + holdChecks() + mailChecks() + chainNewsChecks() + updateFixtureChecks() + updateChecks() + oldAppsChecks() + uiChecks() + decoChecks() + focusChecks() + goalsChecks() + focusTextChecks() + bandChecks() + expChecks() { check(ok, name) }   // the drawing files' own checks
+    for (ok, name) in routeChecks() + ballChecks() + moveChecks() + walkChecks() + animChecks(timer: frameTimer) + notebookChecks() + stepGateChecks() + signChecks() + ed25519Checks() + cloudChecks() + actChecks() + tradeChecks() + raidChecks() + socialChecks() + itemChecks() + duelChecks() + visitChecks() + holdChecks() + mailChecks() + chainNewsChecks() + updateFixtureChecks() + updateChecks() + oldAppsChecks() + uiChecks() + decoChecks() + focusChecks() + goalsChecks() + focusTextChecks() + bandChecks() + expChecks() + menu51Checks() { check(ok, name) }   // the drawing files' own checks
     print(failed == 0 ? "PASS \(total) checks" : "FAIL \(failed)/\(total)")
     return failed == 0
 }
