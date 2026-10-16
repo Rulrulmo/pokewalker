@@ -32,7 +32,7 @@ extension SaveDB {
         readGate(r.id, r.session) { key in
             let (week, days) = weekDays(now), today = Walk.key(now)
             let keys = [key] + (try friendKeys(key))
-            let everyone = viewAll.contains(key) ? try db.rows("SELECT key FROM trainers ORDER BY updated_at DESC").compactMap { $0.text("key") }.filter { isTestID($0) == isTestID(key) } : []
+            let everyone = try db.rows("SELECT key FROM trainers ORDER BY updated_at DESC").compactMap { $0.text("key") }.filter { isTestID($0) == isTestID(key) }   // 전체: everyone's (10-16, the user; was VIEW_ALL's), test IDs among themselves
             var steps: [String: (today: Int, week: Int)] = [:]
             let inWeek = days.map { "'\($0)'" }.joined(separator: ",")
             for s in try db.rows("SELECT key, day, n FROM steps_day WHERE day IN (\(inWeek))") {

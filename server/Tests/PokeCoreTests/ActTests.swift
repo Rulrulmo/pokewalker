@@ -610,15 +610,17 @@ extension SaveDB { func monState(_ key: String, _ uid: Int) throws -> String? { 
     #expect(try await db.monState("앨리스", 1_000_001) == "kept")                                      // in the 우편함: not let go
 }
 
-@Test func viewAllTab() async throws {                                                              // 3.8 (docs/plans/14 §4): VIEW_ALL's 전체
-    let path = FileManager.default.temporaryDirectory.appendingPathComponent("pokeserver-test-\(UUID().uuidString).db").path
-    defer { try? FileManager.default.removeItem(atPath: path) }
-    let db = try SaveDB(path: path, create: true, viewAll: ["앨리스"])
-    let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브"), c = try await newTrainer(db, "캐럴")
-    for (who, s) in [("앨리스", a), ("보브", b), ("캐럴", c)] { _ = await act(db, who, s, 1, .steps, steps: 10, at: 60) }
+@Test func viewAllTab() async throws {                                                              // 3.8 (docs/plans/14 §4): 전체 — everyone's since 10-16 (was VIEW_ALL's)
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브"), c = try await newTrainer(db, "캐럴"), z = try await newTrainer(db, "zz100001")
+    for (who, s) in [("앨리스", a), ("보브", b), ("캐럴", c), ("zz100001", z)] { _ = await act(db, who, s, 1, .steps, steps: 10, at: 60) }
     func team(_ who: String, _ s: String) async throws -> TeamReply { try JSONDecoder().decode(TeamReply.self, from: await db.team(TeamReq(id: who, session: s), now: base).body) }
-    let mine = try await team("앨리스", a), theirs = try await team("보브", b)
-    #expect(Set(mine.all?.map(\.name) ?? []) == ["앨리스", "보브", "캐럴"] && mine.cards.map(\.name) == ["앨리스"] && theirs.all == nil)
+    let mine = try await team("앨리스", a), theirs = try await team("보브", b), test = try await team("zz100001", z)
+    #expect(Set(mine.all?.map(\.name) ?? []) == ["앨리스", "보브", "캐럴"] && mine.cards.map(\.name) == ["앨리스"] && Set(theirs.all?.map(\.name) ?? []) == ["앨리스", "보브", "캐럴"])
+    #expect(test.all?.map(\.name) == ["zz100001"])                                                   // a test ID: test IDs only
+    #expect(try await act(db, "보브", b, 2, .greet(to: "캐럴"), at: 70).status == 200)               // (인사 · 대전: still friends only)
+    let greet = try JSONDecoder().decode(ActReply.self, from: await act(db, "보브", b, 3, .greet(to: "캐럴"), at: 80).body)
+    #expect(greet.out.cannot == "친구에게만\n인사할 수 있어요")
 }
 
 @Test func liveBattleOldApps() async throws {                                                       // 14 §8: before 3.8, 3.6's way among themselves

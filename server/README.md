@@ -41,7 +41,7 @@
 |---|---|---|
 | 세이브 | 앱이 보낸 행동(`/v2/act`)을 엔진으로 처리해 세이브를 만든다. 세션 · 순번(seq) · 저장된 답으로 같은 요청을 두 번 처리하지 않는다. 걸음 허용량과 하루 상한, 포켓몬 발급 장부, rev · history | `ServerPlay.swift` |
 | 로그인 · PIN | 트레이너 ID + PC마다 PIN. 한 계정은 한 PC에서만 행동한다(다른 PC가 들어오면 앞 PC는 "다른 PC에서 접속") | `ServerDB.swift` |
-| 친구 | 신청 → 수락, 친구 카드(동료 · 걸음 · 도감 · 타워 · 전적), `VIEW_ALL` 계정은 전체 탭 | `ServerTeam.swift` |
+| 친구 | 신청 → 수락, 친구 카드(동료 · 걸음 · 도감 · 타워 · 전적), 모두에게 전체 탭(10-16부터) | `ServerTeam.swift` |
 | 교환 게시판 | 글 올리기(한마디) · 제안 · 수락. 올리거나 제안한 포켓몬은 상자에서 빠져 맡겨지고, 받을 포켓몬은 **받기 함**에서 받는다 | `ServerMarket.swift`, `ServerClaims.swift` |
 | 맡겨 키우기 | 친구에게 포켓몬을 5시간 맡기면 친구 걸음만큼 경험치, 키운 쪽은 BP | `ServerVisit.swift` |
 | 협동 레이드 | 주마다 전설 보스 하나, 팀 HP를 모두 함께 깎는다. 깨면 볼로 잡기 | `ServerRaid.swift` |
@@ -60,7 +60,7 @@
 | `GET /v1/ping` | 살아 있는지(외부 감시용) |
 | `POST /v1/create` · `/v1/login` · `/v1/pin` | 새 트레이너, 로그인(세션), PIN |
 | `POST /v2/act` | **모든 게임 행동**: 걸음, 레이더, 배틀, 상점, 도구, 포켓몬, 친구, 교환 게시판, 받기, 맡기기, 레이드, 대전 … → `{rev, walk?, taken?, out}` |
-| `POST /v2/team` | 친구 화면: 나와 친구 카드, 친구 신청, 맡기기(`visits`), `VIEW_ALL` 계정은 `all` |
+| `POST /v2/team` | 친구 화면: 나와 친구 카드, 친구 신청, 맡기기(`visits`), 모든 트레이너의 `all`(테스트 ID는 테스트 ID끼리) |
 | `POST /v2/market` | 교환 게시판: 글 · 제안 · 받기 함(`claims`) · 안 본 제안 수(`unseen`) |
 | `POST /v2/raid` | 레이드 로비: 이번 주 보스, 남은 HP, 싸운 사람, 내 볼 |
 | `POST /v2/duel` | 실시간 대전 상태(최대 25초 기다리는 롱폴), `record: true`면 전적 |
@@ -83,7 +83,6 @@
 | `DOWNLOAD_PASSWORD` | 다운로드 페이지 팀 비밀번호. 비면 페이지가 없다 (비밀) |
 | `RELEASE_DIR` | 릴리스 파일 자리, `/var/lib/pokewalker/release` |
 | `MIN_APP` | 이보다 오래된 앱은 426. 지금 `3.0` |
-| `VIEW_ALL` | 친구 화면에 **전체** 탭이 보이는 계정(쉼표로 여럿). 지금 한 명 |
 | `CHECK_MODE` · `CHECK_REJECT_TESTS` | 2.x 세이브 검사(docs/plans/10). 3.0부터는 세이브가 들어오지 않아 거의 쓰이지 않는다 |
 
 바꾼 뒤에는 `sudo systemctl restart pokewalker`.
