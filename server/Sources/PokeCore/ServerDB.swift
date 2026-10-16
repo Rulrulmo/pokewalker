@@ -128,6 +128,7 @@ actor SaveDB {
             try? c.exec("ALTER TABLE trainers ADD COLUMN session_at INTEGER")                        // 5.0.x: when the session began (pokeserver relogin)
             try c.exec(expeditionSchema)                                                                   // 5.1 (docs/plans/19): the team events
             try? c.exec("ALTER TABLE mail ADD COLUMN deleted_at INTEGER")                            // 5.1 (plan 19 §9): a mail out of the list
+            try? c.exec("ALTER TABLE app_reports ADD COLUMN install_log TEXT")                       // 5.1.2: the updater's install.log, its last lines
         }   // tables added since (flags) come in on any open: IF NOT EXISTS
         db = c; self.path = path; self.reject = reject; self.rejectTests = rejectTests; self.minApp = minApp
     }

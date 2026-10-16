@@ -73,11 +73,12 @@ extension SaveDB {
         guard let raw = r.trainer, let id = trainerID(raw) else { return }
         let e = JSONEncoder(); e.outputFormatting = .sortedKeys
         try db.rows("""
-            INSERT INTO app_reports (key, at, app, platform, staged, blocked, failed, place) VALUES (:k, :at, :a, :p, :s, :b, :f, :w)
-            ON CONFLICT (key) DO UPDATE SET at = :at, app = :a, platform = :p, staged = :s, blocked = :b, failed = :f, place = :w
+            INSERT INTO app_reports (key, at, app, platform, staged, blocked, failed, place, install_log) VALUES (:k, :at, :a, :p, :s, :b, :f, :w, :l)
+            ON CONFLICT (key) DO UPDATE SET at = :at, app = :a, platform = :p, staged = :s, blocked = :b, failed = :f, place = :w, install_log = COALESCE(:l, install_log)
             """, ["k": .text(id.key), "at": .int(now), "a": r.app.map(SQLValue.text) ?? .null, "p": r.platform.map(SQLValue.text) ?? .null,
                   "s": r.staged.map(SQLValue.text) ?? .null, "b": r.blocked.map(SQLValue.text) ?? .null,
-                  "f": r.failed.map { .text(String(decoding: (try? e.encode($0)) ?? Data(), as: UTF8.self)) } ?? .null, "w": r.place.map(SQLValue.text) ?? .null])
+                  "f": r.failed.map { .text(String(decoding: (try? e.encode($0)) ?? Data(), as: UTF8.self)) } ?? .null, "w": r.place.map(SQLValue.text) ?? .null,
+                  "l": r.installLog.flatMap(installLogLine).map(SQLValue.text) ?? .null])
     }
     /// pokeserver versions: each trainer's app as last seen, its oldest allowed, and what its updater said last (5.0 on).
     func versionsReport(now: Int) throws -> String {
@@ -90,8 +91,11 @@ extension SaveDB {
             [r.text("name") ?? "?", r.text("app_seen") ?? "-", r.text("app") ?? "-", when(r.int("updated_at")), when(r.int("at")), r.text("platform") ?? "-",
              r.text("staged") ?? "-", r.text("blocked") ?? "-", r.text("failed") ?? "-", r.text("place") ?? "-"]
         }
+        let logs = try db.rows("SELECT r.key, t.name, r.at, r.install_log FROM app_reports r JOIN trainers t ON t.key = r.key WHERE r.install_log IS NOT NULL ORDER BY r.at DESC")
+            .filter { !isTestID($0.text("key") ?? "") }.map { "  \($0.text("name") ?? "?") (\(when($0.int("at")))): \($0.text("install_log") ?? "")" }   // 5.1.2: what the updater's log ended with
         return table(["who", "app", "oldest", "last", "report", "platform", "staged", "blocked", "failed", "where"], rows)
             + "\ncontent5 " + ((try content5()) ? "on" : "off") + (minApp.map { ", MIN_APP \($0)" } ?? ", no MIN_APP")
+            + (logs.isEmpty ? "" : "\ninstall.log (the last lines each app sent):\n" + logs.joined(separator: "\n"))
     }
 
     // MARK: once more through the login (10-15, the user: "현재 켜져있는 인원들 전부다 한번 껐다키도록")
@@ -115,6 +119,13 @@ extension SaveDB {
     static func fusedWhy(_ w: Walk, _ uid: Int) -> String? { w.ref(uid: uid).flatMap(w.mon)?.fused != nil ? "합체를 먼저\n풀어 주세요" : nil }
 }
 let content5Every = 10
+/// 5.1.2's installLog as kept: one line (its line breaks as " ⏎ ", other control characters gone), 300 characters at most; nil when empty.
+func installLogLine(_ s: String) -> String? {
+    let t = s.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: true)
+        .map { String($0.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }).trimmingCharacters(in: .whitespaces) }
+        .filter { !$0.isEmpty }.joined(separator: " ⏎ ")
+    return t.isEmpty ? nil : String(t.prefix(300))
+}
 let appReportsSchema = """
     CREATE TABLE IF NOT EXISTS app_reports (key TEXT PRIMARY KEY, at INTEGER NOT NULL, app TEXT, platform TEXT, staged TEXT, blocked TEXT, failed TEXT, place TEXT);
     """

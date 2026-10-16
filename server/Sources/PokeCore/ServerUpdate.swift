@@ -10,7 +10,8 @@ struct UpdateReq: Codable, Sendable {
     // 5.0 (plan 18 §9.8, §10.3): what the app says of itself — who, what it has staged, why it can't put one in (translocated · readonly · dev),
     // the versions that failed, where it lives (applications · downloads · other)
     var trainer: String? = nil, staged: String? = nil, blocked: String? = nil, failed: [String]? = nil, place: String? = nil
-    enum CodingKeys: String, CodingKey { case app, platform, trainer, staged, blocked, failed, place = "where" }
+    var installLog: String? = nil                                                        // 5.1.2: install.log's last lines (300 characters at most)
+    enum CodingKeys: String, CodingKey { case app, platform, trainer, staged, blocked, failed, place = "where", installLog }
 }
 
 /// RELEASE_DIR's signed files: manifest.json, manifest.sig and the files the manifest names (the zips; from the installer release on, the Windows

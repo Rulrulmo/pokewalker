@@ -81,3 +81,16 @@ private func plan(_ p: RolloutPlan?, kinds: Set<String> = ["mac", "windows-setup
     let none = URL(fileURLWithPath: path + "-norelease"), s = await db.rolloutState(release: none, next: none)
     #expect(s.stable == nil && s.next == nil && s.note)                                          // no signed manifest: nothing offered
 }
+
+// 5.1.2: /v1/update's installLog — install.log's last lines, kept per trainer (a report without one keeps the last), shown in pokeserver versions.
+@Test func installLogKept() async throws {
+    #expect(installLogLine("a\r\nb\n\n  c \u{7}\n") == "a ⏎ b ⏎ c" && installLogLine("\n \n") == nil && installLogLine(String(repeating: "x", count: 500))?.count == 300)
+    let r = try JSONDecoder().decode(UpdateReq.self, from: Data(#"{"app":"5.1.2","platform":"windows","trainer":"앨리스","installLog":"wait 1234\nswap failed"}"#.utf8))
+    #expect(r.installLog == "wait 1234\nswap failed")
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    _ = await db.create(CreateReq(id: "앨리스", device: "pc", device_name: "PC", app: "5.1.1", pin: "2468"), now: 100)
+    try await db.recordUpdateReport(r, now: 200)
+    try await db.recordUpdateReport(UpdateReq(app: "5.1.2", platform: "windows", trainer: "앨리스"), now: 300)   // the next hour's, none sent
+    let v = try await db.versionsReport(now: 400)
+    #expect(v.contains("앨리스") && v.contains("wait 1234 ⏎ swap failed"))
+}
