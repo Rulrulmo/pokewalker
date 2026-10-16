@@ -82,6 +82,7 @@
 | `PORT` · `DB_PATH` | 8787, `/var/lib/pokewalker/pokewalker.db` |
 | `DOWNLOAD_PASSWORD` | 다운로드 페이지 팀 비밀번호. 비면 페이지가 없다 (비밀) |
 | `RELEASE_DIR` | 릴리스 파일 자리, `/var/lib/pokewalker/release` |
+| `NEXT_RELEASE_DIR` | 순차 배포 후보 자리(docs/plans/22). 없으면 `RELEASE_DIR` 뒤에 `-next` |
 | `MIN_APP` | 이보다 오래된 앱은 426. 지금 `3.0` |
 | `CHECK_MODE` · `CHECK_REJECT_TESTS` | 2.x 세이브 검사(docs/plans/10). 3.0부터는 세이브가 들어오지 않아 거의 쓰이지 않는다 |
 
@@ -125,6 +126,18 @@ server/build.sh install             # 빌드 → /usr/local/bin에 설치 → �
 - 팀 비밀번호 하나로 연다(쿠키 30일). 비밀번호를 바꾸면 서비스를 재시작하고 모두 다시 입력한다.
 - 앱 그림이 닌텐도 저작물이라 **공개하지 않는다**. 검색 엔진도 막는다(`robots.txt`, `noindex`).
 - 페이지가 보여 주는 것은 `RELEASE_DIR`의 파일뿐이고, 채우는 것은 `publish.sh`뿐이다.
+
+### 순차 배포 (docs/plans/22)
+
+1. 후보를 넣는다: `RELEASE_DIR=/var/lib/pokewalker/release-next server/publish.sh v<버전>`. 같은 서명 검사를 거치고, 페이지와 다른 사람의 업데이트는 그대로다.
+2. 먼저 받을 사람을 정한다: `pw rollout <id>[,<id>…]` 또는 `pw rollout <n>%`(트레이너 키와 후보 버전의 해시로 나눈다).
+   - 이미 안정 버전에 있는 앱만 후보를 받는다. 더 오래된 앱은 안정 버전을 먼저 받는다.
+   - 다운로드는 앱의 User-Agent 버전으로 갈린다.
+3. 넓힌다: `pw rollout 50%` → `100%`. 넓혀도 먼저 받은 사람은 그대로 들어 있다.
+4. 마무리: `server/publish.sh v<버전>`(안정 자리 · 페이지), 그다음 `pw rollout off`.
+- 멈추기: `pw rollout off`. 이미 후보를 받은 앱은 그대로 쓰고, 앱은 버전을 내리지 않는다. 고치려면 더 높은 버전을 낸다.
+- 지금 상태: `pw rollout`(두 버전, 대상, 대상의 앱 버전)
+- 알림: `pw update-note on`이면 새 버전이 있는 앱에 보내는 모든 응답 맨 앞에 `"update": {"v", "urgent"}`가 붙는다. 5.1.2부터는 이것을 보고 바로 업데이트를 확인한다.
 
 ## 서버가 정하는 규칙
 
@@ -177,6 +190,8 @@ server/build.sh install             # 빌드 → /usr/local/bin에 설치 → �
 | `pw suspects [days]` · `pw flags <id>` | 검사에 걸린 세이브(2.x 시절) |
 | `pw legacy [<id>]` · `pw prune` · `pw sample` | 서버 이전 세이브 · history 정리(서버가 매시 함) · 새 세이브 JSON |
 | `pw verify-release <dir>` | 릴리스 폴더 서명 · zip 확인(`publish.sh`가 씀) |
+| `pw rollout [off\|<n>%\|<id>,…]` · `pw update-note [on\|off]` | 순차 배포 · 응답의 업데이트 알림(docs/plans/22) |
+| `pw slot-odds [on\|off]` | 코스 포켓몬 그룹 확률(docs/plans/21) |
 
 비상시 `sudo -u pokewalker sqlite3 /var/lib/pokewalker/pokewalker.db`로 직접 고칠 때는 `rev = rev + 1, writer = 'admin'`도 같이 한다.
 

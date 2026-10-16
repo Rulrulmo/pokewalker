@@ -124,6 +124,9 @@ struct Play: Codable, Equatable {
 struct RaidBoss: Codable, Equatable { var week: String; var boss: Mon; var left: Int; var tier: Int? = nil; var mega: Int? = nil }   // mega: the Mega raid's form (5.0)
 /// POST /v2/act. steps: walked first, whatever the act (capped by the server first: `taken`).
 struct ActReq: Codable, Equatable { var id, session: String; var seq: Int; var steps: Int? = nil; var act: Act; var app: String? = nil }   // app: news kinds it knows (12 §1)
-struct ActReply: Codable { var rev: Int; var walk: Walk? = nil; var taken: Int? = nil; var out: Outcome }
+struct ActReply: Codable { var rev: Int; var walk: Walk? = nil; var taken: Int? = nil; var out: Outcome; var update: UpdateNote? = nil }   // update: docs/plans/22 (the server puts it first, any reply)
+/// docs/plans/22 (5.1.2): first in any reply to an app the server has a newer version for (pokeserver update-note) — the version and /v1/update's urgent.
+/// The app checks /v1/update at once (not at its hourly check); a reply without it says nothing.
+struct UpdateNote: Codable, Equatable, Sendable { var v: String; var urgent: Bool }
 /// New Pokémon get their uids from here (the server's ledger counts on: never reused), and it remembers what it made and why.
 struct Issued { var next: Int; var made: [(mon: Mon, kind: String)] = [] }

@@ -27,19 +27,25 @@ func post<R: Decodable & Sendable>(_ router: Router<BasicRequestContext>, _ path
             context.logger.info("\(path) \(key): 426 app \(app) < \(need)")
             return respond(.error(426, "old_app", ["need": .s(need)]))
         }
-        let reply = await handle(r)
+        var reply = await handle(r)
+        if db != nil, (200..<300).contains(reply.status), let ua = userAgentApp(request),            // plan 22 (update-note on): a newer version for this app, first in the reply
+           let note = rolloutNow.now.noteJSON(key: trainerID(id(r))?.key, app: ua.app, platform: ua.platform) {
+            reply = Reply(raw: reply.status, withUpdateNote(reply.body, note), note: reply.note)
+        }
         if let note = reply.note { context.logger.info("\(path) \(trainerID(id(r))?.key ?? "-"): \(reply.status) \(note)") }
         return respond(reply)
     }
 }
 
-func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?, release: URL) async throws {
+func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?, release: URL, next: URL? = nil) async throws {
     let router = Router()
     router.addMiddleware { LogRequestsMiddleware(.info) }
     if let site { addDownloadPage(router, site) }                                         // GET / (ServerPage.swift); none without DOWNLOAD_PASSWORD
-    addUpdates(router, ReleaseFiles(dir: release), appKey: appKey, db: db)                // the app's updates (ServerUpdate.swift)
+    let next = next ?? URL(fileURLWithPath: release.path + "-next", isDirectory: true)
+    addUpdates(router, ReleaseFiles(dir: release), next: ReleaseFiles(dir: next), appKey: appKey, db: db)   // the app's updates (ServerUpdate.swift), plan 22's candidate
     await db.syncContent()                                                                 // 5.0: the content5 switch, now and every few seconds
-    let content = Task { while !Task.isCancelled { try? await Task.sleep(for: .seconds(content5Every)); await db.syncContent() } }
+    rolloutNow.set(await db.rolloutState(release: release, next: next))                   // plan 22: the same way
+    let content = Task { while !Task.isCancelled { try? await Task.sleep(for: .seconds(content5Every)); await db.syncContent(); rolloutNow.set(await db.rolloutState(release: release, next: next)) } }
     defer { content.cancel() }
     router.get("/v1/ping") { _, _ in respond(Reply(200, ["ok": .b(true)])) }
     post(router, "/v1/login", appKey: appKey, db: db, id: { (r: LoginReq) in r.id }) { r in await db.login(r, now: unixNow()) }

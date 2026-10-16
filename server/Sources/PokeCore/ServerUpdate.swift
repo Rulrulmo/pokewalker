@@ -78,11 +78,13 @@ func userAgentApp(_ r: Request) -> (app: String, platform: String)? {
 
 func hasAppKey(_ r: Request, _ appKey: String) -> Bool { r.headers.first(where: { $0.name.canonicalName == "x-app-key" })?.value == appKey }
 
-func addUpdates(_ router: Router<BasicRequestContext>, _ files: ReleaseFiles, appKey: String, db: SaveDB? = nil) {
+func addUpdates(_ router: Router<BasicRequestContext>, _ files: ReleaseFiles, next: ReleaseFiles? = nil, appKey: String, db: SaveDB? = nil) {
     post(router, "/v1/update", appKey: appKey, id: { (_: UpdateReq) in "" }) { r in
         if brokenWindowsUpdater(app: r.app, platform: r.platform) { return Reply(200, ["manifest": .null, "sig": .null]) }   // (see brokenWindowsUpdater)
         if let db { try? await db.recordUpdateReport(r, now: unixNow()) }                    // 5.0: what it says of itself (pokeserver versions)
-        guard let m = files.manifestText, let s = files.signature else { return Reply(200, ["manifest": .null, "sig": .null]) }   // nothing signed yet
+        let ro = rolloutNow.now, key = r.trainer.flatMap { trainerID($0)?.key }               // plan 22: the candidate to a target at the stable version
+        let from = next != nil && ro.nextAhead && ro.offer(key: key, app: r.app, platform: r.platform) == ro.next ? next! : files
+        guard let m = from.manifestText, let s = from.signature else { return Reply(200, ["manifest": .null, "sig": .null]) }   // nothing signed yet
         var reply: [String: JSON] = ["manifest": .s(m), "sig": .s(s)]
         if let db, let h = try? await db.updateHint() { reply["urgent"] = .b(h.urgent); if let by = h.installBy { reply["installBy"] = .s(by) } }   // outside the signed manifest
         return Reply(200, reply)
@@ -94,12 +96,14 @@ func addUpdates(_ router: Router<BasicRequestContext>, _ files: ReleaseFiles, ap
             context.logger.info("update download windows refused (\(userAgentApp(request)?.app ?? "no user agent"))")
             return respond(.error(404, "no_release"))
         }
+        let fromNext = next.flatMap { n in rolloutNow.now.downloadsNext(app: userAgentApp(request)?.app) && n.manifestText.flatMap(ReleaseFiles.parse)?.entry(kind) != nil ? n : nil }   // plan 22
+        let files = fromNext ?? files
         guard let m = files.manifestText.flatMap(ReleaseFiles.parse), let e = m.entry(kind) else { return respond(.error(404, "no_release")) }
         var headers = HTTPFields()
         headers[.contentType] = downloadType(kind)
         headers[.contentLength] = String(e.size)
         headers[.cacheControl] = "no-store"
-        context.logger.info("update download \(kind) \(m.version)")
+        context.logger.info("update download \(kind) \(m.version)\(fromNext != nil ? " (rollout)" : "")")
         return Response(status: .ok, headers: headers, body: try await FileIO().loadFile(path: files.dir.appendingPathComponent(e.file).path, context: context))
     }
 }

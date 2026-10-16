@@ -40,6 +40,8 @@ let usage = """
       event-schedule <yyyy-MM-dd>        5.1: the six weeks from that day (0:00 KST), every other week, and the encore two weeks after the last
       event-cancel <id>                  5.1: one not begun goes; one on ends now
       raid-daily [on|off]                5.1 (docs/plans/20): both raids by the day — bosses each day, 2칸 at 0:00 + 1 a 10,000 steps, 10 runs a day
+      rollout [off|<n>%|<id>[,<id>…]]    docs/plans/22: release-next (NEXT_RELEASE_DIR) to these first — only apps already at the stable version
+      update-note [on|off]               docs/plans/22: "update": {v, urgent} first in each reply to an app with a newer version for it
       slot-odds [on|off]                 docs/plans/21: a course's Pokémon without steps — group A 20 · B 30 · C 50 %, a radar chain to A 52 · B 38 · C 10
     --db: else $DB_PATH, else /var/lib/pokewalker/pokewalker.db
     """
@@ -362,9 +364,9 @@ public func run(_ arguments: [String]) async -> Int32 {
             let port = env["PORT"].flatMap { Int($0) } ?? 8787
             let db = try SaveDB(path: path, reject: env["CHECK_MODE"] == "reject", rejectTests: env["CHECK_REJECT_TESTS"] == "1",
                                 minApp: env["MIN_APP"].flatMap { $0.isEmpty || versionParts($0) == nil ? nil : $0 })   // (VIEW_ALL: gone, 10-16 — everyone has 전체)
-            let release = URL(fileURLWithPath: env["RELEASE_DIR"].flatMap { $0.isEmpty ? nil : $0 } ?? "/var/lib/pokewalker/release", isDirectory: true)
+            let (release, next) = releaseDirs(env)
             let site = env["DOWNLOAD_PASSWORD"].flatMap { $0.isEmpty ? nil : DownloadSite(dir: release, password: $0) }
-            try await serve(db: db, appKey: appKey, port: port, site: site, release: release)
+            try await serve(db: db, appKey: appKey, port: port, site: site, release: release, next: next)
             return 0
         case "verify-release":                                                            // publish.sh: before anything goes up
             guard rest.count == 1 else { return fail("verify-release <dir>") }
@@ -396,6 +398,12 @@ public func run(_ arguments: [String]) async -> Int32 {
         case ("raid-daily", 1):
             guard ["on", "off"].contains(rest[0]) else { return fail("raid-daily: on | off") }
             out = try await db.setRaidDaily(rest[0] == "on")
+        case ("rollout", 0): let d = releaseDirs(env); out = try await db.rolloutReport(release: d.release, next: d.next, now: unixNow())
+        case ("rollout", 1): out = try await db.setRollout(rest[0])
+        case ("update-note", 0): out = "update-note " + ((try await db.updateNote()) ? "on" : "off")
+        case ("update-note", 1):
+            guard ["on", "off"].contains(rest[0]) else { return fail("update-note: on | off") }
+            out = try await db.setUpdateNote(rest[0] == "on")
         case ("slot-odds", 0): out = "slot-odds " + ((try await db.slotOdds()) ? "on" : "off")
         case ("slot-odds", 1):
             guard ["on", "off"].contains(rest[0]) else { return fail("slot-odds: on | off") }
