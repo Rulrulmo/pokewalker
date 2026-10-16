@@ -206,7 +206,7 @@ extension Canvas {
                 let p = Path.rounded(rc, 10 * K); c.fill(p, dead ? Ink.tile : Ink.tint(col, 0.2))
                 if m.mega == true { c.stroke(p, Ink.c(132, 64, 196), width: (i == sel ? 2.5 : 1.2) * K) } else if i == sel { c.stroke(p, Ink.red, width: 2 * K) }   // 5.1: 메가진화 ticked — every card in its purple
                 let ppw = c.say("\(mv.pp)/\(mv.maxPP)", rc.maxX - x(8), rc.minY + x(11), font(8, .semibold), mv.pp == 0 ? Ink.red : Ink.sub, 1)   // (the PP: no label, the name needs the room)
-                c.say(mv.name, rc.minX + x(9), rc.minY + x(11), font(10.5, .bold), dead ? Ink.faint : Ink.ink, maxW: rc.width - x(20) - ppw)
+                c.say(mv.name, rc.minX + x(9), rc.minY + x(11), fitFont(mv.name, [10.5, 9.5, 8.5], rc.width - x(20) - ppw, .bold), dead ? Ink.faint : Ink.ink, maxW: rc.width - x(20) - ppw)   // (5.1: 마룻바닥세워막기 whole, a size smaller)
                 c.typePill(mv.type, rc.minX + x(8), rc.minY + x(25.5), h: x(11), size: 7.5, grey: dead)
                 let power = mv.status ? "변화" : "위력 " + (mv.power > 1 ? "\(mv.power)" : "—")                 // a power that varies: —
                 let hint = mv.effect == 0 ? "효과 없음 · " : mv.effect > 1 ? "▲ " : mv.effect < 1 ? "▼ " : ""             // 3.8 (docs/plans/14 ④): the type's hint by the power, not the PP
@@ -660,14 +660,20 @@ extension Page {
     }
     /// 3.8.2: a move's kind and accuracy in bold, then what it does — wrapped by words into the lines there are (… past the last).
     func moveNote(_ about: String, _ text: String?, _ rc: CGRect, lines n: Int, size: CGFloat = 8) {
+        func wrap(_ sz: CGFloat) -> [String] {
+            let fb = font(sz, .bold), f = font(sz, .medium), aw = about.isEmpty ? 0 : width(about, fb) + x(5)
+            var lines: [String] = [], cur = ""
+            for word in (text ?? "").split(separator: " ") {
+                let t = cur.isEmpty ? String(word) : cur + " " + word
+                if width(t, f) > (lines.isEmpty ? rc.width - aw : rc.width), !cur.isEmpty { lines.append(cur); cur = String(word) } else { cur = t }
+            }
+            if !cur.isEmpty { lines.append(cur) }
+            return lines
+        }
+        var size = size, lines = wrap(size)
+        while lines.count > n, size > 7 { size -= 0.5; lines = wrap(size) }                     // 5.1: a long one (the 5 · 6세대 words, a box narrowed by 메가진화) a size smaller before any …
         let fb = font(size, .bold), f = font(size, .medium), lh = x(size + 2.5), aw = about.isEmpty ? 0 : width(about, fb) + x(5)
         if !about.isEmpty { c.say(about, rc.minX, rc.minY + lh / 2, fb, Ink.sub) }
-        var lines: [String] = [], cur = ""
-        for word in (text ?? "").split(separator: " ") {
-            let t = cur.isEmpty ? String(word) : cur + " " + word
-            if width(t, f) > (lines.isEmpty ? rc.width - aw : rc.width), !cur.isEmpty { lines.append(cur); cur = String(word) } else { cur = t }
-        }
-        if !cur.isEmpty { lines.append(cur) }
         if lines.count > n { lines = Array(lines.prefix(n)); lines[n - 1] += "…" }
         for (k, l) in lines.enumerated() { c.say(l, rc.minX + (k == 0 ? aw : 0), rc.minY + lh / 2 + lh * CGFloat(k), f, Ink.ink, maxW: k == 0 ? rc.width - aw : rc.width) }
     }

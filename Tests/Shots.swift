@@ -619,6 +619,21 @@ import AppKit
         for u in [0.9, 2.3, 3.3, 4.6] { take("exp_assemble_\(Int(u * 10))", ew) { v in v.screen = .assemble(Mon(dex: 718, level: 50, female: false), since: Date().addingTimeInterval(-u)) } }
         take("exp_assembled", ew) { v in v.screen = .say(["지가르데를", "상자에 보냈다!", "특성패치를 받았다!"], next: .expedition(0), since: Date()) }
     } }
+    // 5.1 (server b607179: the descriptions of 468–621): the longest new ones on the move screen (the note box's three lines), the signature
+    // moves in 기술 바꾸기, 화룡점정
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) {
+        var r9 = Seeded(s: 13), ch = Mon.wild(658, level: 60, &r9); ch.known = [561, 557, 573, 532]           // 마룻바닥가드 · V제너레이트 · 프리즈드라이 · 우드혼
+        var rq = Mon.wild(384, level: 70, &r9); rq.known = [620, 507, 510, 618]                                    // 화룡점정 · 프리폴 · 불태우기 · 근원의파동
+        let mt = online({ var s = base(); s.companion = ch; s.caught = [rq, Mon.wild(382, level: 50, &r9), Mon.wild(383, level: 50, &r9), Mon.wild(150, level: 100, &r9)]; return s }())
+        let foe = Mon.wild(16, level: 30, &r9), b1 = Battle(wild: foe, companion: ch), b2 = Battle(wild: foe, companion: rq)
+        for k in 0..<4 { take("movetext_a\(k)", mt) { v in v.fight = b1; v.screen = .moves(b1, sel: k) } }
+        for k in 0..<4 { take("movetext_b\(k)", mt) { v in v.fight = b2; v.screen = .moves(b2, sel: k) } }
+        for (ref, d) in [(-3, 382), (-4, 383), (-5, 150)] {
+            guard let mv = Mon.relearnAdded[d]?.move else { continue }
+            take("movetext_relearn_\(d)", mt) { v in v.screen = .relearn(ref: ref, slot: 0, at: mv) }
+        }
+        mt.fight = nil
+    } }
     return n
 }
 #endif
