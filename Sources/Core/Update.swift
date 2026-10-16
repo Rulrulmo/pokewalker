@@ -178,6 +178,16 @@ enum Update {
         default: clearStaged(dir); return .none                                                   // older than this app (a zip's from before the installer …): gone by
         }
     }
+    /// 5.1.2: install.log's last lines (the installer's "installed 5.1" / "failed 5.1: …"; the Mac helper's), 300 characters at most; nil: none.
+    /// The Windows installer writes UTF-16LE (NSIS FileWriteUTF16LE), the Mac's helper UTF-8.
+    static func installLog(_ dir: URL) -> String? {
+        guard let d = try? Data(contentsOf: dir.appendingPathComponent("install.log")), !d.isEmpty else { return nil }
+        let b = [UInt8](d), units = stride(from: 0, to: b.count - 1, by: 2).map { UInt16(b[$0]) | UInt16(b[$0 + 1]) << 8 }
+        let text = b.contains(0) ? String(decoding: units, as: UTF16.self) : String(decoding: b, as: UTF8.self)
+        let lines = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces.union(["\u{FEFF}"])) }.filter { !$0.isEmpty }
+        let tail = lines.suffix(3).joined(separator: " | ")
+        return tail.isEmpty ? nil : String(tail.suffix(300))
+    }
     /// The version an install was last started for (written as the installer or the helper starts).
     static func attempted(_ dir: URL) -> String? { (try? String(contentsOf: dir.appendingPathComponent("attempt"), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) }
     /// An install that didn't take: that version is never tried again; what was staged goes.
@@ -381,6 +391,7 @@ extension Walker {
         if let v = Update.ready(u.dir)?.version { r["staged"] = v }
         if let b = Update.blockKind(u.app) { r["blocked"] = b }
         let f = Update.failed(u.dir); if !f.isEmpty { r["failed"] = f }
+        if let l = Update.installLog(u.dir) { r["installLog"] = l }                                   // 5.1.2: how the last install went, in its own words
         r["where"] = Update.whereKind(u.app)
         return r
     }

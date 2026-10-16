@@ -110,12 +110,48 @@ final class CloudInbox: @unchecked Sendable {
     private(set) var keepsRuns = false; var towerCarried: Bool? = nil
     var deviceName: String { String(appDeviceName.prefix(64)) }
     var seatFile: URL { dir.appendingPathComponent("cloud.json") }
+    var seatBak: URL { dir.appendingPathComponent("cloud.json.bak") }      // 5.1.2: the seat as last written whole (no steps): for a cloud.json that won't read
+    private var seatHeld = false                                           // 5.1.2: cloud.json there but unreadable, no bak: never written over (moved aside first)
+    private var bakSeat: Seat? = nil
+    /// 5.1.2 (10-16: krackde's cloud.json lost three times in a day, a new device ID each — one failed read and it was written over): what the
+    /// launch says when this PC's login didn't read whole (the ID box says it too). nil: it read.
+    private(set) var seatNote: String? = nil
 
     init(link: any CloudLink, dir: URL) {
         self.link = link; self.dir = dir
-        if let d = try? Data(contentsOf: seatFile), let s = try? JSONDecoder().decode(Seat.self, from: d) { seat = s } else { firstRun = !FileManager.default.fileExists(atPath: seatFile.path) }
-        if seat.device == nil { seat.device = hex((0..<16).map { _ in UInt8.random(in: .min ... .max) }); writeSeat() }   // (no didSet inside init)
+        let read = Cloud.readSeat(seatFile)
+        if case .ok(let s) = read { seat = s; writeBak() }
+        else {
+            if case .corrupt = read { Cloud.setAside(seatFile) }                                   // its bytes kept (cloud.json.bad-<unix>), never read again
+            if case .ok(var b) = Cloud.readSeat(seatBak) {
+                b.steps = nil; seat = b; bakSeat = b                                               // (the steps not up yet are lost with it: never sent twice)
+                if case .missing = read {} else { seatNote = "로그인 정보를 백업에서 되살렸어요" }
+            } else if case .missing = read { firstRun = !FileManager.default.fileExists(atPath: seatBak.path) }
+            else {
+                seatHeld = { if case .unreadable = read { return true }; return false }()
+                seatNote = "이 PC의 로그인 정보(cloud.json)를 읽지 못했어요. 새로 만들지 말고 원래 ID와 PIN으로 로그인해 주세요."
+            }
+        }
+        if seat.device == nil { seat.device = hex((0..<16).map { _ in UInt8.random(in: .min ... .max) }); if !seatHeld { writeSeat() } }   // (no didSet inside init)
         unsent = seat.steps ?? 0
+    }
+    /// 5.1.2: a seat file read — a moment's lock (a virus scan, a backup, another writer) waited out, a few tries over ~2 s.
+    enum SeatRead { case missing, unreadable, corrupt, ok(Seat) }
+    nonisolated static func readSeat(_ u: URL, tries: Int = 10) -> SeatRead {
+        for k in 0..<max(1, tries) {
+            guard FileManager.default.fileExists(atPath: u.path) else { return .missing }
+            if let d = try? Data(contentsOf: u) { return (try? JSONDecoder().decode(Seat.self, from: d)).map { .ok($0) } ?? .corrupt }
+            if k < tries - 1 { Thread.sleep(forTimeInterval: 0.2) }
+        }
+        return .unreadable
+    }
+    /// u → u.bad-<unix>[-n] beside it. true = it went.
+    @discardableResult nonisolated static func setAside(_ u: URL) -> Bool {
+        let fm = FileManager.default, stamp = u.lastPathComponent + ".bad-\(Int(Date().timeIntervalSince1970))"
+        var n = 0, to = u.deletingLastPathComponent().appendingPathComponent(stamp)
+        while fm.fileExists(atPath: to.path) { n += 1; to = u.deletingLastPathComponent().appendingPathComponent("\(stamp)-\(n)") }
+        guard (try? fm.moveItem(at: u, to: to)) != nil else { return false }
+        NSLog("pokewalker: %@ didn't read, kept as %@", u.path, to.lastPathComponent); return true
     }
     /// The app's (3.0 is always on the server: docs/plans/11 §0); none with persist == false (the self-test's walkers bring their own, renders none).
     static func app(persist: Bool) -> Cloud? { persist ? Cloud(link: HTTPLink(), dir: Store.dir) : nil }
@@ -385,7 +421,24 @@ final class CloudInbox: @unchecked Sendable {
     private func writeSeat() {
         let enc = JSONEncoder(); enc.outputFormatting = .sortedKeys
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if seatHeld {                                                                              // 5.1.2: the one that wouldn't read, before anything takes its place
+            seatHeld = false
+            if seat.trainerID == nil, case .ok(var s) = Cloud.readSeat(seatFile, tries: 1) {          // it reads now (the lock let go): this PC's login after all
+                s.device = s.device ?? seat.device; seatNote = nil; seat = s                          // (its didSet writes it)
+                if phase == .needsID { start() }
+                return
+            }
+            guard Cloud.setAside(seatFile) || !FileManager.default.fileExists(atPath: seatFile.path) else { seatHeld = true; return }   // still locked: later
+        }
         try? enc.encode(seat).write(to: seatFile, options: .atomic)
+        writeBak()
+    }
+    /// 5.1.2: the bak follows the login (ID, device, trust, session), not the steps: written when those change.
+    private func writeBak() {
+        var b = seat; b.steps = nil
+        guard b != bakSeat, b.trainerID != nil else { return }
+        let enc = JSONEncoder(); enc.outputFormatting = .sortedKeys
+        if (try? enc.encode(b).write(to: seatBak, options: .atomic)) != nil { bakSeat = b }
     }
 }
 
@@ -404,6 +457,7 @@ extension Walker {
         }
         if c.seat.legacyUploaded != true, let text = try? String(contentsOf: Store.preServer(file), encoding: .utf8) { c.legacy = text }
         c.start()
+        if persist, let n = c.seatNote { host?.notify("PokeWalker 로그인", n) }                     // 5.1.2: this PC's login didn't read whole
     }
     /// The server holds the game (08 §2): no ID yet, another PC took the trainer (§2-1), too old an app — no steps, no keys; ● is the lock's button.
     var frozen: Bool { cloud.map { Cloud.locks($0.phase) } ?? false }
@@ -446,7 +500,8 @@ extension Walker {
     @discardableResult func askID(change: Bool = false) -> Bool {
         guard let h = host, cloud != nil, !cloudAsking else { return false }
         cloudAsking = true; defer { cloudAsking = false }
-        var note = "2–12자, 한글·영문·숫자·_ (대소문자는 같은 ID)"
+        let lost = cloud?.seat.trainerID == nil ? cloud?.seatNote : nil                               // 5.1.2: why it asks again (this PC's login didn't read)
+        var note = (lost.map { $0 + "\n" } ?? "") + "2–12자, 한글·영문·숫자·_ (대소문자는 같은 ID)"
         while let raw = h.askText(title: change ? "ID 바꾸기" : "트레이너 ID를 입력해 주세요", message: note) {
             if trainerID(raw) != nil { switchID(raw); return true }                                 // either way: another trainer's rev / total / hash never carry over
             note = josa("'\(raw.trimmingCharacters(in: .whitespaces))'", "은", "는") + " ID로 쓸 수 없어요.\n2–12자, 한글·영문·숫자·_ 만 돼요."

@@ -16,9 +16,20 @@ protocol Settings {
 final class JSONSettings: Settings {
     var values: [String: Int] = [:]
     let file: URL?
+    private var held = false                                               // 5.1.2: settings.json there but unreadable: never written over until it reads
+    /// 5.1.2 (as cloud.json): a moment's lock waited out (~2 s); one that doesn't decode kept aside (settings.json.bad-<unix>), the defaults then.
     init(file: URL?) {
         self.file = file
-        if let file, let d = try? Data(contentsOf: file), let v = try? JSONDecoder().decode([String: Int].self, from: d) { values = v }
+        guard let file else { return }
+        for k in 0..<10 {
+            guard FileManager.default.fileExists(atPath: file.path) else { return }
+            if let d = try? Data(contentsOf: file) {
+                if let v = try? JSONDecoder().decode([String: Int].self, from: d) { values = v } else { Cloud.setAside(file) }
+                return
+            }
+            if k < 9 { Thread.sleep(forTimeInterval: 0.2) }
+        }
+        held = true
     }
     func bool(_ key: String, _ def: Bool) -> Bool { values[key].map { $0 != 0 } ?? def }
     func int(_ key: String, _ def: Int) -> Int { values[key] ?? def }
@@ -27,6 +38,11 @@ final class JSONSettings: Settings {
         guard values[key] != v else { return }
         values[key] = v
         guard let file else { return }
+        if held {                                                                                // 5.1.2: what it held comes first, this launch's on top
+            guard let d = try? Data(contentsOf: file) else { return }
+            held = false
+            if let kept = try? JSONDecoder().decode([String: Int].self, from: d) { values = kept.merging(values) { $1 } }
+        }
         let e = JSONEncoder(); e.outputFormatting = [.sortedKeys, .prettyPrinted]
         try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? e.encode(values).write(to: file, options: .atomic)

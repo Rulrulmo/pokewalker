@@ -26,10 +26,8 @@ let resourceDir: URL? = {
         exit(selftest() ? 0 : 1)
     }
     _ = wide("Local\\dev.khmin.pokewalker") { CreateMutexW(nil, false, $0) }                      // one card per login: a second launch shows the first's
-    if GetLastError() == DWORD(ERROR_ALREADY_EXISTS) {
-        if let h = wide("PokeWalker", { FindWindowW($0, nil) }) { _ = PostMessageW(h, wmShow, 0, 0) }
-        exit(0)
-    }
+    if GetLastError() == DWORD(ERROR_ALREADY_EXISTS) { secondLaunch() }                          // 5.1.2: the first comes forward, or this starts in its place (WinOnce.swift)
+    noteRunning()
     _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT(bitPattern: -4))                      // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2: sharp on every monitor
     settings = JSONSettings(file: Store.dir.appendingPathComponent("settings.json"))
     let launch = Update.atLaunch()                                                                // a downloaded update goes in first: the helper starts it once this exits

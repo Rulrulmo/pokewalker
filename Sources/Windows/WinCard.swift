@@ -199,6 +199,14 @@ func put<T>(_ s: String, _ field: inout T) {
         wide(body + "\n\n확인 = " + ok) { b in wide(title) { t in MessageBoxW(hwnd, b, t, UINT(MB_OKCANCEL) | UINT(MB_ICONQUESTION) | UINT(MB_TOPMOST) | UINT(MB_SETFOREGROUND)) } } == IDOK
     }
     func quit() { walker.quitSave(); tray(DWORD(NIM_DELETE)); _ = DestroyWindow(hwnd) }
+    /// 5.1.2: launched again — the card shown and in front wherever it was (hidden, behind, its monitor gone, drawn blank), and the ID / PIN box or
+    /// a question over it if one is up.
+    func comeForward() {
+        if windowHidden { toggleShown() } else { shown = nil; walker.refreshPane(Date(), force: true); fit(); needAll = true; render() }
+        _ = SetWindowPos(hwnd, HWND(bitPattern: -1), 0, 0, 0, 0, UINT(SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_NOACTIVATE))   // HWND_TOPMOST
+        let top = GetLastActivePopup(hwnd) ?? hwnd
+        _ = SetForegroundWindow(top)
+    }
 
     // MARK: the tray
     func trayData() -> NOTIFYICONDATAW {
@@ -391,7 +399,7 @@ func put<T>(_ s: String, _ field: inout T) {
             default: break
             }
             return 0
-        case wmShow: if windowHidden { toggleShown() }; return 0                                  // launched again: a hidden card comes back
+        case wmShow: comeForward(); return 1                                                      // launched again: the card in front (1: the second launch's answer)
         case taskbarCreated: tray(DWORD(NIM_ADD)); return 0                                       // Explorer restarted: the icon again
         case UINT(WM_QUERYENDSESSION): walker.save(); return 1
         case UINT(WM_ENDSESSION): if wp != 0 { walker.shuttingDown = true; walker.quitSave() }; return 0   // (no update goes in mid-shutdown)
