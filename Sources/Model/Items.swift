@@ -16,6 +16,7 @@ enum ItemKind: Equatable {
     case mint(Int)                 // 민트 (SwSh): the stats go by this nature (its own stays shown): docs/plans/13
     case held(String)              // only to hold (3.7, Held.swift): 구애머리띠, 먹다남은음식 … (berries and evolution items keep their own use, and can be held too)
     case key                       // 5.0: an important item, never sold back (로토무카탈로그: the 상점's 기타, once; 유전자쐐기, and the legend rewards' later)
+    case abilityPatch              // 5.1 (docs/plans/19 §3): 특성패치 — the hidden ability ↔ the first, on one of ours; used up
 
     /// One line on what it does (the bag list, the shops).
     var summary: String {
@@ -23,6 +24,7 @@ enum ItemKind: Equatable {
         case .heal(let n): "배틀 HP +\(n)"; case .revive(let n): "배틀: 기절한 포켓몬 HP \(n)%로"; case .held(let i): "지니게 하기: " + (Held.summary(i) ?? "");
         case .mint(let k): natures[k].up == natures[k].down ? "능력 보정 없는 성격으로" : "\(statNames[natures[k].up]) ↑ · \(statNames[natures[k].down]) ↓ 성격으로"
         case .key: "중요한 물건"
+        case .abilityPatch: "숨겨진특성 ↔ 첫째 특성"
         case .candy: "레벨 +1"; case .evReset: "노력치 전부 0"; case .bottleCap(let gold): gold ? "특훈: 모든 개체값 → 31 (Lv.50부터)" : "특훈: 개체값 하나 → 31 (Lv.50부터)"
         case .vitamin(let k, let d): "\(["HP", "공격", "방어", "특공", "특방", "스피드"][k]) 노력치 \(d > 0 ? "+" : "−")10"; case .berry: "친밀도 +500걸음"; case .evolution: "진화 도구"; case .sell(let p): "팔면 \(p)W"
         case .battle(let u):
@@ -43,6 +45,7 @@ enum ItemKind: Equatable {
             "플러스파워": .x(1, 1), "디펜드업": .x(2, 1), "스페셜업": .x(3, 1), "스페셜가드": .x(4, 1), "스피드업": .x(5, 1), "잘-맞히기": .x(6, 1), "크리티컬커터": .direHit, "이펙트가드": .guardSpec]
         if let u = use[i] { return .battle(u) }
         if ItemKind.keys.contains(i) { return .key }
+        if i == "특성패치" { return .abilityPatch }
         if let k = ["맥스업", "타우린", "사포닌", "리보플라빈", "키토산", "알칼로이드"].firstIndex(of: i) { return .vitamin(k, 10) }
         if let k = ["유석열매", "시마열매", "파비열매", "로매열매", "또뽀열매", "토망열매"].firstIndex(of: i) { return .vitamin(k, -10) }
         if i == "순백떡" { return .evReset }

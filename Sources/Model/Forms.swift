@@ -85,6 +85,17 @@ extension Walk {
         if other <= -2 { caught.remove(at: -2 - other) } else { box.remove(at: other) }
         return nil
     }
+    /// 5.1 (docs/plans/19): the key items that change a form by hand (MonOp.form) — 그라시데아꽃 쉐이미 ↔ 스카이폼, 비추는거울 토네로스 · 볼트로스 ·
+    /// 랜드로스 ↔ 영물폼, 굴레의항아리 후파 ↔ 굴레를 벗어난 후파 (이차원홀 ↔ 이차원러시, as the games). Kept when used; a form stays (no night or ice back).
+    static let formItems: [String: Set<Int>] = ["그라시데아꽃": [492], "비추는거울": [641, 642, 645], "굴레의항아리": [720]]
+    static let formMoves: [Int: (from: Int, to: Int)] = [720: (593, 621)]
+    mutating func itemForm(_ ref: Int, _ item: String, _ form: Int?) -> String? {
+        guard Content.v51, let dexes = Walk.formItems[item] else { return "모습을 바꾸는\n도구가 아니에요" }
+        guard (bag + items).contains(item) else { return josa(item, "이", "가") + "\n없어요" }
+        guard var m = mon(ref), dexes.contains(m.dex), form.map({ $0 == 1 && Forms.of(m.dex, 1) != nil }) ?? true, m.form != form else { return "모습을 바꿀 수\n없어요" }
+        if let (a, b) = Walk.formMoves[m.dex] { m.known = m.moves.map { form == nil ? ($0 == b ? a : $0) : ($0 == a ? b : $0) } }
+        m.form = form; setMon(ref, m); return nil
+    }
     /// 분리: the one inside back to the box; 콜드플레어 / 프리즈볼트 back to 얼어붙은세계.
     mutating func unfuse(_ ref: Int) -> String? {
         guard var k = mon(ref), let p = k.fused?.first else { return "합체하지 않았어요" }

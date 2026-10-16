@@ -17,8 +17,16 @@ extension SaveDB {
     }
     /// When content5 first went on (unix; nil: never): the Mega raid's rotation counts its weeks from that one (MegaRaid.round).
     func content5Since() throws -> Int? { try db.rows("SELECT value FROM settings WHERE name = 'content5_since'").first?.text("value").flatMap { Int($0) } }
-    /// Content.on from the setting: at start, then every few seconds (pokeserver content5 runs in another process).
-    func syncContent() { Content.on = (try? content5()) ?? false }
+    /// Content.on (and 5.1's on51) from the settings: at start, then every few seconds (pokeserver content5 runs in another process).
+    func syncContent() { Content.on = (try? content5()) ?? false; Content.on51 = (try? content51()) ?? false }
+
+    // MARK: 5.1's switch (docs/plans/19): the 전설 원정, on top of content5
+    func content51() throws -> Bool { try db.rows("SELECT value FROM settings WHERE name = 'content51'").first?.text("value") == "on" }
+    func setContent51(_ on: Bool) throws -> String {
+        try db.rows("INSERT INTO settings (name, value) VALUES ('content51', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(on ? "on" : "off")])
+        let five = try content5()
+        return "content51 " + (on ? "on" : "off") + " — the running server takes it within \(content5Every) s" + (on && !five ? " (content5 is off: nothing of it shows until that's on)" : "")
+    }
 
     // MARK: old apps
     /// The oldest app a trainer may use now (nil: no trainer, or no bound): what needApp says.

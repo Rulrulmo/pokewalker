@@ -34,6 +34,7 @@ enum Act: Codable, Equatable {
     case duelParty(uids: [Int])                                  // 3.8 (14 §5.1): the 대전 파티, 3–6 of ours
     case duelQueue, duelQueueCancel, duelPick(id: Int, slots: [Int])   // 3.8 (14 §5.2–3): random matching; the 3 of my 6 for this duel (in order)
     case mailClaim(id: Int, pick: Int? = nil), mailClaimAll      // 3.9 (docs/plans/15 §2): a mail's gifts (pick: which of a 고르기); every one without a pick
+    case expStart(id: String), expClaim(id: String)              // 5.1 (docs/plans/19): a personal 전설 원정 begun (its legend rolled), its legend taken once it's all gathered
 }
 enum BattleCmd: Codable, Equatable { case fight(slot: Int), ball, item(name: String, on: Int? = nil), swap(to: Int), replace(to: Int), run, forfeit
     case megaFight(slot: Int)                                          // 5.0: Mega Evolve, then this move (docs/plans/18 §14.4)
@@ -44,6 +45,7 @@ enum MonOp: Codable, Equatable {
     case move(uid: Int, slot: Int, move: Int), learn(slot: Int?), trade
     case hold(uid: Int, item: String?)                                // 지니게 하기 (3.7, docs/plans/13 ⑤): from the bag (what it held goes back), nil = take it back
     case rotom(uid: Int, form: Int?), fuse(uid: Int, with: Int), unfuse(uid: Int)   // 5.0 (docs/plans/18 §5): 로토무카탈로그, 큐레무 합체 / 분리
+    case form(uid: Int, item: String, form: Int?)                     // 5.1 (docs/plans/19): a key item's 모습 바꾸기 — 그라시데아꽃 · 비추는거울 · 굴레의항아리 (and the catalog); nil = its own
 }
 
 /// What came of it for the player to see, in the order home shows them (docs/plans/11 §3 news).
@@ -65,6 +67,8 @@ enum News: Codable, Equatable {
     case visitCame(id: Int, owner: String, dex: Int, shiny: Bool)                           // 3.8 (14 §3): a friend's Pokémon to raise for 5 hours
     case visitDone(owner: String, dex: Int, steps: Int, bp: Int)                            // 3.8: a guest went home; what it earned us
     case mailNew(id: Int, title: String)                                                    // 3.9: a mail came (the 우편함's dot)
+    case expedition(id: String, n: Int, need: Int)                                          // 5.1 (docs/plans/19): a 전설 원정's count went up (지가르데's cells)
+    case expeditionDone(id: String, dex: Int, gift: String?)                                // 5.1: it's done — its legend came (Outcome.mon); gift: its kind's first, the 특성패치
 }
 struct RadarShown: Codable, Equatable { var bush: Int, window: Double, chain: Int }
 /// result: caught · won · lost · fled (it got away) · ran (we did) · forfeit. chain: a wild fight's (0 = over); streak · bp: the tower's.

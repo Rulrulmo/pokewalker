@@ -42,6 +42,7 @@ enum SaveCheck {
     /// 5.0: the new courses' finds, the catalog, Gen V–VI's held items, the evolution items of Gen V–VI, the stones and orbs, the important ones.
     static let knownItemsGen6: Set<String> = knownItemsGen4.union(coursesGen6.flatMap { $0.items.map(\.item) }).union(Walk.heldBPGen6.map(\.item)).union(Walk.heldWGen6.map(\.item))
         .union(evolutionsGen6.compactMap(\.item)).union(Forms.stones).union(ItemKind.keys).union(Held.drives.keys)
+        .union(Walk.bpShop51.map(\.item)).union(Walk.shop51.map(\.item))                                   // 5.1 (plan 19): 특성패치, 그라시데아꽃
     static let knownItemsGen4: Set<String> = {
         var s = Set<String>(coursesGen4.flatMap { (c: Course) -> [String] in c.items.map(\.item) })
         s.formUnion(Walk.shopGen4.map(\.item)); s.formUnion(Walk.bpShop.map(\.item)); s.formUnion(evolutionsGen4.compactMap(\.item))

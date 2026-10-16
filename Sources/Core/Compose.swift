@@ -546,6 +546,7 @@ extension Walker {
         case .held: return (nil, "포켓몬에게 지니게 해요")                                          // (held ones are targeted: the case above)
         case .heal, .battle: return (nil, "배틀에서 도구로")
         case .key: return (nil, "중요한 물건이에요")                                                  // 5.0: (로토무카탈로그 · 유전자쐐기 are targeted: the case above)
+        case .abilityPatch: return (nil, "포켓몬을 골라 써요")                                        // 5.1 (plan 19 §3): the Mac's screen (use with on: its uid)
         }
     }
     /// A Pokémon in full, for its page.

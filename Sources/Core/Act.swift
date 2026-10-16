@@ -134,6 +134,7 @@ extension Walker {
         case .duelInvite(let id, let from): duelInvited(id, from, now)                            // 실시간 대전 (12 §5): a friend asked (Core/DuelScreen.swift)
         case .claimReady: cloud?.marketDue = true                                                  // 3.8 (14 §2.2): something to take — the red dot
         case .visitCame, .visitDone: visitNews(n, now)                                             // 3.8 (14 §3): 맡겨 키우기 (Core/TeamView.swift)
+        case .expedition, .expeditionDone: break                                                   // 5.1 (plan 19): the 원정 screen's (the Mac's)
         case .mailNew(_, let t): mailNews(t)                                                       // 3.9 (15 §6 A): quiet — the 우편함's dot, a notification
         }
     }

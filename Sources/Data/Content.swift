@@ -8,6 +8,10 @@ enum Content {
     /// A test's own switch (`Content.$testing.withValue(true) { ... }`): tests run side by side, so they never flip `on`.
     @TaskLocal static var testing: Bool? = nil
     static var gen6: Bool { testing ?? on }
+    /// 5.1 (docs/plans/19): the 전설 원정 switch (pokeserver content51), on top of content5; the app takes it from the login reply's content51.
+    nonisolated(unsafe) static var on51 = false
+    @TaskLocal static var testing51: Bool? = nil
+    static var v51: Bool { gen6 && (testing51 ?? on51) }
 }
 
 private func patched<T>(_ base: [T], _ changes: [Int: T]) -> [T] { var a = base; for (k, v) in changes { a[k] = v }; return a }

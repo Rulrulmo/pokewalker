@@ -79,6 +79,11 @@ extension Walk {
         guard case .mint(let k) = ItemKind.of(i), var m = mon(ref), (m.mint ?? m.nature ?? 0) != k, take(i) else { return false }
         m.mint = k == (m.nature ?? 0) ? nil : k; setMon(ref, m); return true
     }
+    /// 5.1 (docs/plans/19 §3): 특성패치 — the hidden ability ↔ the first (Mon.ability 2 ↔ 0), on one whose species (or form) has a hidden one. Used up.
+    mutating func useAbilityPatch(_ ref: Int = -1) -> Bool {
+        guard Content.gen6, var m = mon(ref), (m.formInfo?.hidden ?? hiddenAbility[m.dex]) > 0, take(Expeditions.patch) else { return false }
+        m.ability = m.ability == 2 ? 0 : 2; setMon(ref, m); return true
+    }
     /// The mints the 상점 sells: one for every nature that moves a stat, and 성실 for none (SwSh's set).
     static let mints: [String] = natures.indices.filter { natures[$0].up != natures[$0].down || natures[$0].name == "성실" }.map { natures[$0].name + "민트" }
     static let mintPrice = 1000
@@ -90,7 +95,9 @@ extension Walk {
     }
 
     // MARK: shops
-    static var shop: [(item: String, watts: Int)] { shopGen4 + (Content.gen6 ? [("로토무카탈로그", 1000)] : []) }   // (5.0: the catalog)
+    static var shop: [(item: String, watts: Int)] { shopGen4 + (Content.gen6 ? [("로토무카탈로그", 1000)] : []) + (Content.v51 ? shop51 : []) }   // (5.0: the catalog)
+    static let shop51: [(item: String, watts: Int)] = [("그라시데아꽃", 3000)]                        // 5.1 (plan 19 §6.1-8): 쉐이미 스카이폼, once
+    static let bpShop51: [(item: String, bp: Int)] = [("특성패치", 100)]                              // 5.1 (plan 19 §3)
     static let shopGen4: [(item: String, watts: Int)] = [("상처약", 20), ("좋은상처약", 60), ("고급상처약", 150), ("풀회복약", 300), ("회복약", 400), ("기력의조각", 200), 
         ("해독제", 10), ("마비치료제", 20), ("잠깨는약", 25), ("화상치료제", 25), ("얼음상태치료제", 25), ("만병통치제", 60), ("PP에이드", 120),
         ("플러스파워", 50), ("디펜드업", 55), ("스페셜업", 35), ("스페셜가드", 35), ("스피드업", 35), ("잘-맞히기", 95), ("크리티컬커터", 65), ("이펙트가드", 70),
@@ -161,7 +168,7 @@ extension Walk {
     /// The rows, in order: the goods, then (상점) the companion's evolution items, then the once-only ones. `shells` = the device colours sold for BP.
     func wares(bp: Bool, shells: [(name: String, bp: Int)]) -> [Ware] {
         if bp {
-            return Walk.bpShop.map { Ware(kind: .item($0.item), price: $0.bp) } + Walk.heldBP.map { Ware(kind: .item($0.item), price: $0.bp) }
+            return (Walk.bpShop + (Content.v51 ? Walk.bpShop51 : [])).map { Ware(kind: .item($0.item), price: $0.bp) } + Walk.heldBP.map { Ware(kind: .item($0.item), price: $0.bp) }
                 + shells.map { Ware(kind: .shell($0.name), price: $0.bp) }
                 + Walk.legendShop.indices.filter { Walk.legendShop[$0].bp > 0 }.map { Ware(kind: .legend($0), price: Walk.legendShop[$0].bp) }
         }
@@ -182,7 +189,7 @@ extension Walk {
             switch ItemKind.of(i) {
             case .heal, .revive: return "회복"
             case .battle(let u): switch u { case .x, .guardSpec, .direHit: return "배틀"; default: return "회복" }
-            case .candy, .vitamin, .evReset, .bottleCap, .berry: return "육성"
+            case .candy, .vitamin, .evReset, .bottleCap, .berry, .abilityPatch: return "육성"
             case .mint: return "민트"
             case .evolution: return "진화"
             case .held: return "지닌 도구"
@@ -198,7 +205,7 @@ extension Walk {
         switch ItemKind.of(i) {
         case .heal, .revive: return "회복"
         case .battle(let u): switch u { case .x, .guardSpec, .direHit: return "배틀"; default: return "회복" }
-        case .candy, .vitamin, .evReset, .bottleCap, .berry: return "육성"
+        case .candy, .vitamin, .evReset, .bottleCap, .berry, .abilityPatch: return "육성"
         case .mint: return "민트"
         case .held: return "지닌 도구"
         case .evolution: return "진화"

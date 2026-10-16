@@ -41,6 +41,7 @@ func actName(_ a: Act) -> String {
     case .claim(let i): "claim #\(i)"; case .visitSend(let to, let u): "visit send \(u) → \(to)"; case .visitEnd(let i): "visit end #\(i)"
     case .duelParty(let u): "duel party \(u)"; case .duelQueue: "duel queue"; case .duelQueueCancel: "duel queue cancel"; case .duelPick(let i, let sl): "duel #\(i) pick \(sl)"
     case .mailClaim(let i, let p): "mail claim #\(i)" + (p.map { " pick \($0)" } ?? ""); case .mailClaimAll: "mail claim all"
+    case .expStart(let i): "expedition start \(i)"; case .expClaim(let i): "expedition claim \(i)"
     }
 }
 /// News kinds an app before 3.8 can't read are kept from it (the inbox's min_app does the same for teammates' mail).
@@ -85,6 +86,7 @@ extension SaveDB {
                 if taken > 0 {
                     try db.rows("INSERT INTO steps_day (key, day, n) VALUES (:k, :d, :n) ON CONFLICT (key, day) DO UPDATE SET n = n + :n",
                                 ["k": .text(id.key), "d": .text(day), "n": .int(taken)])
+                    try teamEventSteps(id.key, taken, now: unix)                                     // 5.1 (plan 19): a team event's week counts them
                 }
 
                 var ids = Issued(next: try nextUID(id.key, w)), g = SystemRandomNumberGenerator()
@@ -160,6 +162,7 @@ extension SaveDB {
                 try towerRewards(id.key, walk: &w, now: unix)                                         // plan 15 §3: streak rewards (and the back-pay), as mail
                 try megaMaster(id.key, walk: w, now: unix)                                            // 5.0 (plan 18 §6.4): all 48 stones → the 칭호, as mail
                 try dexRewards(id.key, walk: &w, now: unix)                                           // 5.0 (plan 18 §15): 도감 업적, as mail
+                try teamEventGifts(id.key, now: unix)                                                 // 5.1 (plan 19): a team event's mythical, as mail
                 let mail = try delivery(id.key, app: r.app, now: unix)                                 // what teammates sent (only what this app can read)
                 out.news += mail.news
                 out.news = out.news.filter { appKnows(r.app, $0) }

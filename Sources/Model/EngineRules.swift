@@ -90,6 +90,8 @@ struct EngineRun<R: RandomNumberGenerator> {
              .mailClaim, .mailClaimAll:
             return nil                                                                              // the server's: other trainers' saves, the inbox, the raid, friends, the board, live battles
         case .duelParty(let uids): return duelParty(uids)
+        case .expStart(let id): return expStart(id)                                                // 5.1 (docs/plans/19): ExpeditionRules.swift
+        case .expClaim(let id): return expClaim(id)
         case .raid(let party, _): return raid(party)                                               // (the tier: the server's boss, p.raidBoss)
         case .megaRaid(let party, _, _): return raid(party)                                        // (5.0: its boss, the server's, as its Mega)
         }
@@ -101,6 +103,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         guard n > 0 else { return }
         let season = w.season
         _ = w.walk(n, at: now)
+        expSteps(n)                                                                                 // 5.1: a 전설 원정's steps (지가르데's cells on 칼로스)
         if w.weatherDue, w.rollWeather(&r) { events.append(.weather(to: w.weather ?? .sunny)) }
         if w.season != season { events.append(.season(to: w.season.rawValue)) }
         if w.eventDue {
@@ -152,6 +155,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         let bush = Int.random(in: 0..<4, using: &r), win = Engine.radarWindow(chain)
         p.radar = Play.Radar(bush: bush, window: win, chain: chain, at: now.timeIntervalSinceReferenceDate, mon: m)
         out.radar = RadarShown(bush: bush, window: win, chain: chain)
+        expRadar()                                                                                  // 5.1: a 전설 원정's radar find (1/30 a cell on 칼로스)
         return nil
     }
     mutating func pick(_ bush: Int) -> String? {
@@ -327,6 +331,9 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .evReset: guard w.resetEVs(ref) else { return "노력치가 이미\n0이다" }
         case .berry: guard w.feedBerry(item, ref) else { return "먹을 수 없어요" }
         case .mint: guard w.useMint(item, ref) else { return "이미 그 성격이다" }
+        case .abilityPatch:                                                                         // 5.1 (plan 19 §3): on the one named (a 5.0 app's 팔기 names none)
+            guard on != nil else { return "포켓몬을\n골라 주세요" }
+            guard w.useAbilityPatch(ref) else { return "숨겨진특성이\n없는 포켓몬이에요" }
         case .sell: out.watts = w.sell(item)
         case .evolution:
             guard let e = w.stoneEvolutions(now, ref: ref).first(where: { $0.item == item }) else { return "지금은\n쓸 수 없다" }
@@ -388,6 +395,9 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .unfuse(let u):
             guard let ref = w.ref(uid: u) else { return "그 포켓몬은\n없어요" }
             if let why = w.unfuse(ref) { return why }
+        case .form(let u, let item, let form):
+            guard let ref = w.ref(uid: u) else { return "그 포켓몬은\n없어요" }
+            if let why = item == "로토무카탈로그" ? w.rotomForm(ref, form) : w.itemForm(ref, item, form) { return why }
         }
         return nil
     }

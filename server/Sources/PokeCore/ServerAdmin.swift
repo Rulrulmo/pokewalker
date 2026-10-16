@@ -35,6 +35,10 @@ let usage = """
       relogin [now|off|<unix>]           5.0 apps' sessions from before then log in once more, at their next steps act (not mid-fight, chain or live battle)
       versions                           5.0: each trainer's app as last seen, its oldest allowed, what its updater said last
       update-hint urgent|calm [<iso>]    5.0: /v1/update's hint outside the signed manifest — urgent (and install by when)
+      content51 [on|off]                 5.1 (docs/plans/19): the 전설 원정 switch, on top of content5 (the server within 10 s, the app at its next login)
+      events                             5.1: the team events — each week, the team's steps against its goal, who walked enough, who got the mythical
+      event-schedule <yyyy-MM-dd>        5.1: the six weeks from that day (0:00 KST), every other week, and the encore two weeks after the last
+      event-cancel <id>                  5.1: one not begun goes; one on ends now
     --db: else $DB_PATH, else /var/lib/pokewalker/pokewalker.db
     """
 
@@ -383,6 +387,15 @@ public func run(_ arguments: [String]) async -> Int32 {
             guard ["on", "off"].contains(rest[0]) else { return fail("content5: on | off") }
             out = try await db.setContent5(rest[0] == "on")
         case ("versions", 0): out = try await db.versionsReport(now: unixNow())
+        case ("content51", 0): out = "content51 " + ((try await db.content51()) ? "on" : "off")
+        case ("content51", 1):
+            guard ["on", "off"].contains(rest[0]) else { return fail("content51: on | off") }
+            out = try await db.setContent51(rest[0] == "on")
+        case ("events", 0): out = try await db.teamEventsReport(now: unixNow())
+        case ("event-schedule", 1): out = try await db.scheduleTeamEvents(from: rest[0])
+        case ("event-cancel", 1):
+            guard let id = Int(rest[0]) else { return fail("event-cancel: <id> is a number") }
+            out = try await db.cancelTeamEvent(id, now: unixNow())
         case ("relogin", 0): out = try await db.reloginBefore().map { "relogin: sessions from before \(Date(timeIntervalSince1970: TimeInterval($0)).formatted(.iso8601))" } ?? "relogin off"
         case ("relogin", 1):
             let at = rest[0] == "now" ? unixNow() : Int(rest[0])

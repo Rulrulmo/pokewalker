@@ -127,6 +127,7 @@ actor SaveDB {
             try? c.exec("ALTER TABLE trainers ADD COLUMN app_seen TEXT")
             try? c.exec("ALTER TABLE raid_runs ADD COLUMN kind TEXT")                                // 5.0: NULL = the legend raid, 'mega' (plan 18 §6.4)
             try? c.exec("ALTER TABLE trainers ADD COLUMN session_at INTEGER")                        // 5.0.x: when the session began (pokeserver relogin)
+            try c.exec(expeditionSchema)                                                                   // 5.1 (docs/plans/19): the team events
         }   // tables added since (flags) come in on any open: IF NOT EXISTS
         db = c; self.path = path; self.reject = reject; self.rejectTests = rejectTests; self.minApp = minApp
         self.viewAll = Set(viewAll.compactMap { trainerID($0)?.key })
@@ -211,6 +212,7 @@ actor SaveDB {
                 if pinNeeded { reply["pin_needed"] = .b(true) }
                 reply["tower"] = .b(try runCarries(id.key))                                          // plan 11: a tower run between fights goes on in this session
                 if Content.gen6 { reply["content5"] = .b(true) }                                     // 5.0 (plan 18 §14.4): the app sets Content.on by it
+                if Content.v51 { reply["content51"] = .b(true) }                                     // 5.1 (plan 19): Content.on51, the same way
                 return Reply(200, reply,
                              note: t.device != nil && t.device != r.device ? "login from \(r.device_name.prefix(64)), took it from \(t.lastDevice ?? "?")" : nil)
             }
@@ -242,6 +244,7 @@ actor SaveDB {
                 if let token { reply["trust"] = .s(token) }
                 if issues { reply["starter"] = .i(firstUID) }
                 if Content.gen6 { reply["content5"] = .b(true) }                                     // 5.0: as login's — a new trainer's first session too
+                if Content.v51 { reply["content51"] = .b(true) }                                     // 5.1: as login's
                 return Reply(200, reply, note: "new trainer \(id.name) from \(r.device_name.prefix(64))")
             }
         }

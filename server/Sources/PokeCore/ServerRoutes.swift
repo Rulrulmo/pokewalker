@@ -61,6 +61,7 @@ func serve(db: SaveDB, appKey: String, port: Int, site: DownloadSite?, release: 
     post(router, "/v2/box", appKey: appKey, db: db, id: { (r: BoxReq) in r.id }) { r in await db.box(r, now: Date()) }
     post(router, "/v2/raid", appKey: appKey, db: db, id: { (r: RaidReq) in r.id }) { r in await db.raidLobby(r, now: Date()) }   // plan 12 M3, 16 (4.0's runs): ServerRaid.swift
     post(router, "/v2/market", appKey: appKey, db: db, id: { (r: MarketReq) in r.id }) { r in await db.market(r, now: Date()) }
+    post(router, "/v2/expedition", appKey: appKey, db: db, id: { (r: ExpReq) in r.id }) { r in await db.expeditionList(r, now: Date()) }   // 5.1 (plan 19): ServerExpedition.swift
     post(router, "/v2/mail", appKey: appKey, db: db, id: { (r: MailReq) in r.id }) { r in await db.mailList(r, now: Date()) }        // plan 15: ServerMail.swift    // plan 12 §3.3: ServerMarket.swift
     post(router, "/v2/duel", appKey: appKey, db: db, id: { (r: DuelReq) in r.id }) { r in                                       // plan 12 §5: ServerDuel.swift
         var reply = await db.duel(r, now: Date())
