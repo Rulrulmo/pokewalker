@@ -523,7 +523,7 @@ extension Walker {
             let who = itemRefs.filter { itemNot(n, $0) == nil }.count
             if who == 0 { return (nil, itemNot(n, -1).map { "동료: " + $0 } ?? "쓸 수 있는 포켓몬이 없어요") }
             if case .held = kind { return ("지니게 할 포켓몬 고르기", "") }                          // (its line is the summary already)
-            if case .evolution = kind, let e = state.stoneEvolutions(Date()).first(where: { $0.item == n }) { return ("쓸 포켓몬 고르기", "동료는 \(monNames[e.to])(으)로 진화") }
+            if case .evolution = kind, let e = state.stoneEvolutions(Date()).first(where: { $0.item == n }) { return ("쓸 포켓몬 고르기", "동료는 " + josa(monNames[e.to], "으로", "로") + " 진화") }
             return ("쓸 포켓몬 고르기", "쓸 수 있는 포켓몬 \(who)마리")
         }
         switch kind {
@@ -533,7 +533,7 @@ extension Walker {
         case .berry: return ("{동료}에게 먹이기".replacingOccurrences(of: "{동료}", with: monNames[c.dex]), "")
         case .sell(let p): return ("전부 팔기 +\((p * state.count(n)).formatted())W", "")
         case .evolution:
-            if let e = state.stoneEvolutions(Date()).first(where: { $0.item == n }) { return ("\(monNames[e.to])(으)로 진화", "{동료}에게 써요") }
+            if let e = state.stoneEvolutions(Date()).first(where: { $0.item == n }) { return (josa(monNames[e.to], "으로", "로") + " 진화", "{동료}에게 써요") }
             let uses = evolutions.filter { $0.item == n }.prefix(2).map { monNames[$0.from] + "→" + monNames[$0.to] + ($0.way == .trade ? " (교환)" : "") }
             return (nil, uses.joined(separator: ", "))
         case .bottleCap(let gold):

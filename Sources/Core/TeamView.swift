@@ -148,7 +148,7 @@ extension Walker {
     }
     /// 친구 끊기 (asked first).
     func unfriend(_ name: String, _ now: Date = Date()) {
-        guard host?.confirm("친구를 끊을까요?", name + "와(과) 더 이상 서로의 카드와 순위를 볼 수 없고, 인사도 못 해요.", ok: "끊기") ?? true else { return }
+        guard host?.confirm("친구를 끊을까요?", josa(name, "과", "와") + " 더 이상 서로의 카드와 순위를 볼 수 없고, 인사도 못 해요.", ok: "끊기") ?? true else { return }
         friendAct(.friendRemove(name: name), back: .team(sel: 0, tab: 0, card: false), now) { _ in [josa(name, "과", "와") + " 친구를", "끊었다"] }
     }
     /// 친구's news: someone asked (to the 신청 tab), it's mutual now.

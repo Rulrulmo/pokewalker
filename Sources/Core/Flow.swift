@@ -273,7 +273,7 @@ extension Walker {
             default: turn(.run, from: b, back: back, now)
             }
         case .moves(let b, let sel):
-            let x = b.mine[b.me], ms = x.moves, i = min(sel, ms.count - 1), mega = b.canMega(.me), n = ms.count + (mega ? 1 : 0)   // 5.0: 메가진화 after the moves
+            let x = b.mine[b.me], ms = x.moves, i = min(sel, ms.count - 1), mega = b.canMega(.me) && !duelOn, n = ms.count + (mega ? 1 : 0)   // 5.0: 메가진화 after the moves (5.1: none in a duel — the server refuses it)
             if k == 0 { screen = .moves(b, sel: (sel + n - 1) % n) }
             else if k == 2 { screen = .moves(b, sel: (sel + 1) % n) }
             else if mega, sel == ms.count { megaOn.toggle(); screen = .moves(b, sel: sel) }          // ticked or not: no turn yet
@@ -281,7 +281,7 @@ extension Walker {
             else if x.disable > 0, x.disabledMove == ms[i] { screen = .say(["사용할 수 없게", "되어 있다!"], next: .moves(b, sel: sel), since: now) }
             else if x.taunt > 0, moveTable[ms[i]]!.isStatus { screen = .say(["도발당해서", "쓸 수 없다!"], next: .moves(b, sel: sel), since: now) }
             else if x.torment, ms[i] == x.lastMove { screen = .say(["트집 때문에 같은", "기술은 못 쓴다!"], next: .moves(b, sel: sel), since: now) }
-            else { let m = megaOn && mega; megaOn = false; turn(m ? .megaFight(slot: i) : .fight(slot: i), from: b, back: .moves(b, sel: sel), now) }
+            else { let m = megaOn && mega; turn(m ? .megaFight(slot: i) : .fight(slot: i), from: b, back: .moves(b, sel: sel), now) }   // (5.1: the tick stays up till the answer: played)
         case .bagBattle(let b, let sel):
             let list = battleItems(b), n = max(1, list.count)
             if k == 0 { screen = .bagBattle(b, sel: (sel + n - 1) % n) }

@@ -164,6 +164,10 @@ extension Walker {
         }
         let lw = c.say("Lv\(m.mine.level)", me.maxX - 7 * k, me.minY + 10 * k, font(8, .semibold), Ink.sub, 1)
         c.say(m.mine.name, me.minX + 7 * k, me.minY + 9.5 * k, font(10, .bold), Ink.ink, maxW: me.width - 17 * k - lw)
+        if m.megaTicked {                                                                          // 5.1: 메가진화 ticked — a tab on the box's top edge till the turn's answer (any name's length)
+            let tf = font(7, .bold), t = "메가진화 ✓", rc = CGRect(x: me.minX + 6 * k, y: me.minY - 6.5 * k, width: width(t, tf) + 9 * k, height: 11 * k)
+            c.pill(rc, Ink.c(132, 64, 196)); c.stroke(.rounded(rc, rc.height / 2), .white, width: 1 * k); c.say(t, rc.midX, rc.midY, tf, .white, 0.5)
+        }
         hp(me.minX + 7 * k, me.maxX - 7 * k, me.minY + 18.5 * k, mr, h: 5 * k)
         var ix = me.minX + 7 * k
         if let st = m.mine.status { ix += status(st, ix, me.minY + 28.5 * k) + 3 * k }

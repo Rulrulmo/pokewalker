@@ -12,6 +12,7 @@ struct SideModel: Equatable {
     struct Bars: Equatable { var broken, total: Int; var cur: CGFloat }
     var bars: Bars? = nil
     var mega: Bool? = nil                                              // 5.0: the move screen's 메가진화 (nil: it can't now), ticked or not
+    var megaTicked = false                                             // 5.1: 메가진화 ticked (any battle screen till the turn's answer: the HP box's tab)
 }
 /// 상점 / BP 교환소: the list, and how many.
 struct ShopModel: Equatable {

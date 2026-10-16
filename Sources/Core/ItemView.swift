@@ -153,7 +153,7 @@ extension Walker {
         guard let m = state.mon(ref) else { return PaneContent() }
         let rows = holdRows(ref), s = min(sel, max(0, rows.count - 1)), r = rows[safe: s]
         let action = r.flatMap { $0.take ? $0.name + " 빼기" : $0.use ? ($0.why == nil ? $0.name + " " + giveVerb($0.name) : nil) : ($0.name + " 지니게 하기") }
-        let hint = r.map { $0.take ? "빼면 가방으로 돌아가요" : $0.use ? ($0.why.map { "이 포켓몬에게는: " + $0 } ?? $0.note) : m.item.map { "지금 지닌 " + $0 + "은(는) 가방으로" } ?? $0.note } ?? "줄 수 있는 도구가 가방에 없어요"
+        let hint = r.map { $0.take ? "빼면 가방으로 돌아가요" : $0.use ? ($0.why.map { "이 포켓몬에게는: " + $0 } ?? $0.note) : m.item.map { "지금 지닌 " + josa($0, "은", "는") + " 가방으로" } ?? $0.note } ?? "줄 수 있는 도구가 가방에 없어요"
         return PaneContent(hold: HoldModel(who: monNames[m.dex] + " Lv.\(m.level)", now: m.item, rows: rows, sel: s, action: action, hint: hint))
     }
     func holdLCD(_ fb: inout FB, _ ref: Int, _ sel: Int, _ now: Date) {
@@ -196,7 +196,7 @@ extension Walker {
         guard let m = state.mon(ref), let u = m.uid else { return }
         let name = monNames[m.dex], old = m.item
         act(.mon(op: .hold(uid: u, item: item)), back: back, now) { _, now in
-            let lines = item.map { [josa(name, "에게", "에게") + " " + josa($0, "을", "를"), "지니게 했다!"] + (old.map { [$0 + "은(는) 가방으로"] } ?? []) }
+            let lines = item.map { [josa(name, "에게", "에게") + " " + josa($0, "을", "를"), "지니게 했다!"] + (old.map { [josa($0, "은", "는") + " 가방으로"] } ?? []) }
                 ?? [josa(name, "의", "의") + " " + josa(old ?? "도구", "을", "를"), "뺐다"]
             return .say(lines, next: then(), since: now)
         }

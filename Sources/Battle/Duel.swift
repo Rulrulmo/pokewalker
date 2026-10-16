@@ -43,6 +43,8 @@ extension Beat {
         case .note(let s, let t): return .note(o(s), text: words(t))
         case .retype(let s, let t): return .retype(o(s), t)
         case .fainted(let s): return .fainted(o(s))
+        case .mega(let s, let f, let t): return .mega(o(s), form: f, text: words(t))         // 5.1 (the Mac's 10-16 find): 원시회귀 · 메가진화 on the right side, re-worded
+        case .reform(let s, let f, let t): return .reform(o(s), form: f, text: words(t))     // ... and 블레이드폼 · 달마모드 · 스텝폼
         case .won: return .lost
         case .lost: return .won
         default: return self
@@ -59,7 +61,7 @@ func duelWords(ours: [Int], theirs: [Int]) -> (String) -> String {
     return { text in
         var out = "", i = text.startIndex
         scan: while i < text.endIndex {
-            for (from, to) in tokens where !from.isEmpty && text[i...].hasPrefix(from) {
+            for (from, to) in tokens where !from.isEmpty && text[i...].hasPrefix(from) && !out.hasSuffix("메가") && !out.hasSuffix("원시") {   // 5.1: a Mega's or a primal's own name (메가리자몽X, 원시가이오가) stays whole
                 out += to; i = text.index(i, offsetBy: from.count); continue scan
             }
             out.append(text[i]); i = text.index(after: i)

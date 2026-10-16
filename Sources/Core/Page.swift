@@ -203,7 +203,7 @@ extension Canvas {
             for (i, mv) in ms.enumerated() {
                 let rc = r(X0 + CGFloat(i % 2) * (cw + 5), top + 3 + CGFloat(i / 2) * 39, cw, 36), dead = mv.effect == 0 || mv.pp == 0, col = typeColor[mv.type] ?? .gray
                 let p = Path.rounded(rc, 10 * K); c.fill(p, dead ? Ink.tile : Ink.tint(col, 0.2))
-                if i == sel { c.stroke(p, Ink.red, width: 2 * K) }
+                if m.mega == true { c.stroke(p, Ink.c(132, 64, 196), width: (i == sel ? 2.5 : 1.2) * K) } else if i == sel { c.stroke(p, Ink.red, width: 2 * K) }   // 5.1: 메가진화 ticked — every card in its purple
                 let ppw = c.say("\(mv.pp)/\(mv.maxPP)", rc.maxX - x(8), rc.minY + x(11), font(8, .semibold), mv.pp == 0 ? Ink.red : Ink.sub, 1)   // (the PP: no label, the name needs the room)
                 c.say(mv.name, rc.minX + x(9), rc.minY + x(11), font(10.5, .bold), dead ? Ink.faint : Ink.ink, maxW: rc.width - x(20) - ppw)
                 c.typePill(mv.type, rc.minX + x(8), rc.minY + x(25.5), h: x(11), size: 7.5, grey: dead)
@@ -225,7 +225,10 @@ extension Canvas {
             }
             if let mv = ms[safe: sel] {                                                            // 3.8.2: what the pick does
                 let box = r(X0, top + 82, w - mw, 33); c.fill(.rounded(box, 9 * K), Ink.tile)
-                moveNote(mv.about, mv.text, box.insetBy(dx: x(8), dy: x(1.5)), lines: 3)
+                if m.mega == true {                                                                    // 5.1: ticked — what ● does now, in words
+                    c.say("메가진화하고 " + josa(mv.name, "을", "를") + " 써요", box.minX + x(8), box.midY - x(7), font(9.5, .bold), Ink.c(132, 64, 196), maxW: box.width - x(16))
+                    c.say("기술을 누르면 메가진화가 먼저 나와요", box.minX + x(8), box.midY + x(7), font(8.5, .medium), Ink.sub, maxW: box.width - x(16))
+                } else { moveNote(mv.about, mv.text, box.insetBy(dx: x(8), dy: x(1.5)), lines: 3) }
             } else if m.mega != nil {                                                              // 메가진화 picked: what it does
                 let box = r(X0, top + 82, w - mw, 33); c.fill(.rounded(box, 9 * K), Ink.tile)
                 c.say("배틀마다 한 번", box.minX + x(8), box.midY, font(9, .medium), Ink.sub, maxW: box.width - x(16))

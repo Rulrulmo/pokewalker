@@ -124,7 +124,8 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
         fightOn(mz, mb); mz.screen = .moves(mb, sel: 0)
         mz.press(0); let toToggle = { if case .moves(_, 4) = mz.screen { return true }; return false }() && mz.paneContent(Date()).battle?.mega == false
         mz.press(1); let ticked = mz.megaOn && mz.paneContent(Date()).battle?.mega == true && { if case .moves(_, 4) = mz.screen { return true }; return false }()
-        mz.press(2); mz.press(1); drain(mz)
+        mz.press(2); mz.press(1); let kept = mz.megaOn && mz.waiting != nil && mz.paneContent(Date()).battle.map { $0.mega == true && $0.megaTicked } == true   // 5.1: still ticked while the answer comes
+        drain(mz)
         let sent = server(mz).0.acts.last == .battle(cmd: .megaFight(slot: 0)) && !mz.megaOn
         var bs: [Beat] = [], from = mb, after: Battle? = nil; if case .beats(let n, let x, _, let f) = mz.screen { bs = x; from = f; after = n }
         let mega = bs.first { if case .mega(.me, 1, _) = $0 { return true }; return false }
@@ -137,11 +138,25 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
             && late.map { f in f.sprites.contains { $0.art == artIndex(6, 1) && $0.back } && f.pics.contains { $0.key.hasPrefix("mega symbol") } && f.pics.contains { $0.key.hasPrefix("mega shard") } } == true
         let name = after.map { mz.card($0.mine[$0.me], out: true).name }
         if let a = after { mz.screen = .moves(a, sel: 0) }
-        check(offButton && toToggle && ticked && sent && lines.count == 2 && lines[0].hasPrefix("리자몽의 리자몽나이트X") && lines[0].hasSuffix("빛나기 시작했다!") && part.allSatisfy { textWidth($0, small: true) <= 94 }
+        check(offButton && toToggle && ticked && kept && sent && lines.count == 2 && lines[0].hasPrefix("리자몽의 리자몽나이트X") && lines[0].hasSuffix("빛나기 시작했다!") && part.allSatisfy { textWidth($0, small: true) <= 94 }
               && lines[1].hasSuffix("메가진화했다!") && glow && after?.mine[0].mega == 1 && name == "메가리자몽X" && mz.paneContent(Date()).battle.map { $0.mega == nil } == true,
-              "5.0 메가진화: the button after the moves, ticked by ●, the move sent as .megaFight; the light, its two lines; 메가리자몽X on the HP box; once a fight; none off",
-              "\(offButton) \(toToggle) \(ticked) \(sent) \(lines) \(glow) \(String(describing: after?.mine[0].mega)) \(String(describing: name))")
+              "5.0 메가진화: the button after the moves, ticked by ●, the move sent as .megaFight (5.1: still ticked — cards, HP box's tab — till the answer); the light, its two lines; 메가리자몽X on the HP box; once a fight; none off",
+              "\(offButton) \(toToggle) \(ticked) \(kept) \(sent) \(lines) \(glow) \(String(describing: after?.mine[0].mega)) \(String(describing: name))")
         calm(mz)
+    }
+    // 5.1 (the Mac's 10-16 find, the user: "5.1에서 고치고"): a duel's Mega · 원시회귀 · form beats seen from the other side (its side, its words — a Mega's
+    // or a primal's own name whole), and no 메가진화 button in a duel (the server refuses it there)
+    Content.$testing.withValue(true) {
+        let words = duelWords(ours: [382], theirs: [681])
+        let primal = Beat.mega(.me, form: 1, text: "가이오가의 원시회귀!\n원시가이오가로 돌아갔다!").flipped(words)
+        let blade = Beat.reform(.it, form: 1, text: "상대 킬가르도는 블레이드폼으로 바뀌었다!").flipped(words)
+        mz.freshFight(); fightOn(mz, mb); mz.duelOn = true; mz.megaOn = false; mz.screen = .moves(mb, sel: 0)
+        let hidden = mz.paneContent(Date()).battle.map { $0.mega == nil } == true
+        mz.press(0); let wraps = { if case .moves(_, let s) = mz.screen { return s == mb.mine[mb.me].moves.count - 1 }; return false }()   // ◀ from the first: the last move, no button
+        mz.duelOn = false
+        check(primal == .mega(.it, form: 1, text: "상대 가이오가의 원시회귀!\n원시가이오가로 돌아갔다!") && blade == .reform(.me, form: 1, text: "킬가르도는 블레이드폼으로 바뀌었다!") && hidden && wraps,
+              "5.1 대전: a 원시회귀 · 블레이드폼 beat flipped for the other side (its side, its words; 원시가이오가 whole); no 메가진화 button in a duel",
+              "\(primal) \(blade) \(hidden) \(wraps)")
     }
 
     // 5.0 (docs/plans/18 §9.6, §5 · §5.1): 로토무카탈로그 — the bag's 쓰기 → the 로토무 → its forms (the one it is dimmed) → ● changes it (its page after);
@@ -152,7 +167,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
         ro.pickFor("로토무카탈로그"); ro.press(1)
         let page = ro.paneContent(Date()).hold, rows = page?.rows.map(\.name) ?? []
         let opened = { if case .formPick(-1, "로토무카탈로그", 1) = ro.screen { return true }; return false }() && rows.first == "로토무" && rows.count == 6
-            && page?.rows.first?.why == "지금 모습이에요" && page?.rows[1].dex == 479 && page?.action == "히트로토무(으)로 바꾸기"
+            && page?.rows.first?.why == "지금 모습이에요" && page?.rows[1].dex == 479 && page?.action == "히트로토무로 바꾸기"
         ro.press(1); drain(ro)
         let heat = ro.state.companion.form == 1 && { if case .say(let l, .box(-1, nil, false, true), _) = ro.screen { return l == ["로토무는", "히트로토무로 바뀌었다!"] }; return false }()
             && ro.paneContent(Date()).hold == nil && ro.state.companion.moves.contains(315)

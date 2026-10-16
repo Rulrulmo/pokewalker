@@ -90,6 +90,12 @@ import AppKit
         let glowBeat = Beat.mega(.me, form: 1, text: "리자몽의 리자몽나이트X가 빛나기 시작했다!\n리자몽은 메가리자몽X로 메가진화했다!")
         take("battle_mega_toggle", mg) { v in v.megaOn = false; v.fight = mgb; v.screen = .moves(mgb, sel: 0) }
         take("battle_mega_toggle_on", mg) { v in v.megaOn = true; v.fight = mgb; v.screen = .moves(mgb, sel: 4) }
+        take("battle_mega_tick_move", mg) { v in v.megaOn = true; v.fight = mgb; v.screen = .moves(mgb, sel: 0) }   // 5.1: ticked, on a move — the cards, the note, the HP box's tab
+        take("battle_mega_tick_wait", mg) { v in                                                  // ... and while the turn's answer comes (the tick stays)
+            v.megaOn = true; v.fight = mgb; v.screen = .moves(mgb, sel: 0)
+            v.waiting = Walker.Waiting(act: .battle(cmd: .megaFight(slot: 0)), back: .moves(mgb, sel: 0), since: Date().addingTimeInterval(-0.5), quiet: true, then: { _, _ in nil })
+        }
+        mg.waiting = nil; mg.megaOn = false
         for (name, u) in [("battle_mega_fx1_stone", 0.3), ("battle_mega_fx2_streaks", 0.85), ("battle_mega_fx3_cocoon", 1.35), ("battle_mega_fx4_flash", 1.6),
                           ("battle_mega_fx5_symbol", 1.8), ("battle_mega_fx6_shards", 2.05), ("battle_mega_fx7_mega", 2.7)] {   // MegaFX's steps
             take(name, mg) { v in v.screen = .beats(mgb, [glowBeat], since: Date().addingTimeInterval(-u / v.battleSpeed), from: mgb) }

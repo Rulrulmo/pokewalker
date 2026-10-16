@@ -174,6 +174,7 @@ extension Walker {
         act(.battle(cmd: cmd), back: back, now, quiet: true) { [weak self] o, now in self?.played(o, from: b, now) }
     }
     func played(_ o: Outcome, from b: Battle, _ now: Date) -> Screen? {
+        megaOn = false                                                                             // 5.1 (the user: "메가진화 체크가 빠진것처럼 보이거든", "표시만 빠져"): the tick goes with the answer, not at the press
         guard let nb = o.battle else { return nil }
         if let ball = o.ball { usedItem = ball }
         fight = o.end == nil ? nb : nil; fightEnd = o.end

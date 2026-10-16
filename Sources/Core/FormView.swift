@@ -43,7 +43,7 @@ extension Walker {
         guard let m = state.mon(ref) else { return PaneContent() }
         let o = formOptions(ref, item), s = min(sel, max(0, o.count - 1)), r = o[safe: s]
         let rows = o.map { HoldModel.Row(name: $0.label, count: 0, note: $0.note, take: false, use: true, why: $0.why, dex: $0.dex, form: $0.form) }
-        let action = r.flatMap { $0.why == nil ? (item == "유전자쐐기" ? ($0.op.map { if case .unfuse = $0 { "분리하기" } else { "합체하기" } } ?? nil) : $0.label + "(으)로 바꾸기") : nil }
+        let action = r.flatMap { $0.why == nil ? (item == "유전자쐐기" ? ($0.op.map { if case .unfuse = $0 { "분리하기" } else { "합체하기" } } ?? nil) : josa($0.label, "으로", "로") + " 바꾸기") : nil }
         let hint = o.isEmpty ? "워커나 상자에 레시라무 · 제크로무가 없어요" : r.map { $0.why ?? $0.note } ?? ""
         return PaneContent(hold: HoldModel(who: monNames[m.dex] + " Lv.\(m.level)", now: formName(m) ?? m.fused?.first.map { "합체: " + monNames[$0.dex] } ?? "원래 모습", rows: rows, sel: s, action: action, hint: hint, picks: true))
     }

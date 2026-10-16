@@ -50,7 +50,8 @@ extension Walker {
         var m = SideModel(foe: theirs, mine: card(mine, out: true), message: msg, mode: mode)
         let mm = mine.mon, et = expTable[growthRate[mm.dex]], lv = max(1, min(100, mm.level)), lo = et[lv], hi = et[min(100, lv + 1)]   // 5.0: ours' EXP bar
         m.mine.exp = mm.level >= 100 || hi <= lo ? 1 : max(0, min(1, CGFloat(mm.points - lo) / CGFloat(hi - lo)))
-        if case .moves = mode, b.canMega(.me) { m.mega = megaOn }                                   // 5.0: the 메가진화 button (ticked or not)
+        if case .moves = mode, b.canMega(.me), !duelOn { m.mega = megaOn }                          // 5.0: the 메가진화 button (ticked or not); 5.1: none in a duel
+        if b.canMega(.me), !duelOn, megaOn { m.megaTicked = true }                                  // 5.1: ticked — the HP box's tab, till the turn's answer
         if let s = megaGathering(now) { if s == .me { m.mine.name = monNames[mine.mon.dex] } else { m.foe.name = monNames[foe.mon.dex] } }   // its own name till the light bursts
         if raidOn { m.bars = .init(broken: b.theirs.filter { !$0.alive }.count, total: b.theirs.count, cur: CGFloat(foe.hp) / CGFloat(max(1, foe.maxHP))) }   // (the pane's strip by a prompt, the HP boxes' ×n)
         return m
