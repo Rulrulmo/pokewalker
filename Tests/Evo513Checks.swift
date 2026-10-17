@@ -83,9 +83,11 @@ import Foundation
         let slotOK = w.paneContent(Date()).evoPick?.cards.map(\.ability) == [106, 107, 237].map { d -> String in var x = walkerTyro; x.dex = d; return x.abilityName }
         w.press(3)                                                                                // ↩ (the cards → its page)
         let backOK = { if case .box(-2, nil, false, true) = w.screen { return true }; return false }()
-        add((first && partyDot && boxTold && cell && link && opened && tapAsk && tapNo && boxDone && menuOpened && slotOK && backOK,
-                  "5.1.3 배루키 the walker's and the box's: one ready at the login (Lv.30 on the walker) — its dot, the ● menu's 진화, no notification; one come into the box (Lv.25) told once (no 어라...?), its cell's dot, its page's 진화 고르기 → the cards by click (again: 진화할까요?, 아니오, 예) → 카포에라; the walker's by its ● menu, the abilities by its slot; ↩ to its page",
-                  "\(first) \(partyDot) \(boxTold) \(w.evoNew) \(cell) \(link) \(opened) \(tapAsk) \(tapNo) \(boxDone) \(menuOpened) \(slotOK) \(backOK)"))
+        let wu = w.state.caught[0].uid ?? -1; w.paneTap(4412); w.press(1); w.press(2); w.press(1); drain(w); home(w)   // (the third: 시라소몬)
+        let lee = w.state.caught[0].dex == 106 && w.state.caught[0].uid == wu && evolved(w)?.1 == 106 && sv.acts.contains(.mon(op: .evolve(uid: wu, to: 106))) && w.state.evoReady(Date()).isEmpty
+        add((first && partyDot && boxTold && cell && link && opened && tapAsk && tapNo && boxDone && menuOpened && slotOK && backOK && lee,
+                  "5.1.3 배루키 the walker's and the box's: one ready at the login (Lv.30 on the walker) — its dot, the ● menu's 진화, no notification; one come into the box (Lv.25) told once (no 어라...?), its cell's dot, its page's 진화 고르기 → the cards by click (again: 진화할까요?, 아니오, 예) → 카포에라; the walker's by its ● menu, the abilities by its slot; ↩ to its page; then 시라소몬 (none left to pick)",
+                  "\(first) \(partyDot) \(boxTold) \(w.evoNew) \(cell) \(link) \(opened) \(tapAsk) \(tapNo) \(boxDone) \(menuOpened) \(slotOK) \(backOK) \(lee)"))
 
         // 변함없는돌: never ready while held; taken off → ready, told
         let s = online({ var s = Walk(); var m = Mon(dex: 236, level: 25, female: false); m.item = "변함없는돌"; s.box = [m]; return s }(), server: sv)
