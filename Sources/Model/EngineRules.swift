@@ -398,6 +398,14 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .form(let u, let item, let form):
             guard let ref = w.ref(uid: u) else { return "그 포켓몬은\n없어요" }
             if let why = item == "로토무카탈로그" ? w.rotomForm(ref, form) : w.itemForm(ref, item, form) { return why }
+        case .evolve(let u, let to):                                                                // 5.1.3 (docs/plans/23): as a level evolution would — moves, dex, 이로치, form
+            guard let ref = w.ref(uid: u), let m = w.mon(ref) else { return "그 포켓몬은\n없어요" }
+            guard Content.evoChoice, chosenEvolvers.contains(m.dex) else { return "고를 수 있는\n진화가 아니에요" }
+            guard m.item != "변함없는돌" else { return "변함없는돌을\n지니고 있어요" }
+            let need = evolutions.filter { $0.from == m.dex && $0.way == .level }.map(\.level).min() ?? 0
+            guard m.level >= need else { return "Lv.\(need)부터\n진화할 수 있어요" }
+            guard let e = w.evoChoices(now, ref: ref).first(where: { $0.to == to }) else { return "그 모습으로는\n진화할 수 없어요" }
+            evolve(ref, e); learnQueue()
         }
         return nil
     }

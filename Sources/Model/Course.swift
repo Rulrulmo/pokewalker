@@ -53,6 +53,9 @@ struct Evo {
     var moveType: String? = nil                            // 5.0: 님피아 — it knows a move of this type (Fairy), and goes before 에브이 · 블래키
 }
 let friendSteps = 10_000                 // stands in for friendship 220 (Gen IV: +1 per 128 steps from ~70 is ~19k; levels add more)
+/// 5.1.3 (docs/plans/23, the user: "A로가자"): with Content.evoChoice these wait at their level for the player's pick (MonOp.evolve) instead
+/// of the one their steps fix — 배루키 (시라소몬 · 홍수몬 · 카포에라).
+let chosenEvolvers: Set<Int> = [236]
 
 /// Rerolled every `weatherSteps` steps; the matching types show up 1.5x as often. Not in the original walker.
 enum Weather: String, Codable, CaseIterable {

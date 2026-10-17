@@ -209,11 +209,23 @@ struct Walk: Codable, Equatable {
     }
     /// What the companion (or the one at ref) becomes on this level-up, if anything. Several fits (Wurmple, Tyrogue): picked by its steps, fixed per moment;
     /// one that asks for a move's type goes first (5.0: 님피아 over 에브이 · 블래키, as the games — 기술 바꾸기 decides).
+    /// 5.1.3 (docs/plans/23): with evo-choice on, 배루키 never by level — it waits for the player's pick (evoChoices).
     func levelEvolution(_ now: Date, ref: Int = -1) -> Evo? {
         guard let m = mon(ref), m.item != "변함없는돌" else { return nil }                             // 변함없는돌: never by level or friendship
+        if Content.evoChoice, chosenEvolvers.contains(m.dex) { return nil }
         let fits = evolutions.filter { $0.from == m.dex && ($0.way == .level && m.level >= $0.level || $0.way == .friend && (m.walked ?? 0) >= friendSteps) && allows($0, m, now) }
         let first = fits.filter { $0.moveType != nil }, pick = first.isEmpty ? fits : first
         return pick.isEmpty ? nil : pick[(m.walked ?? 0) % pick.count]
+    }
+    /// 5.1.3 (docs/plans/23): what the one at ref may become now by the player's pick — 배루키 at Lv.20+ without 변함없는돌, wherever it is
+    /// (companion, walker, box); empty otherwise or with evo-choice off. No mark in the save: it's ready as long as this holds.
+    func evoChoices(_ now: Date, ref: Int = -1) -> [Evo] {
+        guard Content.evoChoice, let m = mon(ref), chosenEvolvers.contains(m.dex), m.item != "변함없는돌" else { return [] }
+        return evolutions.filter { $0.from == m.dex && $0.way == .level && m.level >= $0.level && allows($0, m, now) }
+    }
+    /// The uids of those ready to pick (the app's dot and its "진화할 수 있어요": new in a reply's save = not in the one before).
+    func evoReady(_ now: Date) -> [Int] {
+        ([-1] + caught.indices.map { -2 - $0 } + Array(box.indices)).filter { !evoChoices(now, ref: $0).isEmpty }.compactMap { mon($0)?.uid }
     }
     func stoneEvolutions(_ now: Date, ref: Int = -1) -> [Evo] { guard let m = mon(ref) else { return [] }; return evolutions.filter { $0.from == m.dex && $0.way == .item && allows($0, m, now) } }
     func tradeEvolution(_ now: Date) -> Evo? { companion.item == "변함없는돌" ? nil : evolutions.first { $0.from == companion.dex && $0.way == .trade && allows($0, companion, now) } }

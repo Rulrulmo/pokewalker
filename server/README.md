@@ -192,6 +192,7 @@ server/build.sh install             # 빌드 → /usr/local/bin에 설치 → �
 | `pw verify-release <dir>` | 릴리스 폴더 서명 · zip 확인(`publish.sh`가 씀) |
 | `pw rollout [off\|<n>%\|<id>,…]` · `pw update-note [on\|off]` | 순차 배포 · 응답의 업데이트 알림(docs/plans/22) |
 | `pw slot-odds [on\|off]` | 코스 포켓몬 그룹 확률(docs/plans/21) |
+| `pw evo-choice [on\|off]` | 배루키 진화를 Lv.20에서 직접 고르기(docs/plans/23). 켜면 모든 앱에서 기다리고, 5.1.3부터 고른다 |
 
 비상시 `sudo -u pokewalker sqlite3 /var/lib/pokewalker/pokewalker.db`로 직접 고칠 때는 `rev = rev + 1, writer = 'admin'`도 같이 한다.
 

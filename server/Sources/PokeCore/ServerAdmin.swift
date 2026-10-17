@@ -43,6 +43,7 @@ let usage = """
       rollout [off|<n>%|<id>[,<id>…]]    docs/plans/22: release-next (NEXT_RELEASE_DIR) to these first — only apps already at the stable version
       update-note [on|off]               docs/plans/22: "update": {v, urgent} first in each reply to an app with a newer version for it
       slot-odds [on|off]                 docs/plans/21: a course's Pokémon without steps — group A 20 · B 30 · C 50 %, a radar chain to A 52 · B 38 · C 10
+      evo-choice [on|off]                5.1.3 (docs/plans/23): 배루키 waits at Lv.20 for the player's pick (on with 5.1.3 out: older apps can't pick)
     --db: else $DB_PATH, else /var/lib/pokewalker/pokewalker.db
     """
 
@@ -408,6 +409,10 @@ public func run(_ arguments: [String]) async -> Int32 {
         case ("slot-odds", 1):
             guard ["on", "off"].contains(rest[0]) else { return fail("slot-odds: on | off") }
             out = try await db.setSlotOdds(rest[0] == "on")
+        case ("evo-choice", 0): out = "evo-choice " + ((try await db.evoChoice()) ? "on" : "off")
+        case ("evo-choice", 1):
+            guard ["on", "off"].contains(rest[0]) else { return fail("evo-choice: on | off") }
+            out = try await db.setEvoChoice(rest[0] == "on")
         case ("events", 0): out = try await db.teamEventsReport(now: unixNow())
         case ("event-schedule", 1): out = try await db.scheduleTeamEvents(from: rest[0])
         case ("event-cancel", 1):

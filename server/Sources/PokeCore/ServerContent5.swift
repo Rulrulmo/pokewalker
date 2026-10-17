@@ -18,7 +18,7 @@ extension SaveDB {
     /// When content5 first went on (unix; nil: never): the Mega raid's rotation counts its weeks from that one (MegaRaid.round).
     func content5Since() throws -> Int? { try db.rows("SELECT value FROM settings WHERE name = 'content5_since'").first?.text("value").flatMap { Int($0) } }
     /// Content.on (and 5.1's on51) from the settings: at start, then every few seconds (pokeserver content5 runs in another process).
-    func syncContent() { Content.on = (try? content5()) ?? false; Content.on51 = (try? content51()) ?? false; Content.onDaily = (try? raidDaily()) ?? false; Content.onSlots = (try? slotOdds()) ?? false }
+    func syncContent() { Content.on = (try? content5()) ?? false; Content.on51 = (try? content51()) ?? false; Content.onDaily = (try? raidDaily()) ?? false; Content.onSlots = (try? slotOdds()) ?? false; Content.onChoice = (try? evoChoice()) ?? false }
 
     // MARK: 5.1's raids by the day (docs/plans/20): bosses each day, 2칸 at 0:00, 10 runs a day
     func raidDaily() throws -> Bool { try db.rows("SELECT value FROM settings WHERE name = 'raid_daily'").first?.text("value") == "on" }
@@ -32,6 +32,14 @@ extension SaveDB {
     func setSlotOdds(_ on: Bool) throws -> String {
         try db.rows("INSERT INTO settings (name, value) VALUES ('slot_odds', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(on ? "on" : "off")])
         return "slot-odds " + (on ? "on" : "off") + " — the running server takes it within \(content5Every) s (the next radar find)"
+    }
+
+    // MARK: 5.1.3's 배루키 by the player's pick (docs/plans/23): it waits at Lv.20 — every app's, so turned on with 5.1.3 out (the picker)
+    func evoChoice() throws -> Bool { try db.rows("SELECT value FROM settings WHERE name = 'evo_choice'").first?.text("value") == "on" }
+    func setEvoChoice(_ on: Bool) throws -> String {
+        try db.rows("INSERT INTO settings (name, value) VALUES ('evo_choice', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(on ? "on" : "off")])
+        return "evo-choice " + (on ? "on" : "off") + " — the running server takes it within \(content5Every) s, the app at its next login"
+            + (on ? " (배루키 waits at Lv.20 on every app; only 5.1.3 on can pick)" : " (배루키 by its steps again, at its next level-up)")
     }
 
     // MARK: 5.1's switch (docs/plans/19): the 전설 원정, on top of content5

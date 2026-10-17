@@ -20,6 +20,11 @@ enum Content {
     nonisolated(unsafe) static var onSlots = false
     @TaskLocal static var testingSlots: Bool? = nil
     static var slotOdds: Bool { testingSlots ?? onSlots }
+    /// 5.1.3 (docs/plans/23): 배루키 waits at Lv.20 for the player's pick (pokeserver evo-choice) — Walk.evoChoices, MonOp.evolve; the app takes
+    /// it from the login reply's evoChoice.
+    nonisolated(unsafe) static var onChoice = false
+    @TaskLocal static var testingChoice: Bool? = nil
+    static var evoChoice: Bool { testingChoice ?? onChoice }
 }
 
 private func patched<T>(_ base: [T], _ changes: [Int: T]) -> [T] { var a = base; for (k, v) in changes { a[k] = v }; return a }
