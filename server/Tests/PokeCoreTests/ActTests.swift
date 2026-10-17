@@ -746,6 +746,31 @@ extension SaveDB {
     #expect(try await box().mails.map(\.title) == ["안 받은 선물"])
 }
 
+// 5.1.3: pokeserver mail --mon <dex> <level> — one made as an egg hatches, minted at the claim (a uid there, the ledger's "mail", its 어버이 the claimer)
+@Test func mailGiftMon() async throws {
+    var r = Seeded(s: 236)
+    let made = (0..<6400).map { _ in giftMon(236, level: 1, &r) }
+    #expect(made.allSatisfy { $0.dex == 236 && $0.level == 1 && !$0.female && $0.uid == nil && $0.ot == nil && ($0.ivs ?? []).count == 6 })   // 배루키: ♂ only
+    #expect(Set(made.compactMap(\.nature)).count == 25 && Set(made.compactMap(\.ability)) == [0, 1] && (60...140).contains(made.filter { $0.shiny == true }.count))   // 1 in 64
+    let m = made.first { $0.shiny != true }!
+    #expect(giftMonLine(m).hasPrefix("배루키 Lv.1 ♂ · 성격 ") && giftMonLine(m).contains("이로치 아니오"))
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스")
+    var seq = 1, t = 60.0
+    func go(_ x: Act) async throws -> ActReply {
+        t += 1; defer { seq += 1 }
+        return try reply(await db.act(ActReq(id: "앨리스", session: a, seq: seq, act: x, app: "5.1.2"), now: base.addingTimeInterval(t)))
+    }
+    _ = try await go(.steps)
+    #expect(try await db.adminMail("앨리스", title: "선물: 배루키", body: "Lv.20이 되면 골라서 진화해요", gifts: [.mon(mon: m)], now: Int(base.timeIntervalSince1970 + t)) == "mailed 1 trainer(s): 선물: 배루키 · 1 gift(s)")
+    let id = try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: "앨리스", session: a), now: base.addingTimeInterval(t)).body).mails[0].id
+    let got = try await go(.mailClaim(id: id))
+    let w = try #require(got.walk), x = try #require(w.box.last)
+    #expect(got.out.cannot == nil && x.dex == 236 && x.uid != nil && x.uid! > firstUID && x.ot == nil && x.ivs == m.ivs && x.nature == m.nature && (w.owned ?? []).contains(236))
+    #expect(got.out.mon?.uid == x.uid)
+    #expect(try await db.monsList("앨리스").contains("mail"))                                      // in the ledger, as issued here
+}
+
 @Test func towerStreakRewards() async throws {
     let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
     let a = try await newTrainer(db, "앨리스")

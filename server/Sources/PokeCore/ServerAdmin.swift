@@ -25,7 +25,8 @@ let usage = """
       sample                             a new save's JSON (Walk(), the one-time checks marked done)
       verify-release <dir>               a release folder: manifest.sig checks with the release key, each zip's size and SHA-256 (publish.sh)
       mail <id|--all> --title <t> [--body <b>] [--item <name> <n>]… [--bp <n>] [--watts <n>] [--title-gift <칭호>] [--deco silver|gold]
-                                         3.9 (docs/plans/15): a mail to one trainer or all (test IDs left out); no gifts = a notice
+           [--mon <dex> <level>]…      3.9 (docs/plans/15): a mail to one trainer or all (test IDs left out); no gifts = a notice
+                                         --mon (5.1.3): one made as an egg hatches (wild IVs · nature · ability slot · gender, 이로치 1/64), at that level
       mail-log [<n>]                     the last mails sent, newest first (default 30)
       raid-runs [on | <unix>]            4.0 (docs/plans/16): when the raid's runs start for the team (on = now; test IDs have them always)
       raid-log [<n>]                     the last raid runs: who, the tier, the boss (★ shiny), bars down, won, balls left, caught (default 30)
@@ -450,6 +451,7 @@ public func run(_ arguments: [String]) async -> Int32 {
             guard let n = rest.count > 1 ? Int(rest[1]) : 30 else { return fail("actions: <n> is a number") }
             out = try await db.actionsList(rest[0], last: n)
         case ("mail", _) where rest.count >= 3:
+            await db.syncContent()                                                                 // (--mon: the species and forms as content5 has them)
             var to = rest[0], i = 1, title: String? = nil, body: String? = nil, gifts: [Gift] = []
             if to == "all" { to = "--all" }
             while i < rest.count {
@@ -464,11 +466,15 @@ public func run(_ arguments: [String]) async -> Int32 {
                 case "--watts": guard let n = v.flatMap({ Int($0) }) else { return fail("mail: --watts <n>") }; gifts.append(.watts(amount: n)); i += 2
                 case "--title-gift": guard let t = v else { return fail("mail: --title-gift <칭호>") }; gifts.append(.title(name: t)); i += 2
                 case "--deco": guard let d = v, ["silver", "gold"].contains(d) else { return fail("mail: --deco silver|gold") }; gifts.append(.deco(kind: d)); i += 2
-                default: return fail("mail: \(o)? (--title --body --item --bp --watts --title-gift --deco)")
+                case "--mon":
+                    guard let d = v.flatMap({ Int($0) }), (1...dexMax).contains(d), i + 2 < rest.count, let lv = Int(rest[i + 2]), (1...100).contains(lv) else { return fail("mail: --mon <dex 1-\(dexMax)> <level 1-100>") }
+                    var r = SystemRandomNumberGenerator(); gifts.append(.mon(mon: giftMon(d, level: lv, &r))); i += 3
+                default: return fail("mail: \(o)? (--title --body --item --bp --watts --title-gift --deco --mon)")
                 }
             }
             guard let title, !title.isEmpty else { return fail("mail: --title is needed") }
             out = try await db.adminMail(to, title: title, body: body, gifts: gifts, now: unixNow())
+                + gifts.map { if case .mon(let m, _) = $0 { "\n  " + giftMonLine(m) } else { "" } }.joined()   // (--all: the same one to each; its uid at the claim)
         case ("raid-runs", 0), ("raid-runs", 1):
             if let a = rest.first {
                 guard let at = a == "on" ? unixNow() : Int(a) else { return fail("raid-runs: on, or a unix time") }

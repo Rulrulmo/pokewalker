@@ -197,3 +197,14 @@ extension SaveDB {
         }).joined(separator: "\n")
     }
 }
+
+/// pokeserver mail --mon <dex> <level> (5.1.3): one made as the walker's egg hatches one (Walk.eggMon: Mon.wild's IVs · nature · ability slot ·
+/// gender, 이로치 1 in shinyOdds), at that level — its moves the level's own, its 어버이 the trainer who claims it (kind "admin": minted there).
+func giftMon<R: RandomNumberGenerator>(_ dex: Int, level: Int, _ r: inout R) -> Mon {
+    Mon.wild(dex, level: level, shiny: Int.random(in: 0..<shinyOdds, using: &r) == 0 ? true : nil, &r)
+}
+/// What the command printed for a mailed Pokémon: species, level, gender, nature, ability, IVs, 이로치.
+func giftMonLine(_ m: Mon) -> String {
+    "\(monNames[m.dex]) Lv.\(m.level) \(m.female ? "♀" : genderRate[m.dex] < 0 ? "성별 없음" : "♂") · 성격 \(m.natureName) · 특성 \(abilityNames[m.abilityID] ?? "?") (칸 \(m.ability ?? 0))"
+        + " · 개체값 \((m.ivs ?? []).map(String.init).joined(separator: "/")) · 이로치 \(m.shiny == true ? "예" : "아니오") · 기술 \(m.moves.compactMap { moveTable[$0]?.name }.joined(separator: ", "))"
+}
