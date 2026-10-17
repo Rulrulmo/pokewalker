@@ -117,6 +117,7 @@ extension Walker {
         case .duel(let s): duelLCD(&fb, s, now)
         case .hold(let ref, let sel): holdLCD(&fb, ref, sel, now)
         case .formPick(let ref, let item, let sel): formPickLCD(&fb, ref, item, sel, now)
+        case .evoPick(let u, let at, let ask): evoPickLCD(&fb, u, at, ask, now)
         case .visitPick(let p): visitPickLCD(&fb, p, now)
         case .squad(let s): squadLCD(&fb, s, now)
         case .mail(let s): mailLCD(&fb, s, now)
@@ -211,7 +212,7 @@ extension Walker {
                     if confirm ? k - 1 == a : k == a { fb.invert(x, 52, w, 11) }
                     x += w + 1
                 }
-            } else { fb.text(detail && i == -1 ? "함께 걷는 중" : detail ? "● 메뉴" : "● 자세히", 94, 52, 2, right: true, small: true) }   // the grid's ● opens its page; the page's opens 함께 / 상자로 or 놓아주기
+            } else { fb.text(detail && i == -1 ? (state.evoChoices(now, ref: -1).isEmpty ? "함께 걷는 중" : "● 진화 고르기") : detail ? "● 메뉴" : "● 자세히", 94, 52, 2, right: true, small: true) }   // the grid's ● opens its page; the page's opens 함께 / 상자로 or 놓아주기
         case .hatch(let m, let since):
             let u = now.timeIntervalSince(since)
             fb.hatchFX(m, u, bob: half)                                                                    // rocks, cracks, bursts; the Pokémon out of the light at 3 s
@@ -242,7 +243,7 @@ extension Walker {
         case .level:
             let parts = [e.level > 0 ? "Lv.\(e.level)" : nil, when, sex, place, e.item.map { $0 + " 소지" }, e.party.map { monNames[$0] + " 보유" },
                          e.partyType.map { (typeKo[$0] ?? $0) + "타입 보유" }, e.weather.flatMap(Weather.init(rawValue:)).map { "날씨 " + $0.name }].compactMap { $0 }   // 5.0: 판짱 · 미끄네일
-            return parts.isEmpty ? "레벨 업" : parts.joined(separator: " · ")
+            return parts.isEmpty ? "레벨 업" : parts.joined(separator: " · ") + (Content.evoChoice && chosenEvolvers.contains(e.from) ? " · 직접 고르기" : "")   // 5.1.3: 배루키
         case .friend: return (["친밀도(함께 1만 걸음)"] + [when, e.moveType.map { (typeKo[$0] ?? $0) + " 기술" }].compactMap { $0 }).joined(separator: " · ")   // 5.0: 님피아
         case .item: return e.item! + " 사용" + (sex.map { " · " + $0 } ?? "")
         case .trade: return "교환" + (e.item.map { " · " + $0 + " 소지" } ?? "")              // at a real trade (12 §3), at its new trainer; the item from the giver's bag
@@ -286,9 +287,9 @@ extension Walker {
         case .box(let i, _, _, false):                                                              // 포켓몬: the companion and the walker's over the box
             let o = boxShown, b = state.box, at = o.firstIndex(of: i), p = page(o.count, at ?? 0), party = [state.companion] + state.caught
             return GridModel(tabs: ["번호순", "레벨순", "V순", "최근"], tab: boxSort,
-                             cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3, held: b[$0].item != nil, art: b[$0].art, heldItem: b[$0].item) },
+                             cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3, held: b[$0].item != nil, art: b[$0].art, heldItem: b[$0].item, evo: !state.evoChoices(now, ref: $0).isEmpty) },   // (5.1.3: evo — ready to pick, its dot)
                              first: p.first, sel: at.map { $0 - p.first }, page: p.page, pages: p.pages, empty: boxQuery.isEmpty ? "상자가 비어 있다" : "맞는 포켓몬이 없어요", bob: bob, query: boxQuery,
-                             party: party.map { .init(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil, art: $0.art) }, partySel: i < 0 ? -1 - i : nil, items: state.items.count + state.bag.count)
+                             party: party.indices.map { k in let m = party[k]; return .init(dex: m.dex, look: 2, shiny: m.shiny == true, v3: m.perfectIVs >= 3, level: m.level, held: m.item != nil, art: m.art, evo: !state.evoChoices(now, ref: -1 - k).isEmpty) }, partySel: i < 0 ? -1 - i : nil, items: state.items.count + state.bag.count)
         default: return nil
         }
     }
@@ -328,7 +329,7 @@ extension Walker {
         case (.box(let i, _, _, true), 4400) where i != -1: screen = .box(i, act: 0, confirm: false, detail: true); press(1)      // = ● 함께
         case (.box(let i, _, _, true), 4404) where i < -1: screen = .box(i, act: 1, confirm: false, detail: true); press(1)       // the walker's: 상자로 보내기
         case (.box(let i, _, _, true), 4407) where i >= 0: guard let a = boxActs(i).firstIndex(of: "워커로") else { return }; screen = .box(i, act: a, confirm: false, detail: true); press(1)   // the box's: back onto the walker
-        case (.box(-1, _, _, true), 4406): if let e = companionEvolution() { evolveNow(e, back: screen) }                              // the companion: a stone now
+        case (.box(-1, _, _, true), 4406): if !openEvoPick(-1), let e = companionEvolution() { evolveNow(e, back: screen) }          // the companion: a stone now (5.1.3: 배루키's pick)
         case (.box(let i, _, _, true), 4401) where i >= 0: screen = .box(i, act: 0, confirm: true, detail: true)     // 놓아줄까? 아니오 first
         case (.box(let i, _, _, true), 4402): screen = .box(i, act: nil, confirm: false, detail: true)
         case (.box(let i, _, true, true), 4403): screen = .box(i, act: 1, confirm: true, detail: true); press(1)
@@ -338,6 +339,7 @@ extension Walker {
         case (.dex, 4170): dexFind()                                                                                                    // 5.0: 찾기
         case (.box(let i, _, _, true), 4409): screen = .relearn(ref: i, slot: 0, at: nil)                                          // 기술 바꾸기
         case (.box(let i, _, _, true), 4411): if let f = formAction(i) { _ = keyItemOn(f.item, i) }                                // 5.0: its form, straight from its page
+        case (.box(let i, _, _, true), 4412): openEvoPick(i)                                                                            // 5.1.3: 배루키's pick, from its page
         case (.box(let i, _, _, true), 4410): screen = .hold(ref: i, sel: 0)                                                       // 3.7: 지니게 하기 · 빼기
         case (.box(let i, _, true, true), 4408) where state.box.indices.contains(i): askReleaseDupes(state.box[i].dex)            // 중복 n마리: asks (who stays) first
         case (_, 4200), (_, 4201): gridStep(code == 4200 ? -GridModel.perPage : GridModel.perPage, ends: true)
@@ -362,6 +364,7 @@ extension Walker {
         if case .duel(let s) = sc { return duelPane(s, now) }
         if case .hold(let ref, let sel) = sc { return holdPane(ref, sel) }
         if case .formPick(let ref, let item, let sel) = sc { return formPickPane(ref, item, sel) }
+        if case .evoPick(let u, let at, let ask) = sc { return evoPickPane(u, at, ask) }
         if case .visitPick(let p) = sc { return visitPickPane(p, now) }
         if case .squad(let s) = sc { return squadPane(s, now) }
         if case .mail(let s) = sc { return mailPane(s, now) }
@@ -458,6 +461,7 @@ extension Walker {
         case (.squad, 8700...8799): squadTap(code, Date())
         case (.mail, 8800...8899): mailTap(code, Date())
         case (.hold, 5980...5999), (.formPick, 5980...5999): holdTap(code, Date())                 // 5.0: the form's page is 도구 주기's rows
+        case (.evoPick, 5960...5979): evoPickTap(code, Date())                                     // 5.1.3
         case (.visitPick, 8500...8599): visitPickTap(code, Date())
         case (.team(let sel, let tab, true), 6032): if let c = teamRows(tab)[safe: sel]?.card, !isMe(c), Walker.walkingNow(c) { challenge(c.name) }   // 대전 신청
         case (.trade, 6000...6199): tradeTap(code, Date())
@@ -510,12 +514,16 @@ extension Walker {
         else if mine.contains(where: { $0.way == .trade }) { p.evos.append("교환하면 받는 쪽에서 진화해요") }
         else if i != -1, mine.contains(where: { $0.way == .item }) { p.evos.append("도구 진화는 동료일 때 (함께 걷기 후)") }
         if i == -1, let e = companionEvolution() { p.evoAction = e.item! + " 쓰기 → " + monNames[e.to] }
+        if Content.evoChoice, chosenEvolvers.contains(m.dex), let lv = mine.filter({ $0.way == .level }).map(\.level).min() {   // 5.1.3: 배루키's three, picked
+            p.evos = ["→ Lv.\(lv)에 셋 중 하나를 골라 진화"]
+            if !state.evoChoices(Date(), ref: i).isEmpty { p.evos = ["→ " + targets.map { monNames[$0] }.joined(separator: " · ")]; p.evoPick = "진화 고르기"; if i == -1 { p.evoAction = "진화할 모습 고르기" } }
+        }
         p.held = m.item; p.heldNote = m.item.flatMap(Held.summary)
         return p
     }
     /// The ● menu on a Pokémon's page (the LCD's row; the pane's buttons are the same, less 닫기): what it can do from where it is.
     func boxActs(_ i: Int) -> [String] {                                                        // (5.0: 모습 · 합체 · 분리 where the bag has its item: formAction)
-        let form = formAction(i).map { [$0.short] } ?? []
+        let form = (formAction(i).map { [$0.short] } ?? []) + (state.evoChoices(Date(), ref: i).isEmpty ? [] : ["진화"])   // (5.1.3: 배루키's pick)
         return i < -1 ? ["함께", "상자로"] + form + ["닫기"] : i >= 0 ? ["함께"] + (state.caught.count < 3 ? ["워커로"] : []) + ["놓아주기"] + form + ["닫기"] : form.isEmpty ? [] : form + ["닫기"]
     }
     /// What would evolve the companion right now from its page: a stone in the bag (a trade evolution: a real trade, 12 §3).

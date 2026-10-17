@@ -104,6 +104,6 @@ extension Walker {
         if mega { return Content.gen6 && (megaLeftToday ?? 1) > 0 }
         return (raidLeftToday ?? 1) > 0
     }
-    var evolveDot: Bool { ([-1] + state.caught.indices.map { -2 - $0 }).contains { !state.stoneEvolutions(Date(), ref: $0).isEmpty } }
+    var evolveDot: Bool { ([-1] + state.caught.indices.map { -2 - $0 }).contains { !state.stoneEvolutions(Date(), ref: $0).isEmpty } || !state.evoReady(Date()).isEmpty }   // (5.1.3: a 배루키 to pick, the box's too)
     var goalsDot: Bool { Content.gen6 && (state.dexRewards ?? []).count > goalsSeen }
 }

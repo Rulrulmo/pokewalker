@@ -143,7 +143,7 @@ extension Walker {
         switch screen {
         case .dex, .goals: return .dex
         case .mail: return .mail
-        case .box, .itemOn, .hold, .formPick, .train, .relearn, .learn, .visitPick: return .pokemon
+        case .box, .itemOn, .hold, .formPick, .evoPick, .train, .relearn, .learn, .visitPick: return .pokemon
         case .team, .trade, .market, .duel, .squad, .rank: return .social
         case .shop, .shopConfirm, .items: return .shop
         case .tower(nil): return .tower

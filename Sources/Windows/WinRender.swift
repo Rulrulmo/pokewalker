@@ -206,6 +206,14 @@ import Foundation
         take("w51_patch") { v in v.state.bag.append("특성패치"); v.screen = .itemOn(ItemOn(item: "특성패치", pick: -1, at: 0)) }
         take("w51_flower") { v in var sh = Mon(dex: 492, level: 50, female: false); sh.uid = 9_001; v.state.caught.append(sh); v.state.bag.append("그라시데아꽃"); v.screen = .formPick(ref: -4, item: "그라시데아꽃", sel: 1) }
     } }
+    Content.$testing.withValue(true) { Content.$testingChoice.withValue(true) {                 // 5.1.3 (docs/plans/23): 배루키's pick
+        func tyro(_ lv: Int, _ u: Int, shiny: Bool = false) -> Mon { var m = Mon(dex: 236, level: lv, female: false); m.uid = u; if shiny { m.shiny = true }; return m }
+        take("w513_pick") { v in v.state.companion = tyro(20, 9_101); v.screen = .evoPick(uid: 9_101, at: 0, ask: nil) }
+        take("w513_pick_lcd", lcd: true) { v in v.state.companion = tyro(20, 9_101); v.screen = .evoPick(uid: 9_101, at: 2, ask: nil) }
+        take("w513_ask") { v in v.state.companion = tyro(20, 9_101); v.screen = .evoPick(uid: 9_101, at: 1, ask: false) }
+        take("w513_page") { v in v.state.companion = tyro(20, 9_101); v.screen = .box(-1, act: nil, confirm: false, detail: true) }
+        take("w513_grid") { v in v.state.companion = tyro(20, 9_101); v.state.box = [Mon(dex: 25, level: 5, female: false), tyro(25, 9_102, shiny: true)]; v.screen = .box(1, act: nil, confirm: false) }
+    } }
     return n
 }
 #endif

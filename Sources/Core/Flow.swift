@@ -225,6 +225,7 @@ extension Walker {
             case .duel: screen = .home                                                             // (the invitation stays open: its minute; the queue too)
             case .squad(let s): switch s.kind { case .tower: screen = .tower(pick: nil); case .duelParty: screen = .duel(.hub(tab: 0, sel: 0)); case .raid: screen = .raid(.tier(sel: raidTierIndex)); case .duelPick: screen = .home }   // (a duel's pick: its minute runs)
             case .hold(let r, _), .formPick(let r, _, _): screen = .box(r, act: nil, confirm: false, detail: true)
+            case .evoPick(let u, let at, let ask): screen = ask != nil ? .evoPick(uid: u, at: at, ask: nil) : evoBack(u)   // 5.1.3: 진화할까요? → the cards → its page
             case .visitPick(let p): screen = teamRows(0).firstIndex { trainerID($0.card.name)?.key == trainerID(p.item)?.key }.map { .team(sel: $0, tab: 0, card: true) } ?? .team(sel: 0, tab: 0, card: false)
             case .items: screen = .box(-1, act: nil, confirm: false)                                  // back to 포켓몬
             case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : menuFor("포켓몬")   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
@@ -362,6 +363,7 @@ extension Walker {
         case .duel(let s): duelPress(k, s, now)
         case .hold(let r, let s): holdPress(k, r, s, now)
         case .formPick(let r, let it, let s): formPickPress(k, r, it, s, now)
+        case .evoPick(let u, let at, let ask): evoPickPress(k, u, at, ask, now)
         case .visitPick(let p): visitPickPress(k, p, now)
         case .squad(let s): squadPress(k, s, now)
         case .mail(let s): mailPress(k, s, now)
@@ -403,10 +405,12 @@ extension Walker {
                         self.act(.mon(op: .fetch(uid: u)), back: here, now) { [weak self] _, now in .say([josa(name, "을", "를"), "워커로 데려왔다"], next: .box(-1 - (self?.state.caught.count ?? 1), act: nil, confirm: false), since: now) } }
                 case "놓아주기"?: screen = .box(i, act: 0, confirm: true, detail: detail)
                 case "모습"?, "합체"?, "분리"?: if let f = formAction(i) { _ = keyItemOn(f.item, i) }        // 5.0: its form (FormView.swift)
+                case "진화"?: if !openEvoPick(i) { screen = here }                                       // 5.1.3: 배루키's pick
                 default: screen = here
                 }
             } else if k == 1, detail, i == -1 {
-                if let e = companionEvolution() { evolveNow(e, back: screen, now) }
+                if openEvoPick(-1) {}                                                                      // 5.1.3: 배루키's pick
+                else if let e = companionEvolution() { evolveNow(e, back: screen, now) }
                 else if formAction(-1) != nil { screen = .box(-1, act: 0, confirm: false, detail: true) }      // 5.0: its ● menu (모습 · 합체 · 분리, 닫기)
                 else { screen = .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷고 있다"], next: screen, since: now) }
             }

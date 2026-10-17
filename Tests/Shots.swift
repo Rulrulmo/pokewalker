@@ -654,6 +654,30 @@ import AppKit
         }
         mt.fight = nil
     } }
+    // 5.1.3 (docs/plans/23): 배루키's pick — the companion's 어라...?, the cards (each, 진화할까요? 아니오 · 예), the walker's 이로치 one, the pages'
+    // 진화 고르기 and ● menu, the grid's dots, the 포켓몬 tile's, the show, the 도감's line
+    Content.$testing.withValue(true) { Content.$testingChoice.withValue(true) {
+        var tg = Mon(dex: 236, level: 20, female: false); tg.ability = 2
+        var sh = Mon(dex: 236, level: 31, female: false); sh.shiny = true
+        let srv = FakeCloud(); srv.evoChoice = true
+        let tw = online({ var s = base(); s.companion = tg; s.caught = [sh, Mon(dex: 16, level: 8, female: false)]
+                          s.box = [Mon(dex: 25, level: 12, female: false), Mon(dex: 236, level: 25, female: false), Mon(dex: 66, level: 20, female: false)]
+                          s.owned = [16, 25, 66, 236]; s.seen = [16, 25, 66, 106, 107, 236, 237]; return s }(), server: srv)
+        let u = tw.state.companion.uid ?? 0, su = tw.state.caught[0].uid ?? 0
+        take("evo_prompt", tw) { v in v.screen = .say(["어라...?", "배루키의 모습이...!"], next: .evoPick(uid: u, at: 0, ask: nil), since: Date()) }
+        for k in 0..<3 { take("evo_pick_\(k)", tw) { v in v.screen = .evoPick(uid: u, at: k, ask: nil) } }
+        take("evo_pick_ask", tw) { v in v.screen = .evoPick(uid: u, at: 2, ask: false) }
+        take("evo_pick_ask_yes", tw) { v in v.screen = .evoPick(uid: u, at: 2, ask: true) }
+        take("evo_pick_shiny", tw) { v in v.screen = .evoPick(uid: su, at: 1, ask: nil) }
+        take("evo_mon_page", tw) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
+        take("evo_walker_page", tw) { v in v.screen = .box(-2, act: v.boxActs(-2).firstIndex(of: "진화"), confirm: false, detail: true) }
+        take("evo_box_page", tw) { v in v.screen = .box(1, act: nil, confirm: false, detail: true) }
+        take("evo_young_page", tw) { v in v.state.box[1].level = 15; v.screen = .box(1, act: nil, confirm: false, detail: true) }
+        take("evo_grid", tw) { v in v.screen = .box(1, act: nil, confirm: false) }
+        take("evo_menu", tw) { v in v.screen = .menu(group: nil, sel: 2) }
+        take("evo_show", tw) { v in let f = v.state.companion; var t = f; t.dex = 237; v.screen = .evolve(from: f, to: t, since: Date().addingTimeInterval(-5)) }
+        take("evo_dex", tw) { v in v.screen = .dex(236, filter: 0, detail: true) }
+    } }
     return n
 }
 #endif

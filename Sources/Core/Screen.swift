@@ -46,6 +46,7 @@ indirect enum Screen {
     case visitPick(ItemOn)                                             // 3.8: which of ours goes to a friend for 맡겨 키우기 (item = the friend's name)
     case hold(ref: Int, sel: Int)                                      // 3.7: 지니게 하기 for one of ours (ref as box's), the row picked
     case formPick(ref: Int, item: String, sel: Int)                    // 5.0: 로토무카탈로그's forms / 유전자쐐기's partners or 분리 for that one (FormView.swift)
+    case evoPick(uid: Int, at: Int, ask: Bool?)                        // 5.1.3 (docs/plans/23): 배루키's pick (EvoPickView.swift) — the one by uid, the card at, ask = 진화할까요? up (true: 예)
     case duel(DuelStep)                                                // 12 §5 (3.6): a live battle's invitation (mine out, or one to me); the fight itself is on the battle screens; 3.8: the 대전 menu, the queue
     case mail(MailStep)                                                // 3.9 (15 §6 A · D): the 우편함 — the list, one mail, a pick of its gift
     case squad(Squad)                                                  // 3.8 (14 §4–5): several of ours in order — the 대전 파티, a raid's party, a duel's 3 of my 6

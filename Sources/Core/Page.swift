@@ -127,7 +127,7 @@ extension Canvas {
         else if let t = p.tower { drawTower(t) } else if let k = p.course { drawCourse(k) } else if let t = p.train { drawTrain(t) } else if let l = p.relearn { drawRelearn(l) }
         else if let t = p.team { drawTeam(t) } else if let t = p.teamCard { drawTeamCard(t) }
         else if let t = p.trades { drawTrades(t) } else if let o = p.offer { drawOffer(o) } else if let k = p.pick { drawPick(k) }
-        else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let v = p.visits { drawVisits(v) } else if let s = p.squad { drawSquad(s) } else if let h = p.duelHub { drawDuelHub(h) } else if let m = p.mailList { drawMailList(m) } else if let m = p.mailOpen { drawMailOpen(m) } else if let m = p.mailPick { drawMailPick(m) } else if let r = p.raid { drawRaid(r) } else if let r = p.raidTier { drawRaidTier(r) } else if let g = p.goals { drawGoals(g) } else if let r = p.raidBalls { drawRaidBalls(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) }
+        else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let v = p.visits { drawVisits(v) } else if let s = p.squad { drawSquad(s) } else if let h = p.duelHub { drawDuelHub(h) } else if let m = p.mailList { drawMailList(m) } else if let m = p.mailOpen { drawMailOpen(m) } else if let m = p.mailPick { drawMailPick(m) } else if let r = p.raid { drawRaid(r) } else if let r = p.raidTier { drawRaidTier(r) } else if let g = p.goals { drawGoals(g) } else if let r = p.raidBalls { drawRaidBalls(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) } else if let e = p.evoPick { drawEvoPick(e) }
         else if let e = p.exp { drawExp(e) }
         else if let s = p.status { drawStatus(s) }
         if let f = flash, Date().timeIntervalSince(f.at) < 0.15, let rc = hits.first(where: { $0.1 == f.code })?.0 {   // 5.0: the press, seen
@@ -283,6 +283,7 @@ extension Canvas {
                     c.image(iconImage(e.pic), CGRect(x: snap(rc.midX - 16 * K), y: snap(rc.minY - x(3) - lift), width: 32 * K, height: 32 * K), alpha: walker?.drag?.from == 4500 + i ? 0.3 : 1)   // (carried away: faded)
                     c.say(i == 0 ? "함께" : "Lv.\(e.level)", rc.midX, rc.maxY - x(7), font(8, .bold), i == 0 ? Ink.red : Ink.sub, 0.5)
                     if e.shiny { c.say("★", rc.maxX - x(5), rc.minY + x(6), font(7, .bold), Ink.gold, 1) }
+                    if e.evo { evoDot(rc) }                                                                 // 5.1.3: ready to pick its evolution
                     hits.append((rc, 4500 + i))
                 } else { c.say("비어 있음", rc.midX, rc.midY, font(7.5, .medium), Ink.faint, 0.5) }   // the walker holds 3
             }
@@ -312,6 +313,7 @@ extension Canvas {
                 c.image(iconImage(e.pic, shadow: e.look == 1), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: walker?.drag?.from == 10000 + g.first + k ? 0.3 : 1)
             }
             if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
+            if e.evo { evoDot(cell) }                                                                   // 5.1.3
             if let it = e.heldItem { itemImage(it, CGRect(x: cell.maxX - x(12), y: cell.maxY - x(12), width: x(11), height: x(11))) } else if e.held { pixelArt(gem, gemPal, CGPoint(x: cell.maxX - x(6), y: cell.maxY - x(6)), 1.4 * K) }   // 3.7 (5.0: the item itself): it holds an item
             if e.v3 {                                                                                   // 3V and up: the amber diamond, as on the LCD
                 let cx = cell.minX + x(6), cy = cell.maxY - x(6), rr = 2.4 * K
@@ -387,7 +389,8 @@ extension Canvas {
         var yy = monBody(m, 198) + 4
         rule(y(yy - 2))                                                                            // 진화: how it evolves, a line a target
         c.say("진화", x(X0 + 2), y(yy + 6), font(9, .medium), Ink.sub)                            // 3.7: 진화 on one line, 지닌 도구 under it
-        let fw = m.formAction.map { a -> CGFloat in let w = c.say(a, x(X1 - 2), y(yy + 6), font(8.5, .bold), Ink.red, 1); hits.append((r(X1 - 2 - w / K - 6, yy - 1, w / K + 8, 14), 4411)); return w + x(8) } ?? 0   // 5.0: its form, straight off
+        let link = m.formAction.map { ($0, 4411) } ?? m.evoPick.map { ($0, 4412) }                       // (5.1.3: 진화 고르기 — 배루키's pick)
+        let fw = link.map { a, code -> CGFloat in let w = c.say(a, x(X1 - 2), y(yy + 6), font(8.5, .bold), Ink.red, 1); hits.append((r(X1 - 2 - w / K - 6, yy - 1, w / K + 8, 14), code)); return w + x(8) } ?? 0   // 5.0: its form, straight off
         if let l = m.evos.first { c.say(l + (m.evos.count > 1 && m.evos[1].hasPrefix("→") ? " 외" : ""), x(X0 + 34), y(yy + 6), font(9, .medium), l.hasPrefix("→") ? Ink.ink : Ink.sub, maxW: x(X1 - X0 - 36) - fw) }
         let hr = r(X0, yy + 12, X1 - X0, 14); hits.append((hr, 4410))
         c.say("도구", x(X0 + 2), y(yy + 19), font(9, .medium), Ink.sub)
@@ -1228,6 +1231,49 @@ extension Page {
         c.say(m.button ?? m.off, rc.midX, rc.midY, font(m.button == nil ? 9.5 : 11, .bold), m.button == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.button != nil { hits.append((rc, 8840)) }
         if let on = m.del { let dr = r(X1 - dw, 428, dw, 30); c.fill(.rounded(dr, 10 * K), Ink.tile); if on { c.stroke(.rounded(dr, 10 * K), Ink.red, width: 1.2 * K) }
             c.say("지우기", dr.midX, dr.midY, font(10.5, .bold), on ? Ink.red : Ink.faint, 0.5); if on { hits.append((dr, 8841)) } }
+    }
+    /// 5.1.3: the red dot of one ready to pick its evolution (배루키), in a cell's corner (top left: ★ is top right, 3V and the item below).
+    func evoDot(_ cell: CGRect) { let d = x(6); c.fill(.oval(CGRect(x: cell.minX + x(3), y: cell.minY + x(3), width: d, height: d)), Ink.red) }
+    // MARK: 5.1.3's 배루키 pick (docs/plans/23): the three as cards, the pick's stats and ability, the button or 진화할까요?
+    func drawEvoPick(_ m: EvoPickModel) {
+        let nw = c.say("나중에 골라도 돼요", x(X1 - 2), y(206), font(8.5, .medium), Ink.sub, 1)
+        c.say(m.who, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)
+        if m.cards.isEmpty { emptyState("지금은 고를 수 없어요", x(Layout.w / 2), y(300)); return }
+        let gap: CGFloat = 4, cw = (X1 - X0 - gap * 2) / 3
+        for (i, e) in m.cards.enumerated() {
+            let rc = r(X0 + CGFloat(i) * (cw + gap), 216, cw, 98); tile(rc, 10, on: i == m.sel)
+            monIcon(e.dex, shiny: m.shiny, CGRect(x: rc.minX, y: rc.minY + x(2), width: rc.width, height: x(36)), side: 36 * K)
+            c.say(e.name, rc.midX, rc.minY + x(45), font(10, .bold), Ink.ink, 0.5, maxW: rc.width - x(6))
+            let f = font(8, .bold), ws = e.types.map { width(typeKo[$0] ?? $0, f) + 9 * K }, all = ws.reduce(0, +) + x(3) * CGFloat(max(0, ws.count - 1))
+            var px = rc.midX - all / 2
+            for (t, w) in zip(e.types, ws) { c.typePill(t, px, rc.minY + x(59), h: x(13), size: 8); px += w + x(3) }
+            c.say(e.ability, rc.midX, rc.minY + x(74), font(8.5, .medium), e.hidden ? Ink.blue : Ink.ink, 0.5, maxW: rc.width - x(6))
+            c.say("공 \(e.atk) · 방 \(e.def)", rc.midX, rc.minY + x(87), font(8, .medium), Ink.sub, 0.5, maxW: rc.width - x(6))
+            hits.append((rc, 5960 + i))
+        }
+        guard let e = m.cards[safe: m.sel] else { return }
+        let aw = c.say("특성 " + e.ability + (e.hidden ? " · 숨겨진특성" : ""), x(X1 - 2), y(328), font(9, .medium), Ink.sub, 1)
+        c.say(e.name + "  " + e.types.map { typeKo[$0] ?? $0 }.joined(separator: "·"), x(X0 + 2), y(328), font(11, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - aw)
+        let names = ["HP", "공격", "방어", "특공", "특방", "스피드"], sw = (X1 - X0) / 6, top = m.stats.max() ?? 0   // the six, the highest in red
+        for (k, v) in m.stats.prefix(6).enumerated() {
+            let cx = x(X0 + sw * (CGFloat(k) + 0.5))
+            c.say(names[k], cx, y(344), font(7.5, .medium), Ink.sub, 0.5)
+            c.say("\(v)", cx, y(357), font(10.5, .bold), v == top ? Ink.red : Ink.ink, 0.5)
+        }
+        var lines: [String] = [], cur = "", f = font(8.5)
+        for word in m.abilityNote.split(separator: " ") { let t = cur.isEmpty ? String(word) : cur + " " + word; if width(t, f) > x(X1 - X0 - 4), !cur.isEmpty { lines.append(cur); cur = String(word) } else { cur = t } }
+        lines.append(cur)
+        for (j, l) in lines.prefix(2).enumerated() { c.say(l, x(X0 + 2), y(376 + CGFloat(j) * 12), f, Ink.sub, maxW: x(X1 - X0 - 4)) }
+        if let yes = m.ask {                                                                       // 진화할까요? 아니오 / 예 (아니오 first)
+            c.say(josa(e.name, "으로", "로") + " 진화할까요? 되돌릴 수 없어요", x(Layout.w / 2), y(415), font(8.5, .bold), Ink.ink, 0.5, maxW: x(X1 - X0 - 4))
+            for (k, t) in ["아니오", "예 · 진화"].enumerated() {
+                let rc = r(X0 + CGFloat(k) * ((X1 - X0 + 4) / 2), 428, (X1 - X0 - 4) / 2, 30), on = (k == 1) == yes
+                c.fill(.rounded(rc, 10 * K), on ? Ink.red : Ink.tile); c.say(t, rc.midX, rc.midY, font(11, .bold), on ? .white : Ink.ink, 0.5); hits.append((rc, 5971 + k))
+            }
+            return
+        }
+        let rc = r(X0, 428, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), Ink.red)
+        c.say(josa(e.name, "으로", "로") + " 진화", rc.midX, rc.midY, font(11, .bold), .white, 0.5); hits.append((rc, 5970))
     }
     func drawMailPick(_ m: MailPickModel) {
         let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)

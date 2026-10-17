@@ -25,6 +25,7 @@ extension Walker {
         (w.counter, w.boot, w.syncedAt, w.counterKind) = (state.counter, state.boot, state.syncedAt, state.counterKind)
         w.rollover(now); if !inBattle { _ = w.walk(c.ahead, at: now) }
         state = w; save()
+        evoWatch(now)                                                                              // 5.1.3: a 배루키 ready to pick that wasn't (EvoPickView.swift)
     }
     /// An act's answer (nil: none came — offline, or dropped with an old session).
     func answered(_ a: Act, _ r: ActReply?, _ now: Date) {
@@ -77,7 +78,8 @@ extension Walker {
         }
         guard case .home = screen else { return }
         if let n = chainNext { chainNext = nil; nextBush(n, now); return }
-        if let t = growthThen { growthThen = nil; lastInput = now; screen = t }               // the lobby's idle time starts now, not at the fight's last press
+        if let t = growthThen { growthThen = nil; lastInput = now; screen = t; return }       // the lobby's idle time starts now, not at the fight's last press
+        _ = evoPromptShow(now)                                                                     // 5.1.3: the companion ready to pick — "어라...?", then its cards
     }
     /// News whose screen takes the walker away from home (a page, a show from others): held back while a chain goes on (its next bush first).
     static func leavesHome(_ n: News) -> Bool {

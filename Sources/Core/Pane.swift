@@ -42,7 +42,7 @@ struct DexModel: Equatable {
 /// The 도감 / 포켓몬 grid: tabs, a page of box icons (the pick bobbing), the pager; 포켓몬's has the companion and the walker's in a row above.
 struct GridModel: Equatable {
     static let perPage = 30, columns = 6                               // 6 x 5
-    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false; var level = 0; var held = false; var art: Int? = nil; var heldItem: String? = nil; var pic: Int { art ?? dex } }   // heldItem (5.0): its picture on the cell   // held: it holds an item (3.7)   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box   // art (5.0): a form's picture (Mon.art)
+    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false; var level = 0; var held = false; var art: Int? = nil; var heldItem: String? = nil; var evo = false; var pic: Int { art ?? dex } }   // heldItem (5.0): its picture on the cell   // held: it holds an item (3.7)   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box   // art (5.0): a form's picture (Mon.art)
     var tabs: [String]; var tab: Int
     var cells: [Cell]; var first: Int; var sel: Int?                   // this page's cells; first = cells[0]'s place in the whole list; sel = the pick's cell
     var page, pages: Int; var empty: String; var bob: Bool
@@ -64,6 +64,7 @@ struct MonModel: Equatable {
     var sel: Int?                                                      // the LCD's pick (함께 / 놓아주기 / 닫기, or 아니오 / 예): what ● does is red
     var held: String? = nil, heldNote: String? = nil                   // 3.7: its 지닌 도구 and what it does (the line under 진화; a click: 지니게 하기)
     var formAction: String? = nil                                      // 5.0: 모습 바꾸기 · 합체하기 · 분리하기 (its key item in the bag): a link on the 진화 line
+    var evoPick: String? = nil                                         // 5.1.3: 진화 고르기 (배루키 ready to pick): the same link
 }
 /// 지니게 하기 (docs/plans/13 ⑤): who, what it holds now, the bag's holdable items (빼기 first while it holds one), the pick's line, the button.
 struct HoldModel: Equatable {
@@ -93,6 +94,12 @@ struct MailPickModel: Equatable {
     static func per(_ count: Int, legend: Bool) -> Int { legend ? perPage : count > 7 ? 6 : 7 }
     struct Row: Equatable { var name, note: String }
     var title, note: String; var rows: [Row]; var cells: [GridModel.Cell]; var sel: Int; var first, count: Int; var go: String?; var ask: Bool?
+}
+/// 5.1.3 (docs/plans/23): 배루키's pick — a card each (its picture, type, ability, 공격 · 방어), the pick's stats and ability below, the button or
+/// 진화할까요? 아니오 / 예.
+struct EvoPickModel: Equatable {
+    struct Card: Equatable { var dex: Int; var name: String; var types: [String]; var ability: String; var hidden: Bool; var atk, def: Int }
+    var who: String; var cards: [Card]; var sel: Int; var stats: [Int]; var abilityNote: String; var shiny: Bool; var ask: Bool?
 }
 /// 포켓몬 레이더: the four bushes as on the LCD, the one rustling marked.
 struct RadarModel: Equatable { var live: Int?; var cursor: Int; var chain: Int; var season = Season.summer }
@@ -273,6 +280,7 @@ struct PaneContent: Equatable {
     var duel: DuelModel? = nil, hold: HoldModel? = nil, visits: VisitsModel? = nil
     var squad: SquadModel? = nil, duelHub: DuelHubModel? = nil
     var mailList: MailListModel? = nil, mailOpen: MailOpenModel? = nil, mailPick: MailPickModel? = nil
+    var evoPick: EvoPickModel? = nil                                   // 5.1.3: 배루키's pick
 }
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
@@ -281,6 +289,6 @@ extension PaneContent {
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 508 : grid?.regions != nil ? 448 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 472 : dex != nil ? (dex!.form != nil ? 420 : 390) : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
             : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil || raidTier != nil || raidBalls != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446 : mailList != nil || mailOpen != nil || mailPick != nil ? 466
-            : radar != nil ? 327 : goals != nil || exp != nil ? 466 : card != nil ? (card!.picking ? 270 + 30 * CGFloat(card!.titles.count + 1) : card!.title != nil || card!.deco != nil || card!.stones != nil ? 254 : 230) : learn != nil ? 444 : tower != nil ? 400 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
+            : evoPick != nil ? 466 : radar != nil ? 327 : goals != nil || exp != nil ? 466 : card != nil ? (card!.picking ? 270 + 30 * CGFloat(card!.titles.count + 1) : card!.title != nil || card!.deco != nil || card!.stones != nil ? 254 : 230) : learn != nil ? 444 : tower != nil ? 400 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
     }
 }

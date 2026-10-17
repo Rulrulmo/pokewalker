@@ -353,6 +353,7 @@ final class CloudInbox: @unchecked Sendable {
             case (.create, 200) where j["session"] is String:
                 Content.on = j["content5"] as? Bool ?? false                                          // 5.0: as the login's — a new trainer's first session too
                 Content.on51 = j["content51"] as? Bool ?? false; Content.onDaily = j["raidDaily"] as? Bool ?? false   // 5.1 (plans 19 §9 · 20 §11)
+                Content.onChoice = j["evoChoice"] as? Bool ?? false                                     // 5.1.3 (plan 23): 배루키's pick
                 Content.keep()                                                                          // 5.1.1: for the next launch
                 drop(); seat.session = j["session"] as? String; seat.trust = j["trust"] as? String ?? seat.trust; pendingPIN = nil
                 base = nil; phase = .on; lastSaved = now; stepsAt = now                                 // its first save (the starter's) comes with the first act
@@ -391,6 +392,7 @@ final class CloudInbox: @unchecked Sendable {
         Content.on = j["content5"] as? Bool ?? false                                          // 5.0 (docs/plans/18 §14.4): the server's rules, before any fight of this session
         Content.on51 = j["content51"] as? Bool ?? false                                       // 5.1 (plan 19 §9): 전설 원정 · 특성패치 · the form items · 모험 ▸
         Content.onDaily = j["raidDaily"] as? Bool ?? false                                    // 5.1 (plan 20 §11): the raids by the day (the lobbies' own `daily` after)
+        Content.onChoice = j["evoChoice"] as? Bool ?? false                                   // 5.1.3 (plan 23): 배루키 waits at Lv.20 for the player's pick
         Content.keep()                                                                        // 5.1.1: for the next launch (before the login, the save is read with these)
         if let text = j["walk"] as? String {
             guard let w = Cloud.walk(text) else {                                              // one this app can't read: nothing to show it with
@@ -634,6 +636,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     var down = false, html: Int? = nil, lose = false, hold = false, old: String? = nil, pins = false
     var content5 = false                                                                         // 5.0: the login says content5 (pokeserver content5 on)
     var content51 = false, raidDaily = false                                                     // 5.1: … content51 (plan 19), raidDaily (plan 20)
+    var evoChoice = false                                                                        // 5.1.3: … evoChoice (plan 23)
     var updateNoteSent: [String: Any]? = nil                                                     // 5.1.2 (plan 22): pokeserver update-note on, a newer app out
     var rng = Seeded(s: 77), nextUID = 1_000_001, now: Date? = nil, stepCap: Int? = nil       // stepCap: the steps allowance (the real one fills at 15 a second)
     var lastAct: [String: Date] = [:], inbox: [String: [News]] = [:], greeted: [String: Date] = [:]   // 12 §2 (M1): each trainer's last act, its undelivered 인사, a pair's last one
@@ -1372,7 +1375,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             if path == "v1/create" {
                 guard !pins || Cloud.validPIN(pin) else { return (400, ["error": "bad_pin"]) }
                 rows[id.key] = Row(name: id.name, session: session, device: device, at: clock, pin: pins ? pin : nil, trusts: pins ? [device: token] : [:])   // its save: at its first act
-                return (200, ["rev": 0, "session": session, "trust": token, "starter": 1_000_000].merging(content5 ? ["content5": true] : [:]) { $1 }.merging((content51 ? ["content51": true] : [:]).merging(raidDaily ? ["raidDaily": true] : [:]) { $1 }) { $1 })   // (5.0: as the login's; 5.1 too)
+                return (200, ["rev": 0, "session": session, "trust": token, "starter": 1_000_000].merging(content5 ? ["content5": true] : [:]) { $1 }.merging((content51 ? ["content51": true] : [:]).merging(raidDaily ? ["raidDaily": true] : [:]) { $1 }) { $1 }.merging(evoChoice ? ["evoChoice": true] : [:]) { $1 })   // (5.0: as the login's; 5.1 · 5.1.3 too)
             }
             return path == "v1/login" ? (200, ["exists": false]) : (404, ["error": "no_trainer"])
         }
@@ -1402,6 +1405,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             b["trust"] = trust; if pins, r.pin == nil { b["pin_needed"] = true }
             if content5 { b["content5"] = true }                                                  // (off: no field, as the server)
             if content51 { b["content51"] = true }; if raidDaily { b["raidDaily"] = true }
+            if evoChoice { b["evoChoice"] = true }                                                  // 5.1.3
             return (200, b)
         case "v1/pin":
             guard j["session"] as? String == r.session else { return (409, ["error": "conflict", "reason": "replaced"]) }
@@ -1643,8 +1647,8 @@ extension Content {
     /// with it.
     @MainActor static func atLaunch(_ w: Walk) {
         on = settings.bool("content5", false) || w.course >= coursesGen4.count || ([w.companion] + w.caught + w.box).contains { $0.dex > 493 }
-        on51 = settings.bool("content51", false); onDaily = settings.bool("raidDaily", false)
+        on51 = settings.bool("content51", false); onDaily = settings.bool("raidDaily", false); onChoice = settings.bool("evoChoice", false)   // (5.1.3)
     }
     /// The login's, a new trainer's or a lobby's: kept for the next launch.
-    @MainActor static func keep() { settings.set("content5", on); settings.set("content51", on51); settings.set("raidDaily", onDaily) }
+    @MainActor static func keep() { settings.set("content5", on); settings.set("content51", on51); settings.set("raidDaily", onDaily); settings.set("evoChoice", onChoice) }
 }

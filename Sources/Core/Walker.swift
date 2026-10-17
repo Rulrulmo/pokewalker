@@ -56,6 +56,8 @@ import Foundation
     var tipsOn = false, tipBits = 0                                        // 5.0: the first-time tips (Tips.swift): the app's walker only; which were said
     var relaunchAfterQuit = false, notedUpdate: String? = nil, updateNotices = 0   // the menu's 업데이트 설치: the quit starts the new version; the version a banner said was ready
     var noteAsked: (v: String, at: Date)? = nil                            // docs/plans/22 (5.1.2): the update note last acted on (once in 10 minutes a version)
+    var evoSeen: Set<Int>? = nil                                           // 5.1.3 (docs/plans/23): the uids ready to pick in the last save (nil: none taken yet this run)
+    var evoPrompt: Int? = nil, evoNew: [Int] = []                          // … the companion's "어라...?" waiting for home; every one told (the self-test's look)
     var installWhenStaged = false, installAt: Date? = nil                  // 업데이트 확인 · 설치 clicked: what it finds goes in; the install's moment (after the LCD says so)
     /// What the quit runs to put a staged update in (relaunch: start it after); the self-test's stub records it instead.
     var installUpdate: @MainActor (_ relaunch: Bool) -> Bool = { r in Update.appURL.map { Update.install(dir: Update.dir, app: $0, relaunch: r) } ?? false }
@@ -118,7 +120,7 @@ import Foundation
         case .assemble(_, let since) where now.timeIntervalSince(since) > 5.5: screen = expAfter ?? .home; expAfter = nil   // 5.1: then its line, back on the page
         case .traded(_, _, _, let since) where now.timeIntervalSince(since) > 6: screen = .home
         case .menu, .card, .items, .dex, .goals, .expedition, .rank, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid(.lobby), .raid(.tier), .itemOn, .hold, .visitPick: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
-        case .trade, .market, .mail: if now.timeIntervalSince(lastInput) > 60 { screen = .home }       // (a trade is weighed up: longer)
+        case .trade, .market, .mail, .evoPick: if now.timeIntervalSince(lastInput) > 60 { screen = .home }   // (a trade is weighed up: longer; 5.1.3: an evolution too)
         case .raid(.balls): if now.timeIntervalSince(lastInput) > 120 { screen = .home }               // 4.0: left alone, not given up — the stage waits (the lobby goes back to it)
         default: break
         }
@@ -226,6 +228,7 @@ import Foundation
         case .squad(let s): switch s.kind { case .tower: return ("배틀 타워", "파티 고르기 · Lv.50"); case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return ("레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")) }
         case .hold(let r, _): return ("도구 주기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .formPick(let r, let it, _): return (it, state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
+        case .evoPick: return ("진화", "직접 골라 진화해요")
         case .mail(.pick): return ("우편함", "하나를 골라 주세요")
         case .mail: return ("우편함", "선물은 받을 때까지 보관")
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
