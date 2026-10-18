@@ -18,7 +18,8 @@ import Foundation
     for t in texts where t.r.maxY > bottom + 0.5 || t.r.maxX > right + 0.5 { bad.append("past the page: \(t.s)") }
     for t in texts { for b in canvas.boxes {
         let i = t.r.intersection(b)
-        guard !i.isNull, i.width * i.height > 0.15 * t.r.width * t.r.height, !b.insetBy(dx: -1, dy: -1).contains(t.r) else { continue }
+        let inside = t.r.minX >= b.minX - 1 && t.r.maxX <= b.maxX + 1 && t.r.minY >= b.minY - 1 && t.r.maxY <= b.maxY + 1   // (by the edges: Windows' CGRect.contains compares a recomputed rect exactly — size 3's halves fail it)
+        guard !i.isNull, i.width * i.height > 0.15 * t.r.width * t.r.height, !inside else { continue }
         bad.append("\(t.s) across a box's edge (\(Int(t.r.minX)),\(Int(t.r.minY)) \(Int(t.r.width))×\(Int(t.r.height)) · box \(Int(b.minX)),\(Int(b.minY)) \(Int(b.width))×\(Int(b.height)))")
     } }
     return bad
