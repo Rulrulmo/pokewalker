@@ -23,6 +23,7 @@ extension Battle {
         var b = self
         (b.mine, b.theirs, b.me, b.it) = (theirs, mine, it, me)
         b.sides = [sides[1], sides[0]]; b.planned = [planned[1], planned[0]]
+        b.megaUsed = megaUsed.map { [$0[1], $0[0]] }                                                // 5.1.4: each side's Mega used, its own first (canMega)
         (b.mustReplace, b.foeMustReplace) = (foeMustReplace == true, mustReplace ? true : nil)
         b.trainer = name; b.out = []; b.foeNext = nil; b.faced = [b.me]
         return b
@@ -54,10 +55,10 @@ extension Beat {
 
 /// The engine's lines are worded from the first player's side: its own as "X", the other's as "상대 X". For the second player, `ours` (the first
 /// player's species) become "상대 X" and "상대 Y" of `theirs` (the second's) become "Y". Longest first, so 뮤츠 isn't read as 뮤. (A trainer's name
-/// stays: "민수는 X를 돌아오게 했다!" reads the same from both sides.)
+/// stays: "민수는 X를 돌아오게 했다!" reads the same from both sides.) 5.1.4: a stone's name (리자몽나이트X) stays whole — a token of its own.
 func duelWords(ours: [Int], theirs: [Int]) -> (String) -> String {
     let mine = Set(ours.map { monNames[$0] }), other = Set(theirs.map { monNames[$0] })
-    let tokens = (mine.map { ($0, "상대 " + $0) } + other.map { ("상대 " + $0, $0) }).sorted { $0.0.count > $1.0.count }
+    let tokens = (mine.map { ($0, "상대 " + $0) } + other.map { ("상대 " + $0, $0) } + Forms.stones.map { ($0, $0) }).sorted { $0.0.count > $1.0.count }
     return { text in
         var out = "", i = text.startIndex
         scan: while i < text.endIndex {
