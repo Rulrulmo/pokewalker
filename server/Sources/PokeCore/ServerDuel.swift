@@ -16,6 +16,7 @@ let duelSchema = """
     CREATE INDEX IF NOT EXISTS duels_b ON duels (b, state);
     """
 let duelInviteLife = 60, duelTurnLife = 30, duelIdleMax = 2, duelBP = 3, duelApp = "3.6", duelPickLife = 60, duelQueueLife = 60, duelApp38 = "3.8"
+let duelMegaApp = "5.1.4"                                                  // docs/plans/24: the app that shows 메가진화 in a duel
 
 struct DuelRow {
     var id: Int, a: String, b: String, aName: String, bName: String, state: String
@@ -23,20 +24,21 @@ struct DuelRow {
     var deadline: Int, version: Int, winner: String?, why: String?
     var partyA: [Mon]? = nil, partyB: [Mon]? = nil, pickA: [Int]? = nil, pickB: [Int]? = nil   // 3.8: the six each brought (Lv.50 copies), the three picked
     var at = 0, endedAt: Int? = nil, legacy = false
+    var mega = false                                                                           // 5.1.4 (plan 24): Mega Evolution allowed, set as it starts
     func side(_ key: String) -> Int? { key == a ? 0 : key == b ? 1 : nil }
 }
 
 extension SaveDB {
     func duelRows(_ sql: String, _ args: [String: SQLValue] = [:]) throws -> [DuelRow] {
         let dec = JSONDecoder()
-        return try db.rows("SELECT id, a, b, a_name, b_name, state, battle, turns, plan_a, plan_b, need_a, need_b, idle_a, idle_b, deadline, version, winner, why, party_a, party_b, pick_a, pick_b, at, ended_at, kind FROM duels WHERE " + sql, args).compactMap { r in
+        return try db.rows("SELECT id, a, b, a_name, b_name, state, battle, turns, plan_a, plan_b, need_a, need_b, idle_a, idle_b, deadline, version, winner, why, party_a, party_b, pick_a, pick_b, at, ended_at, kind, mega FROM duels WHERE " + sql, args).compactMap { r in
             guard let id = r.int("id"), let a = r.text("a"), let b = r.text("b") else { return nil }
             func j<T: Decodable>(_ c: String, _ t: T.Type) -> T? { r.text(c).flatMap { try? dec.decode(T.self, from: Data($0.utf8)) } }
             return DuelRow(id: id, a: a, b: b, aName: r.text("a_name") ?? a, bName: r.text("b_name") ?? b, state: r.text("state") ?? "", battle: j("battle", Battle.self),
                            turns: j("turns", [[Beat]].self) ?? [], planA: j("plan_a", BattleCmd.self), planB: j("plan_b", BattleCmd.self), needA: r.text("need_a"), needB: r.text("need_b"),
                            idleA: r.int("idle_a") ?? 0, idleB: r.int("idle_b") ?? 0, deadline: r.int("deadline") ?? 0, version: r.int("version") ?? 0, winner: r.text("winner"), why: r.text("why"),
                            partyA: j("party_a", [Mon].self), partyB: j("party_b", [Mon].self), pickA: j("pick_a", [Int].self), pickB: j("pick_b", [Int].self),
-                           at: r.int("at") ?? 0, endedAt: r.int("ended_at"), legacy: r.text("kind") == "legacy")
+                           at: r.int("at") ?? 0, endedAt: r.int("ended_at"), legacy: r.text("kind") == "legacy", mega: r.int("mega") == 1)
         }
     }
     func saveDuel(_ d: DuelRow, endedAt: Int? = nil) throws {
@@ -45,8 +47,8 @@ extension SaveDB {
         try db.rows("""
             UPDATE duels SET state = :s, battle = :bt, turns = :tu, plan_a = :pa, plan_b = :pb, need_a = :na, need_b = :nb, idle_a = :ia, idle_b = :ib,
               deadline = :dl, version = :v, winner = :w, why = :why, ended_at = coalesce(ended_at, :end), b = :b, b_name = :bn, party_a = :xa, party_b = :xb,
-              pick_a = :ka, pick_b = :kb WHERE id = :id
-            """, ["b": .text(d.b), "bn": .text(d.bName), "xa": try t(d.partyA), "xb": try t(d.partyB), "ka": try t(d.pickA), "kb": try t(d.pickB), "s": .text(d.state), "bt": try t(d.battle), "tu": try t(d.turns), "pa": try t(d.planA), "pb": try t(d.planB), "na": d.needA.map(SQLValue.text) ?? .null,
+              pick_a = :ka, pick_b = :kb, mega = :mg WHERE id = :id
+            """, ["mg": .int(d.mega ? 1 : 0), "b": .text(d.b), "bn": .text(d.bName), "xa": try t(d.partyA), "xb": try t(d.partyB), "ka": try t(d.pickA), "kb": try t(d.pickB), "s": .text(d.state), "bt": try t(d.battle), "tu": try t(d.turns), "pa": try t(d.planA), "pb": try t(d.planB), "na": d.needA.map(SQLValue.text) ?? .null,
                   "nb": d.needB.map(SQLValue.text) ?? .null, "ia": .int(d.idleA), "ib": .int(d.idleB), "dl": .int(d.deadline), "v": .int(d.version),
                   "w": d.winner.map(SQLValue.text) ?? .null, "why": d.why.map(SQLValue.text) ?? .null, "end": endedAt.map(SQLValue.int) ?? .null, "id": .int(d.id)])
     }
@@ -144,7 +146,7 @@ extension SaveDB {
             guard (side == 0 ? d.pickA : d.pickB) == nil else { return "이미 골랐어요" }
             if side == 0 { d.pickA = slots } else { d.pickB = slots }
             d.version += 1
-            startDuel(&d, now: now); try saveDuel(d)
+            startDuel(&d, now: now, actor: key, app: app); try saveDuel(d)
             out.duel = try view(d.id, for: key, since: 0)
             return nil
         case .duelMove(let id, let cmd):
@@ -153,7 +155,11 @@ extension SaveDB {
             let s: Side = side == 0 ? .me : .it
             switch (need, cmd) {
             case ("move", .forfeit): break
-            case ("move", .fight(let slot)):
+            case ("move", .fight(let slot)), ("move", .megaFight(let slot)):
+                if case .megaFight = cmd {                                                         // 5.1.4 (plan 24)
+                    guard d.mega, Content.duelMega else { return "이번 대전에서는\n메가진화를 쓸 수 없어요" }
+                    guard b.canMega(s) else { return "메가진화할 수\n없다!" }                          // (used this duel, no stone, a Mega already: the engine's wild · tower words)
+                }
                 if b.forcedMove(s) == nil {
                     let x = b.f(s)
                     guard x.moves.indices.contains(slot) else { return "그 기술은 없어요" }
@@ -206,12 +212,13 @@ extension SaveDB {
     }
 
     /// Both have picked their three: the 3-on-3 from the first's side (as 3.6's: mine = the first's, the trainer = the second's name).
-    func startDuel(_ d: inout DuelRow, now: Int) {
+    func startDuel(_ d: inout DuelRow, now: Int, actor: String? = nil, app: String? = nil) {
         guard let pa = d.pickA, let pb = d.pickB, let xa = d.partyA, let xb = d.partyB else { return }
         var b = Battle(party: pa.compactMap { xa[safe: $0] }, trainer: d.bName, foes: pb.compactMap { xb[safe: $0] }); b.pvp = true
         var g = SystemRandomNumberGenerator(); b.seed = g.next()
         d.turns = [b.begin(weather: nil, &g)]; d.battle = b
         d.state = "active"; (d.needA, d.needB) = ("move", "move"); d.deadline = now + duelTurnLife
+        d.mega = Content.duelMega && Content.gen6 && [d.a, d.b].allSatisfy { k in knows(k == actor ? app : (try? appSeen(k)) ?? nil, duelMegaApp) }   // 5.1.4 (plan 24): both apps show it (the acting one's own)
     }
     /// 14 §5.4: the 전적 — every finished one, the last 20 in full.
     func duelRecords(_ key: String) throws -> DuelRecords {
@@ -297,6 +304,7 @@ extension SaveDB {
                 v.battle = b.mirrored(name: d.aName); v.beats = fresh.map { $0.flipped(words) }
             }
         }
+        if d.mega, Content.duelMega { v.mega = true }                                            // 5.1.4 (plan 24): off again → gone at the next reply
         if d.state == "over", let wnr = d.winner { let won = wnr == key; v.result = DuelResult(won: won, why: d.why ?? "faint", bp: won ? duelBP : 0) }
         return v
     }

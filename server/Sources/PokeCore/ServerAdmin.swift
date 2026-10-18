@@ -45,6 +45,7 @@ let usage = """
       update-note [on|off]               docs/plans/22: "update": {v, urgent} first in each reply to an app with a newer version for it
       slot-odds [on|off]                 docs/plans/21: a course's Pokémon without steps — group A 20 · B 30 · C 50 %, a radar chain to A 52 · B 38 · C 10
       evo-choice [on|off]                5.1.3 (docs/plans/23): 배루키 waits at Lv.20 for the player's pick (on with 5.1.3 out: older apps can't pick)
+      duel-mega [on|off]                 5.1.4 (docs/plans/24): 메가진화 in live battles — a duel started with both apps 5.1.4 on allows it
     --db: else $DB_PATH, else /var/lib/pokewalker/pokewalker.db
     """
 
@@ -414,6 +415,10 @@ public func run(_ arguments: [String]) async -> Int32 {
         case ("evo-choice", 1):
             guard ["on", "off"].contains(rest[0]) else { return fail("evo-choice: on | off") }
             out = try await db.setEvoChoice(rest[0] == "on")
+        case ("duel-mega", 0): out = "duel-mega " + ((try await db.duelMega()) ? "on" : "off")
+        case ("duel-mega", 1):
+            guard ["on", "off"].contains(rest[0]) else { return fail("duel-mega: on | off") }
+            out = try await db.setDuelMega(rest[0] == "on")
         case ("events", 0): out = try await db.teamEventsReport(now: unixNow())
         case ("event-schedule", 1): out = try await db.scheduleTeamEvents(from: rest[0])
         case ("event-cancel", 1):

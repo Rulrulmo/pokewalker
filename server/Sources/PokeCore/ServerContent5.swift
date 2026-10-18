@@ -18,7 +18,7 @@ extension SaveDB {
     /// When content5 first went on (unix; nil: never): the Mega raid's rotation counts its weeks from that one (MegaRaid.round).
     func content5Since() throws -> Int? { try db.rows("SELECT value FROM settings WHERE name = 'content5_since'").first?.text("value").flatMap { Int($0) } }
     /// Content.on (and 5.1's on51) from the settings: at start, then every few seconds (pokeserver content5 runs in another process).
-    func syncContent() { Content.on = (try? content5()) ?? false; Content.on51 = (try? content51()) ?? false; Content.onDaily = (try? raidDaily()) ?? false; Content.onSlots = (try? slotOdds()) ?? false; Content.onChoice = (try? evoChoice()) ?? false }
+    func syncContent() { Content.on = (try? content5()) ?? false; Content.on51 = (try? content51()) ?? false; Content.onDaily = (try? raidDaily()) ?? false; Content.onSlots = (try? slotOdds()) ?? false; Content.onChoice = (try? evoChoice()) ?? false; Content.onDuelMega = (try? duelMega()) ?? false }
 
     // MARK: 5.1's raids by the day (docs/plans/20): bosses each day, 2칸 at 0:00, 10 runs a day
     func raidDaily() throws -> Bool { try db.rows("SELECT value FROM settings WHERE name = 'raid_daily'").first?.text("value") == "on" }
@@ -40,6 +40,14 @@ extension SaveDB {
         try db.rows("INSERT INTO settings (name, value) VALUES ('evo_choice', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(on ? "on" : "off")])
         return "evo-choice " + (on ? "on" : "off") + " — the running server takes it within \(content5Every) s, the app at its next login"
             + (on ? " (배루키 waits at Lv.20 on every app; only 5.1.3 on can pick)" : " (배루키 by its steps again, at its next level-up)")
+    }
+
+    // MARK: 5.1.4's Mega Evolution in live battles (docs/plans/24): a duel started with both apps 5.1.4 on allows it
+    func duelMega() throws -> Bool { try db.rows("SELECT value FROM settings WHERE name = 'duel_mega'").first?.text("value") == "on" }
+    func setDuelMega(_ on: Bool) throws -> String {
+        try db.rows("INSERT INTO settings (name, value) VALUES ('duel_mega', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(on ? "on" : "off")])
+        return "duel-mega " + (on ? "on" : "off") + " — the running server takes it within \(content5Every) s, for duels that start then"
+            + (on ? " (both apps \(duelMegaApp) on; a duel with an older one has no 메가진화 on either side)" : "")
     }
 
     // MARK: 5.1's switch (docs/plans/19): the 전설 원정, on top of content5

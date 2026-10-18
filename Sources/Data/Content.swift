@@ -25,6 +25,11 @@ enum Content {
     nonisolated(unsafe) static var onChoice = false
     @TaskLocal static var testingChoice: Bool? = nil
     static var evoChoice: Bool { testingChoice ?? onChoice }
+    /// 5.1.4 (docs/plans/24): Mega Evolution in live battles (pokeserver duel-mega) — a duel started with both apps 5.1.4 on allows it
+    /// (DuelView.mega); the app takes the switch from the login reply's duelMega.
+    nonisolated(unsafe) static var onDuelMega = false
+    @TaskLocal static var testingDuelMega: Bool? = nil
+    static var duelMega: Bool { testingDuelMega ?? onDuelMega }
 }
 
 private func patched<T>(_ base: [T], _ changes: [Int: T]) -> [T] { var a = base; for (k, v) in changes { a[k] = v }; return a }

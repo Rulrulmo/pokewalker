@@ -129,6 +129,7 @@ actor SaveDB {
             try c.exec(expeditionSchema)                                                                   // 5.1 (docs/plans/19): the team events
             try? c.exec("ALTER TABLE mail ADD COLUMN deleted_at INTEGER")                            // 5.1 (plan 19 §9): a mail out of the list
             try? c.exec("ALTER TABLE app_reports ADD COLUMN install_log TEXT")                       // 5.1.2: the updater's install.log, its last lines
+            try? c.exec("ALTER TABLE duels ADD COLUMN mega INTEGER")                                 // 5.1.4 (plan 24): Mega Evolution allowed in this duel
         }   // tables added since (flags) come in on any open: IF NOT EXISTS
         db = c; self.path = path; self.reject = reject; self.rejectTests = rejectTests; self.minApp = minApp
     }
@@ -215,6 +216,7 @@ actor SaveDB {
                 if Content.v51 { reply["content51"] = .b(true) }                                     // 5.1 (plan 19): Content.on51, the same way
                 if Content.raidDaily { reply["raidDaily"] = .b(true) }                               // 5.1 (plan 20): Content.onDaily, the same way
                 if Content.evoChoice { reply["evoChoice"] = .b(true) }                               // 5.1.3 (plan 23): Content.onChoice, the same way
+                if Content.duelMega { reply["duelMega"] = .b(true) }                                 // 5.1.4 (plan 24): Content.onDuelMega, the same way
                 return Reply(200, reply,
                              note: t.device != nil && t.device != r.device ? "login from \(r.device_name.prefix(64)), took it from \(t.lastDevice ?? "?")" : nil)
             }
@@ -249,6 +251,7 @@ actor SaveDB {
                 if Content.v51 { reply["content51"] = .b(true) }                                     // 5.1: as login's
                 if Content.raidDaily { reply["raidDaily"] = .b(true) }
                 if Content.evoChoice { reply["evoChoice"] = .b(true) }
+                if Content.duelMega { reply["duelMega"] = .b(true) }
                 return Reply(200, reply, note: "new trainer \(id.name) from \(r.device_name.prefix(64))")
             }
         }

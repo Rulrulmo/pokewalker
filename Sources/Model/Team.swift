@@ -72,6 +72,7 @@ struct DuelView: Codable, Equatable {
     var result: DuelResult? = nil; var version = 0
     var parties: DuelParties? = nil                                    // 3.8 (14 §5.3): state picking — my 6, theirs as species only
     var opponentTitle: String? = nil                                   // 3.9 (docs/plans/15 §3.2): its 칭호, by its name
+    var mega: Bool? = nil                                              // 5.1.4 (docs/plans/24): this duel allows Mega Evolution (.megaFight; once a side, Battle.canMega)
 }
 struct DuelMon: Codable, Equatable { var dex: Int; var female: Bool; var shiny: Bool }
 struct DuelParties: Codable, Equatable { var mine: [Mon]; var theirs: [DuelMon]; var picked: [Int]?; var theyPicked: Bool }
