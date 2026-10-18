@@ -19,7 +19,7 @@ import Foundation
     for t in texts { for b in canvas.boxes {
         let i = t.r.intersection(b)
         guard !i.isNull, i.width * i.height > 0.15 * t.r.width * t.r.height, !b.insetBy(dx: -1, dy: -1).contains(t.r) else { continue }
-        bad.append("\(t.s) across a box's edge")
+        bad.append("\(t.s) across a box's edge (\(Int(t.r.minX)),\(Int(t.r.minY)) \(Int(t.r.width))×\(Int(t.r.height)) · box \(Int(b.minX)),\(Int(b.minY)) \(Int(b.width))×\(Int(b.height)))")
     } }
     return bad
 }
@@ -75,7 +75,7 @@ import Foundation
         let buttons = friend.map { [$0.duel, $0.visit].compactMap { $0 } + ($0.remove ? ["친구 끊기"] : []) } ?? []
         add((bad.isEmpty && seen >= 9 && buttons == ["대전 신청", "맡기기", "친구 끊기"] && me.paneContent(Date()).height == TeamCardModel.height,
              "5.1.4 the friends' cards full (칭호 · 721 · 이로치 145 · 레이드 11판 · 메가스톤 47/48 · 대전 999승 · 1,234,567걸음 · the longest course), a friend's walking or not, mine, 전체's, and my own card: no words over words, past the page, cut, or across a button (크기 2 · 3 · 4)",
-             "\(seen) \(buttons) \(bad.prefix(6))"))
+             "\(seen) \(buttons) \(bad.prefix(14))"))
 
         // the Mega raid: nothing of balls or catching; the raid's own words as before
         let msrv = FakeCloud(); msrv.megaWeekNo = 0
