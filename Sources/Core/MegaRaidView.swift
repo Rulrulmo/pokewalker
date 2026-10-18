@@ -56,7 +56,8 @@ extension Walker {
         guard let t, let r = megaLobby, let b = r.bosses[safe: raidMegaBoss] else { return "" }
         let odds = r.odds[safe: t.tier - 1] ?? 0
         let first = megaFirst(t.tier).flatMap { $0.got ? nil : " · 첫 승리 " + $0.item }               // 5.0: this tier's first-win cap, still to come
-        return (b.had == true ? "이기면 \(odds)% 확률로 BP \(MegaRaid.duplicateBP(t.tier))" + (first == nil ? " (스톤은 이미 있어요)" : "") : "이기면 \(odds)% 확률로 \(b.stone)" + (first == nil ? " · 볼 없음" : "")) + (first ?? "")
+        return b.had == true ? "이기면 \(odds)% 확률로 BP \(MegaRaid.duplicateBP(t.tier))" + (first ?? " (스톤은 이미 있어요)")
+            : "이기면 \(odds)% 확률로 \(b.stone)" + (first ?? " · " + megaWinsText(b, r))                // 5.1.4 (the user): no 볼 없음 — its way to the stone (스톤까지 n/20)
     }
     func megaLCD(_ fb: inout FB, _ tab: Int, _ now: Date) {
         let half = Int(now.timeIntervalSinceReferenceDate * 2) % 2

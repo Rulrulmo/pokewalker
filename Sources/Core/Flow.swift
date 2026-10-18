@@ -277,7 +277,7 @@ extension Walker {
             default: turn(.run, from: b, back: back, now)
             }
         case .moves(let b, let sel):
-            let x = b.mine[b.me], ms = x.moves, i = min(sel, ms.count - 1), mega = b.canMega(.me) && !duelOn, n = ms.count + (mega ? 1 : 0)   // 5.0: 메가진화 after the moves (5.1: none in a duel — the server refuses it)
+            let x = b.mine[b.me], ms = x.moves, i = min(sel, ms.count - 1), mega = megaHere(b), n = ms.count + (mega ? 1 : 0)   // 5.0: 메가진화 after the moves (5.1.4: in a duel, when it allows it)
             if k == 0 { screen = .moves(b, sel: (sel + n - 1) % n) }
             else if k == 2 { screen = .moves(b, sel: (sel + 1) % n) }
             else if mega, sel == ms.count { megaOn.toggle(); screen = .moves(b, sel: sel) }          // ticked or not: no turn yet

@@ -50,12 +50,15 @@ extension Walker {
         var m = SideModel(foe: theirs, mine: card(mine, out: true), message: msg, mode: mode)
         let mm = mine.mon, et = expTable[growthRate[mm.dex]], lv = max(1, min(100, mm.level)), lo = et[lv], hi = et[min(100, lv + 1)]   // 5.0: ours' EXP bar
         m.mine.exp = mm.level >= 100 || hi <= lo ? 1 : max(0, min(1, CGFloat(mm.points - lo) / CGFloat(hi - lo)))
-        if case .moves = mode, b.canMega(.me), !duelOn { m.mega = megaOn }                          // 5.0: the 메가진화 button (ticked or not); 5.1: none in a duel
-        if b.canMega(.me), !duelOn, megaOn { m.megaTicked = true }                                  // 5.1: ticked — the HP box's tab, till the turn's answer
+        if case .moves = mode, megaHere(b) { m.mega = megaOn }                                      // 5.0: the 메가진화 button (ticked or not); 5.1.4: in a duel that allows it
+        else if case .moves = mode, duelOn, Content.duelMega, b.canMega(.me) { m.megaOff = true }   // 5.1.4: one that doesn't (the other's app before 5.1.4): 이번엔 없음
+        if megaHere(b), megaOn { m.megaTicked = true }                                              // 5.1: ticked — the HP box's tab, till the turn's answer
         if let s = megaGathering(now) { if s == .me { m.mine.name = monNames[mine.mon.dex] } else { m.foe.name = monNames[foe.mon.dex] } }   // its own name till the light bursts
         if raidOn { m.bars = .init(broken: b.theirs.filter { !$0.alive }.count, total: b.theirs.count, cur: CGFloat(foe.hp) / CGFloat(max(1, foe.maxHP))) }   // (the pane's strip by a prompt, the HP boxes' ×n)
         return m
     }
+    /// 메가진화 on offer now: ours may, and (5.1.4, plan 24) a live battle's says this one allows it (DuelView.mega; the server's: both apps 5.1.4 on).
+    func megaHere(_ b: Battle) -> Bool { b.canMega(.me) && (!duelOn || duel?.mega == true) }
     func card(_ f: Fighter, out: Bool) -> SideModel.Card { .init(name: f.mega.flatMap { Forms.of(f.mon.dex, $0)?.name } ?? monNames[f.mon.dex], level: f.mon.level, hp: f.hp, max: f.maxHP, out: out, status: f.status?.badge, item: f.item) }
     func sidePick(_ k: Int) {                                                                   // a click on the side panel = selecting that row, then ●
         guard !frozen, waiting == nil else { return }
@@ -218,6 +221,7 @@ extension Walker {
         switch beat {
         case .appear:
             if b.wild.shiny == true && u < 0.9 { return "✦ 반짝! ✦" }
+            if raidOn, raidMega { let f = b.theirs[b.it]; return "메가 레이드 보스 " + (f.mega.flatMap { Forms.of(f.mon.dex, $0)?.name } ?? it) + " 등장!" }   // 5.1.4: as its Mega
             return raidOn ? "레이드 보스 " + it + " 등장!" : legendDex.contains(b.wild.dex) ? "전설의 " + it + " 등장!" : "야생 " + josa(it, "이", "가") + " 나타났다!"
         case .sendOut(.it, let k) where b.trainer == nil: return josa(it, "이", "가") + " 다시 일어섰다! (남은 줄 \(b.theirs.count - k))"   // a raid: its next bar
         case .sendOut(.it, let i):
@@ -241,7 +245,7 @@ extension Walker {
         case .gained(let e, let l, _, let k): let who = monNames[b.mine[k].mon.dex]; return l.map { who + " Lv.\($0)!" } ?? josa(who, "은", "는") + " 경험치 \(e) 획득"
         case .fled: return raidOn ? "레이드가 끝났다" : josa(b.nm(.it), "은", "는") + " 도망쳤다..."
         case .ran: return raidOn ? "후퇴했다!" : "무사히 도망쳤다!"
-        case .won: return raidOn ? "\(b.theirs.count)줄을 모두 깼다! 볼 +\(RaidRules.winBalls)" : b.trainer.map { josa($0, "과", "와") + "의 승부에서 이겼다!" } ?? "승리!"
+        case .won: return raidOn ? "\(b.theirs.count)줄을 모두 깼다!" + (raidMega ? "" : " 볼 +\(RaidRules.winBalls)") : b.trainer.map { josa($0, "과", "와") + "의 승부에서 이겼다!" } ?? "승리!"   // 5.1.4 (the user: "메가레이드에서 클리어 했을때 볼 2개 추가 같은 필요없는 문구"): a Mega raid has no balls
         case .lost: return "눈앞이 캄캄해졌다..."
         case .mega(_, _, let t), .reform(_, _, let t):                                                 // 5.0 (plan 18 §14.4): its lines one after the other, over the beat
             // a Mega's first line while its light gathers, the second once it shows (MegaFX.reveal); a line too long for the LCD in two halves

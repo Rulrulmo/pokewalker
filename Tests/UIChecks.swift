@@ -4,9 +4,10 @@ import Foundation
 /// A canvas that draws nothing and keeps each line of text with where it went.
 @MainActor final class TextCanvas: Canvas {
     var said: [(s: String, at: CGPoint)] = []
+    var boxes: [CGRect] = []                                                                      // 5.1.4: the rounded ones filled (buttons, tiles, pills): words across their edges
     var scale: CGFloat { 2 }
     func fill(_ r: CGRect, _ c: Color) {}
-    func fill(_ p: Path, _ c: Color) {}
+    func fill(_ p: Path, _ c: Color) { if p.parts.count == 1, case .rounded(let r, _) = p.parts[0] { boxes.append(r) } }
     func stroke(_ p: Path, _ c: Color, width: CGFloat, round: Bool) {}
     func clip(_ p: Path) {}
     func save() {}

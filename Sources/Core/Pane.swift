@@ -13,6 +13,7 @@ struct SideModel: Equatable {
     var bars: Bars? = nil
     var mega: Bool? = nil                                              // 5.0: the move screen's 메가진화 (nil: it can't now), ticked or not
     var megaTicked = false                                             // 5.1: 메가진화 ticked (any battle screen till the turn's answer: the HP box's tab)
+    var megaOff = false                                                // 5.1.4: a duel without it (the other's app before 5.1.4) — ours could: 메가진화 · 이번엔 없음, greyed
 }
 /// 상점 / BP 교환소: the list, and how many.
 struct ShopModel: Equatable {
@@ -169,6 +170,12 @@ struct TeamCardModel: Equatable {
     var visit: String? = nil                                           // 3.8: 맡기기 (a friend walking now, none of mine away), or why not
     var request: String? = nil                                         // 3.8's 전체 tab: 친구 신청 on someone not a friend (or that it's been sent)
 }
+extension TeamCardModel {
+    /// 5.1.4 (the user's 5.1.3 shot, "트레이너 카드 글자 잘리고"): nine lines (a 칭호, 레이드, 메가스톤, 맡김 or 코스) ran under the buttons at 380.
+    /// The lines from 272, a step by how many; the buttons at 400 always, under the ninth (the page 440: no jump from one card to the next).
+    static let linesTop: CGFloat = 272, buttonsTop: CGFloat = 400, height: CGFloat = 440
+    var step: CGFloat { lines.count > 7 ? 14 : lines.count > 6 ? 15 : 17 }
+}
 /// 교환 (12 §3): a Pokémon in an offer as its tile shows it; dex nil = none (name says what goes there instead: 아무거나, 골라 주세요).
 struct TradeSlot: Equatable { var label: String; var dex: Int? = nil; var level = 0; var shiny = false; var name: String; var v = 0; var more: [Int] = [] }   // more: the 게시판's wished species after the first
 /// 교환's list (팀's 교환 tab): a page of the open offers — to me (whose, for what), then mine (to whom) — the pager, a note.
@@ -288,7 +295,7 @@ extension PaneContent {
     static var home: CGFloat { Content.v51 ? 468 : 446 }   // (5.1: 홈's sixth row, 전설 원정 — the user: "그냥 한줄 늘리는게 낫지 않아?")                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size; 5.0: 홈's quick buttons)
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 508 : grid?.regions != nil ? 448 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 472 : dex != nil ? (dex!.form != nil ? 420 : 390) : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
-            : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? 420 : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil || raidTier != nil || raidBalls != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446 : mailList != nil || mailOpen != nil || mailPick != nil ? 466
+            : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? TeamCardModel.height : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil || raidTier != nil || raidBalls != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446 : mailList != nil || mailOpen != nil || mailPick != nil ? 466
             : evoPick != nil ? 466 : radar != nil ? 327 : goals != nil || exp != nil ? 466 : card != nil ? (card!.picking ? 270 + 30 * CGFloat(card!.titles.count + 1) : card!.title != nil || card!.deco != nil || card!.stones != nil ? 254 : 230) : learn != nil ? 444 : tower != nil ? 400 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
     }
 }

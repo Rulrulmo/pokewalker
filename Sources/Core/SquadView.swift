@@ -75,7 +75,7 @@ extension Walker {
             if range.contains(picked.count) { m.go = "이 \(picked.count)마리로 정하기" }
         case .raid:
             let t = raidTierInfo(raidTier).map { "★\($0.tier) Lv.\($0.level)" } ?? ""                // 4.0: the tier picked, today's runs left (16 §8-1)
-            m.title = "레이드 출전"; m.note = t + (raidLeftToday.map { " · 오늘 \($0)판 남음" } ?? ""); m.hint = "1~3마리를 골라 주세요 · 제 레벨로 싸워요"
+            m.title = raidMega ? "메가 레이드 출전" : "레이드 출전"; m.note = t + ((raidMega ? megaLeftToday : raidLeftToday).map { " · 오늘 \($0)판 남음" } ?? ""); m.hint = "1~3마리를 골라 주세요 · 제 레벨로 싸워요"   // 5.1.4: the Mega raid's own
             if range.contains(picked.count) { m.go = "이 \(picked.count)마리로 도전" }
         case .duelPick:
             let p = duel?.parties
@@ -90,7 +90,7 @@ extension Walker {
     }
     func squadLCD(_ fb: inout FB, _ s: Squad, _ now: Date) {
         let keys = squadKeys(s), picked = squadOf(s), half = Int(now.timeIntervalSinceReferenceDate * 2) % 2
-        let title: String = { switch s.kind { case .tower: "타워 파티"; case .duelParty: "대전 파티"; case .raid: "레이드 출전"; case .duelPick: "3마리 고르기" } }()
+        let title: String = { switch s.kind { case .tower: "타워 파티"; case .duelParty: "대전 파티"; case .raid: raidMega ? "메가 레이드" : "레이드 출전"; case .duelPick: "3마리 고르기" } }()   // (5.1.4: the LCD's 96 dots)
         guard s.at < keys.count, let m = squadMon(s, keys[s.at]) else {                          // on the button: the first picked, the count, the button
             fb.text(title, 2, 0); fb.fill(0, 12, 96, 1, 2)
             if let f = picked.first.flatMap({ squadMon(s, $0) }) { fb.mon(f, half, 0, 2, anim: animT("squad", f.art, now)) }

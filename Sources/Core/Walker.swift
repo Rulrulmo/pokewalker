@@ -191,7 +191,7 @@ import Foundation
         if let b = fight {
             if raidThen != nil { return ("레이드", "잡을 기회") }
             if duelOn { return ("실시간 대전", "vs \(duel?.opponent ?? "")" + (duel?.opponentTitle.map { " 「\($0)」" } ?? "") + (duelLeft().map { " · \($0)초" } ?? "")) }   // 3.9: its 칭호 by its name                                       // a raid ball's throw on the battle stage
-            if raidOn { return ("레이드 배틀", (b.wild.shiny == true ? "★이로치 · 줄 " : "남은 줄 ") + "\(b.theirs.filter(\.alive).count)/\(b.theirs.count) · " + (Engine.raidTurns > 0 ? "\(min(b.turnNo + 1, Engine.raidTurns))/\(Engine.raidTurns)턴" : "\(b.turnNo + 1)턴")) }   // (3.8.4: no limit — 0)
+            if raidOn { return (raidMega ? "메가 레이드" : "레이드 배틀", (b.wild.shiny == true ? "★이로치 · 줄 " : "남은 줄 ") + "\(b.theirs.filter(\.alive).count)/\(b.theirs.count) · " + (Engine.raidTurns > 0 ? "\(min(b.turnNo + 1, Engine.raidTurns))/\(Engine.raidTurns)턴" : "\(b.turnNo + 1)턴")) }   // (3.8.4: no limit — 0)
             guard let tr = b.trainer else { return ("야생 배틀", state.here.name) }
             let left = { (fs: [Fighter]) in fs.filter(\.alive).count }
             if tr == Tower.tycoon { return (tr + " (\(Tower.tycoonPrint(afterWins: state.towerStreak ?? 0) ?? "은"))", "타이쿤전 · 남은 \(left(b.theirs)) : \(left(b.mine))") }   // 3.9
@@ -225,7 +225,7 @@ import Foundation
         case .duel(.hub(let t, _)): return ("대전", t == 0 ? "Lv.50 · 3마리씩" : "최근 20판")
         case .duel(.queued): return ("랜덤 매칭", duelLeft().map { "\($0)초 남음" } ?? "")
         case .duel: return ("실시간 대전", duelLeft().map { "\($0)초 남음" } ?? "")
-        case .squad(let s): switch s.kind { case .tower: return ("배틀 타워", "파티 고르기 · Lv.50"); case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return ("레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")) }
+        case .squad(let s): switch s.kind { case .tower: return ("배틀 타워", "파티 고르기 · Lv.50"); case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return (raidMega ? "메가 레이드" : "레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")) }
         case .hold(let r, _): return ("도구 주기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .formPick(let r, let it, _): return (it, state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .evoPick: return ("진화", "직접 골라 진화해요")

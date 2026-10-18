@@ -213,7 +213,11 @@ extension Canvas {
                 c.say(hint + power, rc.maxX - x(8), rc.minY + x(26), font(8, .semibold), dead ? Ink.faint : mv.effect > 1 ? Ink.red : Ink.sub, 1)
                 hits.append((rc, i))
             }
-            let mw: CGFloat = m.mega != nil ? 63 : 0                                                // 5.0: 메가진화 at the right of the note, two lines (the note keeps its room); ticked: purple, the move goes as one
+            let mw: CGFloat = m.mega != nil || m.megaOff ? 63 : 0                                   // 5.0: 메가진화 at the right of the note, two lines (the note keeps its room); ticked: purple, the move goes as one
+            if m.megaOff {                                                                         // 5.1.4: a duel without it — greyed, nothing to press
+                let rc = r(X1 - 58, top + 82, 58, 33); c.fill(.rounded(rc, 9 * K), Ink.board)
+                c.say("메가진화", rc.midX, rc.midY - x(6.5), font(9.5, .bold), Ink.faint, 0.5); c.say("이번엔 없음", rc.midX, rc.midY + x(7), font(8, .medium), Ink.faint, 0.5, maxW: rc.width - x(6))
+            }
             if let on = m.mega {
                 let rc = r(X1 - 58, top + 82, 58, 33), p = Path.rounded(rc, 9 * K)
                 c.fill(p, on ? Ink.c(132, 64, 196) : Ink.tile); if sel == ms.count { c.stroke(p, Ink.red, width: 2 * K) }
@@ -836,10 +840,10 @@ extension Page {
                 if e.shiny { c.say("★", rc.maxX - x(5), rc.minY + x(6), font(7, .bold), Ink.gold, 1) }
             } else { c.say("비어 있음", rc.midX, rc.midY, font(7.5, .medium), Ink.faint, 0.5) }
         }
-        var yy: CGFloat = 272; let step: CGFloat = m.lines.count > 7 ? 13.5 : m.lines.count > 6 ? 15 : 17   // (a 칭호's line: seven, closer; 4.0's 레이드 too: eight)
+        var yy = TeamCardModel.linesTop; let step = m.step                                          // (a 칭호's line: seven, closer; 4.0's 레이드 too: eight; 5.0's 메가스톤: nine)
         for l in m.lines {
             c.say(l.key, x(X0 + 2), y(yy), font(9, .medium), Ink.sub)
-            if l.gold { titlePill(l.value, x(X0 + 48), y(yy)) } else { c.say(l.value, x(X0 + 48), y(yy), font(10, .semibold), Ink.ink, maxW: x(X1 - X0 - 50)) }
+            if l.gold { titlePill(l.value, x(X0 + 48), y(yy), maxW: x(X1 - X0 - 50)) } else { c.say(l.value, x(X0 + 48), y(yy), font(10, .semibold), Ink.ink, maxW: x(X1 - X0 - 50)) }
             yy += step
         }
         var buttons: [(String, Int, Color, Color, Bool)] = []                                       // (3.8.1: no 인사)
@@ -847,10 +851,10 @@ extension Page {
         if let v = m.visit { let on = v == "맡기기"; buttons.append((on || v == "이미 맡겼어요" ? v : "걸을 때 맡기기", 6034, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 3.8: 맡겨 키우기
         if m.remove { buttons.append(("친구 끊기", 6031, Ink.tile, Ink.sub, true)) }
         if let q = m.request { let on = q == "친구 신청"; buttons = [(q, 6033, on ? Ink.red : Ink.tile, on ? .white : Ink.sub, on)] }   // the 전체 tab: someone not a friend
-        let perRow = buttons.count > 3 ? 2 : buttons.count, rowsN = (buttons.count + perRow - 1) / max(1, perRow)
+        let perRow = buttons.count > 3 ? 2 : buttons.count
         let n = CGFloat(perRow), bw = (X1 - X0 - 5 * (n - 1)) / n
         for (i, b) in buttons.enumerated() {
-            let rc = r(X0 + CGFloat(i % perRow) * (bw + 5), 380 + CGFloat(i / perRow) * 34 - (rowsN > 1 ? 0 : 0), bw, 30); c.fill(.rounded(rc, 10 * K), b.2)
+            let rc = r(X0 + CGFloat(i % perRow) * (bw + 5), TeamCardModel.buttonsTop + CGFloat(i / perRow) * 34, bw, 30); c.fill(.rounded(rc, 10 * K), b.2)   // (5.1.4: under the ninth line)
             c.say(b.0, rc.midX, rc.midY, fitFont(b.0, n > 2 ? [10, 9, 8.5] : [11, 10], rc.width - x(6), .bold), b.3, 0.5, maxW: rc.width - x(6)); if b.4 { hits.append((rc, b.1)) }   // (5.0: a long one a size smaller, whole)
         }
     }
@@ -1165,9 +1169,9 @@ extension Page {
         }
     }
     /// A 칭호 as a gold pill starting at xl; returns its width.
-    @discardableResult func titlePill(_ t: String, _ xl: CGFloat, _ midY: CGFloat, size: CGFloat = 9) -> CGFloat {
-        let f = font(size, .bold), w = width(t, f) + x(12)
-        c.pill(CGRect(x: xl, y: midY - x(size * 0.75 + 2), width: w, height: x(size * 1.5 + 4)), Ink.tint(Ink.gold, 0.22)); c.say(t, xl + w / 2, midY, f, Ink.c(150, 96, 16), 0.5); return w
+    @discardableResult func titlePill(_ t: String, _ xl: CGFloat, _ midY: CGFloat, size: CGFloat = 9, maxW: CGFloat? = nil) -> CGFloat {   // 5.1.4: maxW — a long one (a mail's 칭호) smaller, inside
+        let f = font(size, .bold), w = min(width(t, f) + x(12), maxW ?? .infinity)
+        c.pill(CGRect(x: xl, y: midY - x(size * 0.75 + 2), width: w, height: x(size * 1.5 + 4)), Ink.tint(Ink.gold, 0.22)); c.say(t, xl + w / 2, midY, f, Ink.c(150, 96, 16), 0.5, maxW: w - x(12)); return w
     }
     // MARK: 3.9's 우편함 (15 §6 A · D): the list, one mail, a pick — all 466 tall (the page doesn't jump between them)
     /// A mail's icon in a row (28 pt): its Pokémon, a gift box, a letter, a gem, a medal.

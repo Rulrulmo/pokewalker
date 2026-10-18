@@ -25,11 +25,11 @@ extension Walker {
         }
     }
     /// A duel to follow from here: its view kept, nothing played yet, the polls going (cloudTick: duelTick).
-    func duelStart(_ v: DuelView) { duel = v; duelOn = true; duelSeen = 0; duelShown = nil; duelWait = false }
+    func duelStart(_ v: DuelView) { duel = v; duelOn = true; duelSeen = 0; duelShown = nil; duelWait = false; megaOn = false }
     func duelStop() { duelOn = false; duelWait = false; cloud?.duelPoll = nil }
     /// The invitation's news: said, then its page (the poll brings its deadline, and a cancel or its end).
     func duelInvited(_ id: Int, _ from: String, _ now: Date) {
-        duel = DuelView(id: id, state: "invited", opponent: from, challenger: false); duelOn = true; duelSeen = 0; duelShown = nil; duelWait = false
+        duel = DuelView(id: id, state: "invited", opponent: from, challenger: false); duelOn = true; duelSeen = 0; duelShown = nil; duelWait = false; megaOn = false
         screen = .say([josa(from, "이", "가") + " 대전을 신청했다!"], next: .duel(.invite(id: id, from: from)), since: now)
         notify("pet", josa(from, "이", "가") + " 대전을 신청했어요", "1분 안에 수락하면 바로 시작해요 (Lv.50 · 타워 파티)")
     }
@@ -76,7 +76,7 @@ extension Walker {
     func duelPlay(_ v: DuelView, _ now: Date) -> Screen? {
         guard v.turn > duelSeen, !v.beats.isEmpty, let b = v.battle else { duelSeen = max(duelSeen, v.turn); return nil }
         let from = duelShown ?? b
-        duelSeen = v.turn; duelShown = b; duelWait = false; fight = b
+        duelSeen = v.turn; duelShown = b; duelWait = false; fight = b; megaOn = false              // (5.1.4: the tick goes with the turn played, as a fight's answer)
         return .beats(b, v.beats, since: now, from: from)
     }
     /// Where the duel stands: the invitation's page, whose pick (the menu, who's next, or the wait), or how it went.
@@ -158,7 +158,7 @@ extension Walker {
         screen = duelOn ? duelScreen(now) : .duel(.hub(tab: 0, sel: 0))                          // a duel going on: its page
     }
     func duelHubPane(_ tab: Int, _ sel: Int, _ now: Date) -> PaneContent {
-        let rec = "\(state.duelWins ?? 0)승 \(state.duelLosses ?? 0)패 · 이기면 +3BP"
+        let rec = "\(state.duelWins ?? 0)승 \(state.duelLosses ?? 0)패 · 이기면 +3BP" + (Content.duelMega && Content.gen6 ? " · 메가진화 OK" : "")   // 5.1.4 (plan 24)
         let six = duelSix, slots = (0..<6).map { six[safe: $0].map { SquadModel.Slot(dex: $0.dex, shiny: $0.shiny == true, level: "Lv.\(Walk.towerLevel)", art: $0.art) } }
         var m = DuelHubModel(tabs: Walker.duelHubTabs, tab: tab, note: rec, party: slots, partyNote: six.count >= 3 ? "대전 파티 · \(six.count)마리" : "대전 파티를 정해 주세요 (3~6마리)",
                              friends: [], recs: [], first: 0, count: 0, sel: sel, go: nil, hint: "", empty: "")

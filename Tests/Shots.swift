@@ -678,6 +678,47 @@ import AppKit
         take("evo_show", tw) { v in let f = v.state.companion; var t = f; t.dex = 237; v.screen = .evolve(from: f, to: t, since: Date().addingTimeInterval(-5)) }
         take("evo_dex", tw) { v in v.screen = .dex(236, filter: 0, detail: true) }
     } }
+    // 5.1.4 (docs/plans/24 · the user's two): a duel's 메가진화 (the button, ticked while the other picks, 이번엔 없음, the other's Mega in its words,
+    // the 대전 menu's line), the friends' cards full (a friend's walking or not, mine, 전체's, 크기 4) and my own, the Mega raid's words
+    Content.$testing.withValue(true) { Content.$testingDuelMega.withValue(true) {
+        let cm = fullCards(), rows = cm.teamRows(0), all = cm.teamRows(TeamTab.all)
+        let at = { (name: String) -> Int in rows.firstIndex { $0.card.name == name } ?? 0 }
+        take("m514_card_friend", cm) { v in v.screen = .team(sel: at("트레이너긴이름"), tab: 0, card: true) }
+        take("m514_card_idle", cm) { v in v.screen = .team(sel: at("김지훈"), tab: 0, card: true) }
+        take("m514_card_me", cm) { v in v.screen = .team(sel: rows.firstIndex { v.isMe($0.card) } ?? 0, tab: 0, card: true) }
+        take("m514_card_all", cm) { v in v.screen = .team(sel: all.firstIndex { $0.card.name == "모르는사람" } ?? 0, tab: TeamTab.all, card: true) }
+        take("m514_card_size4", cm) { v in SIZE = 4; v.screen = .team(sel: at("김지훈"), tab: 0, card: true) }; SIZE = 2
+        take("m514_mycard", cm) { v in v.screen = .card(0) }
+        func mon(_ dex: Int, _ item: String?, _ known: [Int]) -> Mon { var m = Mon(dex: dex, level: 50, female: false); m.item = item; m.known = known; return m }
+        let zard = mon(6, "리자몽나이트X", [14, 53, 337, 89]), luca = mon(448, "루카리오나이트", [14, 396, 98, 182])
+        var db = Battle(party: [zard, mon(25, nil, [85, 98, 86, 21]), mon(133, nil, [33, 98, 39, 28])], trainer: "민수", foes: [luca, mon(25, nil, [85]), mon(133, nil, [33])]); db.pvp = true
+        let dw = online(base())
+        @MainActor func duel(_ v: Walker, mega: Bool?, wait: Bool = false) { v.duelOn = true; v.duelWait = wait; v.duel = DuelView(id: 1, state: "active", opponent: "민수", challenger: true, battle: db, deadline: Int(Date().timeIntervalSince1970) + 21, mega: mega); v.fight = db; v.duelShown = db }
+        take("m514_duel_moves", dw) { v in duel(v, mega: true); v.megaOn = false; v.screen = .moves(db, sel: 4) }
+        take("m514_duel_ticked", dw) { v in duel(v, mega: true); v.megaOn = true; v.screen = .moves(db, sel: 1) }
+        take("m514_duel_wait", dw) { v in duel(v, mega: true, wait: true); v.megaOn = true; v.screen = .battle(db, sel: 0) }
+        take("m514_duel_off", dw) { v in duel(v, mega: nil); v.megaOn = false; v.screen = .moves(db, sel: 1) }
+        let foe: [Beat] = [.mega(.it, form: 1, text: "상대 루카리오의 루카리오나이트가 빛나기 시작했다!\n상대 루카리오는 메가루카리오로 메가진화했다!")]
+        take("m514_duel_foe_glow", dw) { v in duel(v, mega: true); v.screen = .beats(db, foe, since: Date().addingTimeInterval(-0.8 / v.battleSpeed), from: db) }
+        take("m514_duel_foe_mega", dw) { v in duel(v, mega: true); v.screen = .beats(db, foe, since: Date().addingTimeInterval(-2.4 / v.battleSpeed), from: db) }
+        take("m514_duel_hub", dw) { v in v.duelOn = false; v.duelWait = false; v.duel = nil; v.fight = nil; v.screen = .duel(.hub(tab: 0, sel: 0)) }
+        let msrv = FakeCloud(); msrv.megaWeekNo = 0
+        var mew = Mon(dex: 150, level: 100, female: false); mew.known = [94, 105, 58, 247]
+        let mw = online({ var s = base(); s.companion = mew; s.raidPower = 25_000; return s }(), server: msrv)
+        mw.openFeature("메가 레이드"); drain(mw); drain(mw)
+        take("m514_mega_tier", mw) { v in v.raidMegaBoss = 0; v.screen = .raid(.tier(sel: 2)) }
+        take("m514_mega_tier5", mw) { v in v.raidMegaBoss = 0; v.screen = .raid(.tier(sel: RaidRules.tiers.count - 1)) }
+        take("m514_mega_squad", mw) { v in v.raidTier = 3; v.screen = .squad(Squad(kind: .raid, picked: [], at: 0)) }
+        if let b = msrv.megaRaidStart(server(mw).1, 3, 0).boss {
+            var mb = Battle(wild: b.boss, companion: mew); mb.theirs += Array(repeating: Fighter(b.boss), count: RaidRules.bars - 1); mb.raidTier = 3
+            for i in mb.theirs.indices { mb.theirs[i].mega = b.mega }
+            take("m514_mega_appear", mw) { v in v.raidOn = true; v.fight = mb; v.screen = .beats(mb, [.appear], since: Date().addingTimeInterval(-1.2 / v.battleSpeed), from: mb) }
+            var won = mb; for i in won.theirs.indices { won.theirs[i].hp = 0 }; won.it = won.theirs.count - 1
+            take("m514_mega_won", mw) { v in v.raidOn = true; v.fight = won; v.screen = .beats(won, [.won], since: Date().addingTimeInterval(-0.6 / v.battleSpeed), from: won) }
+            mw.raidOn = false
+        }
+        mw.raidMega = false
+    } }
     return n
 }
 #endif
