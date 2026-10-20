@@ -239,6 +239,13 @@ import Foundation
         }
         mw.raidMega = false
     } }
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) {                 // 5.1.5: 홈's 레이더 waits over 홈 (not the menu), offline's line over 홈
+        let hw = online({ var s = base(); s.watts = 500; return s }())
+        take("w515_radar_wait", on: hw) { v in v.screen = .home; v.paneTap(9320) }
+        drain(hw); if case .radar = hw.screen { hw.giveUpRadar(); hw.screen = .home; drain(hw) }
+        let (hs, _) = server(hw); hs.down = true; hw.cloud!.addSteps(1); hw.cloud!.saveNow(); hw.tick(Date()); hw.tick(Date())
+        take("w515_offline", on: hw) { v in v.screen = .home; v.paneTap(9300 + (v.paneContent(T).status?.rows.firstIndex { $0.key == "친구" } ?? 4)) }
+    } }
     return n
 }
 #endif

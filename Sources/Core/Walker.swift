@@ -4,7 +4,8 @@ import Foundation
 
 @MainActor final class Walker {
     var state: Walk
-    var screen = Screen.home { didSet { if case .say = oldValue, Walker.startsFights(screen) { calmAt = Date() }; if case .menu(let g?, let s) = screen { menuSlot[g] = s }; remember(screen) } }
+    var screen = Screen.home { didSet { if case .say = oldValue, Walker.startsFights(screen) { calmAt = Date() }; if case .menu(let g?, let s) = screen { menuSlot[g] = s }; switch screen { case .home, .menu: homeOpened = nil; default: break }; remember(screen) } }
+    var homeOpened: String? = nil                                                                   // 5.1.5: the feature 홈's button or row opened (its ↩ goes home: up; the menu not on the way)
     var menuSlot: [Int: Int] = [:]
     var mailOpened: Set<Int> = []                                                                   // 3.9: mails opened since the server's last list (read now, for the red dot)                                                                  // 3.9: each menu group's last tile (its page opens on it again)
     /// 3.8.6: a message gone (a fight's end: n연승! · n 데미지!) onto a page whose ● or button starts a fight — for a moment that start isn't taken:

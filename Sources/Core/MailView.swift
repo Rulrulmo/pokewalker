@@ -25,7 +25,7 @@ extension Walker {
         return take > 0 ? "받을 우편 \(take)통" : new > 0 ? "새 우편 \(new)통" : mails.isEmpty ? "보상 · 공지" : "우편 \(mails.count)통"
     }
     func openMail(_ now: Date) {
-        guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: menuFor("우편함"), since: now); return }
+        guard let c = cloud, c.online else { screen = .say(Walker.offlineLines, next: up("우편함"), since: now); return }
         c.mailDue = true; screen = .mail(.list(sel: 0))
     }
     /// One opened: read (the server hears with the next list).
@@ -312,7 +312,7 @@ extension Walker {
     /// ↩: a pick → its mail (an ask: 아니오), a mail → the list on it, the list → the menu.
     func mailBack(_ s: MailStep) -> Screen {
         switch s {
-        case .list: return menuFor("우편함")
+        case .list: return up("우편함")
         case .open(let id): return .mail(.list(sel: mails.firstIndex { $0.id == id } ?? 0))
         case .pick(let id, let at, .some): return .mail(.pick(id: id, at: at, ask: nil))
         case .pick(let id, _, nil): return .mail(.open(id: id))

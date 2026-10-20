@@ -719,6 +719,18 @@ import AppKit
         }
         mw.raidMega = false
     } }
+    // 5.1.5 (the user via 회사 10-21: "꼭 그렇게 넘어가야해?"): 홈's 레이더 waits for the server over 홈 (not the menu), offline's line over 홈,
+    // 홈's 친구 opened and ↩ home again
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) {
+        let hw = online({ var s = base(); s.watts = 500; return s }())
+        take("m515_radar_wait", hw) { v in v.screen = .home; v.paneTap(9320) }
+        drain(hw); take("m515_radar", hw) { _ in }
+        if case .radar = hw.screen { hw.giveUpRadar(); hw.screen = .home; drain(hw) }
+        let friends = { (v: Walker) in 9300 + (v.paneContent(Date()).status?.rows.firstIndex { $0.key == "친구" } ?? 4) }
+        take("m515_back_home", hw) { v in v.screen = .home; v.paneTap(friends(v)); drain(v); _ = v.key(.back) }
+        let (hs, _) = server(hw); hs.down = true; hw.cloud!.addSteps(1); hw.cloud!.saveNow(); hw.tick(Date()); hw.tick(Date())
+        take("m515_offline", hw) { v in v.screen = .home; v.paneTap(friends(v)) }
+    } }
     return n
 }
 #endif

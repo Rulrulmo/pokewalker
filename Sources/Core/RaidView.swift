@@ -213,7 +213,7 @@ extension Walker {
     /// ↩ on the raid's pages: the tier → the lobby; the ball stage → given up (asked first); the lobby → the menu.
     func raidBack(_ step: RaidStep, _ now: Date) {
         switch step {
-        case .lobby: screen = menuFor(raidMega ? "메가 레이드" : "레이드")
+        case .lobby: screen = up(raidMega ? "메가 레이드" : "레이드")
         case .tier: screen = .raid(.lobby(tab: raidMega ? raidMegaBoss : 0))
         case .balls: raidLeave(home: false, now)
         }

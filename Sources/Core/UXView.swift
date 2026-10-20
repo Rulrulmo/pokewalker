@@ -10,15 +10,22 @@ extension Walker {
     static let quick = ["포켓 레이더", "포켓몬", "도구", "우편함"]
     /// 홈's rows → the page each opens (the status sheet's 알 · 배틀 타워 · 도감 · 레이드 · 친구).
     static let homeLinks: [String: String] = ["전설 원정": "전설 원정", "알": "트레이너 카드", "배틀 타워": "배틀 타워", "도감": "도감", "레이드": "레이드", "친구": "친구"]
+    /// 5.1.5 (the user via 회사 10-21: "홈화면에서 레이더 눌렀을때 메뉴 화면으로 이동했다가 넘어가는데 꼭 그렇게 넘어가야해?"): straight there — the
+    /// radar waits for the server on the page it came from (not the menu on its tile), ↩ from 홈's goes home (up), the menu's last tile stays.
     func quickOpen(_ name: String) {
         guard !frozen, waiting == nil else { return }
         lastInput = Date(); host?.redraw(.all)
+        let from = screen
+        if case .home = from { homeOpened = name }
         switch name {
         case "도구": screen = .items(itemsAt)
         case "트레이너 카드": screen = .card(2)                                                       // (알: its page)
-        default: if menuItems.contains(name) { open(name) }
+        case "포켓 레이더": openRadar(back: from, Date())
+        default: if menuItems.contains(name) { open(name, tile: false) }
         }
     }
+    /// Where ↩ from a feature's first page goes: home when 홈 opened it (5.1.5), else the menu on its tile.
+    func up(_ name: String) -> Screen { homeOpened != nil ? .home : menuFor(name) }
     /// The shop's amount typed (1 … what can be bought).
     func shopAmount() {
         guard case .shop(let bp, let sel, .some) = screen, let w = wares(bp)[safe: sel], let h = host else { return }
@@ -58,6 +65,7 @@ extension Walker {
         switch k {
         case .digit(let n) where (1...8).contains(n):
             if case .menu(let g?, _) = screen { guard menuTiles[g].items.indices.contains(n - 1) else { return false }; menuTap(n - 1); return true }
+            if case .home = screen, menuTiles[n - 1].items.isEmpty { quickOpen(menuTiles[n - 1].name); return true }   // 5.1.5: 홈's 1 · 3 (레이더 · 포켓몬) as its buttons
             screen = .menu(group: nil, sel: n - 1); press(1); return true
         case .letter(let c):
             switch c {
