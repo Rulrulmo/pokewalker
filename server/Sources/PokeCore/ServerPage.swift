@@ -1,7 +1,8 @@
 import Foundation
 import Hummingbird
 
-// The team's download page (GET /): what the game is, the latest Mac and Windows builds and the patch notes, behind one team password (DOWNLOAD_PASSWORD).
+// The team's download page (GET /): what the game is, the latest Mac and Windows builds and the patch notes — open (10-21), or behind one team password
+// when DOWNLOAD_PASSWORD is set. Never indexed either way (robots.txt, noindex).
 // What it shows is RELEASE_DIR as server/publish.sh leaves it: release.json, patch-notes.txt, the two zips and shots/ (the windows run's renders of
 // the release's commit, as WebP; none, and the page goes without). /v1 (the app's API) is untouched.
 
@@ -15,12 +16,14 @@ struct Release: Codable, Sendable {
 }
 
 struct DownloadSite: Sendable {
-    let dir: URL, password: String
+    let dir: URL, password: String?                                    // nil: open, no gate (10-21)
     /// The cookie that says the password was given: an HMAC of the password, so a new password logs everyone out and nothing is kept server-side.
-    var token: String { hex(hmacSHA256(key: Array(password.utf8), Array("pokewalker download v1".utf8))) }
+    var token: String { hex(hmacSHA256(key: Array((password ?? "").utf8), Array("pokewalker download v1".utf8))) }
     var release: Release? { (try? Data(contentsOf: dir.appendingPathComponent("release.json"))).flatMap { try? JSONDecoder().decode(Release.self, from: $0) } }
     var notes: String? { try? String(contentsOf: dir.appendingPathComponent("patch-notes.txt"), encoding: .utf8) }
-    func authorized(_ r: Request) -> Bool { cookie(r, "pw_dl") == token }
+    func authorized(_ r: Request) -> Bool { opens(cookie(r, "pw_dl")) }
+    /// Open (no password), or the cookie's the token.
+    func opens(_ pwdl: String?) -> Bool { password == nil || pwdl == token }
     /// A screenshot's file: lower-case letters, digits, _ and . only (no path), and there.
     func shotFile(_ name: String) -> URL? {
         guard name.hasSuffix(".webp"), !name.contains(".."), name.allSatisfy({ $0.isASCII && ($0.isLowercase || $0.isNumber || $0 == "_" || $0 == ".") }) else { return nil }
@@ -60,6 +63,7 @@ func html(_ body: String, status: HTTPResponse.Status = .ok, headers more: HTTPF
 func addDownloadPage(_ router: Router<BasicRequestContext>, _ site: DownloadSite) {
     router.get("/") { request, _ in site.authorized(request) ? html(site.page()) : html(loginPage(wrong: false)) }
     router.post("/login") { request, _ -> Response in
+        if site.password == nil { var h = HTTPFields(); h[.location] = "/"; return Response(status: .seeOther, headers: h) }   // open: an old form goes to the page
         var request = request
         let body = (try? await request.collectBody(upTo: 4096)).map { String(buffer: $0) } ?? ""
         guard formFields(body)["password"] == site.password else {

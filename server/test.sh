@@ -56,6 +56,11 @@ save() {  # save <session> <base> [<app> [<walk file>]]
 
 # 1 — ping, the key, create
 get ping;                                   ok "ping" is 200 .ok true
+page() { CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' "$@"); BODY=$(cat "$TMP/body" 2>/dev/null); }   # page <curl args…>: the download page (10-21: open)
+has() { printf '%s' "$BODY" | grep -q "$1"; }
+page "$BASE/";                              ok "the download page: open, no password" eval '[ "$CODE" = 200 ] && has "noindex, nofollow" && ! has "type=\"password\""'
+page -X POST --data 'password=x' "$BASE/login"; ok "an old password form → the page" eval '[ "$CODE" = 303 ]'
+page "$BASE/robots.txt";                    ok "robots.txt: nothing indexed" eval '[ "$CODE" = 200 ] && has "Disallow: /"'
 CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' --data-binary '{"id":"zz0","device":"x","device_name":"x"}' "$BASE/v1/login")
 BODY=$(cat "$TMP/body");                    ok "no app key → 401" is 401 .error app_key
 login test-a;                               ok "login: no such ID yet" is 200 .exists false

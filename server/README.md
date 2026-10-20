@@ -47,7 +47,7 @@
 | 협동 레이드 | 주마다 전설 보스 하나, 팀 HP를 모두 함께 깎는다. 깨면 볼로 잡기 | `ServerRaid.swift` |
 | 실시간 대전 | 대전 파티 등록, 친구 신청 · 랜덤 매칭, 서로 6마리 보고 3마리 고르기, 한 수 30초, 전적 | `ServerDuel.swift` |
 | 옛 1:1 교환 | 3.5 이전 앱의 교환(지금 앱은 게시판) | `ServerTrade.swift` |
-| 다운로드 페이지 | 팀 비밀번호로 여는 소개 · 다운로드 · 패치 내역 페이지 | `ServerPage.swift` |
+| 다운로드 페이지 | 소개 · 다운로드 · 패치 내역 페이지(10-21부터 비밀번호 없이 연다) | `ServerPage.swift` |
 | 자동 업데이트 | 서명된 릴리스를 앱에 내준다. 앱이 서명을 직접 확인한다 | `ServerUpdate.swift` |
 | 관리 명령 | 목록 · 세이브 보기 · 되돌리기 · 값 바꾸기 · 삭제 · 행동 기록 … | `ServerAdmin.swift` |
 
@@ -80,7 +80,7 @@
 |---|---|
 | `APP_KEY` | 앱 키. 앱의 `Cloud.swift`에 같은 값이 들어간다 (비밀) |
 | `PORT` · `DB_PATH` | 8787, `/var/lib/pokewalker/pokewalker.db` |
-| `DOWNLOAD_PASSWORD` | 다운로드 페이지 팀 비밀번호. 비면 페이지가 없다 (비밀) |
+| `DOWNLOAD_PASSWORD` | 다운로드 페이지 팀 비밀번호. 비거나 없으면 비밀번호 없이 연다(10-21부터 이 PC는 비어 있다) (비밀) |
 | `RELEASE_DIR` | 릴리스 파일 자리, `/var/lib/pokewalker/release` |
 | `NEXT_RELEASE_DIR` | 순차 배포 후보 자리(docs/plans/22). 없으면 `RELEASE_DIR` 뒤에 `-next` |
 | `MIN_APP` | 이보다 오래된 앱은 426. 지금 `3.0` |
@@ -123,8 +123,9 @@ server/build.sh install             # 빌드 → /usr/local/bin에 설치 → �
 - `https://pokewalker.rulrulmo.work/`: 게임 소개(실제 화면), 최신 Mac dmg(없는 릴리스는 zip)와 Windows 설치 프로그램(없는 릴리스는 zip), 시작하기, 패치 내역(`docs/patch-notes.txt`).
 - Windows는 설치 프로그램으로 내 사용자 폴더에 설치해서(관리자 권한 없음) 자동 업데이트가 된다. zip은 예전 앱의 자동 업데이트를 위해 릴리스에 남긴다.
 - Mac은 5.0부터 dmg로 받는다(응용 프로그램 폴더로 끌어 놓기). 자동 업데이트는 지금처럼 Mac zip으로 한다.
-- 팀 비밀번호 하나로 연다(쿠키 30일). 비밀번호를 바꾸면 서비스를 재시작하고 모두 다시 입력한다.
-- 앱 그림이 닌텐도 저작물이라 **공개하지 않는다**. 검색 엔진도 막는다(`robots.txt`, `noindex`).
+- 10-21부터 **비밀번호 없이** 연다(사용자가 정함). 다운로드 4개(`/download/…`)와 화면 사진도 그렇다. 옛 비밀번호 화면의 `POST /login`은 페이지로 보낸다.
+  - 다시 막으려면 `DOWNLOAD_PASSWORD`를 넣고 재시작한다(팀 비밀번호 하나, 쿠키 30일).
+- 앱 그림이 닌텐도 저작물이라 검색 엔진은 막는다(`robots.txt`, `noindex, nofollow`). 링크를 아는 사람만 들어온다.
 - 페이지가 보여 주는 것은 `RELEASE_DIR`의 파일뿐이고, 채우는 것은 `publish.sh`뿐이다.
 
 ### 순차 배포 (docs/plans/22)

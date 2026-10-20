@@ -376,6 +376,13 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     #expect(on.contains("pixel\">721<") && on.contains("pixel\">\(Content.$testing.withValue(true) { courses.count })<") && on.contains("pixel\">621<") && on.contains("pixel\">191<"))
 }
 
+@Test func downloadPageOpen() {                                                                     // 10-21: no DOWNLOAD_PASSWORD, no gate; set, the cookie as before
+    let dir = FileManager.default.temporaryDirectory
+    let open = DownloadSite(dir: dir, password: nil), gated = DownloadSite(dir: dir, password: "pw")
+    #expect(open.opens(nil) && open.opens("anything"))
+    #expect(!gated.opens(nil) && !gated.opens("anything") && !gated.opens(open.token) && gated.opens(gated.token))
+}
+
 @Test func saveChecks() async throws {
     let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     var g = Seeded(s: 7), a = Walk(); a.audited = 2; a.bag = ["금구슬", "상처약", "상처약"]
