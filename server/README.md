@@ -68,6 +68,7 @@
 | `POST /v2/trades` | 옛 1:1 교환 (3.5 이전 앱) |
 | `POST /v1/update` · `GET /v1/download/mac` · `/v1/download/windows` · `/v1/download/windows-setup` · `/v1/download/mac-dmg` | 자동 업데이트: 서명된 `manifest.json` + 서명, zip(설치 프로그램 릴리스부터는 Windows 설치 프로그램도, 5.0부터는 Mac dmg도) |
 | `GET /` · `POST /login` · `GET /download/:kind` · `/shot/:name` · `/robots.txt` | 다운로드 페이지 |
+| `GET /guide` · `/guide/img/:name` | 육성 가이드(10-21): 글은 `ServerGuide.swift`, 그림은 `GUIDE_DIR` |
 | `POST /v1/save` · `/v1/legacy` · `/v1/radar` · `/v1/radar/result` · `/v1/hatch` · `/v1/buy` · `/v1/evolve` | 2.x 시절 경로. `MIN_APP=3.0`이라 2.x 앱은 426 |
 
 `/v2/act`의 행동과 답의 모양은 앱과 같이 쓰는 `Sources/Model/Engine.swift`(Act, Outcome, News)와 `Sources/Model/Team.swift`(친구 · 게시판 · 레이드 · 대전의 답)에 있다.
@@ -82,6 +83,7 @@
 | `PORT` · `DB_PATH` | 8787, `/var/lib/pokewalker/pokewalker.db` |
 | `DOWNLOAD_PASSWORD` | 다운로드 페이지 팀 비밀번호. 비거나 없으면 비밀번호 없이 연다(10-21부터 이 PC는 비어 있다) (비밀) |
 | `RELEASE_DIR` | 릴리스 파일 자리, `/var/lib/pokewalker/release` |
+| `GUIDE_DIR` | 육성 가이드 그림 자리, `/var/lib/pokewalker/guide`(`guide.sh`가 채운다). 없으면 글만 |
 | `NEXT_RELEASE_DIR` | 순차 배포 후보 자리(docs/plans/22). 없으면 `RELEASE_DIR` 뒤에 `-next` |
 | `MIN_APP` | 이보다 오래된 앱은 426. 지금 `3.0` |
 | `CHECK_MODE` · `CHECK_REJECT_TESTS` | 2.x 세이브 검사(docs/plans/10). 3.0부터는 세이브가 들어오지 않아 거의 쓰이지 않는다 |
@@ -127,6 +129,15 @@ server/build.sh install             # 빌드 → /usr/local/bin에 설치 → �
   - 다시 막으려면 `DOWNLOAD_PASSWORD`를 넣고 재시작한다(팀 비밀번호 하나, 쿠키 30일).
 - 앱 그림이 닌텐도 저작물이라 검색 엔진은 막는다(`robots.txt`, `noindex, nofollow`). 링크를 아는 사람만 들어온다.
 - 페이지가 보여 주는 것은 `RELEASE_DIR`의 파일뿐이고, 채우는 것은 `publish.sh`뿐이다.
+
+### 육성 가이드 (/guide)
+
+- 포켓몬을 모르는 팀원이 이 게임 기준으로 키우는 법을 읽는 페이지(10-21, 사용자가 정함). 두 페이지 맨 위에 서로 가는 링크가 있다. 다운로드 페이지와 같이 열리고(`DOWNLOAD_PASSWORD`가 있으면 같이 막힌다) 검색 엔진은 막는다.
+- 글은 `Sources/PokeCore/ServerGuide.swift`(회사가 쓴 5.1.5 글을 코드와 대조해 고친 것). 숫자나 규칙이 바뀌면 여기를 고치고 설치한다.
+- 그림은 Mac 세션이 앱으로 렌더해 main의 `docs/guide/img/`에 올린다(캡션은 `docs/guide/README.md`, 다시 만드는 법은 `tools/guide-shots/README.md`).
+  - 이 PC에 싣기: `server/guide.sh`(기본 origin/main). PNG를 무손실 WebP로 바꿔 `GUIDE_DIR`에 한 번에 바꿔 넣는다. 재시작은 필요 없다.
+  - 규칙: 이름 앞 두 자리가 섹션(`06-…` → 06), 섹션 안은 이름순, `-before` · `-after`는 나란히 한 그림, 캡션은 README에서 파일 이름이 든 줄의 나머지(①, ②…는 줄마다).
+  - 자리: 글의 `<!--figs 06-05 …-->`가 부르는 그림은 거기, 나머지는 `<!--figs-->`나 섹션 끝.
 
 ### 순차 배포 (docs/plans/22)
 

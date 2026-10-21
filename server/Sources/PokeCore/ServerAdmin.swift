@@ -7,6 +7,7 @@ let usage = """
     usage: pokeserver <command> [--db <path>]
       serve                              the API on 127.0.0.1:$PORT (env APP_KEY, PORT=8787, DB_PATH), and the team's download page at /
                                          (RELEASE_DIR=/var/lib/pokewalker/release, server/publish.sh fills it; DOWNLOAD_PASSWORD set: behind it)
+                                         and its guide at /guide (GUIDE_DIR=/var/lib/pokewalker/guide: its pictures, server/guide.sh fills it)
       init                               make the database file and its tables (the only command that creates it)
       list                               every trainer, today's steps first
       show <id>                          one trainer: the row, its history and legacy copies
@@ -368,7 +369,8 @@ public func run(_ arguments: [String]) async -> Int32 {
             let db = try SaveDB(path: path, reject: env["CHECK_MODE"] == "reject", rejectTests: env["CHECK_REJECT_TESTS"] == "1",
                                 minApp: env["MIN_APP"].flatMap { $0.isEmpty || versionParts($0) == nil ? nil : $0 })   // (VIEW_ALL: gone, 10-16 — everyone has 전체)
             let (release, next) = releaseDirs(env)
-            let site = DownloadSite(dir: release, password: env["DOWNLOAD_PASSWORD"].flatMap { $0.isEmpty ? nil : $0 })   // none: the page open (10-21)
+            let site = DownloadSite(dir: release, password: env["DOWNLOAD_PASSWORD"].flatMap { $0.isEmpty ? nil : $0 },   // none: the page open (10-21)
+                                    guide: URL(fileURLWithPath: env["GUIDE_DIR"].flatMap { $0.isEmpty ? nil : $0 } ?? "/var/lib/pokewalker/guide", isDirectory: true))
             try await serve(db: db, appKey: appKey, port: port, site: site, release: release, next: next)
             return 0
         case "verify-release":                                                            // publish.sh: before anything goes up

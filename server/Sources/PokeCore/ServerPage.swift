@@ -2,7 +2,7 @@ import Foundation
 import Hummingbird
 
 // The team's download page (GET /): what the game is, the latest Mac and Windows builds and the patch notes — open (10-21), or behind one team password
-// when DOWNLOAD_PASSWORD is set. Never indexed either way (robots.txt, noindex).
+// when DOWNLOAD_PASSWORD is set. Never indexed either way (robots.txt, noindex). Its guide (GET /guide): ServerGuide.swift.
 // What it shows is RELEASE_DIR as server/publish.sh leaves it: release.json, patch-notes.txt, the two zips and shots/ (the windows run's renders of
 // the release's commit, as WebP; none, and the page goes without). /v1 (the app's API) is untouched.
 
@@ -17,6 +17,7 @@ struct Release: Codable, Sendable {
 
 struct DownloadSite: Sendable {
     let dir: URL, password: String?                                    // nil: open, no gate (10-21)
+    var guide: URL? = nil                                              // GUIDE_DIR: the guide's pictures (nil or none there: the guide without)
     /// The cookie that says the password was given: an HMAC of the password, so a new password logs everyone out and nothing is kept server-side.
     var token: String { hex(hmacSHA256(key: Array((password ?? "").utf8), Array("pokewalker download v1".utf8))) }
     var release: Release? { (try? Data(contentsOf: dir.appendingPathComponent("release.json"))).flatMap { try? JSONDecoder().decode(Release.self, from: $0) } }
@@ -95,6 +96,18 @@ func addDownloadPage(_ router: Router<BasicRequestContext>, _ site: DownloadSite
         headers[.cacheControl] = "private, max-age=604800"                                        // the page asks with ?v=<build>: a new release, new URLs
         return Response(status: .ok, headers: headers, body: try await FileIO().loadFile(path: u.path, context: context))
     }
+    router.get("/guide") { request, _ -> Response in
+        guard site.authorized(request) else { var h = HTTPFields(); h[.location] = "/"; return Response(status: .seeOther, headers: h) }
+        return html(site.guidePage())
+    }
+    router.get("/guide/img/:name") { request, context -> Response in
+        let name = context.parameters.get("name") ?? ""
+        guard site.authorized(request), let u = site.guideFile(name) else { return html(notFoundPage(), status: .notFound) }
+        var headers = HTTPFields()
+        headers[.contentType] = ["webp": "image/webp", "png": "image/png"][(name as NSString).pathExtension.lowercased()] ?? "image/jpeg"
+        headers[.cacheControl] = "private, max-age=604800"                                        // the guide asks with ?v=<its time>: a new picture, a new URL
+        return Response(status: .ok, headers: headers, body: try await FileIO().loadFile(path: u.path, context: context))
+    }
     router.get("/robots.txt") { _, _ in Response(status: .ok, headers: [.contentType: "text/plain"], body: .init(byteBuffer: ByteBuffer(string: "User-agent: *\nDisallow: /\n"))) }
 }
 
@@ -124,12 +137,20 @@ let pageStyle = """
         background: linear-gradient(#fff 0 43%, var(--band) 43% 57%, #fff 57%); }
     .ball::after { content: ""; position: absolute; inset: 0; margin: auto; width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 3px solid var(--band); }
     .brand { display: flex; align-items: center; gap: 12px; font-size: 21px; letter-spacing: .3px; }
+    /* the top row: the brand, the two pages (the download page, the guide) */
+    .top { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 22px; }
+    .top .home { color: #fff; text-decoration: none; }
+    .top nav { display: flex; gap: 8px; }
+    .top nav a { padding: 7px 15px; border-radius: 99px; color: #fff; text-decoration: none; font-size: 14.5px; font-weight: 700; white-space: nowrap;
+        box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .55); }
+    .top nav a:hover { background: rgba(255, 255, 255, .14); }
+    .top nav a[aria-current] { background: #fff; color: #1c1d21; box-shadow: none; }
 
     /* the top: the card's red, its dot paper */
     .hero { background: var(--red); color: #fff; position: relative; overflow-x: clip; }
     .hero::before { content: ""; position: absolute; inset: 0; pointer-events: none;
         background-image: radial-gradient(rgba(255, 255, 255, .13) 1.3px, transparent 1.5px); background-size: 18px 18px; }
-    .hero-in { position: relative; display: grid; grid-template-columns: 1.1fr .9fr; gap: 32px; align-items: center; padding-top: 48px; padding-bottom: 36px; }
+    .hero-in { position: relative; display: grid; grid-template-columns: 1.1fr .9fr; gap: 32px; align-items: center; padding-top: 8px; padding-bottom: 36px; }
     .hero h1 { font-size: clamp(34px, 5.2vw, 52px); line-height: 1.18; font-weight: 800; letter-spacing: -.025em; margin: 28px 0 16px; }
     .lede { font-size: 17px; line-height: 1.7; margin: 0; max-width: 31em; color: rgba(255, 255, 255, .92); }
     .dl { display: flex; flex-wrap: wrap; gap: 12px; margin: 30px 0 16px; }
@@ -226,13 +247,14 @@ let pageStyle = """
     .sum { font: 11.5px/1.7 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; margin-top: 6px; }
 
     @media (max-width: 860px) {
-        .hero-in { grid-template-columns: 1fr; gap: 8px; padding-top: 36px; }
+        .hero-in { grid-template-columns: 1fr; gap: 8px; padding-top: 0; }
         .shots { height: 400px; margin-bottom: -170px; }
         .features { grid-template-columns: repeat(2, 1fr); }
         .perks, .steps, .more .cols { grid-template-columns: 1fr; }
         main.wrap { padding-top: 176px; }
     }
     @media (max-width: 560px) {
+        .top nav a[aria-current] { display: none; }
         .btn { flex: 1 1 100%; }
         .shots img { width: 196px; } .shots { height: 350px; margin-bottom: -150px; }
         .shots .back { transform: translateX(-92%) rotate(-7deg); } .shots .front { transform: translateX(-22%) rotate(4deg); }
@@ -261,10 +283,10 @@ let pageStyle = """
     .gate-body .note { color: var(--mute); font-size: 14.5px; margin: 0; }
     """
 
-func shell(_ title: String, _ body: String) -> String {
+func shell(_ title: String, _ body: String, style: String = "") -> String {
     """
     <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#d62e2a"><title>\(esc(title))</title>\(pageFonts)<style>\(pageStyle)</style></head>
+    <meta name="robots" content="noindex, nofollow"><meta name="theme-color" content="#d62e2a"><title>\(esc(title))</title>\(pageFonts)<style>\(pageStyle)\(style)</style></head>
     <body>\(body)</body></html>
     """
 }
@@ -326,7 +348,7 @@ extension DownloadSite {
 
     func page() -> String {
         guard let r = release else {
-            return shell("PokeWalker", "<header class=\"hero\"><div class=\"wrap hero-in\"><div>\(brandHTML)<h1>아직 올라온<br>빌드가 없어요</h1></div></div></header><div class=\"band\"></div>"
+            return shell("PokeWalker", "<header class=\"hero\">\(topBar("/"))<div class=\"wrap hero-in\"><div><h1>아직 올라온<br>빌드가 없어요</h1></div></div></header><div class=\"band\"></div>"
                 + "<main class=\"wrap\" style=\"padding-top: 60px\">" + notesSection() + "</main>")
         }
         let when = Date(timeIntervalSince1970: TimeInterval(r.published)).formatted(.dateTime.year().month(.twoDigits).day(.twoDigits).locale(Locale(identifier: "ko_KR")))
@@ -350,7 +372,7 @@ extension DownloadSite {
                     ("Windows zip", setup ? r.windows : nil), ("Windows", setup ? nil : r.windows)]
             .compactMap { n, b in b.map { "\(n) \($0.sha256)" } }.joined(separator: "<br>")
         let hero = """
-            <header class="hero"><div class="wrap hero-in"><div>\(brandHTML)
+            <header class="hero">\(topBar("/"))<div class="wrap hero-in"><div>
             <h1>일하는 동안,<br>포켓몬과 함께 걸어요</h1>
             <p class="lede">키보드를 누르고 마우스를 클릭할 때마다 한 걸음. 화면 구석의 몬스터볼 카드 안에서 동료가 걷고, 모은 W로 포켓몬을 만나요. HGSS의 포켓워커를 Mac과 Windows 데스크톱으로 옮겨 왔어요.</p>
             <div class="dl">\(buttons)</div>

@@ -61,6 +61,9 @@ has() { printf '%s' "$BODY" | grep -q "$1"; }
 page "$BASE/";                              ok "the download page: open, no password" eval '[ "$CODE" = 200 ] && has "noindex, nofollow" && ! has "type=\"password\""'
 page -X POST --data 'password=x' "$BASE/login"; ok "an old password form → the page" eval '[ "$CODE" = 303 ]'
 page "$BASE/robots.txt";                    ok "robots.txt: nothing indexed" eval '[ "$CODE" = 200 ] && has "Disallow: /"'
+page "$BASE/";                              ok "the page → the guide" eval 'has "href=\"/guide\""'
+page "$BASE/guide";                         ok "the guide: open, not indexed, 01–09" eval '[ "$CODE" = 200 ] && has "noindex, nofollow" && has "id=\"basics\"" && has "id=\"mistakes\"" && has "href=\"/\""'
+page "$BASE/guide/img/..%2Fpokewalker.db";  ok "the guide's pictures: no path out" eval '[ "$CODE" = 404 ]'
 CODE=$(curl -s -o "$TMP/body" -w '%{http_code}' -H 'Content-Type: application/json' --data-binary '{"id":"zz0","device":"x","device_name":"x"}' "$BASE/v1/login")
 BODY=$(cat "$TMP/body");                    ok "no app key → 401" is 401 .error app_key
 login test-a;                               ok "login: no such ID yet" is 200 .exists false

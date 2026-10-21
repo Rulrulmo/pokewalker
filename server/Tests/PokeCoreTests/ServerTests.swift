@@ -383,6 +383,51 @@ func login(_ db: SaveDB, _ id: String, device: String, app: String? = "2.0", for
     #expect(!gated.opens(nil) && !gated.opens("anything") && !gated.opens(open.token) && gated.opens(gated.token))
 }
 
+@Test func guidePictures() throws {                                                                 // 10-21: GET /guide — GUIDE_DIR's pictures by section, the README's captions
+    #expect(guideName("06-mint-after.webp") && guideName("03_Radar.PNG") && guideName("01-a.jpg"))
+    #expect(!guideName("../x.webp") && !guideName("a/b.webp") && !guideName(".x.webp") && !guideName("06.txt") && !guideName("06 x.png") && !guideName("가.png"))
+    let readme = """
+        # 가이드 이미지
+        - `06-page.png` — 번호를 붙인 포켓몬 페이지
+        | 06-mint-before.png | 민트 전: 고집 |
+        06-mint-after.png: 민트 후 (**공격 ↑**)
+        ![레이더의 풀숲](img/03-radar.png)
+        - `06-page-zoom.png`
+        """
+    #expect(guideCaption("06-page.webp", readme) == "번호를 붙인 포켓몬 페이지")
+    #expect(guideCaption("06-mint-before.webp", readme) == "민트 전: 고집" && guideCaption("06-mint-after.webp", readme) == "민트 후 (공격 ↑)")
+    #expect(guideCaption("03-radar.webp", readme) == "레이더의 풀숲" && guideCaption("06-page-zoom.webp", readme) == "" && guideCaption("09-x.webp", readme) == "")
+    let figs = guideFigures(["06-page.webp", "06-mint-after.webp", "06-mint-before.webp", "03-radar.webp", "cover.webp", "06-cap-before.webp", "notes.txt"], readme: readme)
+    #expect(figs.keys.sorted() == ["03", "06"] && figs["03"] == [.one(GuidePicture(file: "03-radar.webp", caption: "레이더의 풀숲"))])
+    #expect(figs["06"] == [.one(GuidePicture(file: "06-cap-before.webp", caption: "")),                // no -after: one on its own
+                           .pair(GuidePicture(file: "06-mint-before.webp", caption: "민트 전: 고집"), GuidePicture(file: "06-mint-after.webp", caption: "민트 후 (공격 ↑)")),
+                           .one(GuidePicture(file: "06-page.webp", caption: "번호를 붙인 포켓몬 페이지"))])
+
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pokeserver-guide-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir.appendingPathComponent("img"), withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let bare = DownloadSite(dir: dir, password: nil), site = DownloadSite(dir: dir, password: nil, guide: dir)
+    var page = bare.guidePage()                                                                      // no pictures: the text alone
+    #expect(page.contains("noindex, nofollow") && !page.contains("<figure class=\"fig") && !page.contains(figsHere))
+    for id in ["basics", "words", "catch", "level", "evolve", "strong", "routine", "play", "mistakes"] { #expect(page.contains("id=\"\(id)\"") && page.contains("href=\"#\(id)\"")) }
+    #expect(page.contains("class=\"formula\"") && page.contains("href=\"/\"") && page.contains("aria-current=\"page\">육성 가이드"))
+    for f in ["06-04-mint-before.webp", "06-04-mint-after.webp", "06-1-x.webp", "06-99-extra.webp", "03-radar.webp"] { try Data("x".utf8).write(to: dir.appendingPathComponent("img/\(f)")) }
+    try readme.replacingOccurrences(of: "06-mint", with: "06-04-mint").write(to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+    page = site.guidePage()
+    func at(_ s: String) throws -> String.Index { try #require(page.range(of: s)).lowerBound }
+    #expect(try at("성격 · 민트") < at("class=\"fig pair\"") && at("class=\"fig pair\"") < at("특성 · 특성패치"))   // <!--figs 06-03 06-04-->: the mint's, there
+    #expect(try at("기술 고르기") < at("06-1-x.webp") && at("06-99-extra.webp") < at("id=\"routine\""))       // named nowhere ("06-1" isn't "06-10"): 06's end
+    #expect(try at("id=\"catch\"") < at("03-radar.webp") && at("03-radar.webp") < at("id=\"level\"") && !page.contains("<!--figs"))
+    #expect(page.contains("src=\"/guide/img/06-04-mint-before.webp?v=") && page.contains("alt=\"레이더의 풀숲\"") && page.contains("<b>후</b> 민트 후 (공격 ↑)"))
+    #expect(site.guideFile("03-radar.webp") != nil && site.guideFile("../img/03-radar.webp") == nil && site.guideFile("04-none.webp") == nil && bare.guideFile("03-radar.webp") == nil)
+    try release(in: dir)
+    #expect(site.page().contains("<a href=\"/guide\">육성 가이드</a>") && site.page().contains("aria-current=\"page\">다운로드"))
+}
+private func release(in dir: URL) throws {
+    let b = "{\"file\":\"f\",\"size\":1048576,\"sha256\":\"\(String(repeating: "c", count: 64))\"}"
+    try Data("{\"version\":\"5.1.5\",\"build\":\"57\",\"commit\":\"x\",\"published\":1800000000,\"mac\":\(b),\"windows\":\(b)}".utf8).write(to: dir.appendingPathComponent("release.json"))
+}
+
 @Test func saveChecks() async throws {
     let t0 = Date(timeIntervalSince1970: 1_800_000_000)
     var g = Seeded(s: 7), a = Walk(); a.audited = 2; a.bag = ["금구슬", "상처약", "상처약"]
