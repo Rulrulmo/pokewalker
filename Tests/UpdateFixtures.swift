@@ -88,6 +88,7 @@ final class FakeUpdates: CloudLink, @unchecked Sendable {
     // 3.9.1 (Jyo's, 2026-10-08): an install tried for a version, and the app still the old one at the next launch → that version failed, never again,
     // and the app starts as it is (a launch never only hands off to an install that can't happen); an older one staged (a zip's from before) is cleared
     let g1 = readyIn("g1", "99.0"); try? Data("99.0".utf8).write(to: g1.appendingPathComponent("attempt"))
+    try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-600)], ofItemAtPath: g1.appendingPathComponent("attempt").path)   // (5.2, ③: tried 10 minutes ago — no installer at work)
     try? Data().write(to: g1.appendingPathComponent("PokeWalker-setup.exe"))
     let ga = Update.atLaunch(dir: g1, app: shipped), gaAgain = Update.atLaunch(dir: g1, app: shipped)
     let g2 = readyIn("g2", "0.1"); try? fm.createDirectory(at: g2.appendingPathComponent("staging"), withIntermediateDirectories: true); _ = Update.atLaunch(dir: g2, app: shipped)

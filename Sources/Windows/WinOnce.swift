@@ -38,8 +38,14 @@ func noteRunning() {
     NSLog("pokewalker: the card before didn't answer: %d ended, this one starts", ended)
 }
 
-/// The installer is at work: it starts the app itself (5.2: also a launch after the first quit for it, Update.Launch.waiting).
-func sayInstalling() { say("PokeWalker 업데이트를 설치하는 중이에요.\n잠시 뒤에 다시 켜 주세요.") }
+/// This launch's handle on the one-a-login mutex (WinApp).
+nonisolated(unsafe) var appMutex: HANDLE? = nil
+/// The installer is at work: it starts the app itself (5.2: also a launch after the first quit for it, Update.Launch.waiting). The mutex let go
+/// first: the installer waits for it to be gone (CloseApp) — a box held open with it would make the install fail as "still running".
+func sayInstalling() {
+    if let m = appMutex { _ = CloseHandle(m); appMutex = nil }
+    say("PokeWalker 업데이트를 설치하는 중이에요.\n잠시 뒤에 다시 켜 주세요.")
+}
 private func say(_ text: String) {
     _ = wide(text) { b in wide("PokeWalker") { t in MessageBoxW(nil, b, t, UINT(MB_OK) | UINT(MB_ICONINFORMATION) | UINT(MB_TOPMOST) | UINT(MB_SETFOREGROUND)) } }
 }

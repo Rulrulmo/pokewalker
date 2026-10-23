@@ -25,7 +25,7 @@ let resourceDir: URL? = {
         print("store: \(Store.file.path) (Foundation's application support: \(FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.path ?? "-"))")
         exit(selftest() ? 0 : 1)
     }
-    _ = wide("Local\\dev.khmin.pokewalker") { CreateMutexW(nil, false, $0) }                      // one card per login: a second launch shows the first's
+    appMutex = wide("Local\\dev.khmin.pokewalker") { CreateMutexW(nil, false, $0) }               // one card per login: a second launch shows the first's
     if GetLastError() == DWORD(ERROR_ALREADY_EXISTS) { secondLaunch() }                          // 5.1.2: the first comes forward, or this starts in its place (WinOnce.swift)
     noteRunning()
     _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT(bitPattern: -4))                      // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2: sharp on every monitor
