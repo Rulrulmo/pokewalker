@@ -246,6 +246,29 @@ import Foundation
         let (hs, _) = server(hw); hs.down = true; hw.cloud!.addSteps(1); hw.cloud!.saveNow(); hw.tick(Date()); hw.tick(Date())
         take("w515_offline", on: hw) { v in v.screen = .home; v.paneTap(9300 + (v.paneContent(T).status?.rows.firstIndex { $0.key == "친구" } ?? 4)) }
     } }
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) { Content.$testing52.withValue(true) { Content.$testingDaily.withValue(true) {   // 5.2: 전설 원정 · 기술머신 · 메가 모습 · 찾기 · 홈's 레이드
+        var r = Seeded(s: 21), saur = Mon.wild(3, level: 55, &r); saur.item = "이상해꽃나이트"; saur.known = [76, 188, 79, 202]
+        let tl = Expeditions.legend(641, &r), te = Expeditions.legend(639, &r)
+        let xw = online({ var s = base(); s.companion = saur; s.tms = [6, 22, 26, 100]; s.raidPower = 4 * Engine.raidPowerCost; s.day = Walk.key(Date())
+                          s.expeditions = ["토네로스": ExpProgress(on: true, steps: 1_800, mon: tl, meets: 1, hp: tl.stats[0] * 38 / 100, status: .paralysis),
+                                           "테라키온": ExpProgress(mon: te, stage: 1, balls: 4)]; return s }())
+        xw.cloud!.raidDue = true; xw.cloud!.megaRaidDue = true; drain(xw); drain(xw)
+        take("w52_exp_roam", on: xw) { v in v.exp52Tab(1); v.screen = .expedition(0) }
+        take("w52_exp_trial", on: xw) { v in v.exp52Tab(2); v.screen = .expedition(1) }
+        take("w52_exp_lcd", lcd: true, on: xw) { v in v.exp52Tab(1); v.screen = .expedition(0) }
+        take("w52_exp_balls", on: xw) { v in v.expBallsID = "테라키온"; v.screen = .raid(.expBalls("테라키온")) }
+        var mb = Battle(wild: tl, companion: saur, chain: 0); _ = mb.begin(weather: nil, &r); mb.expedition = "토네로스"; mb.theirs[0].hp = tl.stats[0] * 38 / 100
+        take("w52_meet", on: xw) { v in v.fight = mb; v.screen = .battle(mb, sel: 0) }
+        xw.fight = nil
+        let tws = xw.wares(false), tm26 = tws.firstIndex { if case .item("기술머신26") = $0.kind { return true }; return false } ?? 0
+        take("w52_tm_shop", on: xw) { v in v.screen = .shop(bp: false, sel: tm26, qty: nil) }
+        take("w52_tm_bag", on: xw) { v in v.screen = .items(Walker.tmRow0 + 2) }
+        take("w52_tm_relearn", on: xw) { v in v.screen = .relearn(ref: -1, slot: 3, at: 89) }
+        take("w52_mega_home", on: xw) { v in v.screen = .home }
+        take("w52_mega_view", on: xw) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true); v.megaLookForm = 1 }
+        take("w52_box_star", on: xw) { v in v.megaLookForm = nil; v.screen = .box(-1, act: nil, confirm: false) }
+        take("w52_raid_group", on: xw) { v in v.screen = .home; v.paneTap(9300 + (v.paneContent(T).status?.rows.firstIndex { $0.key == "레이드" } ?? 3)) }
+    } } } }
     return n
 }
 #endif
