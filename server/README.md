@@ -206,6 +206,7 @@ server/build.sh install             # 빌드 → /usr/local/bin에 설치 → �
 | `pw slot-odds [on\|off]` | 코스 포켓몬 그룹 확률(docs/plans/21) |
 | `pw evo-choice [on\|off]` | 배루키 진화를 Lv.20에서 직접 고르기(docs/plans/23). 켜면 모든 앱에서 기다리고, 5.1.3부터 고른다 |
 | `pw duel-mega [on\|off]` | 대전에서 메가진화(docs/plans/24). 두 앱이 모두 5.1.4 이상인 대전만 쓸 수 있다 |
+| `pw content52 [on\|off]` | 5.2(docs/plans/19 §11): 배회 · 시련 · 레쿠쟈 원정, 기술머신, 일루전 · 프리폴. 5.2 앱의 요청에만 돈다(5.1.x는 그대로). 테스트 ID는 꺼져 있어도 켜진다 |
 
 비상시 `sudo -u pokewalker sqlite3 /var/lib/pokewalker/pokewalker.db`로 직접 고칠 때는 `rev = rev + 1, writer = 'admin'`도 같이 한다.
 
