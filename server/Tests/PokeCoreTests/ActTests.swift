@@ -754,6 +754,11 @@ extension SaveDB {
     #expect(Set(made.compactMap(\.nature)).count == 25 && Set(made.compactMap(\.ability)) == [0, 1] && (60...140).contains(made.filter { $0.shiny == true }.count))   // 1 in 64
     let m = made.first { $0.shiny != true }!
     #expect(giftMonLine(m).hasPrefix("배루키 Lv.1 ♂ · 성격 ") && giftMonLine(m).contains("이로치 아니오"))
+    let six = (0..<200).map { _ in giftMon(383, level: 100, perfect: 6, shiny: false, &r) }                     // 10-23: --perfect 6 --shiny no
+    #expect(six.allSatisfy { $0.dex == 383 && $0.level == 100 && $0.ivs == [31, 31, 31, 31, 31, 31] && $0.shiny == nil && $0.moves.count == 4 })
+    #expect(Set(six.compactMap(\.nature)).count > 20 && giftMonLine(six[0]).contains("개체값 31/31/31/31/31/31 · 이로치 아니오"))
+    let set = giftMon(383, level: 100, perfect: 3, shiny: true, nature: natures.firstIndex { $0.name == "고집" }, &r)
+    #expect(set.shiny == true && set.natureName == "고집" && (set.ivs ?? []).filter { $0 == 31 }.count >= 3)
     let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
     let a = try await newTrainer(db, "앨리스")
     var seq = 1, t = 60.0
@@ -769,6 +774,44 @@ extension SaveDB {
     #expect(got.out.cannot == nil && x.dex == 236 && x.uid != nil && x.uid! > firstUID && x.ot == nil && x.ivs == m.ivs && x.nature == m.nature && (w.owned ?? []).contains(236))
     #expect(got.out.mon?.uid == x.uid)
     #expect(try await db.monsList("앨리스").contains("mail"))                                      // in the ledger, as issued here
+}
+
+// 10-23 (the user via 회사: "특성 성격 성별 및 기술도 … 다 최대 효율로", "이로치도 가능한지"): --ivs --evs --ability --moves, checked before anything is
+// sent; the made one passes SaveCheck and comes out of the claim as it was (its moves, EVs, 이로치 in shinyOwned)
+@Test func mailGiftMonSet() async throws {
+    try await Content.$testing.withValue(true) { try await Content.$testing51.withValue(true) {
+        var r = Seeded(s: 383)
+        var m = giftMon(383, level: 100, shiny: true, nature: natures.firstIndex { $0.name == "고집" }, &r)
+        #expect(giftMonSet(&m, ivs: [31, 31, 31, 31, 31, 31], evs: [6, 252, 0, 0, 0, 252], ability: 0, moves: ["단애의칼", "지진", "암해머", "339"]) == nil)
+        #expect(m.known == [619, 89, 359, 339] && m.evs == [6, 252, 0, 0, 0, 252] && m.ivs == [31, 31, 31, 31, 31, 31] && m.shiny == true && m.abilityName == "가뭄" && !m.female)
+        #expect(giftMonLine(m) == "그란돈 Lv.100 성별 없음 · 성격 고집 · 특성 가뭄 (칸 0) · 개체값 31/31/31/31/31/31 · 노력치 6/252/0/0/0/252 · 이로치 예 · 기술 단애의칼, 지진, 암해머, 벌크업")
+        var x = m
+        #expect(giftMonSet(&x, ivs: [31, 31, 32, 31, 31, 31], evs: nil, ability: nil, moves: nil)?.hasPrefix("--ivs") == true)
+        #expect(giftMonSet(&x, ivs: nil, evs: [255, 255, 1, 0, 0, 0], ability: nil, moves: nil)?.hasPrefix("--evs") == true)   // 511
+        #expect(giftMonSet(&x, ivs: nil, evs: [256, 0, 0, 0, 0, 0], ability: nil, moves: nil)?.hasPrefix("--evs") == true)
+        #expect(giftMonSet(&x, ivs: nil, evs: nil, ability: 1, moves: nil) == "--ability: 그란돈 has 0 가뭄")
+        #expect(giftMonSet(&x, ivs: nil, evs: nil, ability: nil, moves: ["리프블레이드"])?.contains("isn't 그란돈's") == true)
+        #expect(giftMonSet(&x, ivs: nil, evs: nil, ability: nil, moves: ["지진", "지진"]) == "--moves: 1-4 moves, each once")
+        #expect(giftMonSet(&x, ivs: nil, evs: nil, ability: nil, moves: ["지진", "암해머", "벌크업", "단애의칼", "분화"]) == "--moves: 1-4 moves, each once")
+        var low = giftMon(383, level: 40, &r)                                                          // 단애의칼 from Lv.45 (기술 바꾸기, content51)
+        #expect(giftMonSet(&low, ivs: nil, evs: nil, ability: nil, moves: ["단애의칼"])?.contains("isn't 그란돈's at Lv.40") == true)
+        #expect(x == m)                                                                                // a refusal changed nothing it was given
+        let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+        let a = try await newTrainer(db, "경환")
+        var seq = 1, t = 60.0
+        func go(_ act: Act) async throws -> ActReply {
+            t += 1; defer { seq += 1 }
+            return try reply(await db.act(ActReq(id: "경환", session: a, seq: seq, act: act, app: "5.2"), now: base.addingTimeInterval(t)))
+        }
+        _ = try await go(.steps)
+        _ = try await db.adminMail("경환", title: "선물: 그란돈", body: "★이로치 · Lv.100", gifts: [.mon(mon: m)], now: Int(base.timeIntervalSince1970 + t))
+        let id = try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: "경환", session: a), now: base.addingTimeInterval(t)).body).mails[0].id
+        let got = try await go(.mailClaim(id: id))
+        let w = try #require(got.walk), y = try #require(w.box.last)
+        #expect(got.out.cannot == nil && y.uid != nil && y.known == m.known && y.evs == m.evs && y.ivs == m.ivs && y.nature == m.nature && y.shiny == true && y.ability == 0)
+        #expect((w.shinyOwned ?? []).contains(383) && (w.owned ?? []).contains(383) && SaveCheck.values(w).isEmpty)
+        #expect(try await db.monsList("경환").contains("mail"))
+    } }
 }
 
 @Test func towerStreakRewards() async throws {

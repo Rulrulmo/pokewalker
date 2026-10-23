@@ -28,6 +28,8 @@ let usage = """
       mail <id|--all> --title <t> [--body <b>] [--item <name> <n>]… [--bp <n>] [--watts <n>] [--title-gift <칭호>] [--deco silver|gold]
            [--mon <dex> <level>]…      3.9 (docs/plans/15): a mail to one trainer or all (test IDs left out); no gifts = a notice
                                          --mon (5.1.3): one made as an egg hatches (wild IVs · nature · ability slot · gender, 이로치 1/64), at that level
+                                     after it (10-23): --perfect <0-6> IVs at 31 or --ivs h,a,b,c,d,s; --shiny yes|no (else the 1/64);
+                                     --nature <성격>; --evs h,a,b,c,d,s (≤255 each, 510); --ability <slot>; --moves <a,b,c,d> (its 기술 바꾸기's)
       mail-log [<n>]                     the last mails sent, newest first (default 30)
       raid-runs [on | <unix>]            4.0 (docs/plans/16): when the raid's runs start for the team (on = now; test IDs have them always)
       raid-log [<n>]                     the last raid runs: who, the tier, the boss (★ shiny), bars down, won, balls left, caught (default 30)
@@ -480,8 +482,26 @@ public func run(_ arguments: [String]) async -> Int32 {
                 case "--deco": guard let d = v, ["silver", "gold"].contains(d) else { return fail("mail: --deco silver|gold") }; gifts.append(.deco(kind: d)); i += 2
                 case "--mon":
                     guard let d = v.flatMap({ Int($0) }), (1...dexMax).contains(d), i + 2 < rest.count, let lv = Int(rest[i + 2]), (1...100).contains(lv) else { return fail("mail: --mon <dex 1-\(dexMax)> <level 1-100>") }
-                    var r = SystemRandomNumberGenerator(); gifts.append(.mon(mon: giftMon(d, level: lv, &r))); i += 3
-                default: return fail("mail: \(o)? (--title --body --item --bp --watts --title-gift --deco --mon)")
+                    i += 3; var perfect = 0, shiny: Bool? = nil, nature: Int? = nil                    // (10-23: what follows it is its own)
+                    var ivs: [Int]? = nil, evs: [Int]? = nil, ability: Int? = nil, moves: [String]? = nil
+                    func six(_ x: String?) -> [Int]? { x.map { $0.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) } } }
+                    while i < rest.count, ["--perfect", "--shiny", "--nature", "--ivs", "--evs", "--ability", "--moves"].contains(rest[i]) {
+                        let x = i + 1 < rest.count ? rest[i + 1] : nil
+                        switch rest[i] {
+                        case "--perfect": guard let n = x.flatMap({ Int($0) }), (0...6).contains(n) else { return fail("mail: --perfect <0-6>") }; perfect = n
+                        case "--shiny": guard let y = x, ["yes", "no"].contains(y) else { return fail("mail: --shiny yes|no") }; shiny = y == "yes"
+                        case "--nature": guard let k = x.flatMap({ n in natures.firstIndex { $0.name == n } }) else { return fail("mail: --nature <\(natures.map(\.name).joined(separator: " "))>") }; nature = k
+                        case "--ivs": guard let v = six(x) else { return fail("mail: --ivs <h,a,b,c,d,s>") }; ivs = v
+                        case "--evs": guard let v = six(x) else { return fail("mail: --evs <h,a,b,c,d,s>") }; evs = v
+                        case "--ability": guard let a = x.flatMap({ Int($0) }) else { return fail("mail: --ability <slot 0|1|2>") }; ability = a
+                        default: guard let v = x else { return fail("mail: --moves <a,b,c,d>") }; moves = v.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                        }
+                        i += 2
+                    }
+                    var r = SystemRandomNumberGenerator(), m = giftMon(d, level: lv, perfect: perfect, shiny: shiny, nature: nature, &r)
+                    if let why = giftMonSet(&m, ivs: ivs, evs: evs, ability: ability, moves: moves) { return fail("mail: \(why) — nothing sent") }
+                    gifts.append(.mon(mon: m))
+                default: return fail("mail: \(o)? (--title --body --item --bp --watts --title-gift --deco --mon [--perfect --ivs --shiny --nature --evs --ability --moves])")
                 }
             }
             guard let title, !title.isEmpty else { return fail("mail: --title is needed") }

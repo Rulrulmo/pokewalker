@@ -200,11 +200,41 @@ extension SaveDB {
 
 /// pokeserver mail --mon <dex> <level> (5.1.3): one made as the walker's egg hatches one (Walk.eggMon: Mon.wild's IVs · nature · ability slot ·
 /// gender, 이로치 1 in shinyOdds), at that level — its moves the level's own, its 어버이 the trainer who claims it (kind "admin": minted there).
-func giftMon<R: RandomNumberGenerator>(_ dex: Int, level: Int, _ r: inout R) -> Mon {
-    Mon.wild(dex, level: level, shiny: Int.random(in: 0..<shinyOdds, using: &r) == 0 ? true : nil, &r)
+/// 10-23 (the user via 회사: "만렙 그란돈 6v 이런걸?"): --perfect n of its IVs 31 (Mon.wild's), --shiny yes|no instead of the draw, --nature.
+func giftMon<R: RandomNumberGenerator>(_ dex: Int, level: Int, perfect: Int = 0, shiny: Bool? = nil, nature: Int? = nil, _ r: inout R) -> Mon {
+    var m = Mon.wild(dex, level: level, shiny: shiny ?? (Int.random(in: 0..<shinyOdds, using: &r) == 0) ? true : nil, perfect: perfect, &r)
+    if let nature { m.nature = nature }
+    return m
 }
-/// What the command printed for a mailed Pokémon: species, level, gender, nature, ability, IVs, 이로치.
+/// 10-23 (the user via 회사: "특성 성격 성별 및 기술도 … 다 최대 효율로"): a made one set further — its IVs (six of 0-31), EVs (six of 0-255, 510
+/// in all: SaveCheck's own), the ability slot (its species' 0 / 1, 2 = the hidden one with content5), its moves (1–4, by number or name, each one
+/// 기술 바꾸기 offers it at that level: Walk.relearnable with no machines). nil: done; else what's wrong (nothing is sent).
+func giftMonSet(_ m: inout Mon, ivs: [Int]?, evs: [Int]?, ability: Int?, moves: [String]?) -> String? {
+    if let v = ivs { guard v.count == 6, v.allSatisfy({ (0...31).contains($0) }) else { return "--ivs: six of 0-31 (HP,공격,방어,특공,특방,스피드)" }; m.ivs = v }
+    if let v = evs { guard v.count == 6, v.allSatisfy({ (0...255).contains($0) }), v.reduce(0, +) <= 510 else { return "--evs: six of 0-255, 510 in all" }; m.evs = v }
+    if let a = ability {
+        let hidden = Content.gen6 && hiddenAbility[m.dex] > 0
+        guard abilitySlots[m.dex].indices.contains(a) || (a == 2 && hidden) else {
+            return "--ability: \(monNames[m.dex]) has " + abilitySlots[m.dex].indices.map { "\($0) \(abilityNames[abilitySlots[m.dex][$0]] ?? "?")" }.joined(separator: ", ")
+                + (hidden ? ", 2 \(abilityNames[hiddenAbility[m.dex]] ?? "?")" : "")
+        }
+        m.ability = a
+    }
+    if let names = moves {
+        let can = Walk().relearnable(m)
+        var ids: [Int] = []
+        for n in names {
+            guard let id = Int(n) ?? moveTable.first(where: { $0.value.name == n })?.key else { return "--moves: \(n)? (a number or a name)" }
+            guard can.contains(id) else { return "--moves: \(moveTable[id]?.name ?? n) isn't \(monNames[m.dex])'s at Lv.\(m.level) — \(can.compactMap { moveTable[$0]?.name }.joined(separator: " "))" }
+            ids.append(id)
+        }
+        guard (1...4).contains(ids.count), Set(ids).count == ids.count else { return "--moves: 1-4 moves, each once" }
+        m.known = ids
+    }
+    return nil
+}
+/// What the command printed for a mailed Pokémon: species, level, gender, nature, ability, IVs (EVs), 이로치, moves.
 func giftMonLine(_ m: Mon) -> String {
     "\(monNames[m.dex]) Lv.\(m.level) \(m.female ? "♀" : genderRate[m.dex] < 0 ? "성별 없음" : "♂") · 성격 \(m.natureName) · 특성 \(abilityNames[m.abilityID] ?? "?") (칸 \(m.ability ?? 0))"
-        + " · 개체값 \((m.ivs ?? []).map(String.init).joined(separator: "/")) · 이로치 \(m.shiny == true ? "예" : "아니오") · 기술 \(m.moves.compactMap { moveTable[$0]?.name }.joined(separator: ", "))"
+        + " · 개체값 \((m.ivs ?? []).map(String.init).joined(separator: "/"))" + (m.evs.map { " · 노력치 \($0.map(String.init).joined(separator: "/"))" } ?? "") + " · 이로치 \(m.shiny == true ? "예" : "아니오") · 기술 \(m.moves.compactMap { moveTable[$0]?.name }.joined(separator: ", "))"
 }
