@@ -23,10 +23,7 @@ func noteRunning() {
         if SendMessageTimeoutW(h, wmShow, 0, 0, UINT(SMTO_ABORTIFHUNG | SMTO_BLOCK), 5000, &answer) != 0, answer == 1 { exit(0) }
         if pid != 0 { pids.append(pid) }
     }
-    if let at = (try? FileManager.default.attributesOfItem(atPath: Update.dir.appendingPathComponent("attempt").path))?[.modificationDate] as? Date,
-       Date().timeIntervalSince(at) < 120 {                                                       // the installer started a moment ago: it starts the app itself
-        say("PokeWalker 업데이트를 설치하는 중이에요.\n잠시 뒤에 다시 켜 주세요."); exit(0)
-    }
+    if let at = Update.attemptAt(Update.dir), Date().timeIntervalSince(at) < 120 { sayInstalling(); exit(0) }   // the installer started a moment ago: it starts the app itself
     if let t = try? String(contentsOf: runningFile, encoding: .utf8), let p = t.split(separator: "\n").first.flatMap({ DWORD($0) }), !pids.contains(p) { pids.append(p) }
     let mine = exePath().lowercased()
     var ended = 0, stuck = false
@@ -41,6 +38,8 @@ func noteRunning() {
     NSLog("pokewalker: the card before didn't answer: %d ended, this one starts", ended)
 }
 
+/// The installer is at work: it starts the app itself (5.2: also a launch after the first quit for it, Update.Launch.waiting).
+func sayInstalling() { say("PokeWalker 업데이트를 설치하는 중이에요.\n잠시 뒤에 다시 켜 주세요.") }
 private func say(_ text: String) {
     _ = wide(text) { b in wide("PokeWalker") { t in MessageBoxW(nil, b, t, UINT(MB_OK) | UINT(MB_ICONINFORMATION) | UINT(MB_TOPMOST) | UINT(MB_SETFOREGROUND)) } }
 }

@@ -32,6 +32,7 @@ let resourceDir: URL? = {
     settings = JSONSettings(file: Store.dir.appendingPathComponent("settings.json"))
     let launch = Update.atLaunch()                                                                // a downloaded update goes in first: the helper starts it once this exits
     if launch == .installing { exit(0) }
+    if launch == .waiting { sayInstalling(); exit(0) }                                            // 5.2 (③): its installer still at work (a launch right after the app quit for it)
     let f = WinFonts(); fonts = f; textMasks = f
     let loaded = Store.loadChecked(signedBefore: settings.bool("saveSigned", false))           // a save changed by hand: the last one the app made
     Content.atLaunch(loaded.walk)                                                               // 5.1.1: the server's switches as last heard, before the save is used

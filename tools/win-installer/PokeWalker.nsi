@@ -111,6 +111,7 @@ Function .onInit
   ${EndIf}
   ReadEnvStr $Log PW_LOG
   ${If} $Update == 1
+    !insertmacro Note "started ${VERSION}"                     ; 5.2 (①): a line at each step, so a stop shows where (the app reads the last ones)
     ReadEnvStr $R2 PW_TARGET                                   ; the app's own folder: installed over in place
     ${If} $R2 != ""
       StrCpy $INSTDIR $R2
@@ -121,6 +122,9 @@ Function .onInit
       ${If} $4 P<> 0
         System::Call 'kernel32::WaitForSingleObject(p r4, i 30000) i .r5'
         System::Call 'kernel32::CloseHandle(p r4)'
+        ${If} $5 != 0
+          !insertmacro Note "waiting ${VERSION}: the app (pid $R3) still running after 30 s"
+        ${EndIf}
       ${EndIf}
     ${EndIf}
     ; an update keeps the choices as they were: a desktop shortcut and the sign-in start only where they already are
@@ -136,6 +140,7 @@ FunctionEnd
 
 Section "PokeWalker" SecApp
   SectionIn RO
+  !insertmacro Note "closing ${VERSION}: PokeWalker, if it runs"
   !insertmacro CloseApp
   ${If} $0 != 1
     !insertmacro Note "failed ${VERSION}: PokeWalker is still running"
@@ -144,6 +149,7 @@ Section "PokeWalker" SecApp
     ${EndIf}
     Abort
   ${EndIf}
+  !insertmacro Note "writing ${VERSION}: $INSTDIR"
   SetOutPath "$INSTDIR"
   ClearErrors
   File /r "${SRC}\*"

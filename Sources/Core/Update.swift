@@ -24,7 +24,7 @@ enum Update {
     struct Entry: Equatable, Sendable { var version, sha256: String; var size: Int }
     /// A staged update (ready.json): its version and where the unpacked app is.
     struct Ready: Codable, Equatable { var version: String; var staged: String }
-    enum Launch: Equatable { case none, installing, updated(String) }
+    enum Launch: Equatable { case none, installing, updated(String), waiting }   // waiting (5.2, ③): the installer still at work — this launch says so and goes
 
     static var dir: URL { Store.dir.appendingPathComponent("update", isDirectory: true) }
     /// The signed manifest's line this app takes (3.9.1: Windows', its installer) and where the server hands it out.
@@ -58,9 +58,45 @@ enum Update {
               let e = m[platform] as? [String: Any], let sha = e["sha256"] as? String, let size = e["size"] as? Int else { return nil }
         return Entry(version: v, sha256: sha.lowercased(), size: size)
     }
-    /// Versions whose install failed here (the helper notes them): never tried again.
-    static func failed(_ dir: URL) -> [String] {
-        ((try? String(contentsOf: dir.appendingPathComponent("failed"), encoding: .utf8)) ?? "").split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }
+    /// Versions whose install failed here (the helper notes them), with when (5.2: "5.2 1793000000"; before it: the version alone).
+    static func failedAt(_ dir: URL) -> [(v: String, at: Date?)] {
+        ((try? String(contentsOf: dir.appendingPathComponent("failed"), encoding: .utf8)) ?? "").split(whereSeparator: \.isNewline).compactMap { l in
+            let w = l.split(separator: " ").map(String.init); guard let v = w.first, !v.isEmpty else { return nil }
+            return (v, w.dropFirst().first.flatMap(Double.init).map { Date(timeIntervalSince1970: $0) })
+        }
+    }
+    static func failed(_ dir: URL) -> [String] { failedAt(dir).map(\.v) }
+    /// 5.2 (④, the 준쵸리 report 10-21): the ones not to take now — a failed version goes once more a day after (or at once when the server
+    /// says urgent), never a third time (retried).
+    static func blocked(_ dir: URL, urgent: Bool, now: Date = Date()) -> [String] {
+        let again = Set(lines(dir, "retried"))
+        return failedAt(dir).filter { e in again.contains(e.v) || !(urgent || e.at.map { now.timeIntervalSince($0) >= 86_400 } ?? true) }.map(\.v)
+    }
+    /// A failed version staged again: its one retry used.
+    static func retrying(_ v: String, _ dir: URL) {
+        guard failed(dir).contains(v), !lines(dir, "retried").contains(v) else { return }
+        try? ((lines(dir, "retried") + [v]).joined(separator: "\n") + "\n").write(to: dir.appendingPathComponent("retried"), atomically: true, encoding: .utf8)
+    }
+    private static func lines(_ dir: URL, _ name: String) -> [String] {
+        ((try? String(contentsOf: dir.appendingPathComponent(name), encoding: .utf8)) ?? "").split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+    /// 5.2 (①): the app's own line about an install (app.log, beside the installer's install.log): it didn't start, or nothing came of it.
+    static func note(_ line: String, _ dir: URL) {
+        let f = dir.appendingPathComponent("app.log"), old = (try? String(contentsOf: f, encoding: .utf8)) ?? ""
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? String((old + "app: " + line + "\n").suffix(2_000)).write(to: f, atomically: true, encoding: .utf8)
+        NSLog("pokewalker: update: %@", line)
+    }
+    /// ③: an install a relaunch should wait for — tried under 3 minutes ago, and its installer's last line isn't an end (installed · failed) yet.
+    static func setupBusy(attemptAge: TimeInterval, lastLine: String?) -> Bool {
+        attemptAge < 180 && !(lastLine.map { $0.hasPrefix("installed") || $0.hasPrefix("failed") } ?? false)
+    }
+    /// The installer's own lines (install.log: its UTF-16LE, or the Mac helper's UTF-8).
+    static func installerLines(_ dir: URL) -> [String] {
+        guard let d = try? Data(contentsOf: dir.appendingPathComponent("install.log")), !d.isEmpty else { return [] }
+        let b = [UInt8](d), units = stride(from: 0, to: b.count - 1, by: 2).map { UInt16(b[$0]) | UInt16(b[$0 + 1]) << 8 }
+        let text = b.contains(0) ? String(decoding: units, as: UTF16.self) : String(decoding: b, as: UTF8.self)
+        return text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces.union(["\u{FEFF}"])) }.filter { !$0.isEmpty }
     }
     /// A manifest's version is newer than `app` — unchecked: only for what 업데이트 확인 says when it isn't taken (nothing newer, or it didn't check out).
     static func newer(_ manifest: String, than app: String) -> Bool {
@@ -172,7 +208,15 @@ enum Update {
         guard let r = ready(dir), let app, allowed(app) else { return .none }
         switch verCmp(r.version, appVersion) {
         case 1?:
-            if attempted(dir) == r.version { giveUp(r.version, dir); return .none }               // tried, and this is still the old app: noted failed, it starts as it is
+            if attempted(dir) == r.version {                                                        // tried, and this is still the old app
+                let age = attemptAt(dir).map { Date().timeIntervalSince($0) } ?? .infinity, last = installerLines(dir).last
+                #if os(Windows)
+                if setupBusy(attemptAge: age, lastLine: last) { return .waiting }                   // 5.2 (③): its installer still at work — not given up on
+                #endif
+                note("\(r.version) didn't go in: tried \(age.isFinite ? "\(Int(age))s" : "?") ago, its setup " + (FileManager.default.fileExists(atPath: r.staged) ? "still here" : "gone")
+                     + ", the installer's last line: " + (last ?? "none"), dir)                     // 5.2 (①): what the report says
+                giveUp(r.version, dir); return .none                                                // noted failed, it starts as it is
+            }
             return install(dir: dir, app: app, relaunch: true) ? .installing : .none
         case 0?: try? FileManager.default.removeItem(at: dir); return .updated(r.version)
         default: clearStaged(dir); return .none                                                   // older than this app (a zip's from before the installer …): gone by
@@ -181,19 +225,16 @@ enum Update {
     /// 5.1.2: install.log's last lines (the installer's "installed 5.1" / "failed 5.1: …"; the Mac helper's), 300 characters at most; nil: none.
     /// The Windows installer writes UTF-16LE (NSIS FileWriteUTF16LE), the Mac's helper UTF-8.
     static func installLog(_ dir: URL) -> String? {
-        guard let d = try? Data(contentsOf: dir.appendingPathComponent("install.log")), !d.isEmpty else { return nil }
-        let b = [UInt8](d), units = stride(from: 0, to: b.count - 1, by: 2).map { UInt16(b[$0]) | UInt16(b[$0 + 1]) << 8 }
-        let text = b.contains(0) ? String(decoding: units, as: UTF16.self) : String(decoding: b, as: UTF8.self)
-        let lines = text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces.union(["\u{FEFF}"])) }.filter { !$0.isEmpty }
-        let tail = lines.suffix(3).joined(separator: " | ")
+        let tail = (installerLines(dir).suffix(3) + lines(dir, "app.log").suffix(2)).joined(separator: " | ")   // (5.2, ①: the app's own lines after the installer's)
         return tail.isEmpty ? nil : String(tail.suffix(300))
     }
     /// The version an install was last started for (written as the installer or the helper starts).
     static func attempted(_ dir: URL) -> String? { (try? String(contentsOf: dir.appendingPathComponent("attempt"), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) }
+    static func attemptAt(_ dir: URL) -> Date? { (try? FileManager.default.attributesOfItem(atPath: dir.appendingPathComponent("attempt").path))?[.modificationDate] as? Date }
     /// An install that didn't take: that version is never tried again; what was staged goes.
     static func giveUp(_ v: String, _ dir: URL) {
         let f = dir.appendingPathComponent("failed")
-        if !failed(dir).contains(v) { try? (((try? String(contentsOf: f, encoding: .utf8)) ?? "") + v + "\n").write(to: f, atomically: true, encoding: .utf8) }
+        if !failed(dir).contains(v) { try? (((try? String(contentsOf: f, encoding: .utf8)) ?? "") + v + " \(Int(Date().timeIntervalSince1970))\n").write(to: f, atomically: true, encoding: .utf8) }   // (5.2: when, for ④)
         clearStaged(dir)
         NSLog("pokewalker: update %@ didn't go in: noted, not tried again", v)
     }
@@ -219,7 +260,10 @@ enum Update {
         p.arguments = [script.path, pid, app.path, r.staged, dir.path, r.version, relaunch ? "1" : "0", quiet ? "1" : "0"]
         #endif
         try? Data(r.version.utf8).write(to: dir.appendingPathComponent("attempt"), options: .atomic)   // once a version: atLaunch gives up on it if this doesn't take
-        return (try? p.run()) != nil
+        do { try p.run(); return true } catch {                                                       // 5.2 (②, ①): it never started (a guard, a policy …): not a try —
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent("attempt"))            // no failed for it, and the reason kept for the report
+            note("\(r.version)'s setup didn't start: \(error)", dir); return false
+        }
     }
     /// --stage-update <zip>: a local build's zip (./build.sh dist) staged as if it had come down — no network, no signature (it's this Mac's own) —
     /// to try the install: the next quit or launch puts it in. The Mac's only (the version comes from its Info.plist).
@@ -307,7 +351,7 @@ final class UpdateInbox: @unchecked Sendable {
             urgent = j["urgent"] as? Bool ?? false; installBy = (j["installBy"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }   // 5.0: unsigned hints
             if urgent { nextCheck = min(nextCheck, now.addingTimeInterval(3600)) }                  // (urgent: asked again within the hour)
             guard let m = j["manifest"] as? String, let sig = j["sig"] as? String else { busy = false; heard = .newest; return }        // nothing released yet
-            guard let e = Update.accept(m, sig, platform: platform, over: appVersion, failed: Update.failed(dir)) else {
+            guard let e = Update.accept(m, sig, platform: platform, over: appVersion, failed: Update.blocked(dir, urgent: urgent, now: now)) else {   // (5.2, ④: a failed one once more)
                 busy = false; heard = Update.newer(m, than: appVersion) ? .failed : .newest; return                                   // a newer one not taken: bad signature, no zip here …
             }
             if blocked != nil { busy = false; available = e.version; heard = .available; return }   // 3.8.5: out, but it can't go in here — said, not fetched
@@ -317,7 +361,7 @@ final class UpdateInbox: @unchecked Sendable {
             let setup = platform == "windowsSetup"
             link.get(Update.downloadPath(platform)) { s, d in inbox.put(.staged(e.version, s == 200 ? Update.prepare(d, e, dir: dir, setup: setup) : nil)) }   // the SHA-256 and the unpacking here, off the main thread
         case .staged(let v, let path):
-            busy = false; fetching = nil; if path != nil { staged = v } else { heard = .failed }
+            busy = false; fetching = nil; if path != nil { staged = v; Update.retrying(v, dir) } else { heard = .failed }
             NSLog(path != nil ? "pokewalker: update %@ is ready: it goes in at the next quit or launch" : "pokewalker: update %@ didn't check out: again next round", v)
         }
     }
