@@ -36,7 +36,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
     mutating func mod(_ s: Side, _ body: (inout Fighter) -> Void) { if s == .me { body(&mine[me]) } else { body(&theirs[it]) } }
     func other(_ s: Side) -> Side { s == .me ? .it : .me }
     func si(_ s: Side) -> Int { s == .me ? 0 : 1 }
-    func nm(_ s: Side) -> String { (s == .me ? "" : trainer == nil ? "야생 " : "상대 ") + monNames[looks(s).dex] }
+    func nm(_ s: Side) -> String { (s == .me ? "" : trainer != nil ? "상대 " : expedition != nil ? "" : "야생 ") + monNames[looks(s).dex] }   // (5.2: a 전설 원정's roamer · boss without 야생 — the user 10-23 "야생 빼줘")
     /// Who s's one looks like: its 일루전's disguise (5.2), else itself.
     func looks(_ s: Side) -> Mon { f(s).disguise ?? f(s).mon }
     /// 5.2 (content52, docs/plans/19 §11.5): 일루전 plays here — a live battle only when both apps know it (`illusion`).

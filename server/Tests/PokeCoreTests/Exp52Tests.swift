@@ -43,6 +43,7 @@ private func strong(_ dex: Int, _ moves: [Int]) -> Mon { var m = Mon(dex: dex, l
         d.w.companion = strong(242, [45])                                                             // 해피너스 Lv.100, 울음소리 only: no damage
         o = d.act(.expFight(id: "토네로스"))
         let b = try #require(o.battle)
+        #expect(b.nm(.it) == "토네로스")                                                               // no 야생 (the user 10-23)
         #expect(o.cannot == nil && b.expedition == "토네로스" && b.raidTier == nil && b.theirs[0].hp == 60 && b.theirs[0].status == .paralysis && d.x("토네로스")?.meets == 0)
         var end: BattleEnd? = nil
         for _ in 0..<3 where end == nil { end = d.act(.battle(cmd: .fight(slot: 0))).end }
@@ -113,6 +114,7 @@ private func strong(_ dex: Int, _ moves: [Int]) -> Mon { var m = Mon(dex: dex, l
         let me = strong(150, [94, 247, 58, 85]); d.w.box = [me]
         o = d.act(.expFight(id: "랜드로스", party: [me.uid!]))
         let b = try #require(o.battle)
+        #expect(b.nm(.it) == "랜드로스" && Battle(wild: b.wild, party: [me]).nm(.it) == "야생 랜드로스")
         #expect(b.expedition == "랜드로스" && b.raidTier == 3 && b.theirs.count == 3 && b.wild.level == 60 && b.wild.perfectIVs >= 4 && b.megaUsed == [false, true])
         #expect(d.x("랜드로스")?.fought == d.w.day)
         #expect(d.act(.battle(cmd: .ball)).cannot == "보스는 볼로\n잡을 수 없다")
