@@ -98,6 +98,8 @@ server/build.sh                     # 릴리스 빌드 → server/.build/release
 server/build.sh test                # 단위 테스트 (엔진 · 행동 · 친구 · 게시판 · 레이드 · 대전 · 도구 …)
 server/test.sh                      # HTTP 전체 흐름: 임시 DB, 127.0.0.1:8799 (먼저 build.sh)
 BASE=https://pokewalker.rulrulmo.work KEY=<APP_KEY> server/test.sh    # 실서버로. 테스트 ID는 끝나면 지운다
+server/check52.sh [off|on]          # 5.2 스위치(content52): 5.1.5 앱은 5.1.5 그대로, 5.2 앱 + 테스트 ID는 늘 켜짐(원정 · 기술머신 · 보스 · 일루전). 로컬은 테스트 ID 아닌 것도
+BASE=https://pokewalker.rulrulmo.work server/check52.sh off    # 실서버로(미니 PC에서: 키는 server.env, sudo). 테스트 ID는 끝에 지운다
 server/build.sh install             # 빌드 → /usr/local/bin에 설치 → 서비스 재시작 (sudo)
 ```
 
