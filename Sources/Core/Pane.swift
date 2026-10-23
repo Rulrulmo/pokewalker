@@ -11,6 +11,7 @@ struct SideModel: Equatable {
     /// 4.0 (16 §8-3): a raid's bars by the menu's prompt — broken, of all, and how much of the one up is left (0...1).
     struct Bars: Equatable { var broken, total: Int; var cur: CGFloat }
     var bars: Bars? = nil
+    var turnsLeft: Int? = nil                                          // 5.2 (plan 19 §11.3): a roamer's turns before it runs off (of Expeditions.roamTurns)
     var mega: Bool? = nil                                              // 5.0: the move screen's 메가진화 (nil: it can't now), ticked or not
     var megaTicked = false                                             // 5.1: 메가진화 ticked (any battle screen till the turn's answer: the HP box's tab)
     var megaOff = false                                                // 5.1.4: a duel without it (the other's app before 5.1.4) — ours could: 메가진화 · 이번엔 없음, greyed
@@ -269,6 +270,7 @@ struct RaidTierModel: Equatable {
 struct RaidBallsModel: Equatable {
     var bars, total: Int; var dex: Int; var shiny: Bool; var name, note: String
     var balls, of: Int; var won: Bool; var foot: [String]
+    var exp = false                                                    // 5.2 (plan 19 §11.3): an expedition boss's — its 3 bars, 5 balls of 30 %, 나중에 던지기 (the balls are kept)
 }
 /// The save server holding the game: what's up, a line or two, and the one button (ID 입력 / 여기서 계속; nil = none).
 struct LoginModel: Equatable { var title: String; var lines: [String]; var button: String? }

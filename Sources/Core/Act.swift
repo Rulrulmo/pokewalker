@@ -58,10 +58,10 @@ extension Walker {
     /// 3.8.6: a fight the server no longer has (a new session ends it; it said 배틀 중이 아니에요): off the screen, said once.
     func fightGone(_ now: Date) {
         guard inBattle, !duelOn, raidThen == nil else { return }
-        let raid = raidOn
+        let raid = raidOn, exp = fight?.expedition                                                 // (5.2: an expedition's: its page)
         fight = nil; fightEnd = nil; raidOn = false
         if raid { cloud?.raidDue = true }                                                          // 4.0: a run cut off is over as fought — its balls wait (the lobby goes to them)
-        screen = .say(["배틀이 끝났다", "(연결이 다시 이어짐)"], next: towerRun ? .tower(pick: nil) : raid ? .raid(.lobby(tab: 0)) : .home, since: now)
+        screen = .say(["배틀이 끝났다", "(연결이 다시 이어짐)"], next: towerRun ? .tower(pick: nil) : raid ? .raid(.lobby(tab: 0)) : exp.map { expPage($0) } ?? .home, since: now)
     }
     /// What was going on stops here (a lock, another trainer): the server ends it with the session.
     func dropPlay() { waiting = nil; fight = nil; fightEnd = nil; chainNext = nil; growthThen = nil; towerRun = false; raidOn = false; raidThen = nil; raidStage = nil }
@@ -139,7 +139,8 @@ extension Walker {
         case .visitCame, .visitDone: visitNews(n, now)                                             // 3.8 (14 §3): 맡겨 키우기 (Core/TeamView.swift)
         case .expedition(let id, let n, let need): showExpedition(id, n, need, now)              // 5.1 (plan 19): a 지가르데 셀 came — 홈's card (ExpView.swift)
         case .expeditionDone: break                                                                // (its claim shows it: expPress)
-        case .expeditionStage, .expeditionGift: break                                              // 5.2 (plan 19 §11.7): the screens are the Mac's
+        case .expeditionStage(let id, let st): showExpStage(id, st, now)                           // 5.2 (plan 19 §11.7, Exp52.swift): a step done — 홈's card
+        case .expeditionGift(_, let item): screen = .say([josa(item, "을", "를") + " 받았다!"], next: .home, since: now)   // (a fight's or a claim's end says it first)
         case .mailNew(_, let t): mailNews(t)                                                       // 3.9 (15 §6 A): quiet — the 우편함's dot, a notification
         }
     }
@@ -199,6 +200,7 @@ extension Walker {
     func endOfFight(_ b: Battle, _ now: Date) -> Screen {
         let e = fightEnd; fightEnd = nil; fight = nil
         guard let e else { return .home }
+        if let id = b.expedition { return expFightEnded(id, b, e, now) }                           // 5.2 (plan 19 §11.3): the roamer, the boss (Exp52.swift)
         if raidOn { return raidEnded(b, e, now) }                                                  // 4.0 (16 §8-4): its bars and balls, then its ball stage
         if b.trainer != nil {
             if e.result == "won" {

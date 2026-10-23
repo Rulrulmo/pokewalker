@@ -5,7 +5,7 @@ import Foundation
 // given up (raidQuit, asked first). A stage cut off (the app closed, asleep, offline) waits on the server: opening the lobby goes back to it.
 
 /// The raid's pages: the lobby (its two tabs), the tier to fight at, a run's ball stage (RaidPending: Walker.raidStage).
-enum RaidStep: Equatable { case lobby(tab: Int), tier(sel: Int), balls }
+enum RaidStep: Equatable { case lobby(tab: Int), tier(sel: Int), balls, expBalls(String) }   // expBalls (5.2, Exp52.swift): a 전설 원정 boss's ball stage, by its id
 
 extension Walker {
     static let raidTabs = ["레이드 · 메가 합계", "내 판"]                 // 5.1 (회사, 8342e2f): the lobby's friends count both raids (랭킹's 레이드 the legend raid alone)
@@ -76,6 +76,7 @@ extension Walker {
         case .lobby(let tab): return raidMega ? megaLobbyPane(tab, now) : raidLobbyPane(tab, now)
         case .tier(let sel): return raidTierPane(sel)
         case .balls: return raidBallsPane()
+        case .expBalls(let id): return expBallsPane(id)
         }
     }
     func raidLobbyPane(_ tab: Int, _ now: Date) -> PaneContent {
@@ -138,6 +139,7 @@ extension Walker {
         let half = Int(now.timeIntervalSinceReferenceDate * 2) % 2
         switch step {
         case .balls: raidBallsLCD(&fb, now); return
+        case .expBalls(let id): expBallsLCD(&fb, id, now); return
         case .lobby(let tab) where raidMega: megaLCD(&fb, tab, now); return
         case .tier(let sel):
             guard let t = raidTiers[safe: sel], let dex = raidMega ? megaLobby?.bosses[safe: raidMegaBoss]?.dex : raidLobby?.boss.dex else { break }
@@ -189,6 +191,8 @@ extension Walker {
             raidTier = t.tier; if persist { settings.set("raidTier", t.tier) }; raidPick(now)
         case .balls:
             if k == 1 { raidBall(now) }
+        case .expBalls(let id):
+            if k == 1 { expBall(id, now) }
         }
     }
     /// The tier last fought at (else the highest whose boss isn't above our strongest), as a row of the lobby's tiers.
@@ -207,6 +211,8 @@ extension Walker {
         case (.tier, 7030): raidPress(1, step, now)
         case (.balls, 7040): raidBall(now)
         case (.balls, 7041): raidLeave(home: false, now)
+        case (.expBalls(let id), 7040): expBall(id, now)
+        case (.expBalls(let id), 7041): expBallsLeave(id)
         default: return
         }
     }
@@ -216,6 +222,7 @@ extension Walker {
         case .lobby: screen = up(raidMega ? "메가 레이드" : "레이드")
         case .tier: screen = .raid(.lobby(tab: raidMega ? raidMegaBoss : 0))
         case .balls: raidLeave(home: false, now)
+        case .expBalls(let id): expBallsLeave(id)
         }
     }
 

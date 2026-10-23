@@ -73,6 +73,7 @@ import Foundation
     var trainRef = -1, itemFor: String? = nil
     var duel: DuelView? = nil, duelOn = false, duelSeen = 0, duelShown: Battle? = nil, duelWait = false   // 12 §5: the live battle's last view, polling, turns played, the battle shown, our pick in                              // 3.6: who 대단한 특훈 is on; an item whose target the fight's party screen asks for
     var raidOn = false, raidThen: Screen? = nil, raidPicked: [Int] = []   // 12 (M3): a raid fight is on (its menu, lines, HUD); where a raid ball's show goes after; 3.8: the last raid party (uids), offered first
+    var expTab = 0, expBallsID: String? = nil                              // 5.2 (Exp52.swift): 전설 원정's kind tab; the boss's ball stage on (its id: a throw's lines)
     var raidStage: RaidPending? = nil, raidTier = 0                       // 4.0 (16 §8-4): the run's ball stage on screen (its boss, balls left); the tier picked for the next run (0: none yet)
 
     init(state: Walk) {
@@ -122,7 +123,7 @@ import Foundation
         case .traded(_, _, _, let since) where now.timeIntervalSince(since) > 6: screen = .home
         case .menu, .card, .items, .dex, .goals, .expedition, .rank, .box, .tower, .shop, .shopConfirm, .course, .train, .team, .relearn, .raid(.lobby), .raid(.tier), .itemOn, .hold, .visitPick: if now.timeIntervalSince(lastInput) > 20 { screen = .home }
         case .trade, .market, .mail, .evoPick: if now.timeIntervalSince(lastInput) > 60 { screen = .home }   // (a trade is weighed up: longer; 5.1.3: an evolution too)
-        case .raid(.balls): if now.timeIntervalSince(lastInput) > 120 { screen = .home }               // 4.0: left alone, not given up — the stage waits (the lobby goes back to it)
+        case .raid(.balls), .raid(.expBalls): if now.timeIntervalSince(lastInput) > 120 { screen = .home }               // 4.0: left alone, not given up — the stage waits (the lobby goes back to it)
         default: break
         }
         cloudTick(now)                                                                             // the server's answers (their screens, the save) …
@@ -162,7 +163,8 @@ import Foundation
         if case .trade = screen, tradeKey(k, shift: shift) { return true }
         if case .market = screen, marketKey(k, shift: shift) { return true }
         if case .mail = screen, mailKey(k) { return true }                                      // 3.9 우편함: rows, pages, the legends' grid                    // 교환 게시판: its rows, tabs, the pick's grid
-        if case .raid(.lobby(let t)) = screen, k == .tab { screen = .raid(.lobby(tab: 1 - t)); host?.redraw(.all); return true }   // 레이드: its two tabs                       // 교환: its lists' rows and pages, tab (the other box; 팀's tabs)
+        if case .raid(.lobby(let t)) = screen, k == .tab { screen = .raid(.lobby(tab: 1 - t)); host?.redraw(.all); return true }
+        if case .expedition = screen, Content.v52, k == .tab { exp52Tab(expTab + (shift ? -1 : 1)); lastInput = Date(); host?.redraw(.all); return true }   // 5.2: 전설 원정's kinds   // 레이드: its two tabs                       // 교환: its lists' rows and pages, tab (the other box; 팀's tabs)
         switch screen { case .dex(_, _, false), .box(_, .none, _, false): if let d = [Key.up: -6, .down: 6, .pageUp: -30, .pageDown: 30][k] { gridStep(d, ends: abs(d) == 30); return true }; default: break }   // the grids: ↑ ↓ a row, page up / down a page
         if k == .tab {
             switch screen {
@@ -190,7 +192,11 @@ import Foundation
         var sc = screen; if case .say(_, let next, _) = sc { sc = next }
         let fight: Battle? = switch sc { case .battle(let b, _), .moves(let b, _), .party(let b, _), .bagBattle(let b, _), .forfeit(let b, _), .beats(let b, _, _, _): b; default: nil }
         if let b = fight {
-            if raidThen != nil { return ("레이드", "잡을 기회") }
+            if raidThen != nil { return expBallsID.map { (expTitle($0), "잡을 기회") } ?? ("레이드", "잡을 기회") }
+            if let id = b.expedition {                                                          // 5.2 (plan 19 §11.3): the roamer, the boss
+                if b.raidTier == nil { return ("배회 전설", "깎은 HP는 다음에 이어져요") }
+                return (expTitle(id), (Expeditions.of(id)?.legend == 384 ? "결전" : "보스전") + " · 바 \(b.theirs.filter { !$0.alive }.count)/\(b.theirs.count) · 하루 1번")
+            }
             if duelOn { return ("실시간 대전", "vs \(duel?.opponent ?? "")" + (duel?.opponentTitle.map { " 「\($0)」" } ?? "") + (duelLeft().map { " · \($0)초" } ?? "")) }   // 3.9: its 칭호 by its name                                       // a raid ball's throw on the battle stage
             if raidOn { return (raidMega ? "메가 레이드" : "레이드 배틀", (b.wild.shiny == true ? "★이로치 · 줄 " : "남은 줄 ") + "\(b.theirs.filter(\.alive).count)/\(b.theirs.count) · " + (Engine.raidTurns > 0 ? "\(min(b.turnNo + 1, Engine.raidTurns))/\(Engine.raidTurns)턴" : "\(b.turnNo + 1)턴")) }   // (3.8.4: no limit — 0)
             guard let tr = b.trainer else { return ("야생 배틀", state.here.name) }
@@ -226,7 +232,7 @@ import Foundation
         case .duel(.hub(let t, _)): return ("대전", t == 0 ? "Lv.50 · 3마리씩" : "최근 20판")
         case .duel(.queued): return ("랜덤 매칭", duelLeft().map { "\($0)초 남음" } ?? "")
         case .duel: return ("실시간 대전", duelLeft().map { "\($0)초 남음" } ?? "")
-        case .squad(let s): switch s.kind { case .tower: return ("배틀 타워", "파티 고르기 · Lv.50"); case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return (raidMega ? "메가 레이드" : "레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")) }
+        case .squad(let s): switch s.kind { case .tower: return ("배틀 타워", "파티 고르기 · Lv.50"); case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return (raidMega ? "메가 레이드" : "레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")); case .exp(let id): return (expTitle(id), "출전할 1~3마리 · 하루 1번") }
         case .hold(let r, _): return ("도구 주기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .formPick(let r, let it, _): return (it, state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .evoPick: return ("진화", "직접 골라 진화해요")
@@ -235,6 +241,7 @@ import Foundation
         case .tower: return ("배틀 타워", "\((state.bp ?? 0).formatted())BP")
         case .raid(.tier): return (raidMega ? "메가 레이드" : "레이드", "난이도 고르기")
         case .raid(.balls): return ("레이드", "잡을 기회 · 볼 \(raidStage?.balls ?? 0)개")
+        case .raid(.expBalls(let id)): return (expTitle(id), "잡을 기회 · 볼 \(state.expeditions?[id]?.balls ?? 0)개 · 한 개 \(Int(RaidRules.newOdds * 100))%")
         case .raid where raidMega && raidDaily: return ("메가 레이드", megaLobby.map { "내일 " + $0.next.map(megaName).joined(separator: " · ") } ?? "")   // 5.1 (plan 20)
         case .raid where raidDaily: return ("레이드", cloud?.raid.map { "내일 " + monNames[$0.next] } ?? "")
         case .raid where raidMega: return ("메가 레이드", megaLobby.map { "다음 주 " + $0.next.map { n in let s = megaName(n); return s.hasPrefix("메가") ? String(s.dropFirst(2)) : s }.joined(separator: " · ") } ?? "")   // (메가 레이드's: 샤크니아 · 앱솔)

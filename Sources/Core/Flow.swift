@@ -203,6 +203,7 @@ extension Walker {
         let now = Date(); lastInput = now; defer { settle(now); host?.redraw(.all) }               // back home: the news go on at once
         if k == 4 {                                           // one key both ways: home opens the menu (on the pane; the LCD stays home), anywhere else it goes home
             if case .raid(.balls) = screen { raidLeave(home: true, now); return }                 // 4.0: the ball stage given up first (asked)
+            if case .raid(.expBalls) = screen { expBallsID = nil; screen = .home; return }          // 5.2: an expedition's balls stay (나중에 던지기)
             if let open = homeKey() { if !open { growthThen = nil }; screen = open ? .menu(group: nil, sel: lastTile) : .home }   // home means home: the news still play there, then it stays
             return
         }
@@ -223,7 +224,7 @@ extension Walker {
             case .duel(.hub(1, _)): screen = .duel(.hub(tab: 0, sel: 0))
             case .duel(.hub): screen = up("대전")
             case .duel: screen = .home                                                             // (the invitation stays open: its minute; the queue too)
-            case .squad(let s): switch s.kind { case .tower: screen = .tower(pick: nil); case .duelParty: screen = .duel(.hub(tab: 0, sel: 0)); case .raid: screen = .raid(.tier(sel: raidTierIndex)); case .duelPick: screen = .home }   // (a duel's pick: its minute runs)
+            case .squad(let s): switch s.kind { case .tower: screen = .tower(pick: nil); case .duelParty: screen = .duel(.hub(tab: 0, sel: 0)); case .raid: screen = .raid(.tier(sel: raidTierIndex)); case .duelPick: screen = .home; case .exp(let id): screen = expPage(id) }   // (a duel's pick: its minute runs)
             case .hold(let r, _), .formPick(let r, _, _): screen = .box(r, act: nil, confirm: false, detail: true)
             case .evoPick(let u, let at, let ask): screen = ask != nil ? .evoPick(uid: u, at: at, ask: nil) : evoBack(u)   // 5.1.3: 진화할까요? → the cards → its page
             case .visitPick(let p): screen = teamRows(0).firstIndex { trainerID($0.card.name)?.key == trainerID(p.item)?.key }.map { .team(sel: $0, tab: 0, card: true) } ?? .team(sel: 0, tab: 0, card: false)
@@ -348,7 +349,7 @@ extension Walker {
             towerNext(now)
         case .card(let p): screen = k == 1 ? up("트레이너 카드") : .card((p + (k == 0 ? 2 : 1)) % 3)
         case .goals(let s): goalsPress(k, s)
-        case .expedition(let s): expPress(k, s, now)
+        case .expedition(let s): if Content.v52 { exp52Press(k, s, now) } else { expPress(k, s, now) }
         case .rank(let t, let s, let a): rankPress(k, t, s, a)
         case .team(let s, let t, let card):                                                      // ◀ ▶ a teammate (on a card: the next one's card), ● its card / 인사
             if k != 1 { teamStep(k == 0 ? -1 : 1); return }

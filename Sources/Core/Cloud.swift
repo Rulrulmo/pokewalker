@@ -355,6 +355,7 @@ final class CloudInbox: @unchecked Sendable {
                 Content.on51 = j["content51"] as? Bool ?? false; Content.onDaily = j["raidDaily"] as? Bool ?? false   // 5.1 (plans 19 §9 · 20 §11)
                 Content.onChoice = j["evoChoice"] as? Bool ?? false                                     // 5.1.3 (plan 23): 배루키's pick
                 Content.onDuelMega = j["duelMega"] as? Bool ?? false                                    // 5.1.4 (plan 24): Mega Evolution in live battles
+                Content.on52 = j["content52"] as? Bool ?? false                                         // 5.2 (plan 19 §11.6)
                 Content.keep()                                                                          // 5.1.1: for the next launch
                 drop(); seat.session = j["session"] as? String; seat.trust = j["trust"] as? String ?? seat.trust; pendingPIN = nil
                 base = nil; phase = .on; lastSaved = now; stepsAt = now                                 // its first save (the starter's) comes with the first act
@@ -395,6 +396,7 @@ final class CloudInbox: @unchecked Sendable {
         Content.onDaily = j["raidDaily"] as? Bool ?? false                                    // 5.1 (plan 20 §11): the raids by the day (the lobbies' own `daily` after)
         Content.onChoice = j["evoChoice"] as? Bool ?? false                                   // 5.1.3 (plan 23): 배루키 waits at Lv.20 for the player's pick
         Content.onDuelMega = j["duelMega"] as? Bool ?? false                                  // 5.1.4 (plan 24): the switch (each duel's own: DuelView.mega)
+        Content.on52 = j["content52"] as? Bool ?? false                                       // 5.2 (plan 19 §11.6): 배회 · 시련 · 레쿠쟈 원정, 기술머신, 일루전 · 프리폴
         Content.keep()                                                                        // 5.1.1: for the next launch (before the login, the save is read with these)
         if let text = j["walk"] as? String {
             guard let w = Cloud.walk(text) else {                                              // one this app can't read: nothing to show it with
@@ -639,6 +641,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     var content5 = false                                                                         // 5.0: the login says content5 (pokeserver content5 on)
     var content51 = false, raidDaily = false                                                     // 5.1: … content51 (plan 19), raidDaily (plan 20)
     var evoChoice = false                                                                        // 5.1.3: … evoChoice (plan 23)
+    var content52 = false                                                                        // 5.2: … content52 (plan 19 §11)
     var duelMega = false, oldDuelApps: Set<String> = []                                          // 5.1.4 (plan 24): … duelMega; trainers whose app is before 5.1.4 (a duel with one: no Mega)
     var updateNoteSent: [String: Any]? = nil                                                     // 5.1.2 (plan 22): pokeserver update-note on, a newer app out
     var rng = Seeded(s: 77), nextUID = 1_000_001, now: Date? = nil, stepCap: Int? = nil       // stepCap: the steps allowance (the real one fills at 15 a second)
@@ -1386,7 +1389,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             if path == "v1/create" {
                 guard !pins || Cloud.validPIN(pin) else { return (400, ["error": "bad_pin"]) }
                 rows[id.key] = Row(name: id.name, session: session, device: device, at: clock, pin: pins ? pin : nil, trusts: pins ? [device: token] : [:])   // its save: at its first act
-                return (200, ["rev": 0, "session": session, "trust": token, "starter": 1_000_000].merging(content5 ? ["content5": true] : [:]) { $1 }.merging((content51 ? ["content51": true] : [:]).merging(raidDaily ? ["raidDaily": true] : [:]) { $1 }) { $1 }.merging(evoChoice ? ["evoChoice": true] : [:]) { $1 }.merging(duelMega ? ["duelMega": true] : [:]) { $1 })   // (5.0: as the login's; 5.1 · 5.1.3 · 5.1.4 too)
+                return (200, ["rev": 0, "session": session, "trust": token, "starter": 1_000_000].merging(content5 ? ["content5": true] : [:]) { $1 }.merging((content51 ? ["content51": true] : [:]).merging(raidDaily ? ["raidDaily": true] : [:]) { $1 }) { $1 }.merging(evoChoice ? ["evoChoice": true] : [:]) { $1 }.merging(duelMega ? ["duelMega": true] : [:]) { $1 }.merging(content52 ? ["content52": true] : [:]) { $1 })   // (5.0: as the login's; 5.1 · 5.1.3 · 5.1.4 too)
             }
             return path == "v1/login" ? (200, ["exists": false]) : (404, ["error": "no_trainer"])
         }
@@ -1418,6 +1421,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             if content51 { b["content51"] = true }; if raidDaily { b["raidDaily"] = true }
             if evoChoice { b["evoChoice"] = true }                                                  // 5.1.3
             if duelMega { b["duelMega"] = true }                                                    // 5.1.4
+            if content52 { b["content52"] = true }                                                  // 5.2
             return (200, b)
         case "v1/pin":
             guard j["session"] as? String == r.session else { return (409, ["error": "conflict", "reason": "replaced"]) }
@@ -1660,7 +1664,8 @@ extension Content {
     @MainActor static func atLaunch(_ w: Walk) {
         on = settings.bool("content5", false) || w.course >= coursesGen4.count || ([w.companion] + w.caught + w.box).contains { $0.dex > 493 }
         on51 = settings.bool("content51", false); onDaily = settings.bool("raidDaily", false); onChoice = settings.bool("evoChoice", false); onDuelMega = settings.bool("duelMega", false)   // (5.1.3, 5.1.4)
+        on52 = settings.bool("content52", false)                                                  // 5.2
     }
     /// The login's, a new trainer's or a lobby's: kept for the next launch.
-    @MainActor static func keep() { settings.set("content5", on); settings.set("content51", on51); settings.set("raidDaily", onDaily); settings.set("evoChoice", onChoice); settings.set("duelMega", onDuelMega) }
+    @MainActor static func keep() { settings.set("content5", on); settings.set("content51", on51); settings.set("raidDaily", onDaily); settings.set("evoChoice", onChoice); settings.set("duelMega", onDuelMega); settings.set("content52", on52) }
 }

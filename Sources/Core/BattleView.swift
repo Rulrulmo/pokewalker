@@ -46,7 +46,7 @@ extension Walker {
         if let said { msg = said; mode = .none }
         let foe = b.theirs[b.it], mine = b.mine[b.me]
         var theirs = card(foe, out: true); theirs.types = foe.typeList; theirs.owned = (state.owned ?? []).contains(foe.mon.dex)
-        if raidOn, foe.mon.shiny == true { theirs.name = "★" + theirs.name }                         // 4.0: a shiny boss, as the pixel HUD says it
+        if bossOn(b), foe.mon.shiny == true { theirs.name = "★" + theirs.name }                      // 4.0: a shiny boss, as the pixel HUD says it (5.2: an expedition's too)
         var m = SideModel(foe: theirs, mine: card(mine, out: true), message: msg, mode: mode)
         let mm = mine.mon, et = expTable[growthRate[mm.dex]], lv = max(1, min(100, mm.level)), lo = et[lv], hi = et[min(100, lv + 1)]   // 5.0: ours' EXP bar
         m.mine.exp = mm.level >= 100 || hi <= lo ? 1 : max(0, min(1, CGFloat(mm.points - lo) / CGFloat(hi - lo)))
@@ -54,7 +54,8 @@ extension Walker {
         else if case .moves = mode, duelOn, Content.duelMega, b.canMega(.me) { m.megaOff = true }   // 5.1.4: one that doesn't (the other's app before 5.1.4): 이번엔 없음
         if megaHere(b), megaOn { m.megaTicked = true }                                              // 5.1: ticked — the HP box's tab, till the turn's answer
         if let s = megaGathering(now) { if s == .me { m.mine.name = monNames[mine.mon.dex] } else { m.foe.name = monNames[foe.mon.dex] } }   // its own name till the light bursts
-        if raidOn { m.bars = .init(broken: b.theirs.filter { !$0.alive }.count, total: b.theirs.count, cur: CGFloat(foe.hp) / CGFloat(max(1, foe.maxHP))) }   // (the pane's strip by a prompt, the HP boxes' ×n)
+        if bossOn(b) { m.bars = .init(broken: b.theirs.filter { !$0.alive }.count, total: b.theirs.count, cur: CGFloat(foe.hp) / CGFloat(max(1, foe.maxHP))) }   // (the pane's strip by a prompt, the HP boxes' ×n)
+        if b.expedition != nil, b.raidTier == nil { m.turnsLeft = max(0, Expeditions.roamTurns - b.turnNo) }   // 5.2 (plan 19 §11.3): the roamer runs off after 3 (Battle.turnNo)
         return m
     }
     /// 메가진화 on offer now: ours may, and (5.1.4, plan 24) a live battle's says this one allows it (DuelView.mega; the server's: both apps 5.1.4 on).
@@ -73,7 +74,9 @@ extension Walker {
         }
         press(1)
     }
-    func battleMenu(_ b: Battle) -> [String] { duelOn ? ["공격"] + (b.mine.count > 1 ? ["교체"] : []) + ["기권"] : raidOn ? ["공격", "도구"] + (b.mine.count > 1 ? ["교체"] : []) + ["후퇴"] : b.trainer == nil ? ["공격", "볼", "도구"] + (b.mine.count > 1 ? ["교체"] : []) + ["도망"] : ["공격", "도구", "교체", "기권"] }   // wild: 교체 once the walker has someone
+    /// A boss with bars: a raid's, or (5.2) a 전설 원정's — its menu (후퇴), its bars, a bar getting up again.
+    func bossOn(_ b: Battle) -> Bool { raidOn || b.expedition != nil && b.raidTier != nil }
+    func battleMenu(_ b: Battle) -> [String] { duelOn ? ["공격"] + (b.mine.count > 1 ? ["교체"] : []) + ["기권"] : bossOn(b) ? ["공격", "도구"] + (b.mine.count > 1 ? ["교체"] : []) + ["후퇴"] : b.trainer == nil ? ["공격", "볼", "도구"] + (b.mine.count > 1 ? ["교체"] : []) + ["도망"] : ["공격", "도구", "교체", "기권"] }   // wild: 교체 once the walker has someone
     /// Menu labels' x ranges (drawn and tapped from the same layout).
     func menuRanges(_ labels: [String]) -> [Range<Int>] {
         var x = 1, out: [Range<Int>] = []
@@ -110,7 +113,7 @@ extension Walker {
         case .mega(let s, _, _): return .show(s, dx: 0, dy: 0, flash: false, visible: true)         // 5.0: the light is stage's (megaShot)
         case .reform(let s, _, _): return .show(s, dx: 0, dy: Int(-3 * arc(0.1, 0.3)), flash: false, visible: u > 0.35 || blink)   // a form for now: a hop and a flicker
         case .fainted(let s): return u < 0.35 ? .show(s, dx: 0, dy: 0, flash: false, visible: blink) : .show(s, dx: 0, dy: Int(34 * min(1, (u - 0.35) / 0.6)), flash: false, visible: true)   // sinks behind its pad
-        case .sendOut(.it, let k) where raidOn && k > 0:                                           // 4.0 (16 §8-3): a raid's next bar — it gets up again where it stood (no ball), quickly
+        case .sendOut(.it, let k) where bossOn(bt) && k > 0:                                           // 4.0 (16 §8-3): a raid's next bar — it gets up again where it stood (no ball), quickly
             return .show(.it, dx: 0, dy: Int(14 * pow(1 - min(1, u / 0.35), 2)), flash: u < 0.35 && blink, visible: true)
         case .sendOut, .thrown, .caught, .broke: return .ball(b, u)                                // thrown, swallowing, rocking, clicking or bursting; sending out (BallFX.swift)
         case .fled: return .show(.it, dx: Int(70 * min(1, u / 0.6)), dy: 0, flash: false, visible: true)
@@ -170,13 +173,13 @@ extension Walker {
         }
         if let (bt, u) = beat { moveFX(&fb, bt, u, b, at) }                                         // a move's effect over the fighters
         if let m = mega { fb.megaFX(m.side, m.u, dex: m.dex, form: m.form, at: at, top: 80 - spriteTop((m.side == .me ? mineLook : foeLook).art, back: m.side == .me)) }
-        if raidOn, let (bt, u) = beat, Walker.isShinyReveal(bt) {                                  // 4.0 (16 §8-2): a shiny boss — light bursting from it, stars wheeling round
+        if bossOn(b), let (bt, u) = beat, Walker.isShinyReveal(bt) {                                  // 4.0 (16 §8-2): a shiny boss — light bursting from it, stars wheeling round
             var s = BallShot(); s.burst = (0, -30, u * 0.8); s.shine = u * 0.55; shot = s
         }
         if let s = shot { fb.ballFX(s, at) }                                                        // the ball, its light, a trainer
         if let (bt, u) = beat, bt == .appear, !legendDex.contains(b.wild.dex) { fb.entryFlash(u) }   // a wild one: two quick flashes first (a legend's screen flips instead)
         if b.trainer == Tower.tycoon { fb.decoFrame(gold: Tower.tycoonPrint(afterWins: state.towerStreak ?? 0) == "금") }   // 3.9 (15 §6 E): the tycoon's fight in 은 or 금
-        if raidOn, let (bt, u) = beat, Walker.isShinyReveal(bt), u < 0.8, Int(u * 5) % 2 == 0 { fb.decoFrame(gold: true) }   // ... and the gold frame, twice
+        if bossOn(b), let (bt, u) = beat, Walker.isShinyReveal(bt), u < 0.8, Int(u * 5) % 2 == 0 { fb.decoFrame(gold: true) }   // ... and the gold frame, twice
     }
     /// 3.9: a wild KO's EXP for the ones not out (the walker's share it) as one line: in each run of EXP beats, the one out and any level-up keep
     /// their own lines, the rest fold into the first of them (다른 포켓몬도 …) — the end's state is the server's, so the HUD loses nothing.
@@ -191,7 +194,7 @@ extension Walker {
     }
     /// How long a beat stays on screen here: the engine's length, but a raid's next bar (nine a fight in 4.0) gets up quickly.
     func shownLength(_ bt: Beat) -> Double {
-        if raidOn, case .sendOut(.it, let k) = bt, k > 0 { return 0.8 }
+        if raidOn || fight?.expedition != nil, case .sendOut(.it, let k) = bt, k > 0 { return 0.8 }
         return bt.length
     }
     /// 4.0 (16 §8-2): the line a shiny raid boss gets after it appears (raidShown puts it in; the stage bursts and frames it in gold).
@@ -222,8 +225,8 @@ extension Walker {
         case .appear:
             if b.wild.shiny == true && u < 0.9 { return "✦ 반짝! ✦" }
             if raidOn, raidMega { let f = b.theirs[b.it]; return "메가 레이드 보스 " + (f.mega.flatMap { Forms.of(f.mon.dex, $0)?.name } ?? it) + " 등장!" }   // 5.1.4: as its Mega
-            return raidOn ? "레이드 보스 " + it + " 등장!" : legendDex.contains(b.wild.dex) ? "전설의 " + it + " 등장!" : "야생 " + josa(it, "이", "가") + " 나타났다!"
-        case .sendOut(.it, let k) where b.trainer == nil: return josa(it, "이", "가") + " 다시 일어섰다! (남은 줄 \(b.theirs.count - k))"   // a raid: its next bar
+            return raidOn ? "레이드 보스 " + it + " 등장!" : b.expedition != nil ? "전설의 " + it + " 등장!" : legendDex.contains(b.wild.dex) ? "전설의 " + it + " 등장!" : "야생 " + josa(it, "이", "가") + " 나타났다!"
+        case .sendOut(.it, let k) where b.trainer == nil: return josa(it, "이", "가") + " 다시 일어섰다! (남은 " + (b.expedition != nil ? "바" : "줄") + " \(b.theirs.count - k))"   // a raid: its next bar (5.2: an expedition boss's)
         case .sendOut(.it, let i):
             let t = b.trainer ?? "상대"                                                                // the intro's challenge, then who it sends
             return isIntro(beat, b) && u < 1.7 ? josa(t, "이", "가") + " 승부를 걸어왔다!" : josa(t, "은", "는") + " " + josa(monNames[b.theirs[i].mon.dex], "을", "를") + " 내보냈다!"
@@ -243,9 +246,9 @@ extension Walker {
         case .caught: return "딸깍! " + josa(it, "을", "를") + " 잡았다!"
         case .gained(_, nil, _, let k) where k != b.me: return "다른 포켓몬도 경험치를 받았다!"                 // 3.9: the ones not out, folded (shown)
         case .gained(let e, let l, _, let k): let who = monNames[b.mine[k].mon.dex]; return l.map { who + " Lv.\($0)!" } ?? josa(who, "은", "는") + " 경험치 \(e) 획득"
-        case .fled: return raidOn ? "레이드가 끝났다" : josa(b.nm(.it), "은", "는") + " 도망쳤다..."
-        case .ran: return raidOn ? "후퇴했다!" : "무사히 도망쳤다!"
-        case .won: return raidOn ? "\(b.theirs.count)줄을 모두 깼다!" + (raidMega ? "" : " 볼 +\(RaidRules.winBalls)") : b.trainer.map { josa($0, "과", "와") + "의 승부에서 이겼다!" } ?? "승리!"   // 5.1.4 (the user: "메가레이드에서 클리어 했을때 볼 2개 추가 같은 필요없는 문구"): a Mega raid has no balls
+        case .fled: return raidOn ? "레이드가 끝났다" : josa(b.expedition != nil ? monNames[b.looks(.it).dex] : b.nm(.it), "은", "는") + " 도망쳤다..."   // 5.2 (the user: "야생 빼자"): a roamer isn't 야생
+        case .ran: return bossOn(b) ? "후퇴했다!" : "무사히 도망쳤다!"
+        case .won: return raidOn ? "\(b.theirs.count)줄을 모두 깼다!" + (raidMega ? "" : " 볼 +\(RaidRules.winBalls)") : bossOn(b) ? "\(b.theirs.count)바를 모두 깼다!" : b.trainer.map { josa($0, "과", "와") + "의 승부에서 이겼다!" } ?? "승리!"   // 5.1.4 (the user: "메가레이드에서 클리어 했을때 볼 2개 추가 같은 필요없는 문구"): a Mega raid has no balls
         case .lost: return "눈앞이 캄캄해졌다..."
         case .mega(_, _, let t), .reform(_, _, let t):                                                 // 5.0 (plan 18 §14.4): its lines one after the other, over the beat
             // a Mega's first line while its light gathers, the second once it shows (MegaFX.reveal); a line too long for the LCD in two halves

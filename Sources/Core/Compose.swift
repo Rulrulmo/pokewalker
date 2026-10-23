@@ -125,7 +125,7 @@ extension Walker {
         case .market(let s): marketLCD(&fb, s, now)
         case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
         case .goals(let s): goalsLCD(&fb, s)
-        case .expedition(let s): expLCD(&fb, s)
+        case .expedition(let s): if Content.v52 { exp52LCD(&fb, s) } else { expLCD(&fb, s) }
         case .rank(let t, let s, let a): rankLCD(&fb, t, s, a, now)
         case .assemble(let m, let since):
             let u = now.timeIntervalSince(since)
@@ -374,7 +374,7 @@ extension Walker {
             let u = Date().timeIntervalSince(since)
             return PaneContent(radar: RadarModel(live: (1.5...(1.5 + radarWindow(chain))).contains(u) ? b : nil, cursor: c, chain: chain, season: state.season))
         case .goals(let s): return PaneContent(goals: goalsModel(s))
-        case .expedition(let s): return expPane(s)
+        case .expedition(let s): return Content.v52 ? exp52Pane(s) : expPane(s)
         case .rank(let t, let s, let a): return rankPane(t, s, a)
         case .card(let p): return PaneContent(card: CardModel(page: p, title: state.shownTitle, deco: state.deco, stones: Content.gen6 ? "메가스톤 \(MegaRaid.collected(state))/\(MegaRaid.stones.count)" : nil,
                                                               titles: (state.titles ?? []).count > 1 ? Array((state.titles ?? []).reversed()) : [], picked: state.cardTitle, picking: titlePick))   // 5.0: two or more 칭호: pick the card's
@@ -433,8 +433,9 @@ extension Walker {
         case (.card, 5200...5202): titlePick = false; screen = .card(code - 5200)
         case (.home, 9300...9319): if let row = paneContent(Date()).status?.rows[safe: code - 9300], let l = Walker.homeLinks[row.key] { quickOpen(l) }   // 5.0: 홈's rows
         case (.home, 9320...9323): quickOpen(Walker.quick[code - 9320])
-        case (.expedition(let s), 9200...9219): if code - 9200 == s { expPress(1, s, Date()) } else { screen = .expedition(code - 9200) }   // 5.1: a row; the picked one again: its button
-        case (.expedition(let s), 9230): expPress(1, s, Date())
+        case (.expedition(let s), 9200...9219): if code - 9200 == s { press(1) } else { screen = .expedition(code - 9200) }   // 5.1: a row; the picked one again: its button
+        case (.expedition, 9230): press(1)
+        case (.expedition, 9240...9249): exp52Tab(code - 9240)                                                                              // 5.2: a kind's tab
         case (.goals(let s), 9100...9120): if code - 9100 == s { goalsPress(1, s) } else { screen = .goals(code - 9100) }   // 5.0: a row; the picked one again opens it
         case (.card, 5209): titlePick.toggle()                                                     // 5.0: the 칭호 pill → the 칭호 to show (two or more)
         case (.card, 5210...5229):                                                                // … 가장 최근 (nil), or one of them, newest first

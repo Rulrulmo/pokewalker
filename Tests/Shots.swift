@@ -731,6 +731,60 @@ import AppKit
         let (hs, _) = server(hw); hs.down = true; hw.cloud!.addSteps(1); hw.cloud!.saveNow(); hw.tick(Date()); hw.tick(Date())
         take("m515_offline", hw) { v in v.screen = .home; v.paneTap(friends(v)) }
     } }
+    // 5.2 (docs/plans/19 §11, content52; Core/Exp52.swift): 전설 원정 with the eight — the tabs, a roamer (오늘 위치 · HP · 만나기), its fight (남은 턴) and
+    // what's said after it runs off, a trial's steps, the boss (3 bars) and its ball stage, 케르디오, 레쿠쟈, 홈's row
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) { Content.$testing52.withValue(true) {
+        var r9 = Seeded(s: 13), saur = Mon.wild(3, level: 55, &r9); saur.ability = 0
+        let xw = online({ var s = base(); s.companion = saur; s.caught = [Mon.wild(25, level: 40, &r9), Mon.wild(133, level: 30, &r9)]; s.watts = 6420; s.today = 12_400; return s }())
+        let (xsrv, _) = server(xw), t0 = Int(Date().timeIntervalSince1970)
+        xsrv.expEvents = [TeamEventView(id: 2, legend: 648, starts: t0 - 4 * 86_400, ends: t0 + 3 * 86_400 - 600, goal: 1_500_000, min: 20_000, team: 931_200, mine: 12_400, got: false)]
+        xw.cloud!.expeditionDue = true; drain(xw)
+        take("exp52_now_empty", xw) { v in v.exp52Tab(0) }
+        take("exp52_roam_start", xw) { v in v.exp52Tab(1) }
+        take("exp52_trial_list", xw) { v in v.exp52Tab(2) }
+        take("exp52_later", xw) { v in v.exp52Tab(5) }
+        let tl = Expeditions.legend(641, &r9), te = Expeditions.legend(639, &r9), rq = Expeditions.legend(384, &r9)
+        serve(xw) { $0.expeditions = ["토네로스": ExpProgress(on: true, steps: 1_800, mon: tl, meets: 1, hp: tl.stats[0] * 38 / 100, status: .paralysis),
+                                       "테라키온": ExpProgress(n: 0, steps: 12_400, mon: te, stage: 0), "레쿠쟈": ExpProgress(n: 7, steps: 1_800, mon: rq),
+                                       "지가르데": ExpProgress(n: 23, steps: 1_760, mon: Mon(dex: 718, level: 50, female: false))] }
+        take("exp52_now", xw) { v in v.exp52Tab(0) }
+        take("exp52_roam", xw) { v in v.exp52Tab(1) }
+        take("exp52_landorus", xw) { v in v.exp52Tab(1); v.screen = .expedition(2) }
+        take("exp52_home_roam", xw) { v in v.screen = .home }
+        xw.exp52Tab(1); xw.screen = .expedition(0); xw.press(1); drain(xw)                              // 만나기
+        take("exp52_meet_open", xw) { _ in }
+        playOut(xw)
+        take("exp52_meet_menu", xw) { _ in }
+        if let b = xw.fight { take("exp52_meet_fled", xw) { v in v.screen = .beats(b, [.fled], since: Date().addingTimeInterval(-0.3), from: b) } }
+        take("exp52_meet_after", xw) { v in v.screen = .say(["남은 HP 38%는", "다음 만남에 이어져요"], next: .expedition(0), since: Date()) }
+        calm(xw)
+        serve(xw) { $0.expeditions?["토네로스"]?.on = false; $0.expeditions?["테라키온"]?.on = true }
+        take("exp52_trial_walk", xw) { v in v.exp52Tab(2); v.screen = .expedition(1) }
+        serve(xw) { $0.expeditions?["테라키온"]?.stage = 1; $0.expeditions?["테라키온"]?.steps = 0 }
+        take("exp52_trial_boss", xw) { v in v.exp52Tab(2); v.screen = .expedition(1) }
+        take("exp52_home_boss", xw) { v in v.screen = .home }
+        xw.exp52Tab(2); xw.screen = .expedition(1); xw.press(1)
+        take("exp52_boss_party", xw) { _ in }
+        if case .squad(let q) = xw.screen { xw.squadGo(Squad(kind: q.kind, picked: [xw.state.caught[0].uid!], at: 1), Date()); drain(xw) }
+        take("exp52_boss_open", xw) { _ in }
+        playOut(xw)
+        take("exp52_boss_menu", xw) { _ in }
+        calm(xw)
+        serve(xw) { $0.expeditions?["테라키온"]?.fought = Walk.key(Date()); $0.expeditions?["테라키온"]?.balls = 4 }
+        take("exp52_trial_balls", xw) { v in v.exp52Tab(2); v.screen = .expedition(1) }
+        take("exp52_balls", xw) { v in v.expBallsID = "테라키온"; v.screen = .raid(.expBalls("테라키온")) }
+        serve(xw) { $0.expeditions?["테라키온"]?.balls = nil }
+        take("exp52_trial_fought", xw) { v in v.exp52Tab(2); v.screen = .expedition(1) }
+        serve(xw) { for id in ["코바르온", "테라키온", "비리디온"] { $0.expeditions?[id] = ExpProgress(done: 1) }
+                    $0.expeditions?["케르디오"] = ExpProgress(on: true, steps: 4_200, mon: Mon(dex: 647, level: 50, female: false)) }
+        take("exp52_keldeo", xw) { v in v.exp52Tab(2); v.screen = .expedition(3) }
+        serve(xw) { $0.expeditions?["케르디오"]?.on = false; $0.expeditions?["레쿠쟈"]?.on = true }
+        take("exp52_rayquaza", xw) { v in v.exp52Tab(2); v.screen = .expedition(4) }
+        take("exp52_home_rayquaza", xw) { v in v.screen = .home }
+        take("exp52_collect", xw) { v in v.exp52Tab(3) }
+        take("exp52_team", xw) { v in v.exp52Tab(4) }
+        xw.exp52Tab(0)
+    } } }
     return n
 }
 #endif

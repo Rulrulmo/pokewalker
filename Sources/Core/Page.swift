@@ -187,6 +187,11 @@ extension Canvas {
                 }
                 right = x0 - x(6)
             }
+            if let left = m.turnsLeft {                                                           // 5.2 (plan 19 §11.3): a roamer's turns — it runs off after the third
+                let n = Expeditions.roamTurns, seg: CGFloat = 10, gap: CGFloat = 3, x1 = x(X1 - 1), x0 = x1 - x(CGFloat(n) * (seg + gap) - gap)
+                for k in 0..<n { c.pill(CGRect(x: x0 + x(CGFloat(k) * (seg + gap)), y: y(top + 8) - x(3), width: x(seg), height: x(6)), k < left ? Ink.blue : Ink.line) }
+                right = x0 - x(8) - c.say("남은 턴", x0 - x(4), y(top + 8), font(8.5, .bold), Ink.blue, 1)
+            }
             c.say(m.message, x(X0 + 2), y(top + 8), font(11, .medium), Ink.ink, maxW: right - x(X0 + 2))
         }
         let y0 = top + 23
@@ -1451,6 +1456,7 @@ extension Page {
     // MARK: 전설 원정 (5.1, ExpView.swift): a row each — its legends' icons (a shadow till it opens), name, kind, a bar (a team event's: mine under it),
     // what's next; the pick's two lines and its button (9230)
     func drawExp(_ m: ExpModel) {
+        if !m.tabs.isEmpty { drawExp52(m); return }
         c.say("전설 원정", x(X0 + 2), y(206), font(12, .bold), Ink.ink)
         c.say(m.got, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
         for (i, row) in m.rows.enumerated() {
@@ -1494,7 +1500,7 @@ extension Page {
     }
     /// A run's ball stage: its bars, the boss (what it'd be), the balls (thrown dark; a lost run's +2 as ghosts, a won run's marked), 던지기 · 그만두기, the rule.
     func drawRaidBalls(_ m: RaidBallsModel) {
-        c.say("이번 판 · \(m.bars) / \(m.total)줄", x(X0 + 2), y(206), font(12, .bold), Ink.ink)
+        c.say(m.exp ? "보스를 이겼다 · \(m.bars) / \(m.total)바" : "이번 판 · \(m.bars) / \(m.total)줄", x(X0 + 2), y(206), font(12, .bold), Ink.ink)
         let seg: CGFloat = 7, gap: CGFloat = 2, x0 = x(X1 - 2) - x(CGFloat(m.total) * (seg + gap) - gap)
         for k in 0..<m.total { let rc = CGRect(x: x0 + x(CGFloat(k) * (seg + gap)), y: y(206) - x(3), width: x(seg), height: x(6)); c.pill(rc, k < m.bars ? Ink.red : Ink.line) }
         let card = r(X0, 216, X1 - X0, 54); c.fill(.rounded(card, 10 * K), m.shiny ? Ink.tint(Ink.gold, 0.16) : Ink.tile)
@@ -1504,15 +1510,20 @@ extension Page {
         c.say(m.note, card.minX + x(48), card.minY + x(38), font(9.5, .medium), Ink.sub)
         c.say("볼", x(X0 + 4), y(292), font(10, .bold), Ink.sub)
         let thrown = [rgb(214, 216, 222), rgb(214, 216, 222), rgb(150, 154, 164), rgb(96, 100, 110)], ghost = [rgb(240, 241, 244), rgb(240, 241, 244), rgb(232, 234, 238), rgb(210, 213, 220)]
-        for k in 0..<(RaidRules.balls + RaidRules.winBalls) {                                       // five places: the 3, then the win's 2 (a lost run's: ghosts)
-            let cx = x(X0 + 34 + CGFloat(k) * 26 + (k >= RaidRules.balls ? 8 : 0)), cy = y(292)
-            pixelArt(ball, k >= m.of ? ghost : k < m.balls ? ballPal : thrown, CGPoint(x: cx, y: cy), 2.8 * K)
+        if m.exp {                                                                                  // 5.2: an expedition boss's five, 30 % each
+            for k in 0..<m.of { pixelArt(ball, k < m.balls ? ballPal : thrown, CGPoint(x: x(X0 + 34 + CGFloat(k) * 26), y: y(292)), 2.8 * K) }
+            c.say("한 개에 \(Int(RaidRules.newOdds * 100))% · 보스를 이겨서 \(m.of)개", x(X0 + 24), y(312), font(8.5, .semibold), Ink.red)
+        } else {
+            for k in 0..<(RaidRules.balls + RaidRules.winBalls) {                                   // five places: the 3, then the win's 2 (a lost run's: ghosts)
+                let cx = x(X0 + 34 + CGFloat(k) * 26 + (k >= RaidRules.balls ? 8 : 0)), cy = y(292)
+                pixelArt(ball, k >= m.of ? ghost : k < m.balls ? ballPal : thrown, CGPoint(x: cx, y: cy), 2.8 * K)
+            }
+            c.say(m.won ? "+2 · 10줄을 다 깼다" : "10줄을 다 깨면 +2", x(X0 + 34 + 3 * 26 + 8 - 10), y(312), font(8.5, .semibold), m.won ? Ink.red : Ink.faint)
         }
-        c.say(m.won ? "+2 · 10줄을 다 깼다" : "10줄을 다 깨면 +2", x(X0 + 34 + 3 * 26 + 8 - 10), y(312), font(8.5, .semibold), m.won ? Ink.red : Ink.faint)
         let go = r(X0, 336, X1 - X0, 38); c.fill(.rounded(go, 12 * K), m.balls > 0 ? Ink.red : Ink.tile)
         c.say(m.balls > 0 ? "던지기 · 남은 \(m.balls)개" : "볼이 없어요", go.midX, go.midY, font(13, .bold), m.balls > 0 ? .white : Ink.sub, 0.5); if m.balls > 0 { hits.append((go, 7040)) }
         let quit = r(X0, 380, X1 - X0, 28); c.fill(.rounded(quit, 10 * K), Ink.tile)
-        c.say("그만두기", quit.midX, quit.midY, font(10.5, .bold), Ink.sub, 0.5); hits.append((quit, 7041))
+        c.say(m.exp ? "나중에 던지기 · 볼은 남아요" : "그만두기", quit.midX, quit.midY, font(10.5, .bold), Ink.sub, 0.5); hits.append((quit, 7041))
         for (i, l) in m.foot.enumerated() { c.say(l, x(Layout.w / 2), y(424 + CGFloat(i) * 15), font(9, .medium), Ink.sub, 0.5) }
     }
     /// 대단한 특훈: the companion's six stats (trained ones and 31s marked), the pick, then its button (or why not).
@@ -1553,5 +1564,56 @@ extension Page {
         c.say(m.hint, x(X0 + 2), y(424), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
         let rc = r(X0, 434, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.action == nil ? Ink.tile : Ink.red)
         c.say(m.action ?? "여기선 쓸 수 없어요", rc.midX, rc.midY, font(11, .bold), m.action == nil ? Ink.sub : .white, 0.5); if m.action != nil { hits.append((rc, 5700)) }
+    }
+}
+
+// MARK: - 전설 원정 (5.2, Exp52.swift; plan 19 §11, the user's A): the kinds as tabs (지금 · 배회 · 시련 · 수집 · 팀 · 예정), five rows at most a tab;
+// under them the pick's steps (① → ② → ③), a roamer's HP and where it is today, its lines and its button (9230); a tab's click 9240 + t
+extension Page {
+    func drawExp52(_ m: ExpModel) {
+        c.say("전설 원정", x(X0 + 2), y(206), font(12, .bold), Ink.ink)
+        c.say(m.got, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
+        tabs(m.tabs, m.tab, 214, code: 9240)
+        let top: CGFloat = 242, step: CGFloat = 26, h: CGFloat = 24
+        if m.rows.isEmpty { emptyState("아직 없어요", x(Layout.w / 2), y(top + 40)) }
+        for (i, row) in m.rows.prefix(Walker.expPerTab).enumerated() {
+            let rc = r(X0, top + CGFloat(i) * step, X1 - X0, h); tile(rc, 8, on: i == m.sel)
+            for (k, d) in row.dex.prefix(3).enumerated().reversed() {
+                monIcon(d, shiny: false, CGRect(x: rc.minX + x(1 + CGFloat(k) * 8), y: rc.midY - x(11), width: x(22), height: x(22)), side: 22 * K, shadow: row.off || row.locked)
+            }
+            let dim = row.off || row.locked, tx = rc.minX + x(38), fg = dim ? Ink.sub : row.ready ? Ink.red : row.done ? Ink.c(150, 96, 16) : Ink.ink
+            let cw = c.say(row.chip, rc.maxX - x(8), rc.minY + x(7.5), font(8, row.on ? .bold : .medium), row.ready || row.on ? Ink.red : Ink.sub, 1)
+            c.say(row.name, tx, rc.minY + x(7.5), font(10, .bold), fg, maxW: rc.maxX - x(14) - cw - tx)
+            hits.append((rc, 9200 + i))
+            if dim { c.say(row.note, tx, rc.minY + x(17.5), font(8, .medium), Ink.faint, maxW: rc.maxX - x(8) - tx); continue }
+            let bx1 = tx + rc.width * 0.26
+            let col = row.hpBar ? (row.frac > 0.5 ? Ink.green : row.frac > 0.2 ? Ink.yellow : Ink.red) : row.done ? Ink.gold : Ink.red
+            c.bar(tx, bx1, rc.minY + x(row.mine == nil ? 17.5 : 16.5), CGFloat(row.frac), col, h: x(4))
+            if let mine = row.mine { c.bar(tx, bx1, rc.minY + x(21), CGFloat(mine), mine >= 1 ? Ink.green : Ink.blue, h: x(2.5)) }
+            c.say(row.note, bx1 + x(6), rc.minY + x(17.5), font(8, .medium), row.ready ? Ink.red : Ink.sub, maxW: rc.maxX - bx1 - x(12))
+        }
+        var yy = top + CGFloat(min(Walker.expPerTab, max(1, m.rows.count))) * step + 4
+        if !m.steps.isEmpty {
+            let n = CGFloat(m.steps.count), gap: CGFloat = 12, cw = (X1 - X0 - gap * (n - 1)) / n
+            for (i, st) in m.steps.enumerated() {
+                let rc = r(X0 + CGFloat(i) * (cw + gap), yy, cw, 28)
+                c.fill(.rounded(rc, 8 * K), st.state == 1 ? Ink.redTint : st.state == 2 ? Ink.tint(Ink.green, 0.14) : Ink.board)
+                if st.state == 1 { c.stroke(.rounded(rc, 8 * K), Ink.red, width: 1.2 * K) }
+                let tc = st.state == 1 ? Ink.red : st.state == 2 ? Ink.green : Ink.sub
+                c.say((st.state == 2 ? "✓ " : "\(i + 1) ") + st.title, rc.midX, rc.minY + x(9), font(8.5, .bold), tc, 0.5, maxW: rc.width - x(6))
+                c.say(st.sub, rc.midX, rc.minY + x(20), font(8, .medium), st.state == 0 ? Ink.faint : Ink.sub, 0.5, maxW: rc.width - x(6))
+                if i > 0 { c.triangle(rc.minX - x(gap / 2), rc.midY, 2.5 * K, left: false, Ink.faint) }
+            }
+            yy += 32
+        }
+        if let hp = m.hp {
+            c.say(m.place, x(X0 + 4), y(yy + 7), font(9.5, .bold), Ink.ink, maxW: x(X1 - X0 - 8))
+            c.say("남은 HP", x(X0 + 4), y(yy + 20), font(8.5, .medium), Ink.sub)
+            c.bar(x(X0 + 44), x(X1 - 62), y(yy + 20), CGFloat(hp), hp > 0.5 ? Ink.green : hp > 0.2 ? Ink.yellow : Ink.red, h: x(5))
+            c.say(m.hpNote, x(X1 - 4), y(yy + 20), font(9, .bold), Ink.ink, 1)
+            yy += 30
+        }
+        for l in m.detail where yy + 13 <= (m.go == nil ? 458 : 428) { c.say(l, x(X0 + 4), y(yy + 4), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 8)); yy += 13 }
+        if let go = m.go { let rc = r(X0, 430, X1 - X0, 28); c.fill(.rounded(rc, 10 * K), Ink.red); c.say(go, rc.midX, rc.midY, font(11, .bold), .white, 0.5, maxW: rc.width - x(10)); hits.append((rc, 9230)) }
     }
 }
