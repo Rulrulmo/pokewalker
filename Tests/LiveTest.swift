@@ -1009,3 +1009,99 @@ import Foundation
     print(failed == 0 ? "PASS live 5.1 (\(phase))" : "FAIL \(failed)")
     return failed == 0
 }
+
+/// `PokeWalker --live-52 <id> <pin> <start|meet|boss|balls>` (a dev build only, against a LOCAL server — POKEWALKER_SERVER — content5 · 51 on; a
+/// test ID has content52 with the switch off): 5.2 on a real server before it ships. start — the login's content52, the page's tabs, 토네로스
+/// started, 기술머신10 bought (W set first) and taught from the bag, the Mega lobby asked for 홈's row; meet — a meeting set (meets 1, hp 30):
+/// its fight comes with that HP, 도망 keeps it, the meeting used; 테라키온 started; boss — its walk set done (stage 1): the boss (3 bars), 후퇴:
+/// the day's fight gone; balls — 5 set: thrown till caught or gone.
+@MainActor func live52Test(_ id: String, _ pin: String, _ phase: String) -> Bool {
+    var failed = 0
+    func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-live52-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
+    let c = Cloud(link: HTTPLink(), dir: tmp); h.texts = [id]; h.pins = [pin, pin, pin]; h.answer = true
+    w.startCloud(c, file: tmp.appendingPathComponent("state.json"), bak: tmp.appendingPathComponent("state.json.bak"))
+    @discardableResult func run(_ secs: Double, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end { w.tick(Date()); if done() { return true }; Thread.sleep(forTimeInterval: 0.1) }
+        return done()
+    }
+    func idle() -> Bool { w.waiting == nil && c.inFlight == nil && c.queued == nil && c.out == nil }
+    func settle() { run(15, until: idle) }
+    func says() -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func toHome() { run(20) { if !w.news.isEmpty || !idle() { return false }; if case .home = w.screen { return true }; w.screen = .home; return false } }
+    func press(_ k: Int = 1) { w.calmAt = .distantPast; w.press(k); settle() }
+    func row(_ id: String, tab: Int) -> Int? { w.expTab = tab; return w.expRows(tab).firstIndex { if case .exp(let e) = $0 { return e.id == id }; return false } }
+    /// A fight to its end: 도망 (or 후퇴) at once; the beats and lines played out.
+    func leave() {
+        var n = 0
+        while n < 60, w.inBattle || { if case .beats = w.screen { return true }; return false }() {
+            n += 1
+            switch w.screen {
+            case .beats: run(30) { if case .beats = w.screen { return false }; return true }
+            case .battle(let b, _): w.screen = .battle(b, sel: w.battleMenu(b).count - 1); press()
+            case .party(let b, _): w.screen = .party(b, sel: b.mine.indices.first { b.mine[$0].alive } ?? 0); press()
+            default: n = 99
+            }
+        }
+    }
+    print("server: \(HTTPLink.base) · phase \(phase)")
+    check(run(40) { c.phase == .on && c.base != nil }, "live 5.2: \(id) logged in (\(c.phase))")
+    check(Content.v52, "live 5.2: content52 on (the login says so: a test ID always)")
+    switch phase {
+    case "start":
+        w.openFeature("전설 원정"); settle()
+        check(w.paneContent(Date()).exp?.tabs == Walker.expTabs, "start: the page's tabs \(w.paneContent(Date()).exp?.tabs ?? [])")
+        if let k = row("토네로스", tab: 1) { w.screen = .expedition(k); press() }
+        check(w.state.expeditions?["토네로스"]?.on == true && w.state.expeditions?["토네로스"]?.mon != nil, "start: 토네로스 started (\(says()))")
+        toHome()
+        if let k = w.wares(false).firstIndex(where: { $0.kind == .item("기술머신10") }) {
+            let watts = w.state.watts; w.screen = .shopConfirm(bp: false, sel: k, yes: true); press()
+            check(w.state.tms?.contains(10) == true && w.state.watts == watts - Machines.price(10), "start: 기술머신10 bought (\(watts) → \(w.state.watts) W, tms \(w.state.tms ?? []))")
+            toHome(); w.screen = .items(Walker.tmRow0 + ((w.state.tms ?? []).sorted().firstIndex(of: 10) ?? 0)); press()
+            if case .itemOn = w.screen { press() }
+            if case .relearn = w.screen { press(); press() }
+            check(w.state.companion.moves.contains(237), "start: 잠재파워 taught from the bag (\(w.state.companion.moves.compactMap { moveTable[$0]?.name }), \(says()))")
+        } else { check(false, "start: no 기술머신10 in the shop") }
+        toHome(); c.teamDue = true; run(15) { c.megaRaid != nil && idle() }
+        check(c.megaRaid != nil, "start: the Mega lobby asked with the team's round (홈's 레이드 row: \(w.raidStatus))")
+    case "meet":
+        let x = w.state.expeditions?["토네로스"]
+        check(x?.meets == 1 && x?.hp == 30, "meet: a meeting and hp 30 set (\(String(describing: x?.meets)) \(String(describing: x?.hp)))")
+        w.openFeature("전설 원정"); settle()
+        if let k = row("토네로스", tab: 1) { w.screen = .expedition(k); press() }
+        run(20) { w.fight != nil }
+        check(w.fight?.theirs[0].hp == 30 && w.fight?.expedition == "토네로스" && w.paneContent(Date()).battle?.turnsLeft != nil, "meet: its fight with the HP it left with (\(w.fight?.theirs[0].hp ?? -1)), 남은 턴")
+        leave(); settle()
+        let y = w.state.expeditions?["토네로스"]
+        check(y?.meets == 0 && y?.hp == 30, "meet: 도망 — the meeting used, the HP kept (\(String(describing: y?.meets)) \(String(describing: y?.hp)), \(says()))")
+        toHome(); w.openFeature("전설 원정"); settle()
+        if let k = row("테라키온", tab: 2) { w.screen = .expedition(k); press() }
+        check(w.state.expeditions?["테라키온"]?.on == true && w.state.expeditions?["토네로스"]?.on == false, "meet: 테라키온 started, 토네로스 stopped")
+    case "boss":
+        check(w.state.expeditions?["테라키온"]?.stage == 1, "boss: 테라키온's walk set done (stage \(w.state.expeditions?["테라키온"]?.stage ?? -1))")
+        w.openFeature("전설 원정"); settle()
+        if let k = row("테라키온", tab: 2) { w.screen = .expedition(k); press() }
+        if case .squad(let q) = w.screen { w.squadGo(Squad(kind: q.kind, picked: [w.state.companion.uid!], at: 1), Date()); settle() }
+        run(20) { w.fight != nil }
+        check(w.fight?.theirs.count == 3 && w.fight?.raidTier != nil && w.fight.map { w.battleMenu($0).last == "후퇴" } == true, "boss: 테라키온's fight — 3 bars, 후퇴")
+        leave(); settle()
+        check(w.state.expeditions?["테라키온"]?.fought == Walk.key(Date()), "boss: 후퇴 — the day's fight gone (\(says()))")
+    case "balls":
+        let b0 = w.state.expeditions?["테라키온"]?.balls ?? 0
+        check(b0 == 5, "balls: 5 set")
+        w.expBallsID = "테라키온"; w.screen = .raid(.expBalls("테라키온")); var n = 0
+        while n < 8, case .raid(.expBalls) = w.screen {
+            n += 1; press(); run(30) { if case .beats = w.screen { return false }; return idle() }
+            var k = 0; while k < 10, case .say = w.screen { w.press(1); k += 1 }
+        }
+        let x = w.state.expeditions?["테라키온"]
+        check(n >= 1 && ((x?.done == 1 && w.state.box.contains { $0.dex == 639 }) || (x?.balls == nil && x?.done == 0)), "balls: \(n) thrown — " + (x?.done == 1 ? "caught, in the box" : "all missed: tomorrow's boss"))
+    default: print("--live-52: start | meet | boss | balls"); return false
+    }
+    print(failed == 0 ? "PASS live 5.2 (\(phase))" : "FAIL \(failed)")
+    return failed == 0
+}
+
