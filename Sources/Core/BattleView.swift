@@ -33,7 +33,7 @@ extension Walker {
                 let m = moveTable[id]!, real = x.moveType(.me, m)
                 return .init(name: m.name, type: real.type.isEmpty ? m.type : real.type, power: Moves.fixedOrVariable.contains(id) ? 0 : real.power, effect: x.hint(id, real.type), pp: f.pp[k], maxPP: m.pp, status: m.isStatus, about: moveAbout(m), text: moveText(id))
             }, sel)
-        case .party(let x, let sel): b = x; msg = itemFor.map { josa($0, "을", "를") + " 누구에게 쓸까?" } ?? (x.mustReplace ? "다음은 누구를 내보낼까?" : "누구로 교체할까?"); mode = .party(x.mine.enumerated().map { card($1, out: $0 == x.me) }, sel)
+        case .party(let x, let sel): b = x; msg = itemFor.map { josa($0, "을", "를") + " 누구에게 쓸까?" } ?? (x.mustReplace ? "다음은 누구를 내보낼까?" : "누구로 교체할까?"); mode = .party(x.mine.enumerated().map { card($1, out: $0 == x.me, real: true) }, sel)   // (our own: as they are)
         case .forfeit(let x, let yes):
             let s = state.towerStreak ?? 0
             b = x; msg = duelOn ? "기권할까? 이 대전은 지게 된다" : s > 0 ? "기권할까? \(s)연승이 끝난다" : "기권할까? 참가비 \(Walk.towerFee)W는 돌아오지 않는다"; mode = .ask(yes)
@@ -45,7 +45,7 @@ extension Walker {
         }
         if let said { msg = said; mode = .none }
         let foe = b.theirs[b.it], mine = b.mine[b.me]
-        var theirs = card(foe, out: true); theirs.types = foe.typeList; theirs.owned = (state.owned ?? []).contains(foe.mon.dex)
+        var theirs = card(foe, out: true); theirs.types = foe.disguise?.typing ?? foe.typeList; theirs.owned = (state.owned ?? []).contains(b.looks(.it).dex)   // 5.2: 일루전 — as it looks
         if bossOn(b), foe.mon.shiny == true { theirs.name = "★" + theirs.name }                      // 4.0: a shiny boss, as the pixel HUD says it (5.2: an expedition's too)
         var m = SideModel(foe: theirs, mine: card(mine, out: true), message: msg, mode: mode)
         let mm = mine.mon, et = expTable[growthRate[mm.dex]], lv = max(1, min(100, mm.level)), lo = et[lv], hi = et[min(100, lv + 1)]   // 5.0: ours' EXP bar
@@ -60,7 +60,7 @@ extension Walker {
     }
     /// 메가진화 on offer now: ours may, and (5.1.4, plan 24) a live battle's says this one allows it (DuelView.mega; the server's: both apps 5.1.4 on).
     func megaHere(_ b: Battle) -> Bool { b.canMega(.me) && (!duelOn || duel?.mega == true) }
-    func card(_ f: Fighter, out: Bool) -> SideModel.Card { .init(name: f.mega.flatMap { Forms.of(f.mon.dex, $0)?.name } ?? monNames[f.mon.dex], level: f.mon.level, hp: f.hp, max: f.maxHP, out: out, status: f.status?.badge, item: f.item) }
+    func card(_ f: Fighter, out: Bool, real: Bool = false) -> SideModel.Card { .init(name: (real ? nil : f.disguise.map { monNames[$0.dex] }) ?? f.mega.flatMap { Forms.of(f.mon.dex, $0)?.name } ?? monNames[f.mon.dex], level: f.mon.level, hp: f.hp, max: f.maxHP, out: out, status: f.status?.badge, item: f.item) }   // 5.2: 일루전 (the party list: as they are)
     func sidePick(_ k: Int) {                                                                   // a click on the side panel = selecting that row, then ●
         guard !frozen, waiting == nil else { return }
         lastInput = Date()
@@ -139,9 +139,9 @@ extension Walker {
         let sky: Weather = switch b.weatherOn { case .rain: .rain; case .hail: .snow; case .fog: .fog; default: .sunny }   // the battle's own weather (a 비바라기 shows), not the course's
         fb.battleGround(at, art: state.here.art, hour: state.hour, season: state.season, weather: sky, indoor: b.trainer != nil)   // the ground, the pads they stand on
         defer { fb.weatherFX(sky, 0, 0, 96, 64, t) }                                                     // over the fighters (the tower is indoors)
-        let foe = b.theirs[b.it].mon
+        let foe = b.looks(.it)                                                                     // (5.2: 일루전 — its sparkle is the disguise's)
         let veiled: Side? = { if let (bt, u) = beat, case .mega(let s, _, _) = bt, u < MegaFX.reveal { return s }; return nil }()   // 5.0: still its old form, in its light
-        func look(_ f: Fighter, _ s: Side) -> Mon { var m = f.mon; let x = f.body; if veiled != s { m.dex = x.dex; m.form = x.form }; return m }   // the sprite: 변신 shows what it became; 5.0: a Mega / battle form its own
+        func look(_ f: Fighter, _ s: Side) -> Mon { if let d = f.disguise { return d }; var m = f.mon; let x = f.body; if veiled != s { m.dex = x.dex; m.form = x.form }; return m }   // (5.2: 일루전 — its disguise)   // the sprite: 변신 shows what it became; 5.0: a Mega / battle form its own
         let foeLook = look(b.theirs[b.it], .it), mineLook = look(b.mine[b.me], .me)
         let up: [Side: Bool] = [.it: b.theirs[b.it].alive || pending.contains(.it), .me: b.mine[b.me].alive || pending.contains(.me)]   // fainted = gone, once its faint has played
         var shown: [Side: (dx: Int, dy: Int, flash: Bool, on: Bool)] = [.it: (0, 0, false, up[.it]!), .me: (0, 0, false, up[.me]!)]
@@ -220,7 +220,7 @@ extension Walker {
         return [words[..<best].joined(separator: " "), words[best...].joined(separator: " ")]
     }
     func beatLine(_ beat: Beat, _ u: Double, _ b: Battle) -> String {
-        let it = monNames[b.theirs[b.it].mon.dex]
+        let it = monNames[b.looks(.it).dex]                                                       // (5.2: 일루전 — the name it shows)
         switch beat {
         case .appear:
             if b.wild.shiny == true && u < 0.9 { return "✦ 반짝! ✦" }
@@ -229,8 +229,8 @@ extension Walker {
         case .sendOut(.it, let k) where b.trainer == nil: return josa(it, "이", "가") + " 다시 일어섰다! (남은 " + (b.expedition != nil ? "바" : "줄") + " \(b.theirs.count - k))"   // a raid: its next bar (5.2: an expedition boss's)
         case .sendOut(.it, let i):
             let t = b.trainer ?? "상대"                                                                // the intro's challenge, then who it sends
-            return isIntro(beat, b) && u < 1.7 ? josa(t, "이", "가") + " 승부를 걸어왔다!" : josa(t, "은", "는") + " " + josa(monNames[b.theirs[i].mon.dex], "을", "를") + " 내보냈다!"
-        case .sendOut(.me, let i): return "가랏, " + monNames[b.mine[i].mon.dex] + "!"
+            return isIntro(beat, b) && u < 1.7 ? josa(t, "이", "가") + " 승부를 걸어왔다!" : josa(t, "은", "는") + " " + josa(monNames[(b.theirs[i].disguise ?? b.theirs[i].mon).dex], "을", "를") + " 내보냈다!"   // (5.2: 일루전)
+        case .sendOut(.me, let i): return "가랏, " + monNames[(b.mine[i].disguise ?? b.mine[i].mon).dex] + "!"
         case .use(let s, let id): return b.nm(s) + "의 " + moveTable[id]!.name + "!"
         case .hit(let s, let id, _, let e, let crit):
             if crit && (e == 1 || u < 0.8) { return "급소에 맞았다!" }

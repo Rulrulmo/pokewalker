@@ -122,7 +122,8 @@ func ballShot(_ beat: Beat, _ u: Double, _ b: Battle, ball item: String) -> Ball
         if intro, let t = b.trainer, u < 2 { s.trainer = (t, u < 0.45 ? Int(64 * pow(1 - u / 0.45, 2)) : Int(130 * pow(span(1.55, 0.4), 2))) }   // in; its 승부; off to the right as it throws
         let o = side == .it ? (x: 0, y: -30) : (x: 4, y: -40), from = side == .me ? (x: -80, y: -10) : intro ? (x: 12, y: -50) : (x: 70, y: -90)
         if u >= u0 + 0.3 { pop(o, u0 + 0.3) } else if u >= u0 { fly(from, o, side == .me ? 26 : 16, 1, (u - u0) / 0.3) }
-        if (side == .me ? b.mine : b.theirs)[i].mon.shiny == true, u > u0 + 0.7 { s.shine = u - u0 - 0.7 }
+        let out = (side == .me ? b.mine : b.theirs)[i]                                                // (5.2: 일루전 — the disguise's sparkle)
+        if (out.disguise ?? out.mon).shiny == true, u > u0 + 0.7 { s.shine = u - u0 - 0.7 }
     case .won: s.trainer = b.trainer.map { ($0, Int(64 * pow(1 - span(0, 0.45), 2))) }                  // the beaten trainer comes back
     default: break
     }

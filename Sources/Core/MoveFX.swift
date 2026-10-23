@@ -230,7 +230,7 @@ extension Walker {
         let low = at[.me]!.y == 22 ? 100.0 : 128                                                // the stage's bottom (the old HUD's message row below)
         /// A fighter's body now, in half-dots: its centre across, head, middle, feet; its sprite run, if drawn (dash, shake and bob included).
         func body(_ s: Side) -> (x: Double, top: Double, y: Double, feet: Double, run: SpriteRun?) {
-            let run = fb.sprites.last { $0.back == (s == .me) }, a = at[s]!, look = (s == .me ? b.mine[b.me] : b.theirs[b.it]).body, art = artIndex(look.dex, look.form)
+            let run = fb.sprites.last { $0.back == (s == .me) }, a = at[s]!, f = s == .me ? b.mine[b.me] : b.theirs[b.it], look = f.disguise ?? f.body, art = artIndex(look.dex, look.form)   // (5.2: 일루전)
             let rx: Int = run?.x ?? a.x, ry: Int = run?.y ?? a.y, bob: Int = run?.bob ?? 0      // (typed in steps: the ?? arithmetic in one go cost seconds to type-check)
             let x = Double((rx + 16) * 2), feet = Double((ry + 32) * 2 - bob), top: Double = feet - Double(80 - spriteTop(art, back: s == .me))
             return (x, top, (top + min(feet, low)) / 2, feet, run)

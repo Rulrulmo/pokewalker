@@ -114,3 +114,34 @@ import Foundation
     } } }
     return c
 }
+
+/// 5.2 (plan 19 §11.5): 일루전 and 프리폴 on the battle screens — a tower trainer's 조로아크 out first shows as its party's last (the HP box's
+/// name, types, the sprite, "내보냈다"), the move buttons' hints by its disguise's types, a hit: "일루전이 풀렸다!" and itself again; our one held up
+/// by 프리폴: the menu says why it can't (공중에 들려 있다).
+@MainActor func illusion52Checks() -> [(Bool, String)] {
+    var c: [(Bool, String)] = []
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) { Content.$testing52.withValue(true) {
+        var r = Seeded(s: 5)
+        var zor = Mon.wild(571, level: 50, &r); zor.ability = 0
+        if abilityNames[zor.abilityID] != "일루전" { zor.ability = (abilitySlots[571].firstIndex { abilityNames[$0] == "일루전" }) ?? 0 }
+        let foes = [zor, Mon.wild(94, level: 50, &r), Mon.wild(448, level: 50, &r)]
+        var mine = Mon.wild(6, level: 50, &r); mine.known = [53, 19, 89, 14]
+        var b = Battle(party: [mine], trainer: "타워 트레이너", foes: foes); b.seed = 9
+        let open = b.begin(weather: nil, &r)
+        let w = Walker(state: { var s = Walk(); s.companion = mine; return s }()); w.persist = false
+        let side = { (b: Battle) -> SideModel? in w.fight = b; w.screen = .battle(b, sel: 0); return w.sideModel(Date()) }
+        let m = side(b), disguised = b.theirs[b.it].disguise?.dex == 448 && m?.foe.name == "루카리오" && m?.foe.types == Mon(dex: 448, level: 50, female: false).typing
+        let sentLine = open.compactMap { bt -> String? in if case .sendOut(.it, _) = bt { return w.beatLine(bt, 2, b) }; return nil }.last ?? ""
+        var hit = b; let unveil = Beat.reform(.it, form: 0, text: "일루전이 풀렸다!")                   // a hit breaks it (the engine's: server/Tests Exp52Tests)
+        let line = w.beatLine(unveil, 0.5, hit); hit.apply(unveil)
+        let broke = line == "일루전이 풀렸다!" && hit.theirs[0].disguise == nil
+        let after = side(hit)?.foe.name == "조로아크"
+        var held = b; held.mine[0].lifted = true
+        w.fight = held; w.screen = .battle(held, sel: w.battleMenu(held).firstIndex(of: "교체") ?? 1); w.press(1)
+        let lifted = held.locked ? { if case .say(let l, _, _) = w.screen { return l.last == "공중에 들려 있다!" }; return false }() : true
+        c.append((disguised && sentLine.contains("루카리오") && broke && after && lifted,
+                  "5.2 일루전: a tower trainer's 조로아크 shows as its last (the HP box's name and types, \"루카리오를 내보냈다\"), a hit: 일루전이 풀렸다! and itself; 프리폴: held up, the menu says 공중에 들려 있다"
+                  + (disguised && sentLine.contains("루카리오") && broke && after && lifted ? "" : " — \(disguised) \(String(describing: m?.foe.name)) \(sentLine) \(broke) \(after) \(lifted) \(held.locked)")))
+    } } }
+    return c
+}

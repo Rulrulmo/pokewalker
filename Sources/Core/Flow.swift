@@ -270,7 +270,7 @@ extension Walker {
             let opts = battleMenu(b), n = opts.count
             if k == 0 { screen = .battle(b, sel: (sel + n - 1) % n); return }
             if k == 2 { screen = .battle(b, sel: (sel + 1) % n); return }
-            if b.locked, !["공격", "기권"].contains(opts[sel]) { screen = .say([josa(b.nm(.me), "은", "는"), "기술을 쓰는 중이다!"], next: .battle(b, sel: 0), since: now); return }
+            if b.locked, !["공격", "기권"].contains(opts[sel]) { screen = .say(b.mine[b.me].lifted == true ? [josa(b.nm(.me), "은", "는"), "공중에 들려 있다!"] : [josa(b.nm(.me), "은", "는"), "기술을 쓰는 중이다!"], next: .battle(b, sel: 0), since: now); return }   // 5.2: 프리폴
             let back = Screen.battle(b, sel: sel)
             switch opts[sel] {
             case "공격":
