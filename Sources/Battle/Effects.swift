@@ -105,7 +105,7 @@ extension Battle {
             guard f(t).form == nil else { fail(); return }
             let src = f(t)
             mod(s) { if $0.ownMoves == nil { $0.ownMoves = $0.moves; $0.ownPP = $0.pp }; $0.form = src.body; $0.types = src.typeList; $0.stage = src.stage; $0.moves = src.moves; $0.pp = src.moves.map { _ in 5 }; $0.abilityOver = src.ability }; retyped(s)
-            say(s, josa(n, "은", "는") + " " + josa(monNames[src.mon.dex], "으로", "로") + " 변신했다!")
+            say(s, josa(n, "은", "는") + " " + josa(monNames[(src.disguise ?? src.mon).dex], "으로", "로") + " 변신했다!")
         case 102:
             guard f(t).lastMove != 0, !f(s).moves.contains(f(t).lastMove), let k = f(s).moves.firstIndex(of: 102) else { fail(); return }
             let lm = f(t).lastMove; mod(s) { if $0.ownMoves == nil { $0.ownMoves = $0.moves; $0.ownPP = $0.pp }; $0.moves[k] = lm; $0.pp[k] = 5 }; say(s, josa(n, "은", "는") + " " + josa(moveTable[lm]!.name, "을", "를") + " 흉내 냈다!")
@@ -176,7 +176,7 @@ extension Battle {
         case 346: waterSport = true; say(s, "불꽃의 위력이 약해졌다!")
         case 356:
             guard gravity == 0 else { fail(); return }; gravity = 5
-            for x in [Side.me, .it] { mod(x) { $0.magnetRise = 0; if [19, 340].contains($0.semi) { $0.semi = 0; $0.charging = 0 } } }   // whoever's up in the air comes down
+            for x in [Side.me, .it] { mod(x) { $0.magnetRise = 0; if [19, 340, 507].contains($0.semi) { $0.semi = 0; $0.charging = 0 }; $0.lifted = nil } }   // whoever's up in the air comes down (5.2: 프리폴 both)
             say(s, "중력이 강해졌다!")
         case 361, 461: guard nextAlive(s) != nil else { fail(); return }; sides[si(s)].healingWish = true; sides[si(s)].lunarDance = id == 461; hurt(s, f(s).hp, "")
         case 367:

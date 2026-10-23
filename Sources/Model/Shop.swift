@@ -162,7 +162,7 @@ extension Walk {
     struct Ware: Equatable {
         enum Kind: Equatable { case item(String), legend(Int), shell(String) }   // legend = Walk.legendShop index; shell = a device colour's name
         var kind: Kind; var price: Int
-        var once: Bool { if case .item(let i) = kind { if case .key = ItemKind.of(i) { return true }; return false }; return true }   // one at a time, with 정말 살까? (a device colour, 5.0's 로토무카탈로그 also only ever once)
+        var once: Bool { if case .item(let i) = kind { if case .key = ItemKind.of(i) { return true }; return Walk.machine(i) != nil }; return true }   // one at a time, with 정말 살까? (a device colour, 5.0's 로토무카탈로그 also only ever once; 5.2's 기술머신)
     }
     enum Bought: Equatable { case items(String, Int), legend(Mon), shell(String) }
     /// The rows, in order: the goods, then (상점) the companion's evolution items, then the once-only ones. `shells` = the device colours sold for BP.
@@ -176,15 +176,19 @@ extension Walk {
             + Walk.heldW.map { Ware(kind: .item($0.item), price: $0.watts) }
             + evolutionItems().filter { i in !Walk.heldW.contains { $0.item == i } }.map { Ware(kind: .item($0), price: Walk.evoItemPrice) }
             + Walk.legendShop.indices.filter { Walk.legendShop[$0].watts > 0 }.map { Ware(kind: .legend($0), price: Walk.legendShop[$0].watts) }
+            + (Content.v52 ? Machines.sold.map { Ware(kind: .item(Machines.name($0)), price: Machines.price($0)) } : [])   // 5.2 (plan 19 §11.4): the 106, kept once bought
     }
+    /// A ware's machine (5.2, content52): "기술머신26" → 26 — a W 상점 row that goes to Walk.tms, not the bag (a course's copy in the bag sells).
+    static func machine(_ name: String) -> Int? { Content.v52 ? Machines.number(name) : nil }
     /// The shops' tabs (docs/plans/13: the lists got long), in order; and the one a row goes under.
-    static func shopTabs(bp: Bool) -> [String] { bp ? ["회복", "육성", "지닌 도구", "기기 색", "전설"] : ["회복", "배틀", "육성", "민트", "지닌 도구", "열매", "진화", "기타", "전설"] }   // (기타: 5.0's 로토무카탈로그, as the bag's; a tab shows only with a row in it)
+    static func shopTabs(bp: Bool) -> [String] { bp ? ["회복", "육성", "지닌 도구", "기기 색", "전설"] : ["회복", "배틀", "육성", "민트", "지닌 도구", "열매", "진화", "기타", "전설"] + (Content.v52 ? ["기술머신"] : []) }   // (기타: 5.0's 로토무카탈로그, as the bag's; a tab shows only with a row in it)
     /// bp: which shop the row is in (3.7: a held item is under 지닌 도구 / 열매 by the list it's sold from).
     static func shopTab(_ w: Ware, bp: Bool = false) -> String {
         switch w.kind {
         case .legend: return "전설"
         case .shell: return "기기 색"
         case .item(let i):
+            if !bp, machine(i) != nil { return "기술머신" }
             if bp ? heldBP.contains(where: { $0.item == i }) : heldW.contains(where: { $0.item == i }) { return i.hasSuffix("열매") ? "열매" : "지닌 도구" }
             switch ItemKind.of(i) {
             case .heal, .revive: return "회복"
@@ -213,14 +217,14 @@ extension Walk {
         }
     }
     func wareName(_ w: Ware) -> String {
-        switch w.kind { case .item(let i): i; case .legend(let k): monNames[Walk.legendShop[k].dex] + " (전설)"; case .shell(let s): s + " (기기 색)" }
+        switch w.kind { case .item(let i): Walk.machine(i).map { i + " " + (moveTable[Machines.move($0)]?.name ?? "") } ?? i; case .legend(let k): monNames[Walk.legendShop[k].dex] + " (전설)"; case .shell(let s): s + " (기기 색)" }
     }
     func wareNote(_ w: Ware) -> String {
-        switch w.kind { case .item(let i): ItemKind.of(i).summary; case .legend(let k): "Lv.\(Walk.legendShop[k].level) · 3V · 여러 번 살 수 있어요"; case .shell: "기기 색 바꾸기 · 한 번만" }
+        switch w.kind { case .item(let i): Walk.machine(i).map(Walk.machineNote) ?? ItemKind.of(i).summary; case .legend(let k): "Lv.\(Walk.legendShop[k].level) · 3V · 여러 번 살 수 있어요"; case .shell: "기기 색 바꾸기 · 한 번만" }
     }
     /// How many are carried (once-only: 1 when bought).
     func owned(_ w: Ware) -> Int {
-        switch w.kind { case .item(let i): count(i); case .legend: 0; case .shell(let s): (bought ?? []).contains(s) ? 1 : 0 }   // a legend can be bought again
+        switch w.kind { case .item(let i): Walk.machine(i).map { machines.contains($0) ? 1 : 0 } ?? count(i); case .legend: 0; case .shell(let s): (bought ?? []).contains(s) ? 1 : 0 }   // a legend can be bought again
     }
     /// How many of it can be bought right now: what the money covers, up to 99 at a time (once-only: 0 or 1).
     func canBuy(_ w: Ware, bp useBP: Bool) -> Int {
@@ -233,6 +237,7 @@ extension Walk {
         switch w.kind {
         case .item(let i):
             if useBP { bp = (bp ?? 0) - w.price * n } else { watts -= w.price * n }
+            if let no = Walk.machine(i) { tms = ((tms ?? []) + [no]).sorted(); return .items(i, 1) }   // 5.2: kept for good, not a bag item
             bag += Array(repeating: i, count: n); return .items(i, n)
         case .legend(let k): return buyLegend(k).map { .legend($0) }
         case .shell(let s): bp = (bp ?? 0) - w.price; bought = (bought ?? []) + [s]; return .shell(s)

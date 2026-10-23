@@ -217,6 +217,7 @@ actor SaveDB {
                 if Content.raidDaily { reply["raidDaily"] = .b(true) }                               // 5.1 (plan 20): Content.onDaily, the same way
                 if Content.evoChoice { reply["evoChoice"] = .b(true) }                               // 5.1.3 (plan 23): Content.onChoice, the same way
                 if Content.duelMega { reply["duelMega"] = .b(true) }                                 // 5.1.4 (plan 24): Content.onDuelMega, the same way
+                if Content.v51, Content.on52 || isTestID(id.key) { reply["content52"] = .b(true) }  // 5.2 (plan 19 §11.6): Content.on52 (its requests by the app's version)
                 return Reply(200, reply,
                              note: t.device != nil && t.device != r.device ? "login from \(r.device_name.prefix(64)), took it from \(t.lastDevice ?? "?")" : nil)
             }
@@ -252,6 +253,7 @@ actor SaveDB {
                 if Content.raidDaily { reply["raidDaily"] = .b(true) }
                 if Content.evoChoice { reply["evoChoice"] = .b(true) }
                 if Content.duelMega { reply["duelMega"] = .b(true) }
+                if Content.v51, Content.on52 || isTestID(id.key) { reply["content52"] = .b(true) }
                 return Reply(200, reply, note: "new trainer \(id.name) from \(r.device_name.prefix(64))")
             }
         }

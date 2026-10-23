@@ -30,6 +30,13 @@ enum Content {
     nonisolated(unsafe) static var onDuelMega = false
     @TaskLocal static var testingDuelMega: Bool? = nil
     static var duelMega: Bool { testingDuelMega ?? onDuelMega }
+    /// 5.2 (docs/plans/19 §11): 배회 · 시련 · 레쿠쟈 원정, 기술머신, 일루전 · 프리폴 (pokeserver content52), on top of content51; the app takes it
+    /// from the login reply's content52. The server plays a request by it only for a 5.2 app (app52, set per request: a 5.1.x one plays as
+    /// 5.1.5 did, so MIN_APP 5.2 can come later); a test ID has it with the switch off (testing52).
+    nonisolated(unsafe) static var on52 = false
+    @TaskLocal static var testing52: Bool? = nil
+    @TaskLocal static var app52 = true
+    static var v52: Bool { v51 && (testing52 ?? on52) && app52 }
 }
 
 private func patched<T>(_ base: [T], _ changes: [Int: T]) -> [T] { var a = base; for (k, v) in changes { a[k] = v }; return a }

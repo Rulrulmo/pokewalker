@@ -46,6 +46,7 @@ struct Walk: Codable, Equatable {
     var cardTitle: String? = nil                                       // 5.0 (the user, 10-14): the 칭호 the card shows, picked (nil: the newest)
     var dexRewards: [String]? = nil                                    // 5.0 (plan 18 §15): the 도감 업적 mailed (DexGoals keys: "전국:100", "관동:50"), for the list
     var expeditions: [String: ExpProgress]? = nil                      // 5.1 (docs/plans/19): each personal 전설 원정's progress, by Expedition.id
+    var tms: [Int]? = nil                                              // 5.2 (docs/plans/19 §11.4): the 기술머신 · 비전머신 had, by number (Machines; 101-107 = HM)
 
     /// The 칭호 shown (the card, a duel's opponent): the one picked while it's still earned, else the newest.
     var shownTitle: String? { cardTitle.flatMap { (titles ?? []).contains($0) ? $0 : nil } ?? titles?.last }

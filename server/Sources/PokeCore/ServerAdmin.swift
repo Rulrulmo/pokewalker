@@ -38,6 +38,7 @@ let usage = """
       versions                           5.0: each trainer's app as last seen, its oldest allowed, what its updater said last
       update-hint urgent|calm [<iso>]    5.0: /v1/update's hint outside the signed manifest — urgent (and install by when)
       content51 [on|off]                 5.1 (docs/plans/19): the 전설 원정 switch, on top of content5 (the server within 10 s, the app at its next login)
+      content52 [on|off]                 5.2 (docs/plans/19 §11): 배회 · 시련 · 레쿠쟈 원정, 기술머신, 일루전 · 프리폴, on top of content51 — for 5.2 apps' requests only (test IDs: always)
       events                             5.1: the team events — each week, the team's steps against its goal, who walked enough, who got the mythical
       event-schedule <yyyy-MM-dd>        5.1: the six weeks from that day (0:00 KST), every other week, and the encore two weeks after the last
       event-cancel <id>                  5.1: one not begun goes; one on ends now
@@ -399,6 +400,10 @@ public func run(_ arguments: [String]) async -> Int32 {
         case ("content51", 1):
             guard ["on", "off"].contains(rest[0]) else { return fail("content51: on | off") }
             out = try await db.setContent51(rest[0] == "on")
+        case ("content52", 0): out = "content52 " + ((try await db.content52()) ? "on" : "off")
+        case ("content52", 1):
+            guard ["on", "off"].contains(rest[0]) else { return fail("content52: on | off") }
+            out = try await db.setContent52(rest[0] == "on")
         case ("raid-daily", 0): out = "raid-daily " + ((try await db.raidDaily()) ? "on" : "off")
         case ("raid-daily", 1):
             guard ["on", "off"].contains(rest[0]) else { return fail("raid-daily: on | off") }

@@ -29,10 +29,13 @@ enum Moves {
     static let unsupported: Set<Int> = [166, 266, 270, 274, 286, 289, 382,
                                         476, 495, 502, 505, 597, 507,                              // 5.0: doubles-only (분노가루 당신먼저 사이드체인지 치유파동 아로마미스트), 프리폴
                                         482, 511, 513, 516, 518, 519, 520, 524, 590, 603, 604, 605, 606, 607, 610, 611, 612, 617]   // no one learns them in 5.0 (the TM plan, plan 18 §2.2)
-    static func supported(_ id: Int) -> Bool { id < 10000 && moveTable[id] != nil && !unsupported.contains(id) }
+    /// 5.2 (content52, docs/plans/19 §11.4): the six ORAS 기술머신 moves left out in 5.0 (오물웨이브 얼음숨결 비밀이야기 매지컬샤인 엉겨붙기
+    /// 그로우펀치 — the engine plays them from their data, 얼음숨결's sure crit by its crit stage, 엉겨붙기 as a binding move).
+    static let since52: Set<Int> = [482, 524, 590, 605, 611, 612, 507]   // + 프리폴 (§11.5: two turns, the target held up in the air)
+    static func supported(_ id: Int) -> Bool { id < 10000 && moveTable[id] != nil && (!unsupported.contains(id) || Content.v52 && since52.contains(id)) }
     /// The held-item moves (3.7): learnable, but never in a default set (one that never chose its moves keeps the four it always had).
     static let itemMoves: Set<Int> = [271, 415, 374, 363, 278]
-    static let semiInvulnerable: Set<Int> = [19, 91, 291, 340, 467, 566]  // 공중날기 구멍파기 다이빙 뛰어오르다 섀도다이브 고스트다이브
+    static let semiInvulnerable: Set<Int> = [19, 91, 291, 340, 467, 566, 507]  // 공중날기 구멍파기 다이빙 뛰어오르다 섀도다이브 고스트다이브 (5.2: 프리폴)
     static let fixedDamage: Set<Int> = [12, 32, 49, 68, 69, 82, 90, 101, 117, 149, 162, 243, 283, 329, 368, 515]   // only an immunity changes what they do
     static let fixedOrVariable: Set<Int> = [12, 32, 49, 67, 68, 69, 82, 90, 101, 117, 149, 162, 175, 179, 216, 217, 218, 222, 243, 255, 283, 329, 360, 363, 368, 374, 376, 378, 447, 462,
                                             484, 486, 515, 535]                                   // 헤비봄버 일렉트릭볼 목숨걸기 히트스탬프
@@ -65,6 +68,8 @@ struct Fighter: Equatable, Codable {
     var shield: Int? = nil, smackedDown: Bool? = nil, telekinesis: Int? = nil, statOver: [Int]? = nil, lighter: Int? = nil
     var mega: Int? = nil, battleForm: Int? = nil                       // a Mega / primal form (to the fight's end), a form for now (스텝폼 블레이드폼 달마모드: gone on switching)
     var electrified: Bool? = nil, powdered: Bool? = nil, addedType: String? = nil
+    var disguise: Mon? = nil                                           // 5.2 (content52, docs/plans/19 §11.5): 일루전 — who it looks like until a hit (nil: itself)
+    var lifted: Bool? = nil                                            // 5.2: 프리폴 — held up in the air by the other's (semi 507): it can't move or switch
 
     init(_ m: Mon) { mon = m; hp = m.stats[0]; moves = m.moves; pp = m.moves.map { moveTable[$0]?.pp ?? 5 }; item = m.item }
     var maxHP: Int { mon.stats[0] }

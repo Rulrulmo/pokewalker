@@ -23,6 +23,8 @@ struct Battle: Equatable, Codable {                                 // Codable: 
     var terrain: Terrain? = nil, terrainLeft: Int? = nil, wonderRoom: Int? = nil, magicRoom: Int? = nil   // 5.0 (content5, Gen6Moves.swift): fields and rooms,
     var ionDeluge: Int? = nil, fairyLock: Int? = nil                                                       // 플라스마샤워's turn, 페어리록's (the next)
     var megaUsed: [Bool]? = nil, extreme: Int? = nil                 // 5.0 (Gen6Forms.swift): each side's Mega used; 시작의바다 · 끝의대지 · 델타스트림 on
+    var expedition: String? = nil, catchOdds: Double? = nil         // 5.2 (docs/plans/19 §11.3): a 전설 원정's fight (its id: the roamer, the boss); a ball's odds there (배회)
+    var illusion: Bool? = nil                                       // 5.2 (§11.5): a live battle where 일루전 plays (both apps 5.2: the server's, at its start)
     var wild: Mon { theirs[it].mon }
 
     init(wild: Mon, companion: Mon, chain: Int = 0) { self.init(wild: wild, party: [companion], chain: chain) }
@@ -34,7 +36,11 @@ struct Battle: Equatable, Codable {                                 // Codable: 
     mutating func mod(_ s: Side, _ body: (inout Fighter) -> Void) { if s == .me { body(&mine[me]) } else { body(&theirs[it]) } }
     func other(_ s: Side) -> Side { s == .me ? .it : .me }
     func si(_ s: Side) -> Int { s == .me ? 0 : 1 }
-    func nm(_ s: Side) -> String { (s == .me ? "" : trainer == nil ? "야생 " : "상대 ") + monNames[f(s).mon.dex] }
+    func nm(_ s: Side) -> String { (s == .me ? "" : trainer == nil ? "야생 " : "상대 ") + monNames[looks(s).dex] }
+    /// Who s's one looks like: its 일루전's disguise (5.2), else itself.
+    func looks(_ s: Side) -> Mon { f(s).disguise ?? f(s).mon }
+    /// 5.2 (content52, docs/plans/19 §11.5): 일루전 plays here — a live battle only when both apps know it (`illusion`).
+    var illusionOn: Bool { Content.v52 && (pvp != true || illusion == true) }
     func stat(_ i: Int) -> String { statNames[i] }
     mutating func rnd() -> UInt64 { seed &+= 0x9E3779B97F4A7C15; var z = seed; z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9; z = (z ^ (z >> 27)) &* 0x94D049BB133111EB; return z ^ (z >> 31) }
     mutating func roll(_ n: Int) -> Int { Int(rnd() % UInt64(max(1, n))) }
@@ -49,7 +55,7 @@ struct Battle: Equatable, Codable {                                 // Codable: 
         case .sendOut(.it, let i): theirs[it].types = nil; theirs[it].form = nil; theirs[it].battleForm = nil; it = i
         case .retype(let s, let t): mod(s) { $0.types = t }
         case .mega(let s, let n, _): mod(s) { $0.mega = n }
-        case .reform(let s, let n, _): mod(s) { $0.battleForm = n == 0 ? nil : n }
+        case .reform(let s, let n, _): mod(s) { $0.battleForm = n == 0 ? nil : n; if n == 0 { $0.disguise = nil } }   // (5.2: 일루전이 풀렸다 is a reform to 0)
         case .hit(let s, _, let d, _, _), .hurt(let s, let d, _): mod(s) { $0.hp = max(0, $0.hp - d) }
         case .heal(let s, let n, _): mod(s) { $0.hp = min($0.maxHP, $0.hp + n) }
         case .status(let s, let st, _): mod(s) { $0.status = st; if st != .sleep { $0.nightmare = false } }   // any wake ends 악몽

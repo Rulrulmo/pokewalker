@@ -10,7 +10,7 @@ extension Battle {
     mutating func absorbRaise(_ t: Side) { say(t, josa(nm(t), "은", "는") + " " + josa(abilityNames[f(t).ability] ?? "", "으로", "로") + " 기술을 끌어모았다!"); boost(t, 3, 1, from: t) }
     func canHitSemi(_ id: Int, _ semi: Int) -> Bool {
         switch semi {
-        case 19, 340: return [87, 16, 239, 327, 542, 479, 614].contains(id)                          // 번개 바람일으키기 회오리 스카이업퍼 (폭풍 떨어뜨리기 사우전드애로)
+        case 19, 340, 507: return [87, 16, 239, 327, 542, 479, 614].contains(id) || semi == 507 && id == 507   // (5.2: 프리폴's own hit on the one it holds)                          // 번개 바람일으키기 회오리 스카이업퍼 (폭풍 떨어뜨리기 사우전드애로)
         case 91: return [89, 222, 90].contains(id)                                                    // 지진 매그니튜드 땅가르기
         case 291: return [57, 250].contains(id)                                                       // 파도타기 바다회오리
         default: return false
@@ -232,7 +232,7 @@ extension Battle {
         case 210: power = min(160, power << min(4, f(s).furyCutter)); mod(s) { $0.furyCutter += 1 }
         case 89: if f(t).semi == 91 { power *= 2 }
         case 57, 250: if f(t).semi == 291 { power *= 2 }
-        case 16, 239: if [19, 340].contains(f(t).semi) { power *= 2 }
+        case 16, 239: if [19, 340, 507].contains(f(t).semi) { power *= 2 }
         case 76: if [.rain, .sand, .hail].contains(weatherOn) { power /= 2 }
         case 474, 484, 486, 497, 500, 506, 512, 514, 535, 558, 559: power = gen6Power(s, t, m, power) ?? power   // 5.0 (Gen6Moves.swift)
         case 282: if Content.gen6, held(t) != nil, !fixedItem(t) { power = power * 3 / 2 }           // Gen VI: x1.5 on what it can knock off
@@ -278,6 +278,7 @@ extension Battle {
         else if Content.gen6, d >= f(t).hp, f(t).hp == f(t).maxHP, f(t).hp > 1, dAb(t, 5, by: s) { d = f(t).hp - 1; hung = josa(nm(t), "은", "는") + " 옹골참으로 버텼다!" }   // Gen V+
         else if let line = hangOn(t, d) { d = f(t).hp - 1; hung = line }                           // 기합의띠 / 기합의머리띠
         out.append(.hit(t, move: m.id, damage: d, effect: eff, crit: crit)); apply(out.last!)
+        if d > 0, f(t).disguise != nil { out.append(.reform(t, form: 0, text: "일루전이 풀렸다!")); apply(out.last!) }   // 5.2: 일루전, broken by a hit (a reform to 0 clears it)
         if endured { say(t, josa(nm(t), "은", "는") + " 공격을 버텼다!") }
         if let hung { say(t, hung) }
         heldCheck(t)
@@ -343,6 +344,7 @@ extension Battle {
             case 250: "소용돌이에 갇혔다!"
             case 328: "모래지옥에 갇혔다!"
             case 463: "마그마의 소용돌이에 갇혔다!"
+            case 611: n + "에게 엉겨붙기를 당했다!"                                                   // (5.2)
             default: josa(m.name, "에", "에") + " 갇혔다!"
             }
             say(t, josa(tn, "은", "는") + " " + caught)

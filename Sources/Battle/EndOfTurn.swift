@@ -118,6 +118,7 @@ extension Battle {
         guard !over else { return }
         if !f(.it).alive, !f(.it).down {
             mod(.it) { $0.down = true }; out.append(.fainted(.it)); if Content.gen6 { sides[1].lastFaint = turnNo }
+            release(.me); release(.it)                                                              // (5.2: its 프리폴 lets go; one held up and down is down)
             award()
             if let n = theirs.indices.first(where: { theirs[$0].alive }) {
                 if pvp == true { foeMustReplace = true }                                           // a live battle: the other player picks who's next
@@ -126,6 +127,7 @@ extension Battle {
         }
         if !f(.me).alive, !f(.me).down {
             mod(.me) { $0.down = true }; out.append(.fainted(.me)); if Content.gen6 { sides[0].lastFaint = turnNo }
+            release(.it); release(.me)
             if mine.contains(where: \.alive) { mustReplace = true } else { out.append(.lost); over = true }
         }
         if Content.gen6 { extremeWeatherCheck() }                                                  // (5.0)
@@ -136,7 +138,8 @@ extension Battle {
         if ball >= 255 { out.append(.thrown(shakes: 3)); award(); out.append(.caught); over = true; return true }   // 마스터볼; a catch pays EXP too (1.14), before the end beat
         let t = f(.it), bonus: Double = [.sleep, .freeze].contains(t.status) ? 2 : t.status != nil ? 1.5 : 1
         let a = Double((3 * t.maxHP - 2 * t.hp) * catchRate[t.mon.dex]) * ball * bonus / Double(3 * t.maxHP)
-        let b = a >= 255 ? 65536 : 1048560 / sqrt(sqrt(16711680 / max(a, 0.1)))                 // Gen III-IV shake check
+        let b = catchOdds.map { pow(max(0, min(1, $0)), 0.25) * 65536 }                       // 5.2: 배회's odds (four shakes = the catch)
+            ?? (a >= 255 ? 65536 : 1048560 / sqrt(sqrt(16711680 / max(a, 0.1))))                 // Gen III-IV shake check
         var shakes = 0
         while shakes < 4, Double(roll(65536)) < b { shakes += 1 }
         out.append(.thrown(shakes: min(shakes, 3)))
@@ -199,6 +202,7 @@ extension Battle {
     /// (and sets up or heals when it makes sense), sometimes anything.
     mutating func foeChoice() -> Int {
         let x = f(.it)
+        if x.lifted == true { return 165 }                                                          // 5.2: held up by 프리폴
         if x.charging != 0 { return x.charging }; if x.lock > 0 { return x.lockMove }; if x.bide > 0 { return 117 }
         let ok = usable(.it)
         guard !ok.isEmpty else { return 165 }
@@ -230,7 +234,7 @@ extension Battle {
         return y.alive && (y.has(23) && !x.has(23) || y.has(71) && grounded(s) || y.has(42) && x.typeList.contains("steel"))
     }
     /// Ours is mid-move (charging, rampaging, recharging, biding): 공격 (or giving up) is all the player can do.
-    var locked: Bool { let x = mine[me]; return x.charging != 0 || x.lock > 0 || x.bide > 0 || x.recharge }
+    var locked: Bool { let x = mine[me]; return x.charging != 0 || x.lock > 0 || x.bide > 0 || x.recharge || x.lifted == true }   // (5.2: held up by 프리폴)
     /// Why ours can't switch out now (nil = it can).
     var switchBlock: String? {
         if locked { return "지금은 교체할 수 없다!" }
@@ -249,7 +253,7 @@ extension Battle {
     /// A trainer pulls back one that can't hurt ours but gets hit hard, for a teammate that resists all of ours' attacks. Not two turns running.
     mutating func foeSwitch() -> Int? {
         let x = f(.it), y = f(.me)
-        guard x.alive, !trapped(.it) || holds(.it, "아름다운허물"), x.charging == 0, x.lock == 0, x.bide == 0, !x.recharge, turnNo - foeSwapTurn > 2 else { return nil }
+        guard x.alive, !trapped(.it) || holds(.it, "아름다운허물"), x.charging == 0, x.lock == 0, x.bide == 0, !x.recharge, x.lifted != true, turnNo - foeSwapTurn > 2 else { return nil }
         func eff(_ type: String, _ on: [String]) -> Double { on.reduce(1) { $0 * (typeChart[type]?[$1] ?? 1) } }
         func threat(_ on: [String]) -> Double { y.moves.compactMap { moveTable[$0] }.filter { !$0.isStatus && $0.power > 0 }.map { eff($0.type, on) }.max() ?? 1 }
         func offense(_ z: Fighter) -> Double { z.moves.compactMap { moveTable[$0] }.filter { !$0.isStatus && $0.power > 0 }.map { eff($0.type, y.typeList) }.max() ?? 0 }
@@ -260,7 +264,7 @@ extension Battle {
     }
     /// The ▲ / ▼ / 효과 없음 hint on our move button: the type chart as that move will meet theirs (fixed damage only minds an immunity; a status move only 전기자석파's).
     func hint(_ id: Int, _ type: String) -> Double {
-        let e = typeEff(type, .it, by: .me)
+        let e = f(.it).disguise.map { d in d.typing.reduce(1.0) { $0 * (typeChart[type]?[$1] ?? 1) } } ?? typeEff(type, .it, by: .me)   // 5.2: 일루전's types (not given away)
         if id == 248, !Content.gen6 { return 1 }                                                   // 미래예지: typeless in Gen IV
         if moveTable[id]!.isStatus { return id == 86 && e == 0 ? 0 : 1 }
         return Moves.fixedDamage.contains(id) ? (e == 0 ? 0 : 1) : e
@@ -268,6 +272,7 @@ extension Battle {
     /// Ours can't pick this turn (charging, rampaging, recharging, biding, encored): the move it's stuck with.
     var forced: Int? {
         let x = mine[me]
+        if x.lifted == true { return 165 }                                                          // 5.2: held up by 프리폴 — it won't move (any id for the order)
         if x.charging != 0 { return x.charging }; if x.lock > 0 { return x.lockMove }; if x.bide > 0 { return 117 }
         if x.recharge { return x.lastMove }; if x.encore > 0 { return x.encoreMove }
         return nil

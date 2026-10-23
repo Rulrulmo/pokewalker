@@ -92,6 +92,8 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .duelParty(let uids): return duelParty(uids)
         case .expStart(let id): return expStart(id)                                                // 5.1 (docs/plans/19): ExpeditionRules.swift
         case .expClaim(let id): return expClaim(id)
+        case .expFight(let id, let party): return expFight(id, party)                              // 5.2 (plan 19 §11.3)
+        case .expBall(let id): return expBall(id)
         case .raid(let party, _): return raid(party)                                               // (the tier: the server's boss, p.raidBoss)
         case .megaRaid(let party, _, _, _, _): return raid(party)                                  // (5.0: its boss, the server's, as its Mega)
         }
@@ -150,6 +152,13 @@ struct EngineRun<R: RandomNumberGenerator> {
         let chain: Int
         if let c = p.chain { chain = c } else { guard w.spend(Engine.radarFee) else { return "W가 부족하다\n(10W 필요)" }; chain = 0 }
         p.chain = nil                                                     // used: a miss ends it, a catch or a KO may hold it again
+        if let rh = roamerHere(), Double.random(in: 0..<1, using: &r) < rh.stage.radarOdds, let m = w.expeditions?[rh.id]?.mon {   // 5.2: the roamer, before the guests
+            let bush = Int.random(in: 0..<4, using: &r), win = Engine.radarWindow(chain)               // (no uid: it comes as the expedition's legend, caught)
+            p.radar = Play.Radar(bush: bush, window: win, chain: chain, at: now.timeIntervalSinceReferenceDate, mon: m, exp: rh.id)
+            out.radar = RadarShown(bush: bush, window: win, chain: chain)
+            expRadar()
+            return nil
+        }
         let (m0, legend) = w.radarMon(&r, chain: chain)
         var m = m0; issue(&m, legend ? "legend" : "radar")
         let bush = Int.random(in: 0..<4, using: &r), win = Engine.radarWindow(chain)
@@ -163,6 +172,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         p.radar = nil
         let t = now.timeIntervalSinceReferenceDate - rd.at
         guard bush == rd.bush, t <= Engine.radarWait + rd.window + Engine.radarSlack else { out.missed = true; p.chain = nil; return nil }
+        if let id = rd.exp, let x = w.expeditions?[id], x.on { roamFight(id, x, chain: rd.chain); return nil }   // 5.2: the roamer (its HP as it left)
         let refs = [-1] + w.caught.indices.map { -2 - $0 }
         p.party = refs.map { w.id($0)! }                                  // the companion, then the walker's: they can switch in
         var b = Battle(wild: rd.mon, party: [w.companion] + w.caught, chain: rd.chain); b.seed = r.next()
@@ -195,8 +205,10 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .ball:
             guard b.trainer == nil else { return "트레이너의 포켓몬은\n잡을 수 없다" }
             guard p.raid == nil else { return "레이드 보스는\n볼로 잡을 수 없다" }
+            guard !expBoss(b) else { return "보스는 볼로\n잡을 수 없다" }
             if b.locked { return locked }
             let roll = Walk.rollBall(chain: b.chain, &r); out.ball = roll.name   // free: which ball it turns out to be is luck (and the chain)
+            if p.exp != nil { b.catchOdds = EngineRun.roamOdds(b.theirs[b.it]) }                    // 5.2: 배회's own odds (by the HP it lost)
             beats = b.turn(.capture, &r, ball: roll.boost)
         case .item(let name, let on):
             if b.locked { return locked }
@@ -218,7 +230,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .run:
             guard b.trainer == nil else { return "트레이너와의 승부에서\n도망칠 수 없다" }
             if b.locked { return locked }
-            if p.raid != nil { beats = [.note(.me, text: "레이드에서 물러났다!"), .ran]; b.over = true }   // 후퇴: always (3.8.3: no turn limit to end it otherwise)
+            if p.raid != nil || expBoss(b) { beats = [.note(.me, text: (p.raid != nil ? "레이드" : "결전") + "에서 물러났다!"), .ran]; b.over = true }   // 후퇴: always (3.8.3: no turn limit to end it otherwise)
             else { beats = b.turn(.run, &r) }
         case .forfeit:
             guard b.trainer != nil else { return "기권할 수 없어요" }
@@ -230,6 +242,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         if p.raid != nil, Engine.raidTurns > 0, !(beats.last?.ends ?? false), b.turnNo >= Engine.raidTurns {   // a raid fight's turns are up (if there's a limit)
             beats += [.note(.it, text: josa(monNames[b.wild.dex], "의", "의") + " 기세에 밀려났다!"), .fled]; b.over = true
         }
+        if p.exp != nil, !expBoss(b), !(beats.last?.ends ?? false), b.turnNo >= Expeditions.roamTurns { beats += [.fled]; b.over = true }   // 5.2: the roamer runs off after 3
         if let last = beats.last, last.ends { beats += ended(&b, last) }
         out.battle = b; out.beats = beats
         if out.end == nil { p.battle = b }
@@ -240,6 +253,13 @@ struct EngineRun<R: RandomNumberGenerator> {
         let result = switch last { case .caught: "caught"; case .won: "won"; case .lost: "lost"; case .fled: "fled"; default: "ran" }
         p.battle = nil
         var end = BattleEnd(result: result)
+        if p.exp != nil, expBoss(b) {                                                               // 5.2 (plan 19 §11.3): an expedition's boss — its bars, a win's ball stage
+            w.writeBack(p.party ?? [], b.mine.map(\.mon)); p.party = nil
+            let h = p.held; p.held = 0; walkNow(h)
+            expEnded(b, last, &end)
+            growth(); out.end = end
+            return []
+        }
         if p.raid != nil, let t = b.raidTier {                                                      // 4.0 (16 §4): a run — its bars, its balls, the tier's BP for a win
             let bars = b.theirs.filter { !$0.alive }.count, won = last == .won
             end.bars = bars; end.balls = RaidRules.balls + (won ? RaidRules.winBalls : 0)
@@ -261,11 +281,16 @@ struct EngineRun<R: RandomNumberGenerator> {
         if b.trainer == nil {
             w.writeBack(p.party ?? [], b.mine.map(\.mon)); p.party = nil                         // EXP, EVs, levels (moves queued)
             let h = p.held; p.held = 0; walkNow(h)
-            if last == .caught { _ = w.keep(b.wild) }
-            if last == .caught || last == .won, Walk.chainContinues(b.chain, &r) {
-                let n = b.chain + 1, item = w.chainReward(n)
-                events.append(.chain(n: n, bonus: w.chainBonus(n), reward: item)); p.chain = n; end.chain = n
-            } else { p.chain = nil; end.chain = 0 }
+            if p.exp != nil {                                                                       // 5.2: the roamer — its HP kept (caught: the expedition done); a chain as it was
+                expEnded(b, last, &end)
+                p.chain = b.chain > 0 ? b.chain : nil; end.chain = b.chain
+            } else {
+                if last == .caught { _ = w.keep(b.wild) }
+                if last == .caught || last == .won, Walk.chainContinues(b.chain, &r) {
+                    let n = b.chain + 1, item = w.chainReward(n)
+                    events.append(.chain(n: n, bonus: w.chainBonus(n), reward: item)); p.chain = n; end.chain = n
+                } else { p.chain = nil; end.chain = 0 }
+            }
         } else {                                                                                    // the tower: Lv.50 copies, no EXP to write back
             let h = p.held; p.held = 0; walkNow(h)
             if last == .won { end.bp = w.towerWin(tycoon: b.trainer == Tower.tycoon); end.streak = w.towerStreak }
@@ -276,6 +301,8 @@ struct EngineRun<R: RandomNumberGenerator> {
         out.end = end
         return []
     }
+    /// 5.2: the fight on is an expedition's boss (not its roamer).
+    func expBoss(_ b: Battle) -> Bool { b.expedition != nil && b.raidTier != nil }
     /// 12 §4.2: this week's boss (the server's), 1칸 of power; our party (the tower's three) at its own levels, against 3 of its bars.
     mutating func raid(_ party: [Int]? = nil) -> String? {
         guard let rb = p.raidBoss else { return "이번 주 레이드가\n없어요" }
@@ -376,7 +403,7 @@ struct EngineRun<R: RandomNumberGenerator> {
             guard x.count > 0 else { return "놓아줄 포켓몬이\n없어요" }
             out.watts = x.watts
         case .move(let u, let slot, let mv):
-            guard let ref = w.ref(uid: u), var m = w.mon(ref), m.relearnable.contains(mv), (0..<min(4, m.moves.count + 1)).contains(slot) else { return "배울 수 없는 기술이에요" }
+            guard let ref = w.ref(uid: u), var m = w.mon(ref), w.relearnable(m).contains(mv), (0..<min(4, m.moves.count + 1)).contains(slot) else { return "배울 수 없는 기술이에요" }   // 5.2: + 기술머신 (Walk.relearnable)
             m.setMove(mv, at: slot); w.setMon(ref, m)
         case .learn(let slot):
             guard let (ref, mv) = w.nextToLearn(), var m = w.mon(ref) else { return "배울 기술이 없어요" }
@@ -412,6 +439,7 @@ struct EngineRun<R: RandomNumberGenerator> {
 
     // MARK: the news, in home's order
     mutating func finish() {
+        w.adoptMachines()                                                                           // 5.2 (plan 19 §11.4): a course's machine (or one from before) kept for good
         for i in courses.indices where !start.unlocked(i) && w.unlocked(i) { events.append(.unlock(course: i)) }
         if (w.owned ?? []).count > (start.owned ?? []).count { events.append(.dex(count: (w.owned ?? []).count)) }
         var order: [Int] = []

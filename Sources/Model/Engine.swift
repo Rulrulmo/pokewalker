@@ -36,6 +36,7 @@ enum Act: Codable, Equatable {
     case duelQueue, duelQueueCancel, duelPick(id: Int, slots: [Int])   // 3.8 (14 §5.2–3): random matching; the 3 of my 6 for this duel (in order)
     case mailClaim(id: Int, pick: Int? = nil), mailClaimAll      // 3.9 (docs/plans/15 §2): a mail's gifts (pick: which of a 고르기); every one without a pick
     case expStart(id: String), expClaim(id: String)              // 5.1 (docs/plans/19): a personal 전설 원정 begun (its legend rolled), its legend taken once it's all gathered
+    case expFight(id: String, party: [Int]? = nil), expBall(id: String)   // 5.2 (plan 19 §11.3): meet the roamer (a meeting) or the boss (once a day, 1–3 of ours); a ball of the stage after a win
     case mailDelete(id: Int), mailDeleteAll                      // 5.1 (plan 19 §9): a mail out of the 우편함 (claimed, or nothing to claim); every such one
 }
 enum BattleCmd: Codable, Equatable { case fight(slot: Int), ball, item(name: String, on: Int? = nil), swap(to: Int), replace(to: Int), run, forfeit
@@ -72,6 +73,8 @@ enum News: Codable, Equatable {
     case mailNew(id: Int, title: String)                                                    // 3.9: a mail came (the 우편함's dot)
     case expedition(id: String, n: Int, need: Int)                                          // 5.1 (docs/plans/19): a 전설 원정's count went up (지가르데's cells)
     case expeditionDone(id: String, dex: Int, gift: String?)                                // 5.1: it's done — its legend came (Outcome.mon); gift: its kind's first, the 특성패치
+    case expeditionStage(id: String, stage: Int)                                            // 5.2 (plan 19 §11.7): the next step is on (its walk done, the fight's ball stage over …)
+    case expeditionGift(id: String, item: String)                                           // 5.2: what else its first finish gave (랜드로스's 비추는거울), in the bag
 }
 struct RadarShown: Codable, Equatable { var bush: Int, window: Double, chain: Int }
 /// result: caught · won · lost · fled (it got away) · ran (we did) · forfeit. chain: a wild fight's (0 = over); streak · bp: the tower's.
@@ -112,7 +115,7 @@ extension Outcome {
 /// What goes on between actions and isn't in the save: the radar shown, a chain holding, the fight on, a tower run, steps held during a fight.
 /// A new session starts it over (docs/plans/11 §0).
 struct Play: Codable, Equatable {
-    struct Radar: Codable, Equatable { var bush: Int, window: Double, chain: Int, at: Double, mon: Mon }   // at: seconds since 2001 (the server's clock)
+    struct Radar: Codable, Equatable { var bush: Int, window: Double, chain: Int, at: Double, mon: Mon; var exp: String? = nil }   // at: seconds since 2001 (the server's clock); exp: 5.2's roamer found
     var radar: Radar? = nil
     var chain: Int? = nil                                        // the next radar is free, at this chain length
     var battle: Battle? = nil, party: [Int]? = nil               // a wild fight's party by uid: its EXP goes back to them
@@ -120,6 +123,7 @@ struct Play: Codable, Equatable {
     var held = 0
     var raid: String? = nil                                      // the week of the raid fight on (its damage goes to that week's boss)
     var raidBoss: RaidBoss? = nil                                // this week's boss as the server has it, for a raid act (set by the server)
+    var exp: String? = nil                                       // 5.2 (docs/plans/19 §11.3): the 전설 원정 whose fight is on (Battle.expedition too)
 }
 /// 12 §4: the week's boss and what's left of the team's HP. 4.0 (16): tier set = a run's own boss (left unused).
 struct RaidBoss: Codable, Equatable { var week: String; var boss: Mon; var left: Int; var tier: Int? = nil; var mega: Int? = nil }   // mega: the Mega raid's form (5.0)

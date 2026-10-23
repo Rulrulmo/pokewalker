@@ -7,6 +7,7 @@ extension Battle {
     mutating func begin<R: RandomNumberGenerator>(weather: Weather?, _ r: inout R) -> [Beat] {
         seed = r.next() | 1; out = []
         switch weather { case .rain?: sky = .rain; case .snow?: sky = .hail; case .fog?: sky = .fog; default: break }
+        disguises()
         out.append(trainer == nil ? .appear : .sendOut(.it, 0))
         switch sky { case .rain: say(.it, "비가 계속 내리고 있다"); case .hail: say(.it, "싸라기눈이 계속 내리고 있다"); case .fog: say(.it, "안개가 깊다..."); default: break }
         entry(.me); entry(.it)
@@ -44,12 +45,12 @@ extension Battle {
         case 45 where extreme == nil: sky = .sand; skyTurns = abilitySkyTurns(s, "보송보송바위"); say(s, josa(n, "의", "의") + " 모래날림으로 모래바람이 불기 시작했다!")
         case 117 where extreme == nil: sky = .hail; skyTurns = abilitySkyTurns(s, "차가운바위"); say(s, josa(n, "의", "의") + " 눈퍼뜨리기로 싸라기눈이 내리기 시작했다!")
         case 88 where f(t).alive: boost(s, base(t, 2) < base(t, 4) ? 1 : 3, 1, from: s)
-        case 36 where f(t).alive: let a = f(t).ability; if !(Content.gen6 ? [0, 36, 121, 59, 122, 149, 150, 161, 176] : [0, 36, 121]).contains(a) { mod(s) { $0.abilityOver = a }; say(s, josa(n, "은", "는") + " " + monNames[f(t).mon.dex] + "의 " + josa(abilityNames[a]!, "을", "를") + " 트레이스했다!") }
+        case 36 where f(t).alive: let a = f(t).ability; if !(Content.gen6 ? [0, 36, 121, 59, 122, 149, 150, 161, 176] : [0, 36, 121]).contains(a) { mod(s) { $0.abilityOver = a }; say(s, josa(n, "은", "는") + " " + monNames[looks(t).dex] + "의 " + josa(abilityNames[a]!, "을", "를") + " 트레이스했다!") }
         case 46: say(s, josa(n, "은", "는") + " 프레셔를 발휘하고 있다!")
         case 104: say(s, josa(n, "은", "는") + " 틀을 깼다!")
         case 112: mod(s) { $0.slowStart = 5 }; say(s, josa(n, "은", "는") + " 좀처럼 힘을 낼 수 없다!")
         case 107 where f(t).alive: if f(t).moves.contains(where: { let m = moveTable[$0]!; return !m.isStatus && typeEff(m.type, s, by: t) > 1 }) { say(s, josa(n, "은", "는") + " 몸서리를 쳤다!") }
-        case 108 where f(t).alive: if let best = f(t).moves.max(by: { (moveTable[$0]?.power ?? 0) < (moveTable[$1]?.power ?? 0) }) { say(s, josa(monNames[f(t).mon.dex] + "의 " + moveTable[best]!.name, "을", "를") + " 꿰뚫어 보았다!") }
+        case 108 where f(t).alive: if let best = f(t).moves.max(by: { (moveTable[$0]?.power ?? 0) < (moveTable[$1]?.power ?? 0) }) { say(s, josa(monNames[looks(t).dex] + "의 " + moveTable[best]!.name, "을", "를") + " 꿰뚫어 보았다!") }
         case 150 where f(t).alive: statusMove(s, t, moveTable[144]!)                                // 괴짜: 변신 on coming out (5.0)
         case 119 where f(t).alive: if let i = f(t).item { say(s, josa(n, "은", "는") + " " + josa(nm(t) + "의 " + i, "을", "를") + " 통찰했다!") }   // 통찰
         case 189: sky = .rain; skyTurns = 0; extreme = 189; say(s, "강한 비가 내리기 시작했다!")                   // 시작의바다 (5.0)
@@ -70,10 +71,12 @@ extension Battle {
     /// s sends out #i (baton = keep stages, substitute, confusion, seeds...).
     mutating func switchIn(_ s: Side, _ i: Int, baton: Bool = false) {
         let keep = f(s)
+        release(other(s))                                                                           // (5.2: its 프리폴 too)
         mod(other(s)) { $0.bound = 0; $0.attracted = false; if !baton { $0.trapped = $0.ingrain } }   // the one leaving lets go of what it held on the other (조이기, 헤롱헤롱; 검은눈빛 passes with 바톤터치)
         if f(s).has(30), f(s).status != nil, f(s).alive { mod(s) { $0.status = nil } }             // 자연회복 (quietly, as it leaves)
         if Content.gen6 { regenerate(s) }                                                           // 재생력 (5.0)
         mod(s) { $0.clearVolatile() }
+        disguise(s, i)                                                                              // 5.2: 일루전, as it comes in
         out.append(.sendOut(s, i)); apply(out.last!)
         if s == .me { faced.insert(i) } else { faced = [me] }
         if Content.gen6 { extremeWeatherCheck() }                                                  // (5.0: its bringer gone)
@@ -87,7 +90,23 @@ extension Battle {
         seed = r.next() | 1; out = []; turnNo += 1
         inTurn = true; play(m, ball: ball); inTurn = false
         if let n = foeNext, !over { foeNext = nil; switchIn(.it, n) }                              // a trainer's KO'd one: the next comes out once the turn is over (kept if it ended: a revive goes on)
+        for s in [Side.me, .it] where f(s).lifted == true && f(other(s)).charging != 507 { release(s) }   // 5.2: 프리폴's target comes down after the turn it's dropped (it didn't move in it)
+        disguises(bench: true)
         return out
+    }
+    /// 5.2 (content52, docs/plans/19 §11.5): 일루전 — #i of s looks like the last of its party still standing (not itself); none: itself.
+    mutating func disguise(_ s: Side, _ i: Int) {
+        let team = s == .me ? mine : theirs
+        guard team.indices.contains(i) else { return }
+        var d: Mon? = nil
+        if illusionOn, team[i].alive, team[i].ability == 149, let k = team.indices.last(where: { $0 != i && team[$0].alive }) { d = team[k].mon }
+        if s == .me { mine[i].disguise = d } else { theirs[i].disguise = d }
+    }
+    /// Every one's as it would come in (the bench's kept ready, so a switch's replay shows it); bench: the ones out keep theirs (a hit broke it).
+    mutating func disguises(bench: Bool = false) {
+        guard illusionOn || mine.contains(where: { $0.disguise != nil }) || theirs.contains(where: { $0.disguise != nil }) else { return }
+        for i in mine.indices where !bench || i != me { disguise(.me, i) }
+        for i in theirs.indices where !bench || i != it { disguise(.it, i) }
     }
     private mutating func play(_ m: Move, ball: Double) {
         for s in [Side.me, .it] { mod(s) { $0.protected = false; $0.endure = false; $0.flinch = false; $0.hitThisTurn = false; $0.movedThisTurn = false; $0.magicCoat = false; $0.turnsOut += 1
@@ -97,10 +116,10 @@ extension Battle {
         let foeMega = live ? { if case .megaFight? = foePlan { return true }; return false }() : trainer != nil   // 5.0: a trainer Mega Evolves as soon as it can
         planned = [0, foe]
         if live, case .swap(let i)? = foePlan {                                                   // the other player switches: before any move, and doesn't act
-            say(.it, josa(trainer ?? "상대", "은", "는") + " " + josa(monNames[f(.it).mon.dex], "을", "를") + " 돌아오게 했다!"); switchIn(.it, i); planned[1] = 0
+            say(.it, josa(trainer ?? "상대", "은", "는") + " " + josa(monNames[looks(.it).dex], "을", "를") + " 돌아오게 했다!"); switchIn(.it, i); planned[1] = 0
             foe = usable(.it).first ?? 165                                                         // (a move id for the order; ti is gone, so nothing's used)
         } else if !live, trainer != nil, let i = foeSwitch() {                                    // switching goes before any move; it then doesn't act (ti is gone)
-            say(.it, josa(trainer!, "은", "는") + " " + josa(monNames[f(.it).mon.dex], "을", "를") + " 돌아오게 했다!"); switchIn(.it, i); planned[1] = 0
+            say(.it, josa(trainer!, "은", "는") + " " + josa(monNames[looks(.it).dex], "을", "를") + " 돌아오게 했다!"); switchIn(.it, i); planned[1] = 0
         }
         switch m {
         case .run:
@@ -145,6 +164,7 @@ extension Battle {
         let n = nm(s)
         var id = id0
         if f(s).recharge { mod(s) { $0.recharge = false }; say(s, josa(n, "은", "는") + " 공격의 반동으로 움직일 수 없다!"); return }
+        if f(s).lifted == true { say(s, josa(n, "은", "는") + " 공중에 붙잡혀 움직일 수 없다!"); return }   // 5.2: 프리폴's target
         if f(s).charging != 0 { id = f(s).charging } else if f(s).lock > 0 { id = f(s).lockMove } else if f(s).bide > 0 { id = 117 } else if f(s).encore > 0 { id = f(s).encoreMove }
         if f(s).status == .sleep {
             mod(s) { $0.sleep -= $0.has(48) ? 2 : 1 }
@@ -170,7 +190,7 @@ extension Battle {
         }
         if f(s).attracted { say(s, josa(n, "은", "는") + " 사랑에 빠져 있다!"); if pct(50) { say(s, josa(n, "은", "는") + " 헤롱헤롱해서 기술을 쓸 수 없었다!"); stop(s); return } }
         if f(s).status == .paralysis, pct(25) { say(s, josa(n, "은", "는") + " 몸이 저려서 움직일 수 없다!"); stop(s); return }
-        if gravity > 0, [19, 340, 26, 136, 150].contains(id) { say(s, "중력 때문에 " + josa(moveTable[id]!.name, "을", "를") + " 쓸 수 없다!"); stop(s); return }
+        if gravity > 0, [19, 340, 26, 136, 150, 507].contains(id) { say(s, "중력 때문에 " + josa(moveTable[id]!.name, "을", "를") + " 쓸 수 없다!"); stop(s); return }
         if moveTable[id]!.onFoe, !f(other(s)).alive { stop(s); return }                         // its target fainted (a replacement comes at the end of the turn): the turn's checks still count
         let lk = f(s).lock, bd = f(s).bide
         execute(s, id, called: false)
@@ -180,7 +200,12 @@ extension Battle {
         faints()
     }
     /// A move that didn't happen ends whatever it was in the middle of: charging, flying up, a rampage, 참기, 소란, 구르기, 연속자르기.
-    mutating func stop(_ s: Side) { mod(s) { $0.charging = 0; $0.semi = 0; $0.lock = 0; $0.bide = 0; $0.uproar = 0; $0.rollout = 0; $0.furyCutter = 0 } }
+    mutating func stop(_ s: Side) {
+        if f(s).charging == 507 { release(other(s)) }                                               // (5.2: 프리폴 cut short lets go)
+        mod(s) { $0.charging = 0; $0.semi = 0; $0.lock = 0; $0.bide = 0; $0.uproar = 0; $0.rollout = 0; $0.furyCutter = 0 }
+    }
+    /// 5.2: 프리폴's target down again.
+    mutating func release(_ s: Side) { if f(s).lifted == true { mod(s) { $0.lifted = nil; if $0.semi == 507 { $0.semi = 0 } } } }
     mutating func confusionHit(_ s: Side) -> Int {
         let a = f(s), A = Double(base(s, 1)) * mult(a.stage[1]), D = Double(base(s, 2)) * mult(a.stage[2])
         return max(1, Int((floor(floor(Double(2 * a.mon.level / 5 + 2) * 40 * A / D) / 50) + 2) * Double(85 + roll(16)) / 100))
@@ -195,6 +220,14 @@ extension Battle {
     mutating func execute(_ s: Side, _ id: Int, called: Bool, depth: Int = 0) {
         if depth > 3 { say(s, "그러나 실패했다!"); return }
         let m = moveTable[id]!, t = other(s), n = nm(s)
+        if id == 507, f(s).charging != id {                                                         // 5.2 프리폴, turn 1: up with the target (it can't move or switch), or it fails
+            if !called { deductPP(s, id) }
+            out.append(.use(s, move: id))
+            guard f(t).alive, f(t).sub == 0, !f(t).protected, f(t).semi == 0, weight(t) < 200, gravity == 0 else { say(s, "그러나 실패했다!"); return }
+            mod(s) { $0.charging = id; $0.semi = id }; mod(t) { $0.lifted = true; $0.semi = id }
+            say(s, josa(n, "은", "는") + " " + josa(nm(t), "을", "를") + " 하늘로 데리고 올라갔다!")
+            return
+        }
         if m.charges, f(s).charging != id, !(id == 76 && weatherOn == .sun) {                  // turn 1 of a two-turn move
             if !called { deductPP(s, id) }
             mod(s) { $0.charging = id; if Moves.semiInvulnerable.contains(id) { $0.semi = id } }
@@ -207,6 +240,9 @@ extension Battle {
         }
         let second = f(s).charging == id
         mod(s) { $0.charging = 0; $0.semi = 0 }
+        if id == 507, second, f(t).typeList.contains("flying") {                                     // 프리폴, turn 2: a Flying-type takes nothing (Gen VI); both down at the turn's end
+            out.append(.use(s, move: id)); say(t, josa(nm(t), "에게는", "에게는") + " 효과가 없는 것 같다..."); return
+        }
         if !called && !second && f(s).lock == 0 && f(s).bide == 0 { deductPP(s, id) }           // a rampage's / 참기's later turns are free
         if Content.gen6 { stanceChange(s, m) }                                                      // 배틀스위치 (5.0)
         out.append(.use(s, move: id))

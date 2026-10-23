@@ -6,12 +6,13 @@ extension Battle {
     /// What that side has to use this turn, whatever it picks (charging, rampaging, biding, recharging, 앵콜): the menu's 공격 goes straight to it.
     func forcedMove(_ s: Side) -> Int? {
         let x = f(s)
+        if x.lifted == true { return 165 }                                                          // 5.2: held up by 프리폴
         if x.charging != 0 { return x.charging }; if x.lock > 0 { return x.lockMove }; if x.bide > 0 { return 117 }
         if x.recharge { return x.lastMove }; if x.encore > 0 { return x.encoreMove }
         return nil
     }
     /// That side is mid-move: only 공격 (or giving up).
-    func locked(_ s: Side) -> Bool { let x = f(s); return x.charging != 0 || x.lock > 0 || x.bide > 0 || x.recharge }
+    func locked(_ s: Side) -> Bool { let x = f(s); return x.charging != 0 || x.lock > 0 || x.bide > 0 || x.recharge || x.lifted == true }
     /// Why that side can't switch out now (nil = it can).
     func switchBlock(_ s: Side) -> String? {
         if locked(s) { return "지금은 교체할 수 없다!" }

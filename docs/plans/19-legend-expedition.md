@@ -692,12 +692,13 @@
 ### 11.4 기술머신
 
 - **106개:** ORAS 기술머신 100 + 비전머신 7에서 순서미루기(TM60)를 뺐다. 프리폴(TM58)은 이번에 엔진이 지원하므로 넣는다(§2.2의 "105 + 프리폴").
+  - 5.0이 빼 둔 6개(오물웨이브 · 얼음숨결 · 비밀이야기 · 매지컬샤인 · 엉겨붙기 · 그로우펀치)는 content52에서 쓸 수 있는 기술이 된다(`Moves.since52`). 얼음숨결은 급소 단계로 늘 급소, 엉겨붙기는 조이기 같은 묶기다.
 - **호환표:** ORAS(버전 그룹 16) 기준으로 721종 모두. `tools/oras_tms.py`가 이미 만든다. 번호는 PokeAPI의 `machines.csv`로 붙인다.
 - **값(W 상점):**
   - 1,000 W: 변화기와 위력 60 미만
   - 2,000 W: 위력 60~89와 강한 변화기 넷(명상 · 칼춤 · 벌크업 · 맹독). 프리폴(60)이 여기다
   - 3,000 W: 위력 90 이상
-  - 106개를 다 사면 약 18.8만 W다.
+  - 106개: 1,000 W 41 · 2,000 W 43 · 3,000 W 22개, 다 사면 19.3만 W다.
 - **물건:** 한 번 사면 계속 쓴다. 한 번호는 한 번만 산다. 가방의 물건이 아니라 저장의 번호 목록(`Walk.tms`)이다. 옛 앱은 이것을 못 보니 팔 수도 없다.
 - **코스에서 나오는 8종:** 그 번호가 없으면 기술머신이 된다. 이미 있으면 지금처럼 가방에 들어간다(팔기 50 W).
 - **지금 가진 것(8명):** content52가 켜진 뒤 그 사람의 첫 동작에서 번호마다 한 장을 기술머신으로 옮긴다. 남은 장은 가방에 그대로 둔다.
@@ -722,10 +723,12 @@
   - 대전: 두 앱이 5.2 이상일 때만 위장한다(duel-mega와 같은 방식, `duels`에 기록).
 - **프리폴(507)**
   - 첫 턴에 상대를 들어 올린다. 둘 다 공중이라 거의 모든 기술이 빗나간다. 들린 쪽은 기술을 고를 수도, 교체할 수도 없다.
-  - 둘째 턴에 비행 데미지 60을 준다. 비행 타입은 데미지 0이다.
+  - 둘째 턴에 비행 데미지 60을 준다. 비행 타입은 "효과가 없는 것 같다..."다. 들린 쪽은 그 턴이 끝날 때 내려온다(둘째 턴에도 못 움직임).
+  - 들린 쪽 글: "○○는 공중에 붙잡혀 움직일 수 없다!". 첫 턴 글: "○○는 △△를 하늘로 데리고 올라갔다!".
+  - 쓴 쪽이 둘째 턴에 움직이지 못하거나(마비 등) 쓰러지면 바로 내려온다. 들린 채 쓰러진 쪽도 풀린다.
   - 상대가 200 kg 이상이거나 대타출동 뒤면 실패한다.
   - 중력 · 떨어뜨리기 · 쓴 쪽이 쓰러짐으로 풀린다.
-  - 우리 포켓몬이 들리면 서버는 그 턴 명령을 기다리지 않고 진행한다. 앱은 메뉴를 잠근다. 대전의 거울 화면도 같다.
+  - 우리 포켓몬이 들리면(`Fighter.lifted`) `forced`가 165(아무 기술 id, 움직이지 않음)이고 `locked`가 true다. 앱은 메뉴를 잠그고 '공격'만 보내면 된다. 대전의 거울 화면도 같다(`forcedMove` · `locked(side)`).
   - 들린 쪽은 반동(recharge)과 같은 '못 움직임' 길(`locked` · `forced`)을 쓴다. 같은 검사가 두 벌(EndOfTurn, Duel.swift)이고 `foeChoice` · `foeSwitch`에도 넣는다(Mac).
   - 공중 판정 `[19, 340]`이 박힌 세 곳(Damage 235, Gen6Moves 66-67, Effects 179)에 507을 더한다(Mac).
   - `Moves.unsupported`에서 뺀다.
@@ -737,48 +740,72 @@
 - 테스트 ID(zz)에는 스위치가 꺼져 있어도 켜진다(§11.10의 2).
 - **요청마다 정한다:** 스위치가 켜져 있어도 그 요청의 앱이 5.2 이상(또는 테스트 ID)일 때만 5.2 규칙으로 돈다(act의 `app` · User-Agent). 5.1.x 앱의 요청은 지금과 같다: 새 원정 · 기술머신 · 일루전 · 배회 레이더가 없고, 모르는 News도 가지 않는다.
 - 꺼지면 지금(5.1.5)과 바이트까지 같다: 새 원정 시작 거절, 상점에 기술머신 없음, 일루전 · 프리폴 없음(프리폴은 지금처럼 쓸 수 없는 기술).
-- 그래서 MIN_APP 5.2는 켜기와 따로 해도 된다(설치 실패 확인 뒤, §11.10의 4). 5.1.x 앱은 모르는 News를 받으면 응답 전체를 못 읽으므로 위 검사를 빼지 않는다.
+- 그래서 MIN_APP 5.2는 켜기와 따로 해도 된다(설치 실패 확인 뒤, §11.10의 4). (모르는 News는 앱이 하나씩 건너뛰어 읽는다(`Outcome.init(from:)`, plan 12 §1). 그래도 새 원정 · 기술머신은 5.1.x 화면에 없으니 위 검사로 아예 돌리지 않는다.)
 - 한 사람이 5.2 PC와 5.1.x PC를 같이 쓰면: 5.1.x 쪽은 5.2 진행을 못 보고 건드리지도 않는다(지가르데를 시작하면 5.2 원정은 멈춤, 한 번에 하나).
 - 꺼도 저장에 남은 진행 · 기술머신은 그대로다. 다시 켜면 이어진다.
 
-### 11.7 저장 · act 모양(Mac이 쓸 것, 구현하면서 바뀌면 이 절을 고친다)
+### 11.7 저장 · act 모양(Mac이 쓸 것, main에 있음 — 스위치 꺼짐)
+
+코드: `Sources/Data/Content.swift`(스위치), `Sources/Model/Expedition.swift` · `ExpeditionRules.swift`(원정), `Sources/Model/MachineRules.swift` · `Sources/Data/Machines.swift`(기술머신, `tools/oras_tms.py --swift`가 만듦), `Sources/Model/Engine.swift`(act · 뉴스 · Play). 서버 테스트는 `server/Tests/PokeCoreTests/Exp52Tests.swift`.
+
+**스위치**
+- 로그인 · 계정 만들기 답의 `content52: true` → `Content.on52`. `Content.v52` = `v51 && (testing52 ?? on52) && app52`.
+- `app52`는 서버가 요청마다 정한다(act의 `app`이 5.2 이상). 앱에서는 늘 true다.
 
 **저장**
-- `Walk.tms: [Int]?`: 가진 기술머신 번호. TM01~TM100 = 1~100, HM01~HM07 = 101~107.
-- `Walk.expeditions[id]`(`ExpProgress`)에 선택 필드를 더한다:
-  - `stage`: 지금 단계(0부터, nil = 0)
-  - `steps`(5.1에 있음): 이 단계의 걸음. 조각 단계는 다음 조각까지의 걸음
-  - `n`(5.1에 있음): 모은 조각
-  - `meets`: 모아 둔 만남(0~2)
-  - `hp` · `status`: 배회 전설의 남은 HP와 상태 이상(nil = 가득, 없음)
-  - `fought`: 마지막으로 보스전을 한 날("yyyy-MM-dd")
+- `Walk.tms: [Int]?`: 가진 기술머신 번호(1~100 = 기술머신01~100, 101~107 = 비전머신01~07), 오름차순.
+- `ExpProgress`(5.1 필드 `on` · `n` · `steps` · `mon` · `done`에 더함, 모두 선택):
+  - `stage`: 지금 단계(nil = 0). 단계가 넘어가면 `n` · `steps`는 0부터 다시 센다.
+  - `meets`: 모아 둔 만남(배회, 최대 `Expeditions.meetsMax` = 2)
+  - `hp` · `status`(`Status`): 배회 전설의 남은 HP와 상태(nil = 가득 · 없음)
+  - `fought`: 마지막 보스전 날("yyyy-MM-dd", `Walk.day`와 비교)
   - `balls`: 볼 단계의 남은 볼(nil = 볼 단계 아님)
-- `Expedition`(Model, 앱에 같이 들어감)에 `after: [String]`(먼저 끝낼 것)과 `stages: [ExpStage]`를 더한다.
-  - `ExpStage`: `kind`(collect · walk · meet · fight · companion), `need`, `stepsPer`, `radarOdds`, `arts`(코스 그림, nil = 아무 데나), `region`, `piece`, 보스의 `level` · `bars`.
-  - 지가르데도 같은 모양(단계 하나: collect)으로 옮긴다. 5.1 앱은 자기 정의를 쓰므로 영향이 없다.
-- 오늘 배회 위치는 저장에 두지 않는다. `Expeditions.roamCourse(id, day:, trainer:, open:)` 하나를 앱과 서버가 같이 쓴다.
+- 상태 읽기: `on` = 하는 중, `mon` 있고 `on` false = 멈춤, `mon` nil = 시작 전 또는 끝냄(`done`이 끝낸 횟수).
+
+**원정 정의(Model, 앱에 같이 들어감)**
+- `Expeditions.personal`: content52면 `since51`(지가르데) + `since52`(8개, 순서: 토네로스 · 볼트로스 · 랜드로스 · 코바르온 · 테라키온 · 비리디온 · 케르디오 · 레쿠쟈).
+- `Expedition`에 더한 것: `stages: [ExpStage]`, `after: [String]`(먼저 끝낼 것), `item: String?`(처음 끝낼 때 주는 물건, 랜드로스 "비추는거울"). `steps`가 단계 목록이다(지가르데는 collect 하나로 보임).
+- `ExpStage`: `kind`(`ExpStep`: collect · walk · meet · fight · companion), `need`, `stepsPer`, `radarOdds`, `arts: Set<Art>?`, `region`, `piece`, `level` · `perfect` · `bars`, `balls`(0 = 이기면 바로 옴: 레쿠쟈), `with: Set<Int>`(동행 조건), `counts(course)`.
+- 화면 셈:
+  - collect: `n`/`need`, 다음 조각까지 `stepsPer − steps`
+  - walk · companion: `steps`/`need`. companion은 동행이 `with`일 때만 센다
+  - meet: `meets`/2, 다음 만남까지 `stepsPer − steps`(가득이면 안 셈). 오늘 위치 = `Expeditions.roamCourse(id, day: walk.day, open: walk.unlocked)`(코스 번호)
+  - fight: 오늘 싸웠는지 `fought == walk.day`, 볼 단계 `balls`
+  - 받기 버튼: 마지막 단계가 collect · walk · companion이고 다 찼을 때(지가르데 · 케르디오)
+- 먼저 끝낼 것: `after`의 원정이 `done ≥ 1`이어야 시작한다.
 
 **act**
 
 | act | 하는 일 | 거절(`cannot`) |
 |---|---|---|
-| `.expStart(id:)`(있음) | 8개도 같다. 먼저 끝낼 것을 본다 | (5.1의 것) + "○○를\n먼저 잡아 주세요", "배틀 중이에요" |
-| `.expFight(id:, party: [Int]?)`(새) | 배회: 만남 하나를 써서 야생 배틀. 보스전: 하루 한 번, party 1~3(nil = 추천 셋) | "만남이 없어요\n(5,000걸음마다)", "오늘은 이미\n싸웠어요", "아직 걸음이\n모자라요", "하고 있는 원정이\n아니에요" |
-| `.expBall(id:)`(새) | 볼 단계에서 하나 던짐. 답은 `out.raidThrow`(`RaidThrow`, 레이드와 같은 모양) | "던질 볼이 없어요" |
-| `.expClaim(id:)`(있음) | 지가르데(셀 50)와 케르디오(10,000걸음) | (5.1의 것) |
-| `.battle(cmd: .ball)`(있음) | 배회 배틀에서는 §11.3의 확률을 쓴다 | — |
-| `.buy(bp: false, item: "기술머신26", …)`(있음) | 기술머신을 산다. 이름은 "기술머신NN" · "비전머신NN" | "이미 가진\n기술머신이에요" |
-| `.mon(op: .move(uid:slot:move:))`(있음) | 기술 바꾸기. 기술머신 · 화룡점정이 들어간 목록으로 검사 | (지금 것) |
+| `.expStart(id:)` | 5.1과 같음. 처음 · 끝낸 것은 진행을 새로(`done`만 남김) | "없는 원정이에요", "이미 하고 있는\n원정이에요", "토네로스와 볼트로스를\n먼저 잡아 주세요" · "○○를\n먼저 잡아 주세요" · "세 검사를\n먼저 잡아 주세요", (배틀 중) "배틀 중이에요" |
+| `.expFight(id:, party:)` | meet: 만남 하나 → 야생 배틀(`out.battle`, `Battle.expedition` = id). fight: 하루 한 번, party 1~3(nil = 타워 셋) → 보스전(`raidTier` 3, `theirs` 3마리 = 바 3개, `megaUsed` [false, true]) | "하고 있는 원정이\n아니에요", "만남이 없어요\n(5,000걸음마다)", "볼을 먼저\n던져 주세요", "오늘은 이미\n싸웠어요", "1~3마리를\n골라 주세요", "그 포켓몬은\n없어요", "아직 걸음이\n모자라요" |
+| `.expBall(id:)` | 볼 단계에서 하나(30 %). 답 `out.raidThrow`(`RaidThrow`). 잡히면 `out.mon` · `raidThrow.mon` | "던질 볼이 없어요" |
+| `.expClaim(id:)` | 지가르데 · 케르디오 받기 | "하고 있는 원정이\n아니에요", "받을 수 있는\n원정이 아니에요", "아직 모자라요\n(3/50)" · "아직 모자라요\n(9,000/10,000걸음)" |
+| `.battle(cmd:)` | 배회 배틀: 볼은 §11.3의 확률(`Battle.catchOdds`, 던질 때 서버가 넣음), 내 행동 3번 뒤 `.fled`. 보스전: 볼 거절, 도망은 늘 됨 | 보스전의 볼: "보스는 볼로\n잡을 수 없다" |
+| `.buy(bp: false, item: "기술머신26", …, qty: 1)` | 기술머신. `Walk.tms`에 들어간다(가방 아님) | "이미 가지고 있다", "W가 부족하다" |
+| `.mon(op: .move(…))` | 기술 바꾸기: `Walk.relearnable(m)`로 검사 | "배울 수 없는 기술이에요" |
 
-- 레이더 답(`out.radar`)과 배틀은 지금 모양이다. 배회 전설은 보통 야생처럼 오고, 배틀이 끝나면 `end.result`가 "fled" · "caught" · "ran" · "won"이다.
-- 보스전의 끝: `end.bars`(쓰러뜨린 바), 이기면 `end.balls` 5(레쿠쟈는 nil, 대신 `out.mon`).
-- 뉴스: 5.1의 `.expedition(id:n:need:)`(조각 · 만남이 늘 때)과 `.expeditionDone(id:dex:gift:)`를 쓴다. 새 뉴스가 필요하면 구현 때 정해서 여기에 적는다.
-- 상점: content52일 때 W 상점에 기술머신 106줄. 줄마다 번호 · 기술 · 값 · 가졌는지.
-- 가짜 서버(FakeCloud)는 원정 act를 `Engine.apply`가 하므로 그대로 돈다. 상점 줄만 같다.
+- 레이더: 오늘 위치 코스에서 찾을 때마다 1/30로 배회 전설(답 모양은 같음. 서버의 `Play.Radar.exp`에만 표시). 고르면 배회 배틀이고, 연쇄는 그대로 남는다(`end.chain` = 그 연쇄).
+- 배틀 끝 `end`: 배회 `result` "caught"(원정 끝, `out.mon`) · "fled"(3턴) · "ran" · "won"(쓰러뜨림: 다음 만남에 HP 가득) · "lost". 보스전 `bars`(쓰러뜨린 바), 이기면 `balls` 5(레쿠쟈는 nil이고 `out.mon`에 화룡점정 레쿠쟈).
+- **뉴스:**
+  - `.expedition(id:n:need:)`: 조각이 늘 때(n/need), 만남이 늘 때(n = meets, need = 2)
+  - `.expeditionStage(id:stage:)`(새): 다음 단계가 열림. 마지막 단계(walk · companion)가 다 차면 stage = 단계 수(받기 가능)
+  - `.expeditionDone(id:dex:gift:)`: 끝. gift = 처음 끝낼 때의 특성패치(랜드로스 · 케르디오)
+  - `.expeditionGift(id:item:)`(새): 처음 끝낼 때의 다른 물건(랜드로스의 비추는거울)
+  - 앱은 모르는 뉴스를 건너뛰어 읽는다(`Outcome.init(from:)`).
+- **기술머신(Model):**
+  - `Machines.sold`(상점 번호 목록), `.name(no)`("기술머신26" · "비전머신03"), `.number(name)`, `.move(no)`, `.price(no)`, `.learns(dex, no)`
+  - `Walk.machines`(가진 번호 집합), `Walk.relearnable(m)`(기술 바꾸기 목록 하나: 서버 검사와 앱이 같이 씀), `Walk.machineMoves(m)`("TM" 표시할 기술), `Walk.machineNote(no)`("땅 · 위력 100 · 명중 100")
+  - 상점: content52면 W 상점 끝에 105줄(프리폴 지원 뒤 106). 탭 "기술머신"(`Walk.shopTabs`의 끝), 줄 이름 `wareName` = "기술머신26 지진", 한 번만(`once`), 가졌으면 `owned` 1
+  - 코스의 "기술머신NN"은 가방 물건 그대로(`.sell(50)`). 가지지 않은 번호면 그 act 끝에 `Walk.tms`로 옮겨진다(지금 가진 것도 첫 act에서).
+- **배틀:** `Battle.expedition: String?`(원정 배틀의 id), `Battle.catchOdds: Double?`(배회 볼 확률), `Battle.illusion: Bool?`(대전에서 일루전이 도는지), `Fighter.disguise: Mon?`(일루전의 위장: 이름 · 그림 · 타입 배지 · 이로치를 여기서), `Battle.looks(side)`(보이는 포켓몬), `Fighter.lifted: Bool?`(프리폴에 들림).
+- **Play(서버):** `Play.exp`(배틀 중인 원정), `Play.Radar.exp`(레이더의 배회 전설).
 
 ### 11.8 사용자에게 꼭 물을 것
 
-- **Q1. 대전의 메가레쿠쟈:** 10-18에 대전 메가진화를 열었고, 대전 전설 제한도 넣지 않기로 했다. 그래서 레쿠쟈 원정을 끝낸 사람은 친구 대전에서 메가레쿠쟈(종족값 780, 스톤 없이 다른 도구를 지님)를 쓸 수 있다. §1.8을 정할 때(10-16)는 대전에 메가가 없었다.
+- **Q1 → 정함(10-23, 사용자 "ㅇㅇ 추천대로 가자"): 막지 않는다.** 다른 메가와 같이 대전마다 한 쪽 한 번이다. 서버 일 없음(duel-mega 그대로).
+- Q1. 대전의 메가레쿠쟈: 10-18에 대전 메가진화를 열었고, 대전 전설 제한도 넣지 않기로 했다. 그래서 레쿠쟈 원정을 끝낸 사람은 친구 대전에서 메가레쿠쟈(종족값 780, 스톤 없이 다른 도구를 지님)를 쓸 수 있다. §1.8을 정할 때(10-16)는 대전에 메가가 없었다.
   - **추천: 막지 않는다.** 다른 메가와 같고, 한 쪽 한 번이다. 대전은 친구끼리 고르는 것이다.
   - 다른 안: 대전에서만 레쿠쟈의 메가진화를 막는다(서버 S).
 

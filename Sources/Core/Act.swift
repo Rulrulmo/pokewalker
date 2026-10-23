@@ -139,6 +139,7 @@ extension Walker {
         case .visitCame, .visitDone: visitNews(n, now)                                             // 3.8 (14 §3): 맡겨 키우기 (Core/TeamView.swift)
         case .expedition(let id, let n, let need): showExpedition(id, n, need, now)              // 5.1 (plan 19): a 지가르데 셀 came — 홈's card (ExpView.swift)
         case .expeditionDone: break                                                                // (its claim shows it: expPress)
+        case .expeditionStage, .expeditionGift: break                                              // 5.2 (plan 19 §11.7): the screens are the Mac's
         case .mailNew(_, let t): mailNews(t)                                                       // 3.9 (15 §6 A): quiet — the 우편함's dot, a notification
         }
     }

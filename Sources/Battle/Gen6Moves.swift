@@ -63,8 +63,9 @@ extension Battle {
         case 499 where f(t).alive && !subTook && dealt > 0:                                             // 클리어스모그
             mod(t) { $0.stage = Array(repeating: 0, count: 8) }; say(t, josa(tn, "의", "의") + " 능력 변화가 원래대로 돌아왔다!")
         case 479 where f(t).alive && !subTook && dealt > 0:                                             // 떨어뜨리기
-            let up = !grounded(t) || [19, 340].contains(f(t).semi)
-            mod(t) { $0.smackedDown = true; $0.magnetRise = 0; $0.telekinesis = nil; if [19, 340].contains($0.semi) { $0.semi = 0; $0.charging = 0 } }
+            let up = !grounded(t) || [19, 340, 507].contains(f(t).semi)
+            mod(t) { $0.smackedDown = true; $0.magnetRise = 0; $0.telekinesis = nil; if [19, 340, 507].contains($0.semi) { $0.semi = 0; $0.charging = 0 }; $0.lifted = nil }
+            if f(s).lifted == true { release(s) }                                                    // (5.2: its 프리폴 ends)
             if up { say(t, josa(tn, "은", "는") + " 땅으로 떨어졌다!") }
         case 615 where f(t).alive && !subTook && dealt > 0 && !f(t).trapped:                            // 사우전드웨이브
             mod(t) { $0.trapped = true }; say(t, josa(tn, "은", "는") + " 이제 도망칠 수 없다!")

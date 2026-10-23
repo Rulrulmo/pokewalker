@@ -72,8 +72,10 @@ struct RaidReq: Codable, Equatable { var id, session: String; var app: String? =
 
 extension Mon {
     /// These four with its own move (RaidRules.signature) in the place of the weakest attack (towerScore) if it isn't one of them.
-    func withSignature(_ ms: [Int]) -> [Int] {
-        guard let sig = RaidRules.signature[dex], !ms.contains(sig) else { return ms }
+    func withSignature(_ ms: [Int]) -> [Int] { RaidRules.signature[dex].map { with($0, ms) } ?? ms }
+    /// These four with move sig in the place of the weakest attack (5.2: 레쿠쟈 원정's 화룡점정 too).
+    func with(_ sig: Int, _ ms: [Int]) -> [Int] {
+        guard !ms.contains(sig) else { return ms }
         if ms.count < 4 { return ms + [sig] }
         var out = ms, hits = ms.indices.filter { !moveTable[ms[$0]]!.isStatus }
         if hits.isEmpty { hits = [3] }

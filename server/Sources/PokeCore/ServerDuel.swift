@@ -215,6 +215,7 @@ extension SaveDB {
     func startDuel(_ d: inout DuelRow, now: Int, actor: String? = nil, app: String? = nil) {
         guard let pa = d.pickA, let pb = d.pickB, let xa = d.partyA, let xb = d.partyB else { return }
         var b = Battle(party: pa.compactMap { xa[safe: $0] }, trainer: d.bName, foes: pb.compactMap { xb[safe: $0] }); b.pvp = true
+        if [d.a, d.b].allSatisfy({ k in knows(k == actor ? app : (try? appSeen(k)) ?? nil, content52App) }) { b.illusion = true }   // 5.2 (plan 19 §11.5): 일루전 when both apps draw it
         var g = SystemRandomNumberGenerator(); b.seed = g.next()
         d.turns = [b.begin(weather: nil, &g)]; d.battle = b
         d.state = "active"; (d.needA, d.needB) = ("move", "move"); d.deadline = now + duelTurnLife

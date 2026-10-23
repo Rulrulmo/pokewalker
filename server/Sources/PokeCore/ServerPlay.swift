@@ -42,6 +42,7 @@ func actName(_ a: Act) -> String {
     case .duelParty(let u): "duel party \(u)"; case .duelQueue: "duel queue"; case .duelQueueCancel: "duel queue cancel"; case .duelPick(let i, let sl): "duel #\(i) pick \(sl)"
     case .mailClaim(let i, let p): "mail claim #\(i)" + (p.map { " pick \($0)" } ?? ""); case .mailClaimAll: "mail claim all"
     case .expStart(let i): "expedition start \(i)"; case .expClaim(let i): "expedition claim \(i)"
+    case .expFight(let i, let p): "expedition fight \(i)" + (p.map { " with \($0)" } ?? ""); case .expBall(let i): "expedition ball \(i)"
     case .mailDelete(let i): "mail delete #\(i)"; case .mailDeleteAll: "mail delete all"
     }
 }
@@ -58,7 +59,7 @@ extension SaveDB {
         guard let id = trainerID(r.id) else { return .error(400, "bad_id") }
         guard r.seq >= 1, (r.steps ?? 0) >= 0 else { return .error(400, "bad_request") }
         let unix = Int(now.timeIntervalSince1970)
-        return guarded {
+        return content52Scope(id.key, app: r.app) { guarded {                                       // 5.2 (plan 19 §11.6): by the app's version
             try db.transaction {
                 guard let t = try trainer(id.key) else { return .error(404, "no_trainer") }
                 guard r.session == t.session else { return .error(409, "conflict", ["reason": .s("replaced")], note: "act replaced (seq \(r.seq))") }
@@ -202,7 +203,7 @@ extension SaveDB {
                 }
                 return Reply(raw: 200, body, note: note)
             }
-        }
+        } }
     }
 
     /// The trainer's play row; another session's (or none) starts over, its allowance kept (a first one: what the time since the last save allows).
