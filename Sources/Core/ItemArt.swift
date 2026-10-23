@@ -19,6 +19,7 @@ private let itemTable: (names: [String: Int], offsets: Int) = {
 /// The item's picture (cached): items.bin's, else drawn.
 @MainActor func itemPic(_ name: String) -> Pic {
     if let p = itemPics[name] { return p }
+    if let no = Machines.number(name), let t = moveTable[Machines.move(no)]?.type { let p = machineDisc(t); itemPics[name] = p; return p }   // 5.2: a machine's disc (TMView.swift)
     let p = packedItem(name) ?? drawnItem(name)
     itemPics[name] = p; return p
 }

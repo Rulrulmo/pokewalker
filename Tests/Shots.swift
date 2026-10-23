@@ -784,6 +784,27 @@ import AppKit
         take("exp52_collect", xw) { v in v.exp52Tab(3) }
         take("exp52_team", xw) { v in v.exp52Tab(4) }
         xw.exp52Tab(0)
+        // 기술머신 (TMView.swift): the shop's tab (its sorts, 우리 팀만, 보유), 정말 살까?, the bag's tab, who to teach, 기술 바꾸기's TM26 and 원정
+        var r10 = Seeded(s: 14), venu = Mon.wild(3, level: 55, &r10); venu.known = [76, 188, 79, 202]
+        let tw = online({ var s = base(); s.companion = venu; s.caught = [Mon.wild(236, level: 20, &r10), Mon.wild(25, level: 40, &r10), Mon.wild(133, level: 30, &r10)]
+                          s.box = [Mon.wild(6, level: 36, &r10), Mon.wild(384, level: 50, &r10)]; s.watts = 12_480; s.tms = [6, 11, 17, 22, 100, 101]; return s }())
+        let tws = tw.wares(false), tmAt = { (n: Int) in tws.firstIndex { if case .item(let i) = $0.kind { return Walk.machine(i) == n }; return false } ?? 0 }
+        take("tm52_shop", tw) { v in v.screen = .shop(bp: false, sel: tmAt(53), qty: nil) }
+        take("tm52_shop_owned", tw) { v in v.screen = .shop(bp: false, sel: tmAt(22), qty: nil) }
+        take("tm52_shop_type", tw) { v in v.tmSort = 1; v.screen = .shop(bp: false, sel: v.shopRows(false, v.shopTabs(false).firstIndex(of: "기술머신") ?? 0).first ?? 0, qty: nil) }
+        take("tm52_shop_price_team", tw) { v in v.tmSort = 2; v.tmTeamOnly = true; v.screen = .shop(bp: false, sel: v.shopRows(false, v.shopTabs(false).firstIndex(of: "기술머신") ?? 0).first ?? 0, qty: nil) }
+        tw.tmSort = 0; tw.tmTeamOnly = false
+        take("tm52_shop_none", tw) { v in v.screen = .shop(bp: false, sel: tmAt(4), qty: nil) }
+        take("tm52_confirm", tw) { v in v.screen = .shopConfirm(bp: false, sel: tmAt(26), yes: false) }
+        take("tm52_bag", tw) { v in v.screen = .items(Walker.tmRow0) }
+        take("tm52_bag_hm", tw) { v in v.screen = .items(Walker.tmRow0 + 5) }
+        take("tm52_teach_pick", tw) { v in v.screen = .itemOn(ItemOn(item: "기술머신22", pick: -1, at: 0)) }
+        take("tm52_teach_slots", tw) { v in v.relearnWant = 76; v.screen = .relearn(ref: -1, slot: 3, at: nil) }
+        tw.relearnWant = nil
+        take("tm52_relearn", tw) { v in v.screen = .relearn(ref: -1, slot: 3, at: 89) }
+        take("tm52_relearn_pika", tw) { v in v.screen = .relearn(ref: -3, slot: 3, at: 85) }
+        serve(tw) { $0.expeditions = ["레쿠쟈": ExpProgress(done: 1)] }
+        take("tm52_relearn_ray", tw) { v in v.screen = .relearn(ref: 1, slot: 3, at: 620) }
     } } }
     return n
 }

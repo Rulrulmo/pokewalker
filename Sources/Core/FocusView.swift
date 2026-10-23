@@ -84,6 +84,12 @@ extension Walker {
         case .shell(let s): fb.focusPic("shell|" + s) { shellPic(s) }
         case .legend(let k): fb.mon(Mon(dex: Walk.legendShop[k].dex, level: Walk.legendShop[k].level, female: false), 0, 0, 2)
         }
+        if case .item(let i) = w.kind, let no = Walk.machine(i) {                                   // 5.2: a machine — its number and move, price or 보유, type and power, who learns it
+            fb.name(tmLabel(no) + " " + (tmMove(no)?.name ?? ""), x, 13, 94 - x, can || had ? 3 : 1)
+            fb.line(had ? "보유" : "\(w.price)\(unit)", x, 25, 94 - x, can || had ? 3 : 1)
+            fb.wrap((tmMove(no).map { (typeKo[$0.type] ?? "") + ($0.power > 1 ? " \($0.power)" : "") } ?? "") + " · 배우는 포켓몬 \(tmLearners(no).all)마리", x, 35, 94 - x, lines: 2)
+            fb.text("\(min(sel, ws.count - 1) + 1)/\(ws.count)", 94, 53, 1, right: true, small: true); return
+        }
         fb.name(state.wareName(w).replacingOccurrences(of: " (전설)", with: "").replacingOccurrences(of: " (기기 색)", with: ""), x, 13, 94 - x, can ? 3 : 1)
         fb.line(had ? "보유" : "\(w.price)\(unit)", x, 25, 94 - x - (!had && state.owned(w) > 0 ? textWidth("보유 \(state.owned(w))", small: true) + 3 : 0), can ? 3 : 1)
         if !had, state.owned(w) > 0 { fb.text("보유 \(state.owned(w))", 94, 25, 2, right: true, small: true) }
@@ -172,7 +178,9 @@ func typePill(_ c: UInt32, _ w: Int) -> Pic {
 @MainActor func focusChecks() -> [(Bool, String)] {
     var c: [(Bool, String)] = []
     let sold = (Walk().wares(bp: false, shells: []) + Walk().wares(bp: true, shells: Engine.bpShells)).compactMap { if case .item(let i) = $0.kind { i } else { nil } }
-    let bare = Set(sold + Forms.stones).filter { !itemPacked($0) && !$0.hasSuffix("민트") && !["로토무카탈로그", "순백떡", "특성패치"].contains($0) }.sorted()
+    let tms = Content.$testing.withValue(true) { Content.$testing51.withValue(true) { Content.$testing52.withValue(true) { Walk().wares(bp: false, shells: []).compactMap { w -> String? in if case .item(let i) = w.kind, Walk.machine(i) != nil { i } else { nil } } } } }
+    let bare = Set(sold + Forms.stones).filter { !itemPacked($0) && !$0.hasSuffix("민트") && !["로토무카탈로그", "순백떡", "특성패치"].contains($0) && Machines.number($0) == nil }.sorted()
+        + tms.filter { itemPic($0).px.allSatisfy { $0 == 0 } }                                     // 5.2: the 106 machines' discs, drawn
     c.append((bare.isEmpty, "5.0 focus: every item sold and every Mega stone has its own picture (items.bin; the mints, 로토무카탈로그, 순백떡 and 5.1's 특성패치 drawn)" + (bare.isEmpty ? "" : " — none: \(bare)")))
     let was = (lcdFocus, lcdDeco, lcdStyle); lcdFocus = true; lcdDeco = true; lcdStyle = 0
     defer { lcdFocus = was.0; lcdDeco = was.1; lcdStyle = was.2 }

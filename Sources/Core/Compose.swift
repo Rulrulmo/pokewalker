@@ -59,7 +59,8 @@ extension Walker {
             let unit = bp ? "BP" : "W"
             fb.text(bp ? "BP 교환소" : "상점", 2, 0); fb.text("\(bp ? state.bp ?? 0 : state.watts)\(unit)", 94, 1, 2, right: true, small: true); fb.fill(0, 12, 96, 1, 2)
             if let w = wares(bp)[safe: sel] {
-                fb.text(state.wareName(w), 0, 16, 3, center: true, small: true); fb.text("\(w.price)\(unit) · 정말 살까?", 0, 27, 2, center: true, small: true)
+                let name = { if case .item(let i) = w.kind, let no = Walk.machine(i) { return tmLabel(no) + " " + (tmMove(no)?.name ?? "") }; return state.wareName(w) }()   // (5.2: TM26 지진)
+                fb.text(name, 0, 16, 3, center: true, small: true); fb.text("\(w.price)\(unit) · 정말 살까?", 0, 27, 2, center: true, small: true)
                 for (k, o) in ["아니오", "예"].enumerated() { let x = 14 + 40 * k, tw = fb.text(o, x + 2, 44, 3, small: true); if (k == 1) == yes { fb.invert(x, 43, tw + 4, 11) } }
             }
         case .learn(let sel):
@@ -82,9 +83,9 @@ extension Walker {
             guard let m = state.mon(r) else { break }
             func note(_ mv: MoveInfo) -> String { (typeKo[mv.type] ?? "") + (mv.power > 0 ? " \(mv.power)" : "") }
             if let at {                                                                            // what goes in slot s: five rows round the pick (its own marked with their slot)
-                let all = m.relearnable, i = all.firstIndex(of: at) ?? 0, top = max(0, min(all.count - 5, i - 2))
+                let all = state.relearnable(m), i = all.firstIndex(of: at) ?? 0, top = max(0, min(all.count - 5, i - 2))
                 fb.text(m.moves[safe: s].map { "\(s + 1)번 " + moveTable[$0]!.name + " →" } ?? "빈 칸 →", 2, 1, 3, small: true); fb.fill(0, 10, 96, 1, 2)
-                if lcdFocus { moveFocusLCD(&fb, at, foot: m.moves.firstIndex(of: at).map { "지금 \($0 + 1)번" } ?? "떠올리기", i + 1, all.count); break }   // 5.0 (prototype)
+                if lcdFocus { moveFocusLCD(&fb, at, foot: m.moves.firstIndex(of: at).map { "지금 \($0 + 1)번" } ?? relearnTag(m, at).map { $0 == "원정" ? "원정으로 배우기" : $0 + "으로 배우기" } ?? "떠올리기", i + 1, all.count); break }   // 5.0 (prototype)
                 for (k, id) in all[top..<min(all.count, top + 5)].enumerated() {
                     let y = 13 + 10 * k, mv = moveTable[id]!
                     fb.text(mv.name, 2, y, 3, small: true); fb.text(m.moves.firstIndex(of: id).map { "\($0 + 1)번" } ?? note(mv), 94, y, 2, right: true, small: true)
@@ -168,6 +169,7 @@ extension Walker {
             fb.text("은색병뚜껑 ×\(state.count("은색병뚜껑"))", 2, 52, 2, small: true)
         case .items(let sel):                                                                        // 도구: the pick (the pane has the list and its use)
             header("도구")
+            if sel >= Walker.tmRow0 { tmItemsLCD(&fb, sel); break }                                 // 5.2: a machine had
             if lcdFocus { itemsFocusLCD(&fb, sel); break }                                         // 5.0 (prototype): the one picked, big (FocusView.swift)
             let rows = state.inventory
             guard let n = rows[safe: min(sel, rows.count - 1)] else { fb.text("없음", 0, 30, 2, center: true); break }
@@ -387,10 +389,12 @@ extension Walker {
             guard let m = state.mon(r) else { break }
             func mv(_ id: Int) -> LearnModel.Move { let x = moveTable[id]!; return .init(name: x.name, type: x.type, power: x.power, pp: x.pp, about: moveAbout(x), text: moveText(id)) }
             let pick = at.map { at -> RelearnModel.Pick in
-                let all = m.relearnable, per = RelearnModel.perPage, sel = all.firstIndex(of: at) ?? 0, first = sel / per * per
-                return .init(sel: sel, count: all.count, first: first, rows: all[first..<min(all.count, first + per)].map { .init(move: mv($0), level: m.learnLevel($0), slot: m.moves.firstIndex(of: $0)) })
+                let all = state.relearnable(m), per = RelearnModel.perPage, sel = all.firstIndex(of: at) ?? 0, first = sel / per * per
+                return .init(sel: sel, count: all.count, first: first, rows: all[first..<min(all.count, first + per)].map { .init(move: mv($0), level: m.learnLevel($0), slot: m.moves.firstIndex(of: $0), tag: relearnTag(m, $0)) })
             }
-            return PaneContent(relearn: RelearnModel(who: (m.shiny == true ? "★ " : "") + monNames[m.dex], slots: m.moves.map(mv), slot: s, pick: pick))
+            let hint = relearnWant.flatMap { moveTable[$0]?.name }.map { josa($0, "을", "를") + " 넣을 칸을 골라요" }   // 5.2: a machine from the bag
+                ?? (state.machineMoves(m).isEmpty ? nil : "레벨업 기술과 가진 기술머신(TM)의 기술을 골라요")
+            return PaneContent(relearn: RelearnModel(who: (m.shiny == true ? "★ " : "") + monNames[m.dex], slots: m.moves.map(mv), slot: s, pick: pick, hint: hint))
         case .course(let i):
             let i = min(max(0, i), courses.count - 1)                                                // 5.1.1: never past the list (a switch off)
             let per = CourseModel.perPage, first = i / per * per
@@ -477,7 +481,8 @@ extension Walker {
         case (.learn(let sel), 5300...5304): if sel == code - 5300 { press(1) } else { screen = .learn(sel: code - 5300) }   // 3.8.3: a first click shows what it does, a click on it decides
         case (.items(let sel), 5600..<5700): if let k = itemTab(sel).rows[safe: code - 5600] { screen = .items(k) }   // (a row of the tab in view)
         case (.items, 5720..<5730): let tabs = itemTabs, inv = state.inventory                          // 3.8.5: a tab — its first row
-            if let t = tabs[safe: code - 5720], let k = itemOrder.first(where: { Walk.bagTab(inv[$0]) == t }) { screen = .items(k) }
+            if let t = tabs[safe: code - 5720], t == "기술머신" { screen = .items(Walker.tmRow0) }   // 5.2: the machines had
+            else if let t = tabs[safe: code - 5720], let k = itemOrder.first(where: { $0 < Walker.tmRow0 && Walk.bagTab(inv[$0]) == t }) { screen = .items(k) }
         case (.items, 5700): press(1)
         case (.items, 5711): sellAll(back: .items(0))                                                // 팔 수 있는 것 전부 팔기
         case (.course(let i), 5800..<5805): screen = .course(i / CourseModel.perPage * CourseModel.perPage + code - 5800)   // a click picks one (its picture on the LCD); 가기 walks it
@@ -494,7 +499,7 @@ extension Walker {
         case (.tower(nil), 5420): act(.towerReset, back: .tower(pick: nil)) { _, _ in .tower(pick: nil) }   // 추천으로
         case (.relearn(let r, let s, nil), 5500...5503): if s == code - 5500 { press(1) } else { screen = .relearn(ref: r, slot: code - 5500, at: nil) }   // a slot: its move shown, then what goes there
         case (.relearn(let r, let s, let at?), 5530..<5545):                                    // a move of the page in view (into the slot), or its ◀ ▶ (round)
-            guard let all = state.mon(r)?.relearnable else { return }
+            guard let all = state.mon(r).map(state.relearnable) else { return }
             let per = RelearnModel.perPage, page = (all.firstIndex(of: at) ?? 0) / per, pages = (all.count + per - 1) / per
             if code >= 5540 { screen = .relearn(ref: r, slot: s, at: all[min(all.count - 1, (page + (code == 5540 ? pages - 1 : 1)) % pages * per)]) }
             else if let id = all[safe: page * per + code - 5530] { if id == at { press(1) } else { screen = .relearn(ref: r, slot: s, at: id) } }   // shown, then put in
@@ -531,6 +536,7 @@ extension Walker {
     func companionEvolution() -> Evo? { state.stoneEvolutions(Date()).first }
     /// 도구: every kind carried, the pick's use and a line about it.
     func itemsModel(_ sel: Int) -> ItemsModel {
+        if sel >= Walker.tmRow0 { return tmItemsModel(sel) }                                        // 5.2: the machines (TMView.swift)
         let names = state.inventory, s = min(sel, max(0, names.count - 1)), me = monNames[state.companion.dex], (tab, refs) = itemTab(s)
         let rows = refs.map { k in ItemsModel.Row(name: names[k], count: state.count(names[k]), onWalker: state.items.filter { $0 == names[k] }.count) }
         guard let n = names[safe: s] else { return ItemsModel(rows: [], sel: 0, walker: 0, bag: 0, action: nil, hint: "") }
@@ -636,8 +642,16 @@ extension Walker {
         default: return nil
         }
         let ws = wares(bp), unit = bp ? "BP" : "W", w = ws[safe: sel], tab = shopTab(bp, sel), ids = shopRows(bp, tab)
-        let rows = ids.map { ws[$0] }.map { w in ShopModel.Row(name: state.wareName(w), note: state.wareNote(w).replacingOccurrences(of: "지니게 하기: ", with: "지니면 "), price: w.once && state.owned(w) > 0 ? "보유" : "\(w.price.formatted())\(unit)",
-                                                 owned: state.owned(w), can: state.canBuy(w, bp: bp) > 0, once: w.once) }
+        let arts = tmTeam.map(\.art)
+        let rows = ids.map { ws[$0] }.map { w -> ShopModel.Row in
+            var r = ShopModel.Row(name: state.wareName(w), note: state.wareNote(w).replacingOccurrences(of: "지니게 하기: ", with: "지니면 "), price: w.once && state.owned(w) > 0 ? "보유" : "\(w.price.formatted())\(unit)",
+                                  owned: state.owned(w), can: state.canBuy(w, bp: bp) > 0, once: w.once)
+            if case .item(let i) = w.kind, let no = Walk.machine(i) {                               // 5.2: TM26 지진, its type, 물리 · 위력 100 · n마리, the team's four
+                let l = tmLearners(no)
+                r.name = tmLabel(no) + " " + (tmMove(no)?.name ?? ""); r.type = tmMove(no)?.type; r.note = tmKind(no) + " · \(l.all)마리"; r.team = arts; r.teamOK = l.team
+            }
+            return r
+        }
         let cost = (w?.price ?? 0) * (qty ?? 0)
         let holders: [String] = w.flatMap { w -> [String]? in if case .item(let i) = w.kind, case .held = ItemKind.of(i) { return ([state.companion] + state.caught + state.box).filter { $0.item == i }.map { monNames[$0.dex] } }; return nil } ?? []
         let hint = said ?? w.map { w in
@@ -645,8 +659,11 @@ extension Walker {
             w.once && state.owned(w) > 0 ? "이미 가지고 있어요" : state.canBuy(w, bp: bp) == 0 ? "\(unit)가 부족해요 · \(w.price.formatted())\(unit) 필요" : w.once ? "클릭하거나 ●를 누르면 살지 물어봐요" : "클릭하거나 ●를 누르면 몇 개 살지 정해요"
         } ?? ""
         let spend = ask != nil ? w?.price ?? 0 : cost
+        var tmHint: String? = nil
+        if !bp, case .item(let i)? = w?.kind, let no = Walk.machine(i), said == nil { tmHint = tmShopHint(no, owned: state.owned(w!) > 0) }
+        let onTM = !bp && shopTabs(bp)[safe: tab] == "기술머신"
         return ShopModel(title: bp ? "BP 교환소" : "상점", rows: rows, sel: ids.firstIndex(of: sel) ?? 0, qty: qty, most: w.map { max(1, state.canBuy($0, bp: bp)) } ?? 1,
-                         total: "\(spend.formatted())\(unit)", hint: hint, ask: ask, tabs: shopTabs(bp), tab: tab, ids: ids)
+                         total: "\(spend.formatted())\(unit)", hint: tmHint ?? hint, ask: ask, tabs: shopTabs(bp), tab: tab, ids: ids, tmSort: onTM ? tmSort : nil, tmTeam: tmTeamOnly)
     }
 }
 

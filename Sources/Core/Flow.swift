@@ -27,7 +27,10 @@ extension Walker {
     /// The shop's tabs that have something (docs/plans/13), the one a row is on, and a tab's rows (their places in wares).
     func shopTabs(_ bp: Bool) -> [String] { let ws = wares(bp); return Walk.shopTabs(bp: bp).filter { t in ws.contains { Walk.shopTab($0, bp: bp) == t } } }
     func shopTab(_ bp: Bool, _ sel: Int) -> Int { let ts = shopTabs(bp); return wares(bp)[safe: sel].flatMap { ts.firstIndex(of: Walk.shopTab($0, bp: bp)) } ?? 0 }
-    func shopRows(_ bp: Bool, _ tab: Int) -> [Int] { let ws = wares(bp), t = shopTabs(bp)[safe: tab]; return ws.indices.filter { Walk.shopTab(ws[$0], bp: bp) == t } }
+    func shopRows(_ bp: Bool, _ tab: Int) -> [Int] {
+        let ws = wares(bp), t = shopTabs(bp)[safe: tab], ids = ws.indices.filter { Walk.shopTab(ws[$0], bp: bp) == t }
+        return t == "기술머신" ? tmShopOrder(ids, ws) : ids                                        // 5.2: its sort, 우리 팀만 (TMView.swift)
+    }
     /// A shell the 기기 menu offers: the dex reached, and a BP one bought.
     func shellOpen(_ s: Shell) -> Bool { s.dex <= dexCount && (s.bp == 0 || (state.bought ?? []).contains(s.name)) }
     /// Buys q of the row (the server's): a line to say, then back to the list.
@@ -63,6 +66,7 @@ extension Walker {
     func listRow(_ d: Int) {
         guard !frozen, waiting == nil else { return }
         if case .course(let i) = screen { lastInput = Date(); host?.redraw(.all); screen = .course(max(0, min(courses.count - 1, i + d))); return }
+        if case .items(let s) = screen, s >= Walker.tmRow0 { lastInput = Date(); host?.redraw(.all); screen = .items(Walker.tmRow0 + max(0, min(tmHad.count - 1, s - Walker.tmRow0 + d))); return }   // 5.2: the machines
         if case .items(let s) = screen { lastInput = Date(); host?.redraw(.all); screen = .items(max(0, min(state.inventory.count - 1, s + d))); return }   // 도구: a row (the wheel, ↑ ↓)
         if case .train(let k) = screen { lastInput = Date(); host?.redraw(.all); screen = .train(max(0, min(5, k + d))); return }
         if case .mail(.pick(let id, let at, nil)) = screen, let n = mail(id).flatMap(pickCount) {   // 5.0: a mail's pick, a row (its page follows)
@@ -70,7 +74,7 @@ extension Walker {
         }
         if case .relearn(let r, let s, let at) = screen, let m = state.mon(r) {                 // 기술 바꾸기: its slots, or the moves for one
             lastInput = Date(); host?.redraw(.all)
-            if let at { let all = m.relearnable, i = all.firstIndex(of: at) ?? 0; screen = .relearn(ref: r, slot: s, at: all[max(0, min(all.count - 1, i + d))]) }
+            if let at { let all = state.relearnable(m), i = all.firstIndex(of: at) ?? 0; screen = .relearn(ref: r, slot: s, at: all[max(0, min(all.count - 1, i + d))]) }
             else { screen = .relearn(ref: r, slot: max(0, min(min(3, m.moves.count), s + d)), at: nil) }
             return
         }
@@ -93,6 +97,7 @@ extension Walker {
         guard case .shop(let bp, _, let qty) = screen else { return }
         lastInput = Date(); host?.redraw(.all)
         if (2900..<2920).contains(code) { if let first = shopRows(bp, code - 2900).first { screen = .shop(bp: bp, sel: first, qty: nil) }; return }   // a tab: its first row
+        if (2950...2953).contains(code) { tmShopChip(code, bp: bp); return }                          // 5.2: the 기술머신 tab's sort, 우리 팀만
         if code >= 2100 {
             let k = code - 2100; guard let w = wares(bp)[safe: k] else { return }
             screen = .shop(bp: bp, sel: k, qty: state.canBuy(w, bp: bp) > 0 ? 1 : nil); return
@@ -220,7 +225,7 @@ extension Walker {
             case .raid(let s): raidBack(s, now)
             case .market(let s): screen = marketBack(s)
             case .mail(let s): screen = mailBack(s)
-            case .itemOn(let p): screen = .items(state.inventory.firstIndex(of: p.item) ?? 0)
+            case .itemOn(let p): screen = .items(tmHad.firstIndex { Walk.machine(p.item) == $0 && Content.v52 }.map { Walker.tmRow0 + $0 } ?? state.inventory.firstIndex(of: p.item) ?? 0)
             case .duel(.hub(1, _)): screen = .duel(.hub(tab: 0, sel: 0))
             case .duel(.hub): screen = up("대전")
             case .duel: screen = .home                                                             // (the invitation stays open: its minute; the queue too)
@@ -240,7 +245,7 @@ extension Walker {
             case .train: screen = .items(state.inventory.firstIndex(of: "은색병뚜껑") ?? 0); trainRef = -1
             case .tower(let p): screen = p != nil ? .tower(pick: nil) : up("배틀 타워")                    // the picker → the lobby → the menu; a run stays on: ● in the lobby goes on
             case .learn: screen = .learn(sel: 4)                                                    // onto 배우지 않는다; ● decides
-            case .relearn(let r, let s, let at): screen = at != nil ? .relearn(ref: r, slot: s, at: nil) : .box(r, act: nil, confirm: false, detail: true)   // the moves → the slots → its page
+            case .relearn(let r, let s, let at): relearnWant = nil; screen = at != nil ? .relearn(ref: r, slot: s, at: nil) : .box(r, act: nil, confirm: false, detail: true)   // the moves → the slots → its page
             case .moves(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "공격") ?? 0)   // back to where it came from
             case .party(let b, _) where itemFor != nil: screen = .bagBattle(b, sel: battleItems(b).firstIndex { $0.name == itemFor } ?? 0); itemFor = nil
             case .party(let b, _): screen = .battle(b, sel: battleMenu(b).firstIndex(of: "교체") ?? 0)
@@ -373,9 +378,11 @@ extension Walker {
             if k == 1 { if dexList(f).contains(n) { if detail, let next = dexNextForm(n) { dexForm = (n, next) } else { dexForm = nil; screen = .dex(n, filter: f, detail: !detail) } } }
             else { gridStep(k == 0 ? -1 : 1, wrap: true) }
         case .items(let sel):                                                                     // ◀ ▶ a row, ● its use
-            let n = state.inventory.count
+            let o = itemOrder, n = state.inventory.count
+            guard !o.isEmpty else { return }
+            if k != 1 { let at = o.firstIndex(of: sel >= Walker.tmRow0 ? sel : min(sel, n - 1)) ?? 0; screen = .items(o[(at + (k == 0 ? o.count - 1 : 1)) % o.count]); return }   // (in the tabs' order: across them)
+            if let tm = tmRowName(sel) { if tmLearners(Walk.machine(tm) ?? 0).all > 0 { pickFor(tm) }; return }   // 5.2: 가르칠 포켓몬 고르기
             guard n > 0 else { return }
-            if k != 1 { let o = itemOrder, at = o.firstIndex(of: min(sel, n - 1)) ?? 0; screen = .items(o[(at + (k == 0 ? n - 1 : 1)) % n]); return }   // (in the tabs' order: across them)
             let name = state.inventory[min(sel, n - 1)], back = { [weak self] (s: Int) in Screen.items(min(s, max(0, (self?.state.inventory.count ?? 1) - 1))) }
             let kind = ItemKind.of(name)
             if Walker.targeted(kind) { if itemUse(name).0 != nil { pickFor(name) } }                    // 3.6: who gets it first (docs/plans/13)
@@ -419,11 +426,12 @@ extension Walker {
             else { gridStep(k == 0 ? -1 : 1, wrap: true) }
         case .relearn(let r, let s, let at):                                                     // the slots: ◀ ▶ one (round), ● what goes there; then ◀ ▶ a move, ● puts it in
             guard let m = state.mon(r) else { screen = .box(-1, act: nil, confirm: false); return }
-            let all = m.relearnable
+            let all = state.relearnable(m)                                                         // 5.2: the trainer's (machines, 화룡점정): Walk.relearnable
             guard let at else {
                 let n = min(4, m.moves.count + 1)
                 if k != 1 { screen = .relearn(ref: r, slot: (s + (k == 0 ? n - 1 : 1)) % n, at: nil); return }
-                screen = .relearn(ref: r, slot: s, at: m.moves[safe: s] ?? all.first { !m.moves.contains($0) } ?? all[0]); return
+                let want = relearnWant.flatMap { all.contains($0) ? $0 : nil }; relearnWant = nil            // 5.2: the bag's machine — on its move
+                screen = .relearn(ref: r, slot: s, at: want ?? m.moves[safe: s] ?? all.first { !m.moves.contains($0) } ?? all[0]); return
             }
             let i = all.firstIndex(of: at) ?? 0
             if k != 1 { screen = .relearn(ref: r, slot: s, at: all[(i + (k == 0 ? all.count - 1 : 1)) % all.count]); return }

@@ -73,6 +73,7 @@ import Foundation
     var trainRef = -1, itemFor: String? = nil
     var duel: DuelView? = nil, duelOn = false, duelSeen = 0, duelShown: Battle? = nil, duelWait = false   // 12 §5: the live battle's last view, polling, turns played, the battle shown, our pick in                              // 3.6: who 대단한 특훈 is on; an item whose target the fight's party screen asks for
     var raidOn = false, raidThen: Screen? = nil, raidPicked: [Int] = []   // 12 (M3): a raid fight is on (its menu, lines, HUD); where a raid ball's show goes after; 3.8: the last raid party (uids), offered first
+    var tmSort = 0, tmTeamOnly = false, relearnWant: Int? = nil            // 5.2 (TMView.swift): the shop's 기술머신 sort and 우리 팀만; a machine to teach (기술 바꾸기 opens on it)
     var expTab = 0, expBallsID: String? = nil                              // 5.2 (Exp52.swift): 전설 원정's kind tab; the boss's ball stage on (its id: a throw's lines)
     var raidStage: RaidPending? = nil, raidTier = 0                       // 4.0 (16 §8-4): the run's ball stage on screen (its boss, balls left); the tier picked for the next run (0: none yet)
 

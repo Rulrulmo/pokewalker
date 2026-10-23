@@ -16,6 +16,9 @@ extension Walker {
     /// Why that item would do nothing for that one (nil: it would): the server's own rules (Walk.feedCandy …), told before asking it.
     func itemNot(_ item: String, _ ref: Int) -> String? {
         guard let m = state.mon(ref) else { return "없어요" }
+        if Content.v52, let no = Walk.machine(item), (state.tms ?? []).contains(no) {                // 5.2: a machine had — its move, if this one learns it
+            return !Machines.learns(m.dex, no) ? "배우지 못해요" : m.moves.contains(Machines.move(no)) ? "이미 알고 있어요" : nil
+        }
         switch ItemKind.of(item) {
         case .candy: return m.level >= 100 ? "이미 Lv.100" : nil
         case .vitamin(let k, let d):
@@ -35,13 +38,17 @@ extension Walker {
         }
     }
     /// 3.8.5 (14 §11): the bag's tabs with something in them (Walk.bagTabs, the shops' kinds), and the inventory in their order (its indices).
-    var itemTabs: [String] { let have = Set(state.inventory.map(Walk.bagTab)); return Walk.bagTabs.filter(have.contains) }
+    var itemTabs: [String] { let have = Set(state.inventory.map(Walk.bagTab)); return bagTabsWithTM(Walk.bagTabs.filter(have.contains)) }   // (5.2: 기술머신, the machines had)
     var itemOrder: [Int] {
         let inv = state.inventory, t = Walk.bagTabs, k = inv.map { t.firstIndex(of: Walk.bagTab($0)) ?? t.count }
-        return inv.indices.sorted { k[$0] != k[$1] ? k[$0] < k[$1] : $0 < $1 }
+        let items = inv.indices.sorted { k[$0] != k[$1] ? k[$0] < k[$1] : $0 < $1 }, tms = tmHad.indices.map { Walker.tmRow0 + $0 }
+        guard !tms.isEmpty, Content.v52 else { return items }
+        let at = items.firstIndex { Walk.bagTab(inv[$0]) == "기타" } ?? items.count                // (5.2: before 기타, as the tab)
+        return Array(items[..<at]) + tms + Array(items[at...])
     }
     /// The tab the row at `sel` (an inventory index) is in, and that tab's rows (inventory indices, in order).
     func itemTab(_ sel: Int) -> (tab: Int, rows: [Int]) {
+        if sel >= Walker.tmRow0 { return (itemTabs.firstIndex(of: "기술머신") ?? 0, tmHad.indices.map { Walker.tmRow0 + $0 }) }   // 5.2: the machines had
         let inv = state.inventory, tabs = itemTabs, name = inv[safe: min(sel, max(0, inv.count - 1))].map(Walk.bagTab) ?? tabs.first ?? ""
         return (tabs.firstIndex(of: name) ?? 0, itemOrder.filter { Walk.bagTab(inv[$0]) == name })
     }
@@ -59,9 +66,11 @@ extension Walker {
         let m = p.pick.flatMap { state.mon($0) }, why = p.pick.flatMap { itemNot(p.item, $0) }
         let mine = m.map { TradeSlot(label: p.pick == -1 ? "동료" : (p.pick ?? 0) < -1 ? "워커" : "상자", dex: $0.dex, level: $0.level, shiny: $0.shiny == true, name: monNames[$0.dex], v: $0.perfectIVs) }
             ?? TradeSlot(label: "받을 포켓몬", name: "골라 주세요")
-        let verb: String = { switch ItemKind.of(p.item) { case .candy, .vitamin, .evReset, .berry: "먹이기"; case .bottleCap(let g): g ? "특훈" : "특훈할 능력 고르기"; case .held: "지니게 하기"; default: "쓰기" } }()
+        let tm = Content.v52 ? Walk.machine(p.item).flatMap { (state.tms ?? []).contains($0) ? $0 : nil } : nil   // 5.2: a machine had
+        let verb: String = tm != nil ? "가르치기" : { switch ItemKind.of(p.item) { case .candy, .vitamin, .evReset, .berry: "먹이기"; case .bottleCap(let g): g ? "특훈" : "특훈할 능력 고르기"; case .held: "지니게 하기"; default: "쓰기" } }()
         let go = m != nil && why == nil ? josa(monNames[m!.dex], "에게", "에게") + " " + verb : nil
         let then: String? = m.flatMap { m in                                                     // 5.0: what it is now, and what it'd be
+            if let no = tm { return "기술 바꾸기에서 " + josa(tmMove(no)?.name ?? "", "을", "를") + " 넣을 칸을 골라요" }
             switch ItemKind.of(p.item) {
             case .mint(let k): return "지금 " + natures[m.mint ?? m.nature ?? 0].name + " → " + natures[k].name
             case .vitamin(let k, let d): let e = (m.evs ?? [])[safe: k] ?? 0; return "\(["HP", "공격", "방어", "특공", "특방", "스피드"][k]) 노력치 \(e) → \(max(0, min(Walk.vitaminCap, e + d)))"
@@ -73,7 +82,8 @@ extension Walker {
             default: return nil
             }
         }
-        return PaneContent(pick: TradePickModel(title: "누구에게 쓸까요?", note: "\(p.item) ×\(state.count(p.item))", mine: mine, theirs: TradeSlot(label: "쓸 도구", name: p.item),
+        return PaneContent(pick: TradePickModel(title: tm != nil ? "누구에게 가르칠까요?" : "누구에게 쓸까요?", note: tm.map { tmLabel($0) + " " + (tmMove($0)?.name ?? "") } ?? "\(p.item) ×\(state.count(p.item))", mine: mine,
+                                                theirs: TradeSlot(label: tm != nil ? "가르칠 기술" : "쓸 도구", name: tm.map { tmMove($0)?.name ?? p.item } ?? p.item),
                                                 side: 0, fixed: true, boxTitle: then.map { monNames[m!.dex] + " · " + $0 } ?? "동료 · 워커 · 상자 · \(refs.count.formatted())마리", cells: cells, sel: refs.isEmpty ? nil : at - first,
                                                 picked: p.pick.flatMap { refs.firstIndex(of: $0) }.flatMap { (first..<first + per).contains($0) ? $0 - first : nil },
                                                 first: first, count: refs.count, empty: "", any: nil, go: go, hint: why.map { "이 포켓몬에게는: " + $0 } ?? "쓸 포켓몬을 골라 주세요",
@@ -126,6 +136,9 @@ extension Walker {
     /// The picked one gets it: a 은색병뚜껑 first asks which stat (the 특훈 page, on that one); the rest go to the server now.
     func giveItem(_ p: ItemOn, _ now: Date) {
         guard let r = p.pick, itemNot(p.item, r) == nil else { return }
+        if Content.v52, let no = Walk.machine(p.item), (state.tms ?? []).contains(no), let m = state.mon(r) {   // 5.2: a machine — that one's 기술 바꾸기, its slot first (then the move)
+            relearnWant = Machines.move(no); screen = .relearn(ref: r, slot: min(3, m.moves.count), at: nil); return
+        }
         let back = Screen.items(state.inventory.firstIndex(of: p.item) ?? 0)
         if keyItemOn(p.item, r) { return }                                                          // 5.0: 로토무카탈로그 · 유전자쐐기 ask what next
         if case .bottleCap(false) = ItemKind.of(p.item) { trainRef = r; screen = .train(state.mon(r)?.effectiveIVs.firstIndex { $0 < 31 } ?? 0); return }

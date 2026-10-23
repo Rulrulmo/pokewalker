@@ -482,7 +482,14 @@ extension Canvas {
             tabs(Array(s.tabs.prefix(half)), s.tab < half ? s.tab : -1, 198, code: 2900)
             tabs(Array(s.tabs.dropFirst(half)), s.tab >= half ? s.tab - half : -1, 222, code: 2900 + half)
         } else if !s.tabs.isEmpty { tabs(s.tabs, s.tab, 198, code: 2900) }
-        let top: CGFloat = s.tabs.isEmpty ? 196 : two ? 248 : 224, rows = 6, rh: CGFloat = 27
+        var top: CGFloat = s.tabs.isEmpty ? 196 : two ? 248 : 224, rows = 6
+        let rh: CGFloat = 27, tmAsk = s.tmSort != nil && s.ask != nil
+        if let sort = s.tmSort {                                                                   // 5.2 (TMView.swift): 번호순 · 타입순 · 값순 (2950 + n), 우리 팀만 (2953)
+            tabs(Walker.tmSorts, sort, top, code: 2950, span: X1 - X0 - 58)
+            let rc = r(X1 - 54, top, 54, 22), on = s.tmTeam
+            c.pill(rc, on ? Ink.red : Ink.tint(Ink.red, 0.12)); c.say("우리 팀만", rc.midX, rc.midY, font(9, .bold), on ? .white : Ink.red, 0.5); hits.append((rc, 2953))
+            top += 26; rows = tmAsk ? 4 : 5
+        }
         let key = s.title + "|\(s.tab)"
         if key != shopTitle { shopTitle = key; shopTop = max(0, s.sel - 2) }             // a stable window: a click never scrolls the row under the pointer away
         if s.sel < shopTop { shopTop = s.sel } else if s.sel >= shopTop + rows { shopTop = s.sel - rows + 1 }
@@ -491,8 +498,17 @@ extension Canvas {
             let yy = top + CGFloat(i - first) * rh, rc = r(X0, yy + 1, X1 - X0, rh - 2), on = i == s.sel
             if on { c.fill(.rounded(rc, 8 * K), Ink.redTint) } else if i > first, i != s.sel + 1 { rule(y(yy), 8, 16) }
             let fg = row.can ? Ink.ink : Ink.faint
-            c.say(row.price, x(X1 - 8), y(yy + 9.5), font(10, .semibold), on ? Ink.red : fg, 1)
-            c.say(row.name, x(X0 + 8), y(yy + 9.5), font(10, .bold), fg, maxW: x(X1 - X0 - 20) - width(row.price, font(10, .semibold)))
+            c.say(row.price, x(X1 - 8), y(yy + 9.5), font(10, .semibold), on ? Ink.red : row.price == "보유" ? Ink.green : fg, 1)
+            let nw = c.say(row.name, x(X0 + 8), y(yy + 9.5), font(10, .bold), fg, maxW: x(X1 - X0 - 20) - width(row.price, font(10, .semibold)) - (row.type == nil ? 0 : x(30)))
+            if let t = row.type { c.typePill(t, x(X0 + 8) + nw + x(5), y(yy + 9.5), h: x(10), size: 6.5) }
+            if !row.team.isEmpty {                                                                 // 5.2: the team's four, who doesn't learn it faded
+                for (k, art) in row.team.enumerated() {
+                    let ok = row.teamOK[safe: k] ?? false, cx = x(X1 - 14) - CGFloat(row.team.count - 1 - k) * x(15)
+                    c.image(iconImage(art, shadow: !ok), CGRect(x: cx - x(9), y: y(yy + 19.5) - x(9.5), width: x(18), height: x(18)), alpha: ok ? 1 : 0.3)
+                }
+                c.say(row.note, x(X0 + 8), y(yy + 20), font(8, .medium), Ink.sub, maxW: x(X1 - X0 - 24) - x(15) * CGFloat(row.team.count))
+                hits.append((rc, 2100 + (s.ids[safe: i] ?? i))); continue
+            }
             let own = row.once ? "" : "보유 \(row.owned)"
             c.say(own, x(X1 - 8), y(yy + 20), font(8, .medium), Ink.sub, 1)
             c.say(row.note, x(X0 + 8), y(yy + 20), font(8, .medium), Ink.sub, maxW: x(X1 - X0 - 24) - width(own, font(8, .medium)))
@@ -504,7 +520,8 @@ extension Canvas {
             let h = track.height * CGFloat(rows) / CGFloat(s.rows.count), yy = track.minY + (track.height - h) * CGFloat(first) / CGFloat(s.rows.count - rows)
             c.fill(CGRect(x: track.minX, y: yy, width: track.width, height: h), Ink.faint)
         }
-        let by = top + CGFloat(rows) * rh + 8
+        if tmAsk { c.say("한 번 사면 계속 써요 · 기술 바꾸기에서 가르쳐요", x(Layout.w / 2), y(top + CGFloat(rows) * rh + 13), font(9, .medium), Ink.sub, 0.5) }
+        let by = top + CGFloat(rows + (tmAsk ? 1 : 0)) * rh + 8
         if let yes = s.ask {                                                                       // 정말? for a once-only row
             let cw = (X1 - X0 - 5) / 2
             for (i, (t, code)) in [("아니오", 2007), ("예 · \(s.total)", 2006)].enumerated() {
@@ -719,7 +736,7 @@ extension Page {
                 if let mv = m.slots[safe: i] { moveLine(mv, rc) } else { c.say("빈 칸", rc.minX + x(9), rc.midY, font(10, .bold), Ink.faint) }
                 hits.append((rc, 5500 + i))
             }
-            c.say("레벨업으로 배우는 기술은 언제든 다시 고를 수 있어요", x(X0 + 2), y(311), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
+            c.say(m.hint ?? "레벨업으로 배우는 기술은 언제든 다시 고를 수 있어요", x(X0 + 2), y(311), font(9, .medium), m.hint?.hasSuffix("골라요") == true ? Ink.red : Ink.sub, maxW: x(X1 - X0 - 4))
             moveBox(m.slots[safe: m.slot], 350, empty: "빈 칸 · 새 기술을 고를 수 있어요")
             return
         }
@@ -732,6 +749,10 @@ extension Page {
                 c.pill(CGRect(x: xr - w, y: rc.midY - x(5.5), width: w, height: x(11)), mine ? Ink.red : Ink.tint(Ink.blue, 0.16)); c.say(t, xr - w / 2, rc.midY, f, mine ? .white : Ink.blue, 0.5)
                 xr -= w + x(5)
             } else if let l = row.level { xr -= c.say("Lv.\(max(1, l))", xr, rc.midY, font(8, .semibold), Ink.faint, 1) + x(5) }
+            else if let t = row.tag {                                                              // 5.2: a machine's (TM26, teal) or 레쿠쟈 원정's (원정, purple)
+                let f = font(7.5, .bold), w = width(t, f) + x(8), col = t == "원정" ? Ink.c(132, 64, 196) : Ink.c(36, 150, 140)
+                c.pill(CGRect(x: xr - w, y: rc.midY - x(5.5), width: w, height: x(11)), Ink.tint(col, 0.16)); c.say(t, xr - w / 2, rc.midY, f, col, 0.5); xr -= w + x(5)
+            }
             moveLine(row.move, CGRect(x: rc.minX, y: rc.minY, width: xr - rc.minX + x(9) - x(1), height: rc.height))
             hits.append((rc, 5530 + i))
         }
@@ -1556,7 +1577,18 @@ extension Page {
         for (i, row) in m.rows.enumerated() where i >= top && i < top + shown {
             let rc = r(X0, y0 + CGFloat(i - top) * 29, X1 - X0, 26)
             tile(rc, 9, on: i == m.sel)
-            itemImage(row.name, CGRect(x: rc.minX + x(4), y: rc.midY - x(10), width: x(20), height: x(20))); c.say(row.name, rc.minX + x(28), rc.midY, font(10, .bold), Ink.ink, maxW: rc.width - x(90))   // 5.0: its own picture
+            itemImage(row.name, CGRect(x: rc.minX + x(4), y: rc.midY - x(10), width: x(20), height: x(20)))
+            if let t = row.tm {                                                                    // 5.2: a machine had — no count: who of the team learns it
+                let lw = c.say(t.label, rc.minX + x(28), rc.midY, font(8.5, .bold), Ink.sub)
+                let nw = c.say(t.move, rc.minX + x(31) + lw, rc.midY, font(10, .bold), Ink.ink, maxW: x(66))
+                c.typePill(t.type, rc.minX + x(35) + lw + nw, rc.midY, h: x(10), size: 6.5)
+                for (k, art) in t.team.enumerated() {
+                    let ok = t.teamOK[safe: k] ?? false, cx = rc.maxX - x(13) - CGFloat(t.team.count - 1 - k) * x(15)
+                    c.image(iconImage(art, shadow: !ok), CGRect(x: cx - x(9), y: rc.midY - x(10), width: x(18), height: x(18)), alpha: ok ? 1 : 0.3)
+                }
+                hits.append((rc, 5600 + i)); continue
+            }
+            c.say(row.name, rc.minX + x(28), rc.midY, font(10, .bold), Ink.ink, maxW: rc.width - x(90))   // 5.0: its own picture
             var xr = rc.maxX - x(9) - c.say("×\(row.count)", rc.maxX - x(9), rc.midY, font(10, .semibold), Ink.ink, 1)
             if row.onWalker > 0 { let t = "워커", f = font(7.5, .bold), w = width(t, f) + x(8); xr -= x(5); c.pill(CGRect(x: xr - w, y: rc.midY - x(5.5), width: w, height: x(11)), Ink.tint(Ink.blue, 0.16)); c.say(t, xr - w / 2, rc.midY, f, Ink.blue, 0.5) }
             hits.append((rc, 5600 + i))

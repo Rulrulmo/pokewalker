@@ -18,11 +18,13 @@ struct SideModel: Equatable {
 }
 /// 상점 / BP 교환소: the list, and how many.
 struct ShopModel: Equatable {
-    struct Row: Equatable { var name, note, price: String; var owned: Int; var can: Bool; var once: Bool }
+    struct Row: Equatable { var name, note, price: String; var owned: Int; var can: Bool; var once: Bool
+                            var type: String? = nil, team: [Int] = [], teamOK: [Bool] = [] }   // 5.2: a machine's move type; the team's four, who learns it
     var title: String; var rows: [Row]; var sel: Int; var qty: Int?; var most: Int; var total: String
     var hint: String                                                   // the bottom row when nothing is being counted: a message, or why not
     var ask: Bool?                                                     // a once-only row's 정말? (true = 예 highlighted)
     var tabs: [String] = [], tab = 0, ids: [Int] = []                  // 3.6 (docs/plans/13): the tab the pick is on; rows = that tab's (ids: their place in the whole list)
+    var tmSort: Int? = nil, tmTeam = false                             // 5.2: on the 기술머신 tab — its sort (Walker.tmSorts), 우리 팀만
 }
 /// The status sheet (home's page, and any screen without one of its own): the companion, today, then the rest.
 struct StatusModel: Equatable {
@@ -122,10 +124,11 @@ struct LearnModel: Equatable {
 }
 /// 기술 바꾸기: its moves (the slots; a free one after them while it knows fewer than 4), the one picked, and once picked what could go there, a page of five.
 struct RelearnModel: Equatable {
-    struct Row: Equatable { var move: LearnModel.Move; var level: Int?; var slot: Int? }   // level = when it learns it (nil: not by level); slot = where it is now
+    struct Row: Equatable { var move: LearnModel.Move; var level: Int?; var slot: Int?; var tag: String? = nil }   // level = when it learns it (nil: not by level); slot = where it is now; tag (5.2): TM26 · 원정
     struct Pick: Equatable { var sel, count, first: Int; var rows: [Row] }
     static let perPage = 5
     var who: String; var slots: [LearnModel.Move]; var slot: Int; var pick: Pick?
+    var hint: String? = nil                                            // 5.2: the slots' line (machines too; a machine to teach: its move)
 }
 /// 배틀 타워's lobby: the run, the party, the button.
 struct TowerModel: Equatable {
@@ -147,7 +150,9 @@ struct TrainModel: Equatable {
 }
 /// 도구: everything carried — the walker's and the bag's, a row a kind; the picked one's use (nil = nothing to press) and a line about it.
 struct ItemsModel: Equatable {
-    struct Row: Equatable { var name: String; var count, onWalker: Int }
+    /// 5.2 (TMView.swift): a machine had — its number, move and type, the team's four and who of them learns it.
+    struct Machine: Equatable { var label, move, type: String; var team: [Int]; var teamOK: [Bool] }
+    struct Row: Equatable { var name: String; var count, onWalker: Int; var tm: Machine? = nil }
     var rows: [Row]; var sel: Int; var walker, bag: Int; var action: String?; var hint: String
     var sellAll: Int? = nil                                            // W for everything sellable at once (nil: nothing to sell)
     var tabs: [String] = [], tab = 0                                   // 3.8.5 (14 §11): the bag's kinds with something in them (rows: the tab's)
