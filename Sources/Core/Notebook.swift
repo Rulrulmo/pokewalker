@@ -15,7 +15,7 @@ let stickerFeet = (x: 148, y: 114)                                              
 extension Walker {
     /// Home (and under the menu, which is the pane's): the page, the polaroid and the walker in it, the tape, the calendar, the stickers, the companion, its emote.
     func home(_ fb: inout FB, _ now: Date) {
-        let t = now.timeIntervalSinceReferenceDate, me = state.companion, tb = lightBand(state.hour), night = tb == 3, grey = !lcds[lcdStyle].color, tone = "\(night)" + (grey ? "|g" : "")
+        let t = now.timeIntervalSinceReferenceDate, me = homeLook, tb = lightBand(state.hour), night = tb == 3, grey = !lcds[lcdStyle].color, tone = "\(night)" + (grey ? "|g" : "")
         let P = polaroid, (fx, fy) = stickerFeet
         fb.pic("nb|paper|\(paperStyle)|\(tb)" + (grey ? "|g" : ""), 96, 64, behind: true) { paperPic(paperStyle, tb, grey: grey) }
         fb.pic("nb|pola|" + tone, P.x + P.w / 2 + 1, P.y + P.h / 2 + 1, behind: true) { lcdReady(polaroidPic(night)) }

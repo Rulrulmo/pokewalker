@@ -16,6 +16,7 @@ extension Walker {
     var megaNote: String {
         guard let r = megaLobby else { return "파워 \(raidCells)칸" + (raidDaily ? "" : " · 하루 \(RaidRules.perDay)판") }
         let near = r.bosses.filter { $0.had != true }.max { ($0.wins ?? 0) < ($1.wins ?? 0) }          // (the week's boss nearest its stone)
+        if raidDaily, homeOpened != nil { return "오늘 " + r.bosses.map(megaName).joined(separator: " · ") + " · 파워 \(raidCells)칸" }   // 5.2: from 홈's row — the day's two
         if raidDaily { return "파워 \(raidCells)칸 · " + (near.map { megaWinsText($0, r) } ?? "스톤 모두 보유") }   // 5.1 (plan 20)
         return (megaLeftToday == 0 ? "오늘 끝 · " : "오늘 \(megaLeftToday ?? 0)판 · ") + (near.map { megaWinsText($0, r) } ?? "스톤 모두 보유")
     }

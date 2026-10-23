@@ -198,6 +198,13 @@ extension Walker {
         case .box(let i, let act, let confirm, let detail):
             if !detail, !boxQuery.isEmpty, boxShown.isEmpty, i >= -1 { header("포켓몬"); fb.text("맞는 포켓몬 없음", 0, 26, 2, center: true, small: true); fb.text("✕로 찾기를 지워요", 0, 38, 1, center: true, small: true); break }   // 5.0: 찾기, nothing kept
             guard let m = state.mon(i) else { header("포켓몬"); break }
+            if detail, let n = megaLookForm, let f = Forms.of(m.dex, n) {                              // 5.2: 메가 모습 보기 — its front big
+                var mm = m; mm.form = n
+                header(f.name); fb.mon(mm, half, 0, 2, anim: animT("mega \(i)", mm.art, now))
+                fb.text(f.kind == .primal ? "원시회귀" : "메가진화", 94, 15, 2, right: true, small: true)
+                if Walker.megaForms(m.dex).count > 1 { fb.text("◀ ▶ 다른 모습", 94, 41, 1, right: true, small: true) }
+                fb.text("● 돌아가기", 94, 52, 2, right: true, small: true); break
+            }
             header((m.shiny == true ? "★" : "") + monNames[m.dex] + " Lv.\(m.level)")
             fb.mon(m, half, 0, 2, anim: animT("box \(i)", m.art, now))
             fb.text(i == -1 ? "함께" : i < -1 ? "워커 \(-1 - i)" : "상자 \((boxShown.firstIndex(of: i) ?? 0) + 1)/\(state.box.count)", 94, 15, 2, right: true, small: true)   // where it is
@@ -326,6 +333,7 @@ extension Walker {
             screen = .box(ref, act: nil, confirm: false, detail: ref == pick)
         case (.box, 4510): screen = .items(itemsAt)
         case (.box, 4171): boxFind()                                                                                                    // 5.0: 찾기
+        case (.box, 4173): boxShinyChip()                                                                                               // 5.2: ★ (Find52.swift)
         case (.box(let i, _, _, _), 4172): boxQuery = ""; screen = .box(i, act: nil, confirm: false)                                   // … and its words cleared
         case (.box(let i, _, _, _), 4100...4103): boxSort = code - 4100; screen = .box(i, act: nil, confirm: false)
         case (.box(let i, _, _, true), 4400) where i != -1: screen = .box(i, act: 0, confirm: false, detail: true); press(1)      // = ● 함께
@@ -342,6 +350,10 @@ extension Walker {
         case (.box(let i, _, _, true), 4409): screen = .relearn(ref: i, slot: 0, at: nil)                                          // 기술 바꾸기
         case (.box(let i, _, _, true), 4411): if let f = formAction(i) { _ = keyItemOn(f.item, i) }                                // 5.0: its form, straight from its page
         case (.box(let i, _, _, true), 4412): openEvoPick(i)                                                                            // 5.1.3: 배루키's pick, from its page
+        case (.box(let i, _, _, true), 4413): megaLookForm = state.mon(i).flatMap { m in megaLook(m) ?? Walker.megaForms(m.dex).first }   // 5.2: 메가 모습 보기 (its own, else the first)
+        case (.box(let i, _, _, true), 4414): megaLookPress(1, i)
+        case (.box(let i, _, _, true), 4415): megaLookPress(2, i)
+        case (.box, 4416): toggleMegaHome()
         case (.box(let i, _, _, true), 4410): screen = .hold(ref: i, sel: 0)                                                       // 3.7: 지니게 하기 · 빼기
         case (.box(let i, _, true, true), 4408) where state.box.indices.contains(i): askReleaseDupes(state.box[i].dex)            // 중복 n마리: asks (who stays) first
         case (_, 4200), (_, 4201): gridStep(code == 4200 ? -GridModel.perPage : GridModel.perPage, ends: true)
@@ -437,6 +449,7 @@ extension Walker {
         case (.card, 5200...5202): titlePick = false; screen = .card(code - 5200)
         case (.home, 9300...9319): if let row = paneContent(Date()).status?.rows[safe: code - 9300], let l = Walker.homeLinks[row.key] { quickOpen(l) }   // 5.0: 홈's rows
         case (.home, 9320...9323): quickOpen(Walker.quick[code - 9320])
+        case (.home, 9340): toggleMegaHome()                                                       // 5.2: 홈's 메가 pill (MegaLook.swift)
         case (.expedition(let s), 9200...9219): if code - 9200 == s { press(1) } else { screen = .expedition(code - 9200) }   // 5.1: a row; the picked one again: its button
         case (.expedition, 9230): press(1)
         case (.expedition, 9240...9249): exp52Tab(code - 9240)                                                                              // 5.2: a kind's tab
@@ -512,6 +525,7 @@ extension Walker {
         guard case .box(let i, let act, let confirm, true) = sc, let m = state.mon(i) else { return nil }
         var p = monPage(m, act: act, confirm: confirm); p.place = i == -1 ? 0 : i < -1 ? 1 : 2
         p.formAction = formAction(i)?.label                                                          // 5.0: 모습 바꾸기 · 합체하기 · 분리하기 on its page
+        p.megaLink = Content.gen6 && !Walker.megaForms(m.dex).isEmpty; p.mega = megaLookForm.flatMap { megaLookModel(m, $0, ref: i) }   // 5.2: 메가 모습 보기
         p.fetch = i >= 0 && state.caught.count < 3; p.dupes = i >= 0 ? state.duplicates(of: state.box[i].dex).count : 0; p.sel = act.flatMap { $0 < boxActs(i).count - 1 ? $0 : nil }   // the LCD's pick = a button (닫기 has none)
         let mine = evolutions.filter { $0.from == m.dex }, targets = mine.map(\.to).reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } }
         p.evos = targets.map { to in "→ " + monNames[to] + " · " + mine.filter { $0.to == to }.map { e in evoText(e).replacingOccurrences(of: " 소지", with: "") + (e.item.map { state.count($0) > 0 ? " (있음)" : " (없음)" } ?? "") }.joined(separator: " / ") }
@@ -593,7 +607,7 @@ extension Walker {
         if case .evolve(let from, _, let since) = screen, from.uid == m.uid, Date().timeIntervalSince(since) < 4.4 { m = from }   // no spoiler before the LCD's reveal (the companion's own)
         let t = expTable[growthRate[m.dex]], lv = max(1, min(100, m.level)), lo = t[lv], hi = t[min(100, lv + 1)]   // (4.0: a raid boss fights above 100)
         let exp: CGFloat = m.level >= 100 || hi <= lo ? 1 : CGFloat(m.points - lo) / CGFloat(hi - lo)
-        return StatusModel(art: m.art, name: (m.shiny == true ? "★ " : "") + monNames[m.dex], sex: sexMark(m).trimmingCharacters(in: .whitespaces), level: "Lv.\(m.level)",
+        return StatusModel(art: (m.uid == state.companion.uid ? homeLook : m).art, name: (m.shiny == true ? "★ " : "") + monNames[m.dex], sex: sexMark(m).trimmingCharacters(in: .whitespaces), level: "Lv.\(m.level)",
                            toNext: m.level >= 100 ? "최고 레벨" : "\((hi - m.points).formatted()) EXP", nature: "\(m.natureName) · \(m.abilityName)", female: m.female, v: m.perfectIVs, exp: exp,
                            numbers: [.init(key: "오늘 걸음", value: state.today.formatted()), .init(key: "와트", value: "\(state.watts.formatted())W"), .init(key: "누적 걸음", value: state.total.formatted())],
                            rows: [.init(key: "알", value: state.egg.map { $0.left > 0 ? "앞으로 \($0.left.formatted())걸음" : "곧 태어난다!" } ?? "없음"),

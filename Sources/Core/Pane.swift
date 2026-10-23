@@ -69,6 +69,7 @@ struct MonModel: Equatable {
     var held: String? = nil, heldNote: String? = nil                   // 3.7: its 지닌 도구 and what it does (the line under 진화; a click: 지니게 하기)
     var formAction: String? = nil                                      // 5.0: 모습 바꾸기 · 합체하기 · 분리하기 (its key item in the bag): a link on the 진화 line
     var evoPick: String? = nil                                         // 5.1.3: 진화 고르기 (배루키 ready to pick): the same link
+    var megaLink = false, mega: MegaLookModel? = nil                   // 5.2 (MegaLook.swift): 메가 모습 보기 on the 진화 line; the page as its Mega
 }
 /// 지니게 하기 (docs/plans/13 ⑤): who, what it holds now, the bag's holdable items (빼기 first while it holds one), the pick's line, the button.
 struct HoldModel: Equatable {
@@ -201,6 +202,8 @@ struct TradePickModel: Equatable {
     var any: Bool?; var go: String?; var hint: String; var bob: Bool
     var marks: [Int] = []                                              // cells marked too (the 게시판's wished species)
     var base = 6100                                                    // its click codes: 교환's 6100s, the 게시판's 8100s
+    var find: String? = nil, newOnly: Bool? = nil                      // 5.2 (Find52.swift): 찾기 ("" none yet; its words), 안 잡은 종 (nil: not on this side)
+    var colour = false, dots: [Int] = []                               // 5.2: the species seen in colour; the cells dotted green (not caught yet)
 }
 /// 친구's 신청 tab (12 §2.4): requests to me (수락 · 거절), mine out (거두기), a page at a time; 친구 신청 by ID.
 struct FriendReqModel: Equatable {
@@ -214,6 +217,7 @@ struct MarketBoardModel: Equatable {
     static let perPage = 6
     var tabs: [String]; var tab: Int; var rows: [Row]; var sel, first, count: Int; var note: String; var empty: String; var post: String?   // post: 글 올리기 (nil: 3 up)
     var footer: String? = nil                                          // the button's place when there's none to press (받기: how it works)
+    var chips: [String] = [], filter: Int? = nil, found = false        // 5.2 (Find52.swift): 전체's 찾기 and three filters, the one on; 찾기's words in use
 }
 /// One post in full: its Pokémon and the species wished for; another's: the Pokémon's page body and 제안 (or my offer, 거두기);
 /// mine: the offers on it (the picked one ringed) and 이 제안으로 교환 · 글 내리기.

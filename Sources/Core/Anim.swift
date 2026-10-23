@@ -56,7 +56,7 @@ extension Walker {
     func perk(_ now: Date, stepped: Bool) {
         switch screen { case .home, .menu: break; default: return }
         guard !animating, stepped ? now.timeIntervalSince(lastStep) > 20 : Double.random(in: 0..<1) < 1.0 / 600 else { return }   // the system's dice, not rng: flows stay seeded
-        animOn = ("home", state.companion.art, now)
+        animOn = ("home", homeLook.art, now)
     }
 }
 

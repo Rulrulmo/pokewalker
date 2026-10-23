@@ -4,7 +4,7 @@ import Foundation
 
 @MainActor final class Walker {
     var state: Walk
-    var screen = Screen.home { didSet { if case .say = oldValue, Walker.startsFights(screen) { calmAt = Date() }; if case .menu(let g?, let s) = screen { menuSlot[g] = s }; switch screen { case .home, .menu: homeOpened = nil; default: break }; remember(screen) } }
+    var screen = Screen.home { didSet { if case .say = oldValue, Walker.startsFights(screen) { calmAt = Date() }; if case .menu(let g?, let s) = screen, homeOpened == nil { menuSlot[g] = s }; switch screen { case .home, .menu(nil, _): homeOpened = nil; case .menu(let g?, _): if homeOpened != Walker.raidGroupHome || !menuTiles[g].items.contains("레이드") { homeOpened = nil }; default: break }; if case .box(_, _, _, true) = screen {} else { megaLookForm = nil }; remember(screen) } }
     var homeOpened: String? = nil                                                                   // 5.1.5: the feature 홈's button or row opened (its ↩ goes home: up; the menu not on the way)
     var menuSlot: [Int: Int] = [:]
     var mailOpened: Set<Int> = []                                                                   // 3.9: mails opened since the server's last list (read now, for the red dot)                                                                  // 3.9: each menu group's last tile (its page opens on it again)
@@ -16,7 +16,10 @@ import Foundation
     static func startsFights(_ s: Screen) -> Bool { switch s { case .tower(nil), .raid(.lobby), .raid(.tier): return true; case .squad(let q): return q.kind == .raid; default: return false } }
     weak var host: (any Host)?
     var lastInput = Date(), lastStep = Date.distantPast, lastSave = Date()
-    var boxSort = min(max(settings.int("ui.boxSort", 0), 0), 3) { didSet { if persist { settings.set("ui.boxSort", boxSort) } } }   // the 상자 grid's order: 번호순 / 레벨순 / V순 / 최근 (5.0: kept)
+    var boxSort = min(max(settings.int("ui.boxSort", 0), 0), 3) { didSet { if persist { settings.set("ui.boxSort", boxSort) } } }
+    var megaHome = settings.bool("ui.megaHome", true) { didSet { if persist { settings.set("ui.megaHome", megaHome) } } }   // 5.2 (MegaLook.swift): 홈 shows the companion's Mega (its stone held)
+    var boardQuery = "", boardFilter: Int? = nil, pickQuery = "", pickNew = false   // 5.2 (Find52.swift): the 게시판's 찾기 and filter; a pick grid's 찾기 and 안 잡은 종
+    var megaLookForm: Int? = nil                                           // 5.2: 메가 모습 보기 on the Pokémon's page — the form on show   // the 상자 grid's order: 번호순 / 레벨순 / V순 / 최근 (5.0: kept)
     var dexRegion = min(max(settings.int("ui.dexRegion", 0), 0), 6) { didSet { if persist { settings.set("ui.dexRegion", dexRegion) } } }   // 5.0 (content5): the 도감 grid's region, 0 = 전국 (dexRegions; kept)
     var dexForm: (dex: Int, n: Int)? = nil                                 // 5.0: the 도감 entry page's form on show (● turns them; nil = the species)
     var raidMega = false, raidMegaBoss = 0                                 // 5.0 (docs/plans/18 §6.4): the raid screens are the Mega raid's; its boss (the week's 0 / 1)
@@ -213,7 +216,7 @@ import Foundation
         case .goals: return ("도감 업적", "받은 업적 \((state.dexRewards ?? []).count)개")
         case .box(let i, _, _, true) where state.mon(i)?.ot != nil: return ("포켓몬", "어버이: " + (state.mon(i)?.ot ?? ""))   // a traded one: who it came from first
         case .box, .items: return ("포켓몬", "워커 \(state.caught.count) · 상자 \(state.box.count.formatted()) · 도구 \(state.items.count + state.bag.count)")
-        case .menu(let g, _): return ("메뉴", g.map { menuTiles[$0].name } ?? "")
+        case .menu(let g, _): return (homeOpened != nil ? "홈" : "메뉴", g.map { menuTiles[$0].name } ?? "")   // (5.2: 홈's 레이드 row's group: ‹ 홈)
         case .shop(let bp, _, _), .shopConfirm(let bp, _, _): return (bp ? "BP 교환소" : "상점", "")
         case .radar: return ("포켓 레이더", state.here.name)
         case .card: return ("트레이너 카드", "")

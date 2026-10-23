@@ -302,7 +302,11 @@ extension Canvas {
             tabs(g.tabs, g.tab, top, span: X1 - X0 - 50)
             let rc = r(X1 - 46, top, 46, 22); c.pill(rc, Ink.tint(Ink.red, 0.12)); c.say("찾기", rc.midX, rc.midY, font(10, .bold), Ink.red, 0.5); hits.append((rc, 4170))
         } else {                                                                                   // 5.0: the 상자's 찾기 (its words, ✕ to clear)
-            tabs(g.tabs, g.tab, top, span: X1 - X0 - 50)
+            tabs(g.tabs, g.tab, top, span: X1 - X0 - 50 - 30)
+            do {                                                                                  // 5.2 (Find52.swift): ★ — 찾기 "이로치" in one click (the user: "별만")
+                let on = g.query == "이로치", sc = r(X1 - 46 - 30, top, 26, 22), gold = Ink.c(214, 150, 20)
+                c.pill(sc, on ? gold : Ink.tint(gold, 0.16)); c.say("★", sc.midX, sc.midY, font(10.5, .bold), on ? .white : gold, 0.5); hits.append((sc, 4173))
+            }
             let q = g.query ?? "", rc = r(X1 - 46, top, 46, 22)
             c.pill(rc, q.isEmpty ? Ink.tint(Ink.red, 0.12) : Ink.red)
             c.say(q.isEmpty ? "찾기" : "✕ " + q, rc.midX, rc.midY, font(q.isEmpty ? 10 : 8.5, .bold), q.isEmpty ? Ink.red : .white, 0.5, maxW: rc.width - x(6)); hits.append((rc, q.isEmpty ? 4171 : 4172))
@@ -321,7 +325,10 @@ extension Canvas {
                 let lift = k == g.sel && g.bob ? K : 0                                                    // the pick hops a pixel, twice a second
                 c.image(iconImage(e.pic, shadow: e.look == 1), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: walker?.drag?.from == 10000 + g.first + k ? 0.3 : 1)
             }
-            if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
+            if e.shiny, g.items != nil {                                                                // 5.2: the 상자's 이로치 — a gold ring, a bigger ★
+                c.stroke(.rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K), Ink.c(226, 168, 30), width: 1.3 * K)
+                c.say("★", cell.maxX - x(4.5), cell.minY + x(7), font(9, .bold), Ink.c(226, 160, 20), 1)
+            } else if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
             if e.evo { evoDot(cell) }                                                                   // 5.1.3
             if let it = e.heldItem { itemImage(it, CGRect(x: cell.maxX - x(12), y: cell.maxY - x(12), width: x(11), height: x(11))) } else if e.held { pixelArt(gem, gemPal, CGPoint(x: cell.maxX - x(6), y: cell.maxY - x(6)), 1.4 * K) }   // 3.7 (5.0: the item itself): it holds an item
             if e.v3 {                                                                                   // 3V and up: the amber diamond, as on the LCD
@@ -395,10 +402,11 @@ extension Canvas {
 
     // MARK: 상자: one Pokémon — nature, ability, IVs and EVs, and 함께 / 놓아주기
     func drawMon(_ m: MonModel) {
+        if let mg = m.mega { drawMegaLook(mg); return }                                            // 5.2: 메가 모습 보기
         var yy = monBody(m, 198) + 4
         rule(y(yy - 2))                                                                            // 진화: how it evolves, a line a target
         c.say("진화", x(X0 + 2), y(yy + 6), font(9, .medium), Ink.sub)                            // 3.7: 진화 on one line, 지닌 도구 under it
-        let link = m.formAction.map { ($0, 4411) } ?? m.evoPick.map { ($0, 4412) }                       // (5.1.3: 진화 고르기 — 배루키's pick)
+        let link = m.formAction.map { ($0, 4411) } ?? m.evoPick.map { ($0, 4412) } ?? (m.megaLink ? ("메가 모습 보기", 4413) : nil)   // (5.2: a Mega's front)                       // (5.1.3: 진화 고르기 — 배루키's pick)
         let fw = link.map { a, code -> CGFloat in let w = c.say(a, x(X1 - 2), y(yy + 6), font(8.5, .bold), Ink.red, 1); hits.append((r(X1 - 2 - w / K - 6, yy - 1, w / K + 8, 14), code)); return w + x(8) } ?? 0   // 5.0: its form, straight off
         if let l = m.evos.first { c.say(l + (m.evos.count > 1 && m.evos[1].hasPrefix("→") ? " 외" : ""), x(X0 + 34), y(yy + 6), font(9, .medium), l.hasPrefix("→") ? Ink.ink : Ink.sub, maxW: x(X1 - X0 - 36) - fw) }
         let hr = r(X0, yy + 12, X1 - X0, 14); hits.append((hr, 4410))
@@ -555,7 +563,7 @@ extension Canvas {
     func drawMenu(_ m: MenuModel) {
         func dot(_ rc: CGRect, _ on: Bool) { let d = x(7); c.fill(.oval(CGRect(x: rc.maxX - x(9) - d / 2, y: rc.minY + x(9) - d / 2, width: d, height: d)), on ? .white : Ink.red) }   // 3.8: something waits there
         if let g = m.group {                                                                      // a group's page: ‹ 메뉴 (↩) over its features
-            let back = r(X0, 200, 50, 20), w = c.say("‹ 메뉴", back.minX + x(2), back.midY, font(10, .semibold), Ink.sub); hits.append((back, 3099))
+            let back = r(X0, 200, 50, 20), w = c.say(walker?.homeOpened != nil ? "‹ 홈" : "‹ 메뉴", back.minX + x(2), back.midY, font(10, .semibold), Ink.sub); hits.append((back, 3099))
             c.say(g, back.minX + x(2) + w + x(6), back.midY, font(11, .bold), Ink.ink)
             let step = min(56, (PaneContent.home - 233) / CGFloat(max(1, m.rows.count))), h = step - 6   // 5.0: 배틀's four still fit the page
             for (i, row) in m.rows.enumerated() {
@@ -604,6 +612,12 @@ extension Canvas {
         if !s.sex.isEmpty { w += x(2) + c.say(s.sex, x(tx) + w + x(2), y(yy + 8.5), font(10, .bold), s.female ? Ink.pink : Ink.blue) }
         w += x(5) + c.say(s.level, x(tx) + w + x(5), y(yy + 8.5), font(10, .semibold), Ink.sub)
         if s.v > 0 { let t = "\(s.v)V", f = font(7.5, .bold), vw = width(t, f) + x(8); c.pill(CGRect(x: x(tx) + w + x(5), y: y(yy + 8.5) - x(5.5), width: vw, height: x(11)), s.v >= 3 ? Ink.c(242, 168, 40) : Ink.faint); c.say(t, x(tx) + w + x(5) + vw / 2, y(yy + 8.5), f, .white, 0.5); w += x(5) + vw }
+        if let wk = walker, wk.megaLook(wk.state.companion) != nil {                                    // 5.2 (MegaLook.swift): 홈's Mega, on / off (9340)
+            let on = wk.megaHome, t = "메가", f = font(7.5, .bold), mw = width(t, f) + x(9), purple = Ink.c(132, 64, 196)
+            let rc = CGRect(x: x(tx) + w + x(4), y: y(yy + 8.5) - x(5.5), width: mw, height: x(11))
+            if on { c.pill(rc, purple); c.say(t, rc.midX, rc.midY, f, .white, 0.5) } else { c.stroke(.rounded(rc, rc.height / 2), purple, width: 0.8 * K); c.say(t, rc.midX, rc.midY, f, purple, 0.5) }
+            hits.append((rc.insetBy(dx: -x(3), dy: -x(4)), 9340)); w += x(4) + mw
+        }
         c.say(s.nature, x(X1 - 2), y(yy + 8.5), font(9, .medium), Ink.sub, 1, maxW: x(X1 - 2) - (x(tx) + w + x(8)))   // never over the name / Lv / V
         c.bar(x(tx), x(X1 - 2), y(yy + 19.5), s.exp, Ink.blue, h: x(5))
         c.say("다음 레벨까지", x(tx), y(yy + 29), font(8, .medium), Ink.sub)
@@ -950,6 +964,14 @@ extension Page {
             let t = "아무거나", f = font(8.5, .bold), pw = width(t, f) + x(14), rc = CGRect(x: right - pw, y: y(268) - x(8), width: pw, height: x(16))
             c.pill(rc, any ? Ink.red : Ink.tile); c.say(t, rc.midX, rc.midY, f, any ? .white : Ink.sub, 0.5); hits.append((rc, b + 42)); right = rc.minX - x(6)
         }
+        if let q = m.find {                                                                        // 5.2 (Find52.swift): 찾기 (b + 43) and, wishing, 안 잡은 종 (b + 44)
+            let f = font(8.5, .bold), t = q.isEmpty ? "찾기" : "✕ " + q, pw = min(width(t, f) + x(14), x(64)), rc = CGRect(x: right - pw, y: y(268) - x(8), width: pw, height: x(16))
+            c.pill(rc, q.isEmpty ? Ink.tint(Ink.red, 0.12) : Ink.red); c.say(t, rc.midX, rc.midY, f, q.isEmpty ? Ink.red : .white, 0.5, maxW: pw - x(6)); hits.append((rc, b + 43)); right = rc.minX - x(5)
+            if let on = m.newOnly {
+                let t2 = "안 잡은 종", pw2 = width(t2, f) + x(14), rc2 = CGRect(x: right - pw2, y: y(268) - x(8), width: pw2, height: x(16))
+                c.pill(rc2, on ? Ink.green : Ink.tint(Ink.green, 0.14)); c.say(t2, rc2.midX, rc2.midY, f, on ? .white : Ink.green, 0.5); hits.append((rc2, b + 44)); right = rc2.minX - x(6)
+            }
+        }
         c.say(m.boxTitle, x(X0 + 2), y(268), font(9, .semibold), Ink.sub, maxW: right - x(X0 + 2))
         let rows = TradePickModel.perPage / TradePickModel.columns, board = r(X0, 278, X1 - X0, CGFloat(rows) * 33)
         c.fill(.rounded(board, 11 * K), Ink.board)
@@ -964,7 +986,9 @@ extension Page {
             if k == m.picked || m.marks.contains(k) { let p = Path.rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K); c.fill(p, Ink.redTint); c.stroke(p, Ink.red, width: 1.5 * K) }
             else if k == m.sel { c.stroke(.rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K), Ink.faint, width: 1 * K) }
             let lift = k == m.picked && m.bob ? K : 0
-            c.image(iconImage(e.pic, shadow: e.look == 1), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: e.look == 1 ? 0.6 : 1)
+            let shade = e.look == 1 && !m.colour                                                       // 5.2: wishing — every species seen in colour
+            c.image(iconImage(e.pic, shadow: shade), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: shade ? 0.6 : 1)
+            if m.dots.contains(k) { c.fill(.oval(CGRect(x: cell.minX + x(3.5), y: cell.minY + x(3.5), width: x(5), height: x(5))), Ink.green) }   // 5.2: not caught yet
             if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
             if e.v3 {
                 let cx = cell.minX + x(6), cy = cell.maxY - x(6), rr = 2.4 * K
@@ -1023,9 +1047,18 @@ extension Page {
     func drawBoard(_ m: MarketBoardModel) {
         c.say(m.note, x(X0 + 2), y(206), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 4))
         tabs(m.tabs, m.tab, 214, code: 8000)
-        if m.rows.isEmpty { emptyState(m.empty, x(Layout.w / 2), y(300)) }
+        let top: CGFloat = m.chips.isEmpty ? 242 : 268
+        if !m.chips.isEmpty {                                                                      // 5.2 (Find52.swift): 찾기 · 새 종 · 내 것 원함 · ★·3V, how many each
+            let cols = [Ink.red, Ink.green, Ink.blue, Ink.c(214, 150, 20)], f = font(8.5, .bold)
+            var cx = x(X0)
+            for (k, t) in m.chips.enumerated() {
+                let on = k == 0 ? m.found : m.filter == k - 1, pw = min(width(t, f) + x(13), x(X1) - cx), rc = CGRect(x: cx, y: y(244), width: pw, height: x(18))
+                c.pill(rc, on ? cols[k] : Ink.tint(cols[k], 0.13)); c.say(t, rc.midX, rc.midY, f, on ? .white : cols[k], 0.5, maxW: pw - x(6)); hits.append((rc, 8040 + k)); cx = rc.maxX + x(4)
+            }
+        }
+        if m.rows.isEmpty { emptyState(m.empty, x(Layout.w / 2), y(top + 58)) }
         for (i, row) in m.rows.enumerated() {
-            let rc = r(X0, 242 + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: m.first + i == m.sel)
+            let rc = r(X0, top + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: m.first + i == m.sel)
             c.image(iconImage(row.dex), CGRect(x: rc.minX + x(6), y: rc.midY - x(15), width: 28 * K, height: 28 * K), alpha: 1)
             if row.shiny { c.say("★", rc.minX + x(32), rc.minY + x(6), font(7, .bold), Ink.gold, 1) }
             var xr = rc.maxX - x(9)
@@ -1034,7 +1067,7 @@ extension Page {
             c.say(row.sub, rc.minX + x(36), rc.midY + x(6), font(8, .medium), Ink.sub, maxW: xr - rc.minX - x(36))
             hits.append((rc, 8010 + i))
         }
-        let per = MarketBoardModel.perPage, pages = max(1, (m.count + per - 1) / per)
+        let per = m.chips.isEmpty ? MarketBoardModel.perPage : MarketBoardModel.perPage - 1, pages = max(1, (m.count + per - 1) / per)
         pager("\(m.first / per + 1) / \(pages)", 418, prev: pages > 1, next: pages > 1, codes: (8020, 8021))   // (under a full page's sixth row: 413)
         let rc = r(X0, 440, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.post == nil ? Ink.tile : Ink.red)
         c.say(m.post ?? m.footer ?? "올린 글은 3개까지예요", rc.midX, rc.midY, font(m.post == nil && m.footer != nil ? 9.5 : 11, .bold), m.post == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.post != nil { hits.append((rc, 8030)) }
@@ -1647,5 +1680,60 @@ extension Page {
         }
         for l in m.detail where yy + 13 <= (m.go == nil ? 458 : 428) { c.say(l, x(X0 + 4), y(yy + 4), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 8)); yy += 13 }
         if let go = m.go { let rc = r(X0, 430, X1 - X0, 28); c.fill(.rounded(rc, 10 * K), Ink.red); c.say(go, rc.midX, rc.midY, font(11, .bold), .white, 0.5, maxW: rc.width - x(10)); hits.append((rc, 9230)) }
+    }
+}
+
+// MARK: - 메가 모습 보기 (5.2, MegaLook.swift): the Mega's name, types, ability, base stats against the species', its stone, 홈's switch (4416), 돌아가기 (4414), the other (4415)
+extension Page {
+    func drawMegaLook(_ m: MegaLookModel) {
+        let purple = Ink.c(132, 64, 196)
+        var yy: CGFloat = 200
+        let nw = c.say(m.name, x(X0 + 2), y(yy + 8), font(13, .bold), Ink.ink, maxW: x(120))
+        var bx = x(X0 + 2) + nw + x(6)
+        for t in m.types { bx += c.typePill(t, bx, y(yy + 8), h: x(11), size: 7.5) + x(3) }
+        let tf = font(8, .bold), tw = width(m.kind, tf) + x(10), trc = CGRect(x: x(X1 - 2) - tw, y: y(yy + 8) - x(6), width: tw, height: x(12))
+        c.pill(trc, purple); c.say(m.kind, trc.midX, trc.midY, tf, .white, 0.5)
+        yy += 22; rule(y(yy)); yy += 6
+        c.say("특성", x(X0 + 2), y(yy + 7), font(9, .medium), Ink.sub)
+        c.say(m.ability, x(X0 + 34), y(yy + 7), font(11, .bold), Ink.ink)
+        var lines: [String] = [], cur = "", lf = font(9)
+        for word in m.abilityNote.split(separator: " ") { let t = cur.isEmpty ? String(word) : cur + " " + word; if width(t, lf) > x(X1 - X0 - 36), !cur.isEmpty { lines.append(cur); cur = String(word) } else { cur = t } }
+        lines.append(cur)
+        for (j, l) in lines.prefix(2).enumerated() { c.say(l, x(X0 + 34), y(yy + 20 + CGFloat(j) * 12), lf, Ink.sub, maxW: x(X1 - X0 - 36)) }
+        yy += 40; rule(y(yy)); yy += 4
+        c.say("종족값", x(X0 + 2), y(yy + 8), font(9, .bold), Ink.ink)
+        c.say("합계 \(m.base.reduce(0, +)) → \(m.mega.reduce(0, +))", x(X1 - 2), y(yy + 8), font(9, .semibold), purple, 1)
+        yy += 16
+        for (k, name) in ["HP", "공격", "방어", "특공", "특방", "스피드"].enumerated() {
+            let a = m.base[safe: k] ?? 0, b = m.mega[safe: k] ?? 0, d = b - a
+            c.say(name, x(X0 + 2), y(yy + 6), font(8.5, .medium), Ink.sub)
+            c.say("\(b)", x(X0 + 52), y(yy + 6), font(9.5, .semibold), Ink.ink, 1)
+            if d != 0 { c.say((d > 0 ? "+" : "") + "\(d)", x(X0 + 76), y(yy + 6), font(8, .bold), d > 0 ? purple : Ink.blue, 1) }
+            let x0 = x(X0 + 82), x1 = x(X1 - 2), fr = { (v: Int) in CGFloat(v) / 200 }
+            c.bar(x0, x1, y(yy + 6), fr(b), d > 0 ? purple : Ink.faint, h: x(4.5), track: Ink.tile)
+            c.bar(x0, x1, y(yy + 6), fr(min(a, b)), Ink.c(176, 180, 190), h: x(4.5), track: .clear)
+            yy += 13
+        }
+        yy += 3; rule(y(yy)); yy += 6
+        c.say(m.stoneLabel, x(X0 + 2), y(yy + 7), font(9, .medium), Ink.sub)
+        let sw = c.say(m.stone, x(X0 + 34), y(yy + 7), font(10, .bold), purple)
+        c.say(m.stoneNote, x(X0 + 34) + sw + x(6), y(yy + 7), font(8.5, .medium), m.stoneState == 2 ? Ink.green : m.stoneState == 1 ? Ink.blue : Ink.sub, maxW: x(X1 - 4) - (x(X0 + 34) + sw + x(6)))
+        yy += 16
+        if let on = m.home {
+            c.say("홈", x(X0 + 2), y(yy + 7), font(9, .medium), Ink.sub)
+            c.say("홈에서도 메가 모습으로 보여요", x(X0 + 34), y(yy + 7), font(9, .medium), Ink.ink)
+            let t = on ? "켜짐" : "꺼짐", pf = font(8.5, .bold), pw = width(t, pf) + x(14), prc = CGRect(x: x(X1 - 2) - pw, y: y(yy + 7) - x(7), width: pw, height: x(14))
+            if on { c.pill(prc, purple); c.say(t, prc.midX, prc.midY, pf, .white, 0.5) } else { c.pill(prc, Ink.tile); c.say(t, prc.midX, prc.midY, pf, Ink.sub, 0.5) }
+            hits.append((r(X0, yy - 2, X1 - X0, 16), 4416))
+        } else if let note = m.homeNote {
+            c.say("홈", x(X0 + 2), y(yy + 7), font(9, .medium), Ink.sub)
+            c.say(note, x(X0 + 34), y(yy + 7), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 36))
+        }
+        let opts: [(String, Int)] = [("돌아가기", 4414)] + (m.next.map { [($0, 4415)] } ?? [])
+        let cw = (X1 - X0 - 5 * CGFloat(opts.count - 1)) / CGFloat(opts.count)
+        for (i, (t, code)) in opts.enumerated() {
+            let rc = r(X0 + CGFloat(i) * (cw + 5), 428, cw, 30)
+            c.fill(.rounded(rc, 10 * K), i == 1 ? purple : Ink.tile); c.say(t, rc.midX, rc.midY, font(11, .bold), i == 1 ? .white : Ink.ink, 0.5, maxW: rc.width - x(8)); hits.append((rc, code))
+        }
     }
 }

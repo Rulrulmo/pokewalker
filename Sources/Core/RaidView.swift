@@ -24,6 +24,7 @@ extension Walker {
     var raidStatus: String {
         guard let r = raidLobby else { return "파워 \(raidCells)칸" }
         if let p = raidWaiting { return "잡을 기회가 남았어요! · " + bossName(p.boss) }
+        if raidDaily, Content.gen6, let m = megaLobby, !m.bosses.isEmpty { return monNames[r.boss.dex] + " · 메가 \(m.bosses.count)종 · 파워 \(raidCells)칸" }   // 5.2 (the user: "A안으로"): both raids
         if raidDaily { let h = hoursLeft(r.ends); return "오늘 " + monNames[r.boss.dex] + " · 파워 \(raidCells)칸" + (h <= 3 && raidCells > 0 ? " · \(h)시간" : "") }   // 5.1 (plan 20)
         if r.opens != nil { return "새 레이드 곧 열려요" }
         if raidLeftToday == 0 { return "오늘 끝 · 내일 다시 · " + monNames[r.boss.dex] }

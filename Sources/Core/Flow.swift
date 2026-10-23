@@ -217,7 +217,7 @@ extension Walker {
             case .home, .beats, .radar, .evolve, .hatch, .traded, .assemble: return                           // a turn plays out; the radar ends by itself (the W paid and the chain stay); shows aren't cancellable
             case .party(let b, _) where b.mustReplace: return                                       // someone has to come in
             case .say(_, let next, _): screen = next                                               // like ●
-            case .menu(let g?, _): screen = .menu(group: nil, sel: g)                                    // 3.9: a group's page → the first, on the group (it keeps its last tile: menuSlot)
+            case .menu(let g?, _): screen = homeOpened != nil ? .home : .menu(group: nil, sel: g)       // 3.9: a group's page → the first, on the group (it keeps its last tile: menuSlot); 5.2: 홈's 레이드 row → 홈
             case .menu: screen = .home
             case .card: screen = up("트레이너 카드")
             case .team(let s, let t, let card): screen = card ? .team(sel: s, tab: t, card: false) : up("친구")   // the card → the list → the menu
@@ -234,6 +234,7 @@ extension Walker {
             case .evoPick(let u, let at, let ask): screen = ask != nil ? .evoPick(uid: u, at: at, ask: nil) : evoBack(u)   // 5.1.3: 진화할까요? → the cards → its page
             case .visitPick(let p): screen = teamRows(0).firstIndex { trainerID($0.card.name)?.key == trainerID(p.item)?.key }.map { .team(sel: $0, tab: 0, card: true) } ?? .team(sel: 0, tab: 0, card: false)
             case .items: screen = homeOpened == "도구" ? .home : .box(-1, act: nil, confirm: false)        // back to 포켓몬 (5.1.5: 홈's 도구 → home)
+            case .box(_, _, _, true) where megaLookForm != nil: megaLookForm = nil                // 5.2: 메가 모습 보기 → its page
             case .box(let i, let act, _, let detail): screen = act != nil ? .box(i, act: nil, confirm: false, detail: detail) : detail ? .box(i, act: nil, confirm: false) : up("포켓몬")   // 메뉴 / 놓아줄까? (= 아니오) → its page → the grid → the menu
             case .dex(let n, let f, let detail): screen = detail ? .dex(n, filter: f, detail: false) : up("도감")   // the entry page → the grid → the menu
             case .shop(let bp, let sel, .some), .shopConfirm(let bp, let sel, _): screen = .shop(bp: bp, sel: sel, qty: nil)
@@ -256,7 +257,7 @@ extension Walker {
             return
         }
         switch screen {
-        case .home: if k == 1 { emote = (1, now.addingTimeInterval(2)); animOn = ("home", state.companion.art, now) }   // ● pats the companion (♥, its animation); the menu is the 메뉴 key's
+        case .home: if k == 1 { emote = (1, now.addingTimeInterval(2)); animOn = ("home", homeLook.art, now) }   // ● pats the companion (♥, its animation); the menu is the 메뉴 key's
         case .menu(let g, let i):
             let names = menuNames(g)
             if k != 1 { screen = .menu(group: g, sel: (i + (k == 0 ? names.count - 1 : 1)) % names.count); return }   // ◀ ▶ go round the page's tiles
@@ -387,6 +388,7 @@ extension Walker {
             let kind = ItemKind.of(name)
             if Walker.targeted(kind) { if itemUse(name).0 != nil { pickFor(name) } }                    // 3.6: who gets it first (docs/plans/13)
             else if case .sell = kind { useItem(name, back: back(sel), then: { back(sel) }, now) }
+        case .box(let i, _, _, true) where megaLookForm != nil: megaLookPress(k, i)              // 5.2: 메가 모습 보기 — ◀ ▶ the other, ● back to its page
         case .box(let i, let act, let confirm, let detail):                                     // i: -1 the companion, -2-j the walker's j-th, else box[i]
             if state.mon(i) == nil { screen = .box(-1, act: nil, confirm: false) }                // gone meanwhile: back to the companion
             else if confirm {                                                                     // "놓아줄까?" 아니오 / 예
@@ -496,7 +498,7 @@ extension Walker {
     func pairWith(_ uid: Int, back: Screen, _ now: Date, quietly: Bool = false, next: Screen = .home) {
         act(.mon(op: .pair(uid: uid)), back: back, now) { [weak self] _, now in
             guard let self else { return nil }
-            if quietly { emote = (1, now.addingTimeInterval(2)); animOn = ("home", state.companion.art, now); return back }
+            if quietly { emote = (1, now.addingTimeInterval(2)); animOn = ("home", homeLook.art, now); return back }
             return .say([josa(monNames[state.companion.dex], "과", "와"), "함께 걷는다!"], next: next, since: now)
         }
     }

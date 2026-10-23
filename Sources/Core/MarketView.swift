@@ -36,7 +36,7 @@ extension Walker {
         switch tab {
         case 1: return all.filter(\.mine)
         case 2: return (market?.myBids ?? []).compactMap { b in all.first { $0.id == b.listing } }
-        default: return all
+        default: return all.filter(boardKeeps)                                                     // 5.2: 찾기 and the filter (Find52.swift)
         }
     }
     var marketNote: String {
@@ -54,7 +54,7 @@ extension Walker {
     func marketPane(_ s: MarketStep, _ now: Date) -> PaneContent {
         switch s {
         case .board(let tab, let sel):
-            let rows = boardRows(tab), sel = min(sel, max(0, rows.count - 1)), per = MarketBoardModel.perPage, first = sel / per * per
+            let rows = boardRows(tab), sel = min(sel, max(0, rows.count - 1)), per = boardPer(tab), first = sel / per * per
             let page = rows[min(first, rows.count)..<min(rows.count, first + per)].map { l -> MarketBoardModel.Row in
                 let mine = myBid(on: l.id)
                 switch tab {
@@ -63,14 +63,16 @@ extension Walker {
                 default:
                     return .init(dex: l.mon.dex, shiny: l.mon.shiny == true, line: (l.mine ? "내 " : josa(l.from, "의", "의") + " ") + monLine(l.mon),
                                  sub: marketLeft(l.at, now) + " · 원해요 " + wishText(l.wish) + (l.note.map { " · “" + $0 + "”" } ?? ""),   // (the poster's words last: a row too narrow drops them, the post shows them)
-                                 pill: l.mine ? (l.bids > 0 ? "제안 \(l.bids)" : "내 글") : mine != nil ? "제안함" : nil, tint: l.mine ? (l.bids > 0 ? 1 : 2) : 2)
+                                 pill: l.mine ? (l.bids > 0 ? "제안 \(l.bids)" : "내 글") : mine != nil ? "제안함" : boardTag(l)?.0, tint: l.mine ? (l.bids > 0 ? 1 : 2) : mine == nil ? boardTag(l)?.1 ?? 2 : 2)   // 5.2: 새 종 · 내 것 원함
                 }
             }
             let note = market == nil ? (cloud?.online == false ? "연결되면 볼 수 있어요" : "불러오는 중…")
                 : tab > 0 ? "교환으로 받은 포켓몬은 우편함으로 와요" : "글 \(market?.listings.count ?? 0)개 · 내 글 \(myPosts.count)/\(Walker.marketPosts) · 내 제안 \(market?.myBids.count ?? 0)/\(Walker.marketBids)"
             let empty = market == nil ? note : ["아직 올라온 글이 없어요", "올린 글이 없어요", "건 제안이 없어요"][tab]
-            return PaneContent(board: MarketBoardModel(tabs: marketTabLabels, tab: tab, rows: page, sel: sel, first: first, count: rows.count, note: note, empty: empty,
-                                                       post: market != nil && myPosts.count < Walker.marketPosts ? "글 올리기 · \(myPosts.count)/\(Walker.marketPosts)" : nil, footer: "교환으로 받은 포켓몬은 우편함으로 와요"))
+            var bm = MarketBoardModel(tabs: marketTabLabels, tab: tab, rows: page, sel: sel, first: first, count: rows.count, note: note, empty: tab == 0 && (boardFilter != nil || !boardQuery.isEmpty) && market != nil ? "맞는 글이 없어요" : empty,
+                                      post: market != nil && myPosts.count < Walker.marketPosts ? "글 올리기 · \(myPosts.count)/\(Walker.marketPosts)" : nil, footer: "교환으로 받은 포켓몬은 우편함으로 와요")
+            if tab == 0, market != nil { bm.chips = boardChips(); bm.filter = boardFilter; bm.found = !boardQuery.isEmpty }   // 5.2 (Find52.swift)
+            return PaneContent(board: bm)
         case .post(let id, let sel):
             guard let l = listing(id) else { return marketPane(.board(tab: 0, sel: 0), now) }
             func slot(_ label: String, _ m: Mon) -> TradeSlot { TradeSlot(label: label, dex: m.dex, level: m.level, shiny: m.shiny == true, name: monNames[m.dex], v: m.perfectIVs) }
@@ -97,26 +99,27 @@ extension Walker {
             let onPage = { (k: Int) -> Int? in (first..<min(list.count, first + per)).contains(k) ? k - first : nil }
             let picked = p.side == 0 ? list.firstIndex { $0.uid != nil && $0.uid == p.give }.flatMap(onPage) : nil
             let marks = p.side == 1 ? p.wish.compactMap { d in list.firstIndex { $0.dex == d }.flatMap(onPage) } : []
+            let owned = Set(state.owned ?? []), dots = p.side == 1 ? cells.indices.filter { !owned.contains(cells[$0].dex) } : []   // 5.2: the uncaught, dotted
             if let id = p.listing {
                 let l = listing(id)
                 return PaneContent(pick: TradePickModel(title: (l.map { josa($0.from, "의", "의") } ?? "") + " 글에 제안", note: l.map { marketLeft($0.at, now) } ?? "",
                                                         mine: slot("내가 줄 포켓몬", mine, "골라 주세요"), theirs: slot("받을 포켓몬", l?.mon, ""), side: 0, fixed: true,
                                                         boxTitle: "내 상자 · \(list.count.formatted())마리", cells: cells, sel: list.isEmpty ? nil : at - first, picked: picked, first: first, count: list.count,
                                                         empty: "상자가 비어 있어요\n워커의 포켓몬은 상자로 보낸 뒤에 제안할 수 있어요", any: nil, go: p.give == nil ? nil : "이 포켓몬으로 제안",
-                                                        hint: "내 상자에서 줄 포켓몬을 골라 주세요", bob: Int(now.timeIntervalSinceReferenceDate * 2) % 2 == 0, marks: [], base: 8100))
+                                                        hint: "내 상자에서 줄 포켓몬을 골라 주세요", bob: Int(now.timeIntervalSinceReferenceDate * 2) % 2 == 0, marks: [], base: 8100, find: pickQuery))
             }
             let wish = p.wish.first.map { TradeSlot(label: "원하는 포켓몬", dex: $0, name: monNames[$0], more: Array(p.wish.dropFirst())) } ?? TradeSlot(label: "원하는 포켓몬", name: "아무거나")
             return PaneContent(pick: TradePickModel(title: "글 올리기", note: "내 글 \(myPosts.count)/\(Walker.marketPosts)", mine: slot("올릴 포켓몬", mine, "골라 주세요"), theirs: wish,
-                                                    side: p.side, fixed: false, boxTitle: p.side == 0 ? "내 상자 · \(list.count.formatted())마리" : "원하는 포켓몬 · \(p.wish.count)/3 (본 적 있는 종)",
+                                                    side: p.side, fixed: false, boxTitle: p.side == 0 ? "내 상자 \(list.count.formatted())마리" : (pickNew ? "안 잡은 종 " : "본 종 ") + "\(list.count) · \(p.wish.count)/3",
                                                     cells: cells, sel: list.isEmpty ? nil : at - first, picked: picked, first: first, count: list.count,
                                                     empty: p.side == 0 ? "상자가 비어 있어요\n워커의 포켓몬은 상자로 보낸 뒤에 올릴 수 있어요" : "아직 본 포켓몬이 없어요",
                                                     any: p.side == 1 ? p.wish.isEmpty : nil, go: p.give == nil ? nil : "글 올리기", hint: "내 상자에서 올릴 포켓몬을 골라 주세요",
-                                                    bob: Int(now.timeIntervalSinceReferenceDate * 2) % 2 == 0, marks: marks, base: 8100))
+                                                    bob: Int(now.timeIntervalSinceReferenceDate * 2) % 2 == 0, marks: marks, base: 8100, find: pickQuery, newOnly: p.side == 1 ? pickNew : nil, colour: p.side == 1, dots: dots))
         }
     }
     var marketTabLabels: [String] { ["전체", (market?.unseen ?? 0) > 0 ? "내 글 •" : offersIn > 0 ? "내 글 \(offersIn)" : "내 글", "내 제안"] }
     /// The grid a pick shows: my box (the 포켓몬 grid's order), or — wishing — the species seen (as Pokémon of that species).
-    func marketPickList(_ p: MarketPick) -> [Mon] { p.side == 1 ? seenList.sorted().map { Mon(dex: $0, level: 1, female: false) } : myTradeBox }
+    func marketPickList(_ p: MarketPick) -> [Mon] { pickKeeps(p.side == 1 ? seenList.sorted().map { Mon(dex: $0, level: 1, female: false) } : myTradeBox, newOnly: p.side == 1) }   // (5.2: 찾기, 안 잡은 종)
 
     // MARK: the LCD
     func marketLCD(_ fb: inout FB, _ s: MarketStep, _ now: Date) {
@@ -181,7 +184,7 @@ extension Walker {
         case .board(let tab, let sel):
             if k == .tab { screen = .market(.board(tab: (tab + (shift ? 2 : 1)) % 3, sel: 0)); return true }
             let n = boardRows(tab).count
-            if let d = [Key.up: -1, .down: 1, .pageUp: -MarketBoardModel.perPage, .pageDown: MarketBoardModel.perPage][k] { if n > 0 { screen = .market(.board(tab: tab, sel: max(0, min(n - 1, sel + d)))) }; return true }
+            if let d = [Key.up: -1, .down: 1, .pageUp: -boardPer(tab), .pageDown: boardPer(tab)][k] { if n > 0 { screen = .market(.board(tab: tab, sel: max(0, min(n - 1, sel + d)))) }; return true }
         case .pick(var p):
             if k == .tab { if p.listing == nil { p.side = 1 - p.side; p.at = 0; screen = .market(.pick(p)) }; return true }
             let n = marketPickList(p).count
@@ -209,13 +212,15 @@ extension Walker {
         switch (s, code) {
         case (.board, 8000...8002): screen = .market(.board(tab: code - 8000, sel: 0))
         case (.board(let tab, let sel), 8010..<8020):
-            let at = sel / MarketBoardModel.perPage * MarketBoardModel.perPage + code - 8010
+            let at = sel / boardPer(tab) * boardPer(tab) + code - 8010
             guard let l = boardRows(tab)[safe: at] else { return }
             if at == sel { openPost(l.id) } else { screen = .market(.board(tab: tab, sel: at)) }
         case (.board(let tab, let sel), 8020...8021):
-            let per = MarketBoardModel.perPage, n = boardRows(tab).count, pages = max(1, (n + per - 1) / per)
+            let per = boardPer(tab), n = boardRows(tab).count, pages = max(1, (n + per - 1) / per)
             screen = .market(.board(tab: tab, sel: min(max(0, n - 1), ((sel / per + (code == 8020 ? pages - 1 : 1)) % pages) * per)))
         case (.board, 8030): startPost(now)
+        case (.board, 8040...8043): boardChip(code)                                                // 5.2: 찾기, a filter
+        case (.pick, 8143...8144): pickChip(code, base: 8100)
         case (.post(let id, _), 8110..<8120): if listing(id)?.mine == true, code - 8110 < offers(on: id).count { screen = .market(.post(id: id, sel: code - 8110)) }
         case (.post(let id, let sel), 8130...8131):
             guard let l = listing(id) else { return }

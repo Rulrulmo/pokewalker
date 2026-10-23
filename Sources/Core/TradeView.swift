@@ -47,7 +47,7 @@ extension Walker {
         guard let b = cloud?.box, trainerID(b.name)?.key == trainerID(name)?.key else { return nil }
         return b.box.sorted { ($0.dex, -$0.level, $0.uid ?? 0) < ($1.dex, -$1.level, $1.uid ?? 0) }
     }
-    func pickList(_ p: TradePick) -> [Mon] { p.side == 0 ? myTradeBox : theirBox(p.to) ?? [] }
+    func pickList(_ p: TradePick) -> [Mon] { pickKeeps(p.side == 0 ? myTradeBox : theirBox(p.to) ?? [], newOnly: p.side == 1) }   // (5.2: 찾기, 안 잡은 종)
     /// What goes each way: mine (my box) and theirs (their box, or the offer's when answering one).
     func picked(_ p: TradePick) -> (mine: Mon?, theirs: Mon?) {
         let mine = p.give.flatMap { u in state.box.first { $0.uid == u } }
@@ -100,7 +100,7 @@ extension Walker {
                                                     side: p.side, fixed: answering, boxTitle: boxTitle, cells: cells, sel: list.isEmpty ? nil : at - first,
                                                     picked: list[min(first, list.count)..<min(list.count, first + per)].firstIndex { $0.uid != nil && $0.uid == pick }.map { $0 - first },
                                                     first: first, count: list.count, empty: empty, any: answering || p.side == 0 ? nil : p.want == nil, go: go, hint: hint,
-                                                    bob: Int(now.timeIntervalSinceReferenceDate * 2) % 2 == 0))
+                                                    bob: Int(now.timeIntervalSinceReferenceDate * 2) % 2 == 0, find: pickQuery, newOnly: p.side == 1 ? pickNew : nil, dots: p.side == 1 ? cells.indices.filter { !(state.owned ?? []).contains(cells[$0].dex) } : []))
         }
     }
     /// The ● row on an offer's LCD (the pane's buttons, then 닫기).
@@ -217,6 +217,7 @@ extension Walker {
             guard p.offer == nil || code == 6140 else { return }
             if p.side != code - 6140 { p.side = code - 6140; p.at = 0 }; screen = .trade(.pick(p))
         case (.pick(var p), 6142): p.want = nil; screen = .trade(.pick(p))
+        case (.pick, 6143...6144): pickChip(code, base: 6100)                                     // 5.2: 찾기, 안 잡은 종
         case (.pick(let p), 6150..<6180):
             let at = min(p.at, max(0, pickList(p).count - 1)) / TradePickModel.perPage * TradePickModel.perPage + code - 6150
             pickCell(p, at, now, press: false)

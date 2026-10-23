@@ -21,11 +21,15 @@ extension Walker {
         case "도구": screen = .items(itemsAt)
         case "트레이너 카드": screen = .card(2)                                                       // (알: its page)
         case "포켓 레이더": openRadar(back: from, Date())
+        case "레이드" where homeOpened != nil && cloud?.online != false: homeOpened = Walker.raidGroupHome; screen = menuFor(name)                                // 5.2 (the user: "레이드/메가레이드 선택화면으로"): its group, 홈 still under it
         default: if menuItems.contains(name) { open(name, tile: false) }
         }
     }
     /// Where ↩ from a feature's first page goes: home when 홈 opened it (5.1.5), else the menu on its tile.
-    func up(_ name: String) -> Screen { homeOpened != nil ? .home : menuFor(name) }
+    func up(_ name: String) -> Screen { homeOpened == nil || homeGroup(name) ? menuFor(name) : .home }
+    /// 5.2: 홈's 레이드 row opened the 레이드 ▸ group: its features go back to it (then 홈).
+    func homeGroup(_ name: String) -> Bool { homeOpened == Walker.raidGroupHome && ["레이드", "메가 레이드"].contains(name) }
+    static let raidGroupHome = "레이드 ▸"                                                          // (homeOpened: 홈's 레이드 row, on its group's page)
     /// The shop's amount typed (1 … what can be bought).
     func shopAmount() {
         guard case .shop(let bp, let sel, .some) = screen, let w = wares(bp)[safe: sel], let h = host else { return }

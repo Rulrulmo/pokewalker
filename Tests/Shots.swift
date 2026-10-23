@@ -806,6 +806,44 @@ import AppKit
         serve(tw) { $0.expeditions = ["레쿠쟈": ExpProgress(done: 1)] }
         take("tm52_relearn_ray", tw) { v in v.screen = .relearn(ref: 1, slot: 3, at: 620) }
     } } }
+    // 5.2 (MegaLook.swift · Find52.swift): 메가 모습 (홈 on · off, the page's link, 메가 모습 보기, X · Y), the 상자's ★, the board's chips, the wish grid,
+    // 홈's 레이드 row and its group
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) { Content.$testingDaily.withValue(true) {
+        var r11 = Seeded(s: 15), saur = Mon.wild(3, level: 55, &r11); saur.item = "이상해꽃나이트"
+        let lw = online({ var s = base(); s.companion = saur; s.caught = [Mon.wild(236, level: 20, &r11), Mon.wild(25, level: 40, &r11)]; s.bag = ["리자몽나이트Y"]
+                          s.box = [Mon.wild(6, level: 36, &r11)] + [1, 4, 7, 16, 19, 41, 52, 63, 66, 74, 92, 129, 147, 158, 175, 246].map { Mon.wild($0, level: 12, &r11) }
+                          for k in [3, 8, 12] { s.box[k].shiny = true }; s.owned = [3, 6, 25, 236, 1, 4, 7, 16, 19]; s.seen = Array(1...60)
+                          s.raidPower = 4 * Engine.raidPowerCost + 1_200; s.day = Walk.key(Date()); s.watts = 12_480; return s }())
+        lw.cloud!.raidDue = true; lw.cloud!.megaRaidDue = true; drain(lw); drain(lw)
+        take("look52_home_mega", lw) { v in v.megaHome = true; v.screen = .home }
+        take("look52_home_off", lw) { v in v.megaHome = false; v.screen = .home }
+        lw.megaHome = true
+        take("look52_page_link", lw) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
+        take("look52_mega_view", lw) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true); v.megaLookForm = 1 }
+        take("look52_mega_x", lw) { v in v.screen = .box(0, act: nil, confirm: false, detail: true); v.megaLookForm = 1 }
+        take("look52_mega_y", lw) { v in v.screen = .box(0, act: nil, confirm: false, detail: true); v.megaLookForm = 2 }
+        lw.megaLookForm = nil
+        take("look52_box", lw) { v in v.boxQuery = ""; v.screen = .box(-1, act: nil, confirm: false) }
+        take("look52_box_shiny", lw) { v in v.boxQuery = "이로치"; v.screen = .box(v.boxShown.first ?? -1, act: nil, confirm: false) }
+        lw.boxQuery = ""
+        let (ls, _) = server(lw), ts = Int(Date().timeIntervalSince1970)
+        for (from, dex, wish, shiny) in [("민수", 133, [147], false), ("지은", 280, [], false), ("도윤", 447, [246], true), ("서연", 92, [4], false), ("민수", 129, [], false), ("지은", 255, [158], false), ("도윤", 287, [25], false)] {
+            var m = Mon.wild(dex, level: 15, &r11); m.shiny = shiny
+            ls.listings.append((Listing(id: ls.nextListing, from: from, mon: m, wish: wish, at: ts - 3_600, bids: 0, mine: false, note: nil), from, true)); ls.nextListing += 1
+        }
+        lw.cloud!.marketDue = true; drain(lw); drain(lw)
+        take("look52_board", lw) { v in v.screen = .market(.board(tab: 0, sel: 0)) }
+        take("look52_board_new", lw) { v in v.boardFilter = 0; v.screen = .market(.board(tab: 0, sel: 0)) }
+        lw.boardFilter = nil
+        let give = lw.state.box[1].uid
+        take("look52_wish", lw) { v in v.screen = .market(.pick(MarketPick(listing: nil, give: give, wish: [], side: 1, at: 0))) }
+        take("look52_wish_new", lw) { v in v.pickNew = true; v.screen = .market(.pick(MarketPick(listing: nil, give: give, wish: [], side: 1, at: 0))) }
+        take("look52_mine_find", lw) { v in v.pickNew = false; v.pickQuery = "물"; v.screen = .market(.pick(MarketPick(listing: nil, give: nil, wish: [], side: 0, at: 0))) }
+        lw.pickQuery = ""
+        take("look52_home_raid", lw) { v in v.screen = .home }
+        let row = lw.statusModel().rows.firstIndex { $0.key == "레이드" } ?? 0
+        take("look52_raid_group", lw) { v in v.screen = .home; v.paneTap(9300 + row) }
+    } } }
     return n
 }
 #endif

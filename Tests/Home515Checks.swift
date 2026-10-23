@@ -13,14 +13,15 @@ import Foundation
         let (srv, _) = server(v)
         var bad: [String] = []
         /// What the card shows now (the panel, the title row): the menu's anywhere is a frame of it.
-        @MainActor func frame(_ how: String) { v.refreshPane(Date(), force: true); if v.pane.menu != nil || v.title().title == "메뉴" { bad.append("\(how): \(v.screen)") } }
+        @MainActor func frame(_ how: String) { v.refreshPane(Date(), force: true); if v.homeOpened != Walker.raidGroupHome, v.pane.menu != nil || v.title().title == "메뉴" { bad.append("\(how): \(v.screen)") } }   // (5.2: 홈's 레이드 row opens its group: 레이드 · 메가 레이드)
         /// The server's answer in, a frame after every tick (as the card draws between them).
         @MainActor func settle(_ how: String) { var n = 0; while n < 40, v.waiting != nil || v.cloud?.inFlight != nil || v.cloud?.queued != nil { v.tick(Date()); frame(how); n += 1 } }
         @MainActor func row(_ key: String) -> Int { v.screen = .home; v.refreshPane(Date(), force: true); return v.pane.status?.rows.firstIndex { $0.key == key } ?? -1 }
-        func at(_ s: Screen, _ want: String) -> Bool {
+        @MainActor func at(_ s: Screen, _ want: String) -> Bool {
             switch (s, want) {
             case (.radar, "레이더"), (.box(-1, nil, _, false), "포켓몬"), (.items, "도구"), (.mail(.list), "우편함"), (.card(2), "알"), (.tower(nil), "배틀 타워"), (.dex(_, _, false), "도감"),
-                 (.raid(.lobby), "레이드"), (.team(_, _, false), "친구"), (.expedition, "전설 원정"): true
+                 (.team(_, _, false), "친구"), (.expedition, "전설 원정"): true
+            case (.menu(let g?, _), "레이드"): { let o = v.homeOpened, t = v.title().title; return menuTiles[g].items.contains("레이드") && o == Walker.raidGroupHome && t == "홈" }()   // 5.2 (the user: "레이드/메가레이드 선택화면으로")
             default: false
             }
         }

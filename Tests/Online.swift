@@ -160,7 +160,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
         rd.cloud!.raidDue = true; drain(rd); rd.screen = .raid(.lobby(tab: 0))
         let m = rd.paneContent(Date()).raid
         let lobbyOK = m?.tomorrow == "칠색조" && m?.cells == RaidDaily.maxRuns && m?.left == "내일 칠색조" && m?.rule?.contains("남은 파워는 0시에 사라지고 2칸부터 다시") == true
-            && m?.powerText.hasPrefix("오늘 0판 · 다음 칸까지 3,200걸음") == true && rd.raidStatus.hasPrefix("오늘 ") && rd.title().1 == "내일 칠색조"
+            && m?.powerText.hasPrefix("오늘 0판 · 다음 칸까지 3,200걸음") == true && rd.raidStatus.hasPrefix(rd.megaLobby == nil ? "오늘 " : "루기아 · 메가 ") && rd.title().1 == "내일 칠색조"
         dsrv.raidEnds = t + 2 * 3600 + 60; rd.cloud!.raidDue = true; drain(rd)
         let late = rd.paneContent(Date()).raid?.late == true && rd.powerDot(mega: false) && rd.raidNote == "파워 4칸 · 자정에 사라져요"
         dsrv.raidEnds = nil; dsrv.raidEndsOnce = t - 60; rd.cloud!.raidDue = true; drain(rd)        // a lobby already over: the tick asks again by itself

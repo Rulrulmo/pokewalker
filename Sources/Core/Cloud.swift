@@ -229,7 +229,7 @@ final class CloudInbox: @unchecked Sendable {
         if let a = queued { queued = nil; sendAct(a, now); return }
         if legacy != nil, seat.legacyUploaded != true { send(.legacy); return }
         if unsent > 0 || base == nil, now >= stepsAt { sendAct(.steps, now); return }           // (no save yet: a new trainer's comes with its first act)
-        if base != nil, teamDue || teamAt.map({ now.timeIntervalSince($0) > Cloud.teamEvery }) ?? true { teamDue = false; teamAt = teamAt ?? now; tradesDue = true; raidDue = true; marketDue = true; mailDue = true; expeditionDue = Content.v51; send(.team); return }   // (every 3 minutes: who's walking now; the offers after it)
+        if base != nil, teamDue || teamAt.map({ now.timeIntervalSince($0) > Cloud.teamEvery }) ?? true { teamDue = false; teamAt = teamAt ?? now; tradesDue = true; raidDue = true; marketDue = true; mailDue = true; expeditionDue = Content.v51; if megaRaid == nil, Content.gen6 { megaRaidDue = true }; send(.team); return }   // (5.2: the Mega lobby once — 홈's 레이드 row)   // (every 3 minutes: who's walking now; the offers after it)
         if base != nil, tradesDue { tradesDue = false; send(.trades); return }
         if base != nil, let b = boxDue { boxDue = nil; send(.box(b)); return }
         if base != nil, raidDue { raidDue = false; send(.raid); return }
