@@ -209,12 +209,13 @@ extension Walker {
             fb.mon(m, half, 0, 2, anim: animT("box \(i)", m.art, now))
             fb.text(i == -1 ? "함께" : i < -1 ? "워커 \(-1 - i)" : "상자 \((boxShown.firstIndex(of: i) ?? 0) + 1)/\(state.box.count)", 94, 15, 2, right: true, small: true)   // where it is
             if genderRate[m.dex] >= 0 { fb.text(m.female ? "암컷" : "수컷", 94, 26, 2, right: true, small: true) }   // genderless: nothing (the games show no symbol); vLabel(m, 36)
+            if m.fav == true { fb.draw(heartArt, 3, 15, heartPal) }                                     // 5.2.2: 즐겨찾기 — the cells' ♥ (no line of words: a form's is there)
             if let f = formName(m).map({ $0.replacingOccurrences(of: monNames[m.dex], with: "").trimmingCharacters(in: .whitespaces) }), !f.isEmpty {
                 fb.text(f, 94, genderRate[m.dex] >= 0 ? 36 : 26, 2, right: true, small: true)   // 5.0: its form (히트, 모던한 모양 ...), a line of its own: clear of the picture
             }
             if let a = act {
                 fb.fill(0, 50, 96, 14, 0); fb.fill(0, 50, 96, 1, 2)
-                let opts = confirm ? ["놓아줄까?", "아니오", "예"] : boxActs(i)
+                let opts = confirm ? [m.fav == true ? "풀고 놓아줄까?" : "놓아줄까?", "아니오", "예"] : boxActs(i)   // (5.2.2: a ♥ one's)
                 var x = 1
                 for (k, o) in opts.enumerated() {
                     let w = fb.text(o, x + 1, 52, 3, small: true) + 2
@@ -295,10 +296,10 @@ extension Walker {
                              regions: Content.gen6 ? ["전국"] + dexRegions(dexMax).map { r in r.name + (DexGoals.regions.first { $0.range == r.range }.map { DexGoals.complete(state, $0) } == true ? "✦" : "") } : nil, region: dexRegion)   // 5.0: a second row (content5)
         case .box(let i, _, _, false):                                                              // 포켓몬: the companion and the walker's over the box
             let o = boxShown, b = state.box, at = o.firstIndex(of: i), p = page(o.count, at ?? 0), party = [state.companion] + state.caught
-            return GridModel(tabs: ["번호순", "레벨순", "V순", "최근"], tab: boxSort,
-                             cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3, held: b[$0].item != nil, art: b[$0].art, heldItem: b[$0].item, evo: !state.evoChoices(now, ref: $0).isEmpty) },   // (5.1.3: evo — ready to pick, its dot)
+            return GridModel(tabs: ["번호", "레벨", "V", "최근"], tab: boxSort,                         // (5.2.2: short — the ♥ chip's room)
+                             cells: o[p.first..<min(o.count, p.first + per)].map { .init(dex: b[$0].dex, look: 2, shiny: b[$0].shiny == true, v3: b[$0].perfectIVs >= 3, held: b[$0].item != nil, art: b[$0].art, heldItem: b[$0].item, evo: !state.evoChoices(now, ref: $0).isEmpty, fav: b[$0].fav == true) },   // (5.1.3: evo — ready to pick, its dot)
                              first: p.first, sel: at.map { $0 - p.first }, page: p.page, pages: p.pages, empty: boxQuery.isEmpty ? "상자가 비어 있다" : "맞는 포켓몬이 없어요", bob: bob, query: boxQuery,
-                             party: party.indices.map { k in let m = party[k]; return .init(dex: m.dex, look: 2, shiny: m.shiny == true, v3: m.perfectIVs >= 3, level: m.level, held: m.item != nil, art: m.art, evo: !state.evoChoices(now, ref: -1 - k).isEmpty) }, partySel: i < 0 ? -1 - i : nil, items: state.items.count + state.bag.count)
+                             party: party.indices.map { k in let m = party[k]; return .init(dex: m.dex, look: 2, shiny: m.shiny == true, v3: m.perfectIVs >= 3, level: m.level, held: m.item != nil, art: m.art, evo: !state.evoChoices(now, ref: -1 - k).isEmpty, fav: m.fav == true) }, partySel: i < 0 ? -1 - i : nil, items: state.items.count + state.bag.count)
         default: return nil
         }
     }
@@ -334,6 +335,8 @@ extension Walker {
         case (.box, 4510): screen = .items(itemsAt)
         case (.box, 4171): boxFind()                                                                                                    // 5.0: 찾기
         case (.box, 4173): boxShinyChip()                                                                                               // 5.2: ★ (Find52.swift)
+        case (.box, 4174): boxFavChip()                                                                                                 // 5.2.2: ♥ (Fav522.swift)
+        case (.box(let i, _, false, true), 4417): toggleFav(i)                                                                          // 5.2.2: the page's ♡ / ♥
         case (.box(let i, _, _, _), 4172): boxQuery = ""; screen = .box(i, act: nil, confirm: false)                                   // … and its words cleared
         case (.box(let i, _, _, _), 4100...4103): boxSort = code - 4100; screen = .box(i, act: nil, confirm: false)
         case (.box(let i, _, _, true), 4400) where i != -1: screen = .box(i, act: 0, confirm: false, detail: true); press(1)      // = ● 함께
@@ -526,7 +529,8 @@ extension Walker {
         var p = monPage(m, act: act, confirm: confirm); p.place = i == -1 ? 0 : i < -1 ? 1 : 2
         p.formAction = formAction(i)?.label                                                          // 5.0: 모습 바꾸기 · 합체하기 · 분리하기 on its page
         p.megaLink = Content.gen6 && !Walker.megaForms(m.dex).isEmpty; p.mega = megaLookForm.flatMap { megaLookModel(m, $0, ref: i) }   // 5.2: 메가 모습 보기
-        p.fetch = i >= 0 && state.caught.count < 3; p.dupes = i >= 0 ? state.duplicates(of: state.box[i].dex).count : 0; p.sel = act.flatMap { $0 < boxActs(i).count - 1 ? $0 : nil }   // the LCD's pick = a button (닫기 has none)
+        p.fetch = i >= 0 && state.caught.count < 3; p.dupes = i >= 0 ? releasable(state.box[i].dex).count : 0; p.fav = inBattle ? nil : m.fav == true   // (5.2.2: no ♥ in 중복; ♡ / ♥, not in a fight)
+        p.sel = act.flatMap { $0 < boxActs(i).count - 1 ? $0 : nil }   // the LCD's pick = a button (닫기 has none)
         let mine = evolutions.filter { $0.from == m.dex }, targets = mine.map(\.to).reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } }
         p.evos = targets.map { to in "→ " + monNames[to] + " · " + mine.filter { $0.to == to }.map { e in evoText(e).replacingOccurrences(of: " 소지", with: "") + (e.item.map { state.count($0) > 0 ? " (있음)" : " (없음)" } ?? "") }.joined(separator: " / ") }
         if p.evos.count > 2 { p.evos = [p.evos[0], "외 \(p.evos.count - 1)갈래"] }

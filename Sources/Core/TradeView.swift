@@ -84,7 +84,7 @@ extension Walker {
             let list = pickList(p), per = TradePickModel.perPage, at = min(p.at, max(0, list.count - 1)), first = at / per * per
             let offered = p.side == 0 ? offeredUIDs : [], pick = p.side == 0 ? p.give : p.want
             let cells = list[min(first, list.count)..<min(list.count, first + per)].map { m in
-                GridModel.Cell(dex: m.dex, look: offered.contains(m.uid ?? -1) ? 1 : 2, shiny: m.shiny == true, v3: m.perfectIVs >= 3, level: m.level, art: m.art)
+                GridModel.Cell(dex: m.dex, look: offered.contains(m.uid ?? -1) ? 1 : 2, shiny: m.shiny == true, v3: m.perfectIVs >= 3, level: m.level, art: m.art, fav: p.side == 0 && m.fav == true)   // (5.2.2: mine)
             }
             let (mine, theirs) = picked(p), answering = p.offer != nil, offer = p.offer.flatMap(tradeOffer)
             func slot(_ label: String, _ m: Mon?, _ none: String) -> TradeSlot {
@@ -250,7 +250,8 @@ extension Walker {
     }
     /// The pick's button: an offer made (to the list, where it waits), or a 아무거나 one answered (asked first: there's no undo).
     func sendPick(_ p: TradePick, _ now: Date) {
-        guard let g = p.give, holdsAlong(state.box.first { $0.uid == g }, p.offer == nil ? "신청하기" : "교환") else { return }
+        let give = state.box.first { $0.uid == p.give }                                            // 5.2.2: a ♥ one asked once more (an answer: in 교환할까요?)
+        guard let g = p.give, p.offer == nil ? sendAsk(give, "신청하기", how: josa(p.to, "이", "가") + " 받으면 교환되고", question: "그래도 신청할까요?") : holdsAlong(give, "교환") else { return }
         if let id = p.offer { if let o = tradeOffer(id) { accept(o, give: g, back: .trade(.pick(p)), now) }; return }
         act(.tradeOffer(to: p.to, give: g, want: p.want), back: .trade(.pick(p)), now) { [weak self] _, now in
             self?.cloud?.tradesDue = true
@@ -276,7 +277,7 @@ extension Walker {
     /// 수락: asked once (it can't be undone), then the server swaps both; its news (traded, an evolution) play at home.
     func accept(_ o: TradeOffer, give: Int?, back: Screen, _ now: Date) {
         let mine = o.want ?? give.flatMap { u in state.box.first { $0.uid == u } }
-        let body = josa(o.from, "의", "의") + " " + monLine(o.mon) + " ↔ 내 " + (mine.map(monLine) ?? "포켓몬") + "\n교환하면 되돌릴 수 없어요."
+        let body = josa(o.from, "의", "의") + " " + monLine(o.mon) + " ↔ 내 " + (mine.map(monLine) ?? "포켓몬") + favLine(mine) + "\n교환하면 되돌릴 수 없어요."   // (5.2.2: a ♥ one, a line)
         guard host?.confirm("교환할까요?", body, ok: "교환") ?? true else { return }
         act(.tradeAccept(id: o.id, give: o.want == nil ? give : nil), back: back, now, lines: ["교환 중..."]) { [weak self] _, now in
             guard let self else { return nil }

@@ -270,6 +270,16 @@ import Foundation
         take("w52_raid_group", on: xw) { v in v.screen = .home; v.paneTap(9300 + (v.paneContent(T).status?.rows.firstIndex { $0.key == "레이드" } ?? 3)) }
         take("w521_bag_home", on: xw) { v in v.screen = .home; v.quickOpen("도구") }                   // 5.2.1: 홈's 도구 with machines had (5.2 went down here)
     } } } }
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) { Content.$testing52.withValue(true) {   // 5.2.2 (docs/plans/25): 즐겨찾기 (Tests' favShotsWalker)
+        let fw = favShotsWalker()
+        take("w522_box", on: fw) { v in v.screen = .box(-1, act: nil, confirm: false) }
+        take("w522_box_chip", on: fw) { v in v.boxFavChip() }
+        take("w522_page_on", on: fw) { v in v.boxQuery = ""; v.screen = .box(0, act: nil, confirm: false, detail: true) }
+        take("w522_page_companion", on: fw) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
+        take("w522_release", on: fw) { v in v.screen = .box(6, act: 0, confirm: true, detail: true) }
+        take("w522_lcd_form", lcd: true, on: fw) { v in v.screen = .box(4, act: nil, confirm: false, detail: true) }
+        take("w522_tower", on: fw) { v in v.screen = .squad(Squad(kind: .tower, picked: [v.state.box[0].uid, v.state.box[1].uid].compactMap { $0 }, at: 2)) }
+    } } }
     return n
 }
 #endif

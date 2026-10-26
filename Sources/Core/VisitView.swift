@@ -60,7 +60,7 @@ extension Walker {
     func visitPickPane(_ p: ItemOn, _ now: Date) -> PaneContent {
         let refs = visitRefs, per = TradePickModel.perPage, at = min(p.at, max(0, refs.count - 1)), first = at / per * per
         let cells = refs[min(first, refs.count)..<min(refs.count, first + per)].compactMap { r -> GridModel.Cell? in
-            state.mon(r).map { GridModel.Cell(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil, art: $0.art) }
+            state.mon(r).map { GridModel.Cell(dex: $0.dex, look: 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil, art: $0.art, fav: $0.fav == true) }   // (5.2.2: ♥ shown, not asked: it comes back with it)
         }
         let m = p.pick.flatMap { state.mon($0) }
         let mine = m.map { TradeSlot(label: "맡길 포켓몬", dex: $0.dex, level: $0.level, shiny: $0.shiny == true, name: monNames[$0.dex], v: $0.perfectIVs) } ?? TradeSlot(label: "맡길 포켓몬", name: "골라 주세요")

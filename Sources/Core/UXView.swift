@@ -91,6 +91,7 @@ extension Walker {
         return q.lowercased().split(whereSeparator: { $0 == " " || $0 == "," }).allSatisfy { w in
             let t = String(w)
             if t == "이로치" || t == "★" { return m.shiny == true }
+            if t == "즐겨찾기" || t == "♥" { return m.fav == true }                                          // 5.2.2: the ♥ chip's word
             if t.count == 2, t.hasSuffix("v"), let n = Int(t.prefix(1)) { return m.perfectIVs >= n }
             if ["도구", "지닌", "지님", "지닌도구"].contains(t) { return m.item != nil }
             if let ty = types[t] { return m.typing.contains(ty) }

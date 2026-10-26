@@ -46,7 +46,7 @@ struct DexModel: Equatable {
 /// The 도감 / 포켓몬 grid: tabs, a page of box icons (the pick bobbing), the pager; 포켓몬's has the companion and the walker's in a row above.
 struct GridModel: Equatable {
     static let perPage = 30, columns = 6                               // 6 x 5
-    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false; var level = 0; var held = false; var art: Int? = nil; var heldItem: String? = nil; var evo = false; var pic: Int { art ?? dex } }   // heldItem (5.0): its picture on the cell   // held: it holds an item (3.7)   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box   // art (5.0): a form's picture (Mon.art)
+    struct Cell: Equatable { var dex: Int; var look: Int; var shiny = false, v3 = false; var level = 0; var held = false; var art: Int? = nil; var heldItem: String? = nil; var evo = false; var fav = false; var pic: Int { art ?? dex } }   // fav (5.2.2, docs/plans/25): 즐겨찾기, its ♥   // heldItem (5.0): its picture on the cell   // held: it holds an item (3.7)   // look: 0 not met (its number), 1 seen (a shadow), 2 caught / in the box   // art (5.0): a form's picture (Mon.art)
     var tabs: [String]; var tab: Int
     var cells: [Cell]; var first: Int; var sel: Int?                   // this page's cells; first = cells[0]'s place in the whole list; sel = the pick's cell
     var page, pages: Int; var empty: String; var bob: Bool
@@ -58,6 +58,7 @@ struct GridModel: Equatable {
 struct MonModel: Equatable {
     var nature, natureNote, ability, abilityNote: String; var up, down: Int?   // stat indices the nature raises / lowers (nil = neutral)
     var ivs, evs: [Int]; var hyper: [Int]; var v, evTotal: Int
+    var fav: Bool? = nil                                               // 5.2.2 (docs/plans/25): 즐겨찾기 on / off — the ♡ / ♥ first in the buttons; nil: none (a fight on)
     var confirm: Bool                                                  // 놓아줄까? is up: the buttons become 아니오 / 예
     var form: String? = nil                                            // 5.0: its own form (히트로토무, 어택폼 ...), a chip on the 특성 line
     var place = 2                                                      // 0 the companion (nothing to do), 1 the walker's (함께 걷기 / 상자로 보내기), 2 the box's (함께 걷기 / 워커로 / 놓아주기)

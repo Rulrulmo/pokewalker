@@ -394,10 +394,12 @@ extension Walker {
             else if confirm {                                                                     // "놓아줄까?" 아니오 / 예
                 if k != 1 { screen = .box(i, act: (act ?? 0) == 0 ? 1 : 0, confirm: true, detail: detail) }
                 else if act == 1, let u = state.id(i) {
-                    let p = boxOrder.firstIndex(of: i) ?? 0, name = monNames[state.box[i].dex]       // then the one after it in the grid
-                    self.act(.mon(op: .release(uid: u)), back: .box(i, act: nil, confirm: false, detail: detail), now) { [weak self] o, now in
-                        let ord = self?.boxOrder ?? []
-                        return .say([josa(name, "은", "는") + " 풀숲으로", "돌아갔다 (+\(o.watts ?? 0)W)"], next: .box(ord.isEmpty ? -1 : ord[min(p, ord.count - 1)], act: nil, confirm: false, detail: detail && !ord.isEmpty), since: now)
+                    let p = boxOrder.firstIndex(of: i) ?? 0, name = monNames[state.box[i].dex], back = Screen.box(i, act: nil, confirm: false, detail: detail)   // then the one after it in the grid
+                    releaseMaybeFav(i, back: back, now) { [weak self] now in                          // 5.2.2: a ♥ one: 풀고 놓아주기 (its ♥ off first)
+                        self?.act(.mon(op: .release(uid: u)), back: back, now) { [weak self] o, now in
+                            let ord = self?.boxOrder ?? []
+                            return .say([josa(name, "은", "는") + " 풀숲으로", "돌아갔다 (+\(o.watts ?? 0)W)"], next: .box(ord.isEmpty ? -1 : ord[min(p, ord.count - 1)], act: nil, confirm: false, detail: detail && !ord.isEmpty), since: now)
+                        }
                     }
                 }
                 else { screen = .box(i, act: nil, confirm: false, detail: detail) }
@@ -586,7 +588,7 @@ extension Walker {
     func useStone(_ i: Int) { let s = state.stoneEvolutions(Date()); guard s.indices.contains(i) else { return }; evolveNow(s[i], back: .home) }
     /// 중복 놓아주기, once the platform has asked: the box's spare ones of that species go.
     func releaseDupes(_ dex: Int) {
-        let n = state.duplicates(of: dex).count
+        let n = releasable(dex).count                                                              // (5.2.2: the server's own: no ♥)
         act(.mon(op: .releaseDupes(dex: dex)), back: .box(-1, act: nil, confirm: false)) { o, now in .say(["\(n)마리를 놓아줬다", "+\(o.watts ?? 0)W"], next: .box(-1, act: nil, confirm: false), since: now) }   // back to the grid
     }
 }

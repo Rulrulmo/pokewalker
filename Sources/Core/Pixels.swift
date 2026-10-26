@@ -172,6 +172,8 @@ let megaMark = art(["#___#", "##_##", "#:#:#", "#___#", "#___#"])          // 5.
 let megaPal = [rgb(250, 250, 250), rgb(250, 250, 250), rgb(236, 120, 200), rgb(120, 60, 190)]
 let legendDex = Set(courses.flatMap(\.legends))
 let spark = art(["__#__", "__#__", "##:##", "__#__", "__#__"])
+let heartArt = art(["_##_##_", "#.:#::#", "#:::::#", "_#:::#_", "__#:#__", "___#___"])   // 5.2.2 (docs/plans/25): 즐겨찾기 on the LCD, the picture's top left (the cells' ♥)
+let heartPal = [rgb(250, 250, 250), rgb(255, 214, 226), rgb(226, 80, 120), rgb(120, 30, 60)]
 let sparkPal = [rgb(255, 236, 120), rgb(255, 236, 120), rgb(255, 250, 200), rgb(250, 190, 40)]
 
 /// Galmuri (OFL, a pixel font drawn after the Nintendo DS system font) at its native sizes, so every glyph lands on whole dots: 9 at 10 px, 7 at 8 px

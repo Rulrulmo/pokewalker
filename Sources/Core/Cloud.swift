@@ -1435,7 +1435,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
 
 /// A host for the self-test: a key counter the test moves, scripted answers to confirm() and the ID box (nil = 취소; none left = 취소).
 @MainActor final class TestHost: Host {
-    var keys: UInt32 = 0, answer = true, asked: [String] = [], texts: [String?] = [], boxes: [String] = []
+    var keys: UInt32 = 0, answer = true, asked: [String] = [], bodies: [String] = [], texts: [String?] = [], boxes: [String] = []   // bodies (5.2.2): confirm()'s words
     func askText(title: String, message: String) -> String? { boxes.append(message); return texts.isEmpty ? nil : texts.removeFirst() }
     var pins: [String?] = [], pinBoxes: [String] = []                                             // the PIN box: scripted answers, what it said
     func askPIN(title: String, message: String) -> String? { pinBoxes.append(title + " · " + message); return pins.isEmpty ? nil : pins.removeFirst() }
@@ -1449,7 +1449,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     func toggleShown() {}
     func fits(size: CGFloat) -> Bool { true }
     func beep() {}
-    func confirm(_ title: String, _ body: String, ok: String) -> Bool { asked.append(title); return answer }
+    func confirm(_ title: String, _ body: String, ok: String) -> Bool { asked.append(title); bodies.append(body); return answer }
     var quits = 0
     func quit() { quits += 1 }
 }

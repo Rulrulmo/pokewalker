@@ -292,7 +292,8 @@ extension Canvas {
                     c.image(iconImage(e.pic), CGRect(x: snap(rc.midX - 16 * K), y: snap(rc.minY - x(3) - lift), width: 32 * K, height: 32 * K), alpha: walker?.drag?.from == 4500 + i ? 0.3 : 1)   // (carried away: faded)
                     c.say(i == 0 ? "함께" : "Lv.\(e.level)", rc.midX, rc.maxY - x(7), font(8, .bold), i == 0 ? Ink.red : Ink.sub, 0.5)
                     if e.shiny { c.say("★", rc.maxX - x(5), rc.minY + x(6), font(7, .bold), Ink.gold, 1) }
-                    if e.evo { evoDot(rc) }                                                                 // 5.1.3: ready to pick its evolution
+                    if e.fav { favMark(rc) }                                                                // 5.2.2: 즐겨찾기
+                    if e.evo { evoDot(e.fav ? rc.offsetBy(dx: x(10), dy: 0) : rc) }                          // 5.1.3: ready to pick its evolution (beside the ♥)
                     hits.append((rc, 4500 + i))
                 } else { c.say("비어 있음", rc.midX, rc.midY, font(7.5, .medium), Ink.faint, 0.5) }   // the walker holds 3
             }
@@ -302,10 +303,14 @@ extension Canvas {
             tabs(g.tabs, g.tab, top, span: X1 - X0 - 50)
             let rc = r(X1 - 46, top, 46, 22); c.pill(rc, Ink.tint(Ink.red, 0.12)); c.say("찾기", rc.midX, rc.midY, font(10, .bold), Ink.red, 0.5); hits.append((rc, 4170))
         } else {                                                                                   // 5.0: the 상자's 찾기 (its words, ✕ to clear)
-            tabs(g.tabs, g.tab, top, span: X1 - X0 - 50 - 30)
+            tabs(g.tabs, g.tab, top, span: X1 - X0 - 50 - 52)
             do {                                                                                  // 5.2 (Find52.swift): ★ — 찾기 "이로치" in one click (the user: "별만")
-                let on = g.query == "이로치", sc = r(X1 - 46 - 30, top, 26, 22), gold = Ink.c(214, 150, 20)
+                let on = g.query == "이로치", sc = r(X1 - 46 - 52, top, 23, 22), gold = Ink.c(214, 150, 20)
                 c.pill(sc, on ? gold : Ink.tint(gold, 0.16)); c.say("★", sc.midX, sc.midY, font(10.5, .bold), on ? .white : gold, 0.5); hits.append((sc, 4173))
+            }
+            do {                                                                                  // 5.2.2 (docs/plans/25): ♥ — 찾기 "즐겨찾기"
+                let on = g.query == "즐겨찾기", sc = r(X1 - 46 - 27, top, 23, 22)
+                c.pill(sc, on ? Ink.pink : Ink.tint(Ink.pink, 0.14)); heart(sc.midX, sc.midY + x(0.3), x(10), on ? .white : Ink.pink); hits.append((sc, 4174))
             }
             let q = g.query ?? "", rc = r(X1 - 46, top, 46, 22)
             c.pill(rc, q.isEmpty ? Ink.tint(Ink.red, 0.12) : Ink.red)
@@ -329,7 +334,8 @@ extension Canvas {
                 c.stroke(.rounded(cell.insetBy(dx: 1.5 * K, dy: 1.5 * K), 8 * K), Ink.c(226, 168, 30), width: 1.3 * K)
                 c.say("★", cell.maxX - x(4.5), cell.minY + x(7), font(9, .bold), Ink.c(226, 160, 20), 1)
             } else if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
-            if e.evo { evoDot(cell) }                                                                   // 5.1.3
+            if e.fav { favMark(cell) }                                                                  // 5.2.2: 즐겨찾기
+            if e.evo { evoDot(e.fav ? cell.offsetBy(dx: x(10), dy: 0) : cell) }                         // 5.1.3 (beside the ♥)
             if let it = e.heldItem { itemImage(it, CGRect(x: cell.maxX - x(12), y: cell.maxY - x(12), width: x(11), height: x(11))) } else if e.held { pixelArt(gem, gemPal, CGPoint(x: cell.maxX - x(6), y: cell.maxY - x(6)), 1.4 * K) }   // 3.7 (5.0: the item itself): it holds an item
             if e.v3 {                                                                                   // 3V and up: the amber diamond, as on the LCD
                 let cx = cell.minX + x(6), cy = cell.maxY - x(6), rr = 2.4 * K
@@ -421,18 +427,30 @@ extension Canvas {
         c.say("기술", x(X0 + 5), y(yy + 6), font(9, .medium), Ink.sub); c.say("바꾸기", x(X0 + 5), y(yy + 19), font(8.5, .bold), Ink.red)
         for (j, mv) in m.moves.enumerated() { c.say(mv, x(X0 + 36 + CGFloat(j % 2) * 82), y(yy + 6 + CGFloat(j / 2) * 13), font(9, .medium), Ink.ink, maxW: x(78)) }
         yy += 32
+        let fx: CGFloat = m.fav == nil || m.confirm ? 0 : 35                                       // 5.2.2 (docs/plans/25): ♡ / ♥ first (not while 놓아줄까? is up)
+        if let on = m.fav, !m.confirm {
+            let rc = r(X0, yy, 30, 30); c.fill(.rounded(rc, 10 * K), on ? Ink.tint(Ink.pink, 0.16) : Ink.tile)
+            if on { heart(rc.midX, rc.midY + x(0.5), x(14.5), Ink.pink) } else { heart(rc.midX, rc.midY + x(0.5), x(14.5), Ink.c(176, 180, 188)); heart(rc.midX, rc.midY + x(0.5), x(10.5), Ink.tile) }
+            hits.append((rc, 4417))
+        }
         if m.place == 0 {                                                                          // the companion: what evolves it now, if anything; else nothing to do
-            let rc = r(X0, yy, X1 - X0, 30); c.fill(.rounded(rc, 10 * K), m.evoAction == nil ? Ink.tile : Ink.red)
+            let rc = r(X0 + fx, yy, X1 - X0 - fx, 30); c.fill(.rounded(rc, 10 * K), m.evoAction == nil ? Ink.tile : Ink.red)
             c.say(m.evoAction ?? "함께 걷는 중", rc.midX, rc.midY, font(11, .bold), m.evoAction == nil ? Ink.sub : .white, 0.5); if m.evoAction != nil { hits.append((rc, 4406)) }
             return
         }
         // 함께 걷기 / 상자로 보내기 (the walker's) or 워커로 / 놓아주기 (the box's; 놓아줄까? → 아니오 / 예)
-        let opts: [(String, Int)] = m.confirm ? [("아니오", 4402), ("예 · 놓아주기", 4403)] + (m.dupes > 0 ? [("중복 \(m.dupes)마리", 4408)] : [])
+        let opts: [(String, Int)] = m.confirm ? [("아니오", 4402), (m.fav == true ? "풀고 놓아주기" : "예 · 놓아주기", 4403)] + (m.dupes > 0 ? [("중복 \(m.dupes)마리", 4408)] : [])   // (5.2.2: a ♥ one is let go of first)
             : m.place == 1 ? [("함께 걷기", 4400), ("상자로 보내기", 4404)] : [("함께 걷기", 4400)] + (m.fetch ? [("워커로", 4407)] : []) + [("놓아주기", 4401)]
-        let cw = (X1 - X0 - 5 * CGFloat(opts.count - 1)) / CGFloat(opts.count)
+        // 5.2.2 (the worst cases: Windows' Hangul cut 풀고 놓아주기 in three equal thirds): 놓아줄까?'s three — 아니오 as wide as its word, the rest share what's left
+        let total = X1 - X0 - fx - 5 * CGFloat(opts.count - 1)
+        let first = m.confirm && opts.count == 3 ? min(total / 3, width(opts[0].0, font(11, .bold)) / x(1) + 18) : total / CGFloat(opts.count)
+        let rest = opts.count > 1 ? (total - first) / CGFloat(opts.count - 1) : total
+        var bx = X0 + fx
         for (i, (t, code)) in opts.enumerated() {
-            let rc = r(X0 + CGFloat(i) * (cw + 5), yy, cw, 30), strong = m.sel == i                   // red = what ● does now (the LCD's pick); none while nothing is picked
-            c.fill(.rounded(rc, 10 * K), strong ? Ink.red : Ink.tile); c.say(t, rc.midX, rc.midY, font(11, .bold), strong ? .white : Ink.ink, 0.5); hits.append((rc, code))
+            let cw = i == 0 ? first : rest
+            let rc = r(bx, yy, cw, 30), strong = m.sel == i                                          // red = what ● does now (the LCD's pick); none while nothing is picked
+            c.fill(.rounded(rc, 10 * K), strong ? Ink.red : Ink.tile); c.say(t, rc.midX, rc.midY, font(11, .bold), strong ? .white : Ink.ink, 0.5, maxW: rc.width - x(8)); hits.append((rc, code))
+            bx += cw + 5
         }
     }
     /// A Pokémon in full, from `top`: nature, ability, the IV / EV hexagons. Returns where the buttons go.
@@ -989,6 +1007,7 @@ extension Page {
             let shade = e.look == 1 && !m.colour                                                       // 5.2: wishing — every species seen in colour
             c.image(iconImage(e.pic, shadow: shade), CGRect(x: snap(cell.midX - side / 2), y: snap(cell.midY - side / 2 - lift - 0.5 * K), width: side, height: side), alpha: shade ? 0.6 : 1)
             if m.dots.contains(k) { c.fill(.oval(CGRect(x: cell.minX + x(3.5), y: cell.minY + x(3.5), width: x(5), height: x(5))), Ink.green) }   // 5.2: not caught yet
+            if e.fav { favMark(cell) }                                                                  // 5.2.2: 즐겨찾기 (mine: the wish grid has none)
             if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
             if e.v3 {
                 let cx = cell.minX + x(6), cy = cell.maxY - x(6), rr = 2.4 * K
@@ -1166,6 +1185,7 @@ extension Page {
             monIcon(e.pic, shiny: false, cell, side: 32 * K, shadow: e.look == 1)                  // 1: can't be picked here (as the 도구 picker's)
         }
         if e.shiny { c.say("★", cell.maxX - x(4), cell.minY + x(6), font(7, .bold), Ink.gold, 1) }
+        if e.fav, order == nil { favMark(cell) }                                                    // 5.2.2: 즐겨찾기 (a pick's number takes its corner)
         if e.held { pixelArt(gem, gemPal, CGPoint(x: cell.maxX - x(6), y: cell.maxY - x(6)), 1.4 * K) }
         if e.v3 {
             let cx = cell.minX + x(6), cy = cell.maxY - x(6), rr = 2.4 * K
@@ -1296,6 +1316,14 @@ extension Page {
             c.say("지우기", dr.midX, dr.midY, font(10.5, .bold), on ? Ink.red : Ink.faint, 0.5); if on { hits.append((dr, 8841)) } }
     }
     /// 5.1.3: the red dot of one ready to pick its evolution (배루키), in a cell's corner (top left: ★ is top right, 3V and the item below).
+    /// 5.2.2 (docs/plans/25): ♥ drawn (two circles and a point — no glyph: the same on Windows), s wide, its centre at (cx, cy).
+    func heart(_ cx: CGFloat, _ cy: CGFloat, _ s: CGFloat, _ col: Color) {
+        let r = s / 4
+        c.fill(.oval(CGRect(x: cx - 2 * r, y: cy - 1.6 * r, width: 2 * r, height: 2 * r)), col); c.fill(.oval(CGRect(x: cx, y: cy - 1.6 * r, width: 2 * r, height: 2 * r)), col)
+        c.fill(.poly([CGPoint(x: cx - 1.93 * r, y: cy - 0.25 * r), CGPoint(x: cx + 1.93 * r, y: cy - 0.25 * r), CGPoint(x: cx, y: cy + 1.9 * r)]), col)
+    }
+    /// The cells' ♥: top left (★ top right, the item bottom right, 3V bottom left), on a white rim.
+    func favMark(_ cell: CGRect) { let cx = cell.minX + x(6.5), cy = cell.minY + x(6.5); heart(cx, cy, x(8.6), .white); heart(cx, cy, x(7), Ink.pink) }
     func evoDot(_ cell: CGRect) { let d = x(6); c.fill(.oval(CGRect(x: cell.minX + x(3), y: cell.minY + x(3), width: d, height: d)), Ink.red) }
     // MARK: 5.1.3's 배루키 pick (docs/plans/23): the three as cards, the pick's stats and ability, the button or 진화할까요?
     func drawEvoPick(_ m: EvoPickModel) {

@@ -844,6 +844,22 @@ import AppKit
         let row = lw.statusModel().rows.firstIndex { $0.key == "레이드" } ?? 0
         take("look52_raid_group", lw) { v in v.screen = .home; v.paneTap(9300 + row) }
     } } }
+    // 5.2.2 (docs/plans/25, Core/Fav522.swift): 즐겨찾기 — the box's ♥ (party row, 진화 dot beside) and its chip, the page's ♥ / ♡ (box · companion ·
+    // walker), 풀고 놓아주기 with 중복, the LCD's ♥ on a form, the picks (글 올리기 · 타워)
+    Content.$testing.withValue(true) { Content.$testing51.withValue(true) { Content.$testing52.withValue(true) {
+        let fw = favShotsWalker()
+        take("fav522_box", fw) { v in v.screen = .box(-1, act: nil, confirm: false) }
+        take("fav522_box_chip", fw) { v in v.boxFavChip() }
+        take("fav522_page_on", fw) { v in v.boxQuery = ""; v.screen = .box(0, act: nil, confirm: false, detail: true) }
+        take("fav522_page_off", fw) { v in v.screen = .box(2, act: nil, confirm: false, detail: true) }
+        take("fav522_page_companion", fw) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true) }
+        take("fav522_page_walker", fw) { v in v.screen = .box(-2, act: nil, confirm: false, detail: true) }
+        take("fav522_release", fw) { v in v.screen = .box(6, act: 0, confirm: true, detail: true) }
+        take("fav522_lcd_form", fw) { v in v.screen = .box(4, act: nil, confirm: false, detail: true) }
+        take("fav522_lcd_rotom", fw) { v in v.screen = .box(3, act: nil, confirm: false, detail: true) }
+        take("fav522_market_pick", fw) { v in v.screen = .market(.pick(MarketPick(listing: nil, give: nil, wish: [], side: 0, at: 0))) }
+        take("fav522_tower", fw) { v in v.screen = .squad(Squad(kind: .tower, picked: [v.state.box[0].uid, v.state.box[1].uid].compactMap { $0 }, at: 2)) }
+    } } }
     return n
 }
 #endif

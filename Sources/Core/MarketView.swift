@@ -90,7 +90,7 @@ extension Walker {
             let list = marketPickList(p), per = TradePickModel.perPage, at = min(p.at, max(0, list.count - 1)), first = at / per * per
             let used = p.side == 0 ? marketUsed : []
             let cells = list[min(first, list.count)..<min(list.count, first + per)].map { m in
-                p.side == 1 ? GridModel.Cell(dex: m.dex, look: (state.owned ?? []).contains(m.dex) ? 2 : 1) : GridModel.Cell(dex: m.dex, look: used.contains(m.uid ?? -1) ? 1 : 2, shiny: m.shiny == true, v3: m.perfectIVs >= 3, level: m.level, art: m.art)
+                p.side == 1 ? GridModel.Cell(dex: m.dex, look: (state.owned ?? []).contains(m.dex) ? 2 : 1) : GridModel.Cell(dex: m.dex, look: used.contains(m.uid ?? -1) ? 1 : 2, shiny: m.shiny == true, v3: m.perfectIVs >= 3, level: m.level, art: m.art, fav: m.fav == true)
             }
             let mine = p.give.flatMap { u in state.box.first { $0.uid == u } }
             func slot(_ label: String, _ m: Mon?, _ none: String) -> TradeSlot {
@@ -268,7 +268,10 @@ extension Walker {
     }
     /// The pick's button: a post up (to 내 글), or an offer on one (to that post).
     func sendMarketPick(_ p: MarketPick, _ now: Date) {
-        guard let g = p.give, holdsAlong(state.box.first { $0.uid == g }, p.listing == nil ? "올리기" : "제안하기") else { return }
+        let seller = p.listing.flatMap(listing)?.from ?? "글쓴이"                                    // 5.2.2: a ♥ one asked once more (with its item, one window)
+        guard let g = p.give, sendAsk(state.box.first { $0.uid == g }, p.listing == nil ? "올리기" : "제안하기",
+                                      how: p.listing == nil ? "교환되면 받는 사람의 포켓몬이 되고" : josa(seller, "이", "가") + " 이 제안을 고르면 교환되고",
+                                      question: p.listing == nil ? "그래도 올릴까요?" : "그래도 제안할까요?") else { return }
         let back = Screen.market(.pick(p))
         if let id = p.listing {
             act(.marketBid(listing: id, give: g), back: back, now) { [weak self] _, now in
@@ -291,7 +294,7 @@ extension Walker {
         case "이 제안으로 교환":
             guard l.mine, let k = sel, let b = offers(on: l.id)[safe: k] else { return }
             let along = [l.mon.item.map { "내 " + monNames[l.mon.dex] + "의 " + $0 }, b.mon.item.map { josa(b.from, "의", "의") + " " + monNames[b.mon.dex] + "의 " + $0 }].compactMap { $0 }
-            guard host?.confirm("교환할까요?", "내 " + monLine(l.mon) + " ↔ " + josa(b.from, "의", "의") + " " + monLine(b.mon) + (along.isEmpty ? "" : "\n지닌 도구도 함께 가요: " + along.joined(separator: ", ")) + "\n다른 제안은 모두 닫히고, 되돌릴 수 없어요.", ok: "교환") ?? true else { return }
+            guard host?.confirm("교환할까요?", "내 " + monLine(l.mon) + " ↔ " + josa(b.from, "의", "의") + " " + monLine(b.mon) + (along.isEmpty ? "" : "\n지닌 도구도 함께 가요: " + along.joined(separator: ", ")) + favLine(l.mon) + "\n다른 제안은 모두 닫히고, 되돌릴 수 없어요.", ok: "교환") ?? true else { return }
             act(.marketAccept(bid: b.id), back: back, now, lines: ["교환 중..."]) { [weak self] _, now in
                 guard let self else { return nil }
                 cloud?.marketDue = true; dropBidNews(l.id)

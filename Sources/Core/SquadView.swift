@@ -61,7 +61,7 @@ extension Walker {
         let picked = squadOf(s), range = squadRange(s.kind), sent = squadSent(s) != nil
         let fifty: Bool = { switch s.kind { case .raid, .exp: return false; default: return true } }()
         let page = Array(keys[min(first, n)..<min(n, first + per)])
-        let cells = page.compactMap { k in squadMon(s, k).map { GridModel.Cell(dex: $0.dex, look: squadNoLegend(s, k) ? 1 : 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil, art: $0.art) } }
+        let cells = page.compactMap { k in squadMon(s, k).map { GridModel.Cell(dex: $0.dex, look: squadNoLegend(s, k) ? 1 : 2, shiny: $0.shiny == true, v3: $0.perfectIVs >= 3, level: $0.level, held: $0.item != nil, art: $0.art, fav: $0.fav == true) } }   // (5.2.2: ♥)
         let strip = (0..<range.upperBound).map { i in picked[safe: i].flatMap { squadMon(s, $0) }.map { SquadModel.Slot(dex: $0.dex, shiny: $0.shiny == true, level: "Lv.\(fifty ? Walk.towerLevel : $0.level)", art: $0.art) } }
         var m = SquadModel(title: "", note: "\(picked.count)/\(range.upperBound)", strip: strip, theirs: nil, tabs: Walker.squadSorts, tab: boxSort, boxTitle: "", cells: cells,
                            order: page.map { k in picked.firstIndex(of: k).map { $0 + 1 } }, sel: s.at < n && s.at >= first ? s.at - first : nil, first: first, count: n,

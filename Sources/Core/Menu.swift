@@ -57,11 +57,11 @@ extension Walker {
     // MARK: the menu's own actions (the walker's: Flow.swift)
     /// 중복 놓아주기: asks first (who stays, that it can't be undone), then lets them go.
     func askReleaseDupes(_ dex: Int) {
-        let gone = state.duplicates(of: dex), n = gone.count
+        let gone = releasable(dex), n = gone.count                                                  // 5.2.2: the server's own (no ♥)
         let stay = state.box.indices.filter { state.box[$0].dex == dex && !gone.contains($0) }.map { state.box[$0] }
-        let who = stay.prefix(4).map { "\($0.shiny == true ? "★" : "")Lv.\($0.level)\(sexMark($0))\(vMark($0))" }.joined(separator: ", ") + (stay.count > 4 ? " 외 \(stay.count - 4)마리" : "")
+        let who = stay.prefix(4).map { "\($0.fav == true ? "♥" : "")\($0.shiny == true ? "★" : "")Lv.\($0.level)\(sexMark($0))\(vMark($0))" }.joined(separator: ", ") + (stay.count > 4 ? " 외 \(stay.count - 4)마리" : "")
         guard n > 0, host?.confirm("\(monNames[dex]) \(n)마리를 놓아줄까요?",
-            "상자에서 이로치와 3V 이상은 모두 남고, 그 밖엔 가장 좋은 1마리(V 수 → 경험치 순)만 남아요 — 3V 이상이 있으면 그 1마리 몫도 그쪽이에요.\n남는 포켓몬: \(who)\n되돌릴 수 없어요.", ok: "놓아주기") == true else { return }
+            "상자에서 이로치 · 3V 이상 · 즐겨찾기(♥)는 모두 남고, 그 밖엔 가장 좋은 1마리(V 수 → 경험치 순)만 남아요 — 3V 이상이 있으면 그 1마리 몫도 그쪽이에요.\n남는 포켓몬: \(who)\n되돌릴 수 없어요.", ok: "놓아주기") == true else { return }
         releaseDupes(dex)
     }
     func testNotify() { notify("pet", josa(monNames[state.companion.dex], "이", "가") + " 인사해요", "알림이 이렇게 와요 · 지금 \(state.watts)W") }
