@@ -50,7 +50,7 @@ extension Walker {
     func itemTab(_ sel: Int) -> (tab: Int, rows: [Int]) {
         if sel >= Walker.tmRow0 { return (itemTabs.firstIndex(of: "기술머신") ?? 0, tmHad.indices.map { Walker.tmRow0 + $0 }) }   // 5.2: the machines had
         let inv = state.inventory, tabs = itemTabs, name = inv[safe: min(sel, max(0, inv.count - 1))].map(Walk.bagTab) ?? tabs.first ?? ""
-        return (tabs.firstIndex(of: name) ?? 0, itemOrder.filter { Walk.bagTab(inv[$0]) == name })
+        return (tabs.firstIndex(of: name) ?? 0, itemOrder.filter { $0 < Walker.tmRow0 && Walk.bagTab(inv[$0]) == name })   // (5.2.1: not the machine rows — inv[10_000] took the app down)
     }
     /// 5.1 (plan 19 §3): what 특성패치 makes of it — the hidden one ↔ the first (the server's Walk.useAbilityPatch).
     func patched(_ m: Mon) -> Mon { var x = m; x.ability = m.ability == 2 ? 0 : 2; return x }

@@ -60,7 +60,7 @@ extension Walker {
         }
     }
     /// The bag where it was left (its row, clamped).
-    var itemsAt: Int { min(max(0, settings.int("ui.items", 0)), max(0, state.inventory.count - 1)) }
+    var itemsAt: Int { state.inventory.isEmpty && Content.v52 && !tmHad.isEmpty ? Walker.tmRow0 : min(max(0, settings.int("ui.items", 0)), max(0, state.inventory.count - 1)) }   // (5.2.1: machines only — on them)
 
     // MARK: the shortcuts (5.0): 1–8 the menu's tiles (a group's page: its rows), R 포켓 레이더, B 포켓몬, I 도구, / 찾기 (도감, 상자)
     func shortcut(_ k: Key) -> Bool {

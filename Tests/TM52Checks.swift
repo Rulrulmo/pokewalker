@@ -44,6 +44,32 @@ import Foundation
         check(bought && bagOK && picked && slots && onIt && learnt && disc && bad.isEmpty,
               "5.2 기술머신: bought once (정말 살까? → Walk.tms, 보유), the bag's 기술머신 tab (TM26, no count), 가르칠 포켓몬 고르기 → 기술 바꾸기 (지진을 넣을 칸을 골라요 → on 지진, TM26) → learnt; the disc; the LCD inside",
               "\(bought) \(String(describing: served(w)?.tms)) \(bagOK) \(picked) \(slots) \(onIt) \(learnt) \(disc) \(bad)")
+
+        // 5.2's bag with a machine had (the user via 회사 10-26: "야 홈에서 도구 누르니까 꺼지는것같은데?"): itemOrder has the machine rows (tmRow0 + i), so
+        // a row of things — 홈's 도구, a tab, a row — read the inventory at 10_000 and the app went down. 홈's 도구, Tab round every tab, a row, the
+        // 기술머신 tab and back, ◀ ▶ across all; a bag of machines only opens on them.
+        var bs = s; bs.tms = [26, 1]; bs.bag = ["상처약", "좋은상처약", "이상한사탕", "몬스터볼"]   // (상처약 · 좋은상처약: one tab, two rows)
+        let b = online(bs)
+        b.screen = .home; b.quickOpen("도구")
+        @MainActor func at() -> Int? { if case .items(let k) = b.screen { _ = b.compose(Date()); return k }; return nil }
+        let open = b.paneContent(Date()).items, home = at().map { $0 < Walker.tmRow0 } == true
+        let opened = home && open?.tabs.contains("기술머신") == true && open?.rows.isEmpty == false && open?.rows.allSatisfy { $0.tm == nil } == true
+        var round: [Int] = []
+        for _ in b.itemTabs.indices { _ = b.key(.tab); _ = at(); round.append(b.paneContent(Date()).items?.tab ?? -1) }
+        let tabbed = Set(round).count == b.itemTabs.count && round.last == open?.tab
+        b.pageTap(5720 + (b.itemTabs.firstIndex(of: Walk.bagTab("상처약")) ?? 0)); b.pageTap(5600 + 1)
+        let aRow = b.paneContent(Date()).items?.sel == 1 && at() == b.state.inventory.firstIndex(of: "좋은상처약")
+        let tmTab = b.itemTabs.firstIndex(of: "기술머신") ?? 0
+        b.pageTap(5720 + tmTab); let onTM = at() == Walker.tmRow0 && b.paneContent(Date()).items?.rows.map { $0.tm?.label } == ["TM01", "TM26"]
+        b.pageTap(5720 + (tmTab == 0 ? 1 : 0)); let back = at().map { $0 < Walker.tmRow0 } == true && b.paneContent(Date()).items?.rows.first?.tm == nil
+        var stops = Set<Int>(); for _ in b.itemOrder.indices { b.press(2); if let k = at() { stops.insert(k); _ = b.paneContent(Date()) } }
+        let across = stops == Set(b.itemOrder)
+        var ms = s; ms.tms = [26]; ms.bag = []; ms.items = []
+        let m = online(ms); m.screen = .home; m.quickOpen("도구")
+        var only = false; if case .items(Walker.tmRow0) = m.screen { only = m.paneContent(Date()).items?.rows.first?.tm?.label == "TM26"; _ = m.compose(Date()) }
+        check(opened && tabbed && aRow && onTM && back && across && only,
+              "5.2 the bag with a machine had: 홈's 도구 opens on a row of things (the tabs with 기술머신), Tab round every tab, a row, the 기술머신 tab (TM01 · TM26) and back, ◀ ▶ across all; machines only: 홈's 도구 opens on them",
+              "\(opened) \(round) \(tabbed) \(aRow) \(onTM) \(back) \(stops.sorted()) \(b.itemOrder) \(only)")
     } } }
     return c
 }
