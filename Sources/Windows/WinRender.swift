@@ -268,6 +268,7 @@ import Foundation
         take("w52_mega_view", on: xw) { v in v.screen = .box(-1, act: nil, confirm: false, detail: true); v.megaLookForm = 1 }
         take("w52_box_star", on: xw) { v in v.megaLookForm = nil; v.screen = .box(-1, act: nil, confirm: false) }
         take("w52_raid_group", on: xw) { v in v.screen = .home; v.paneTap(9300 + (v.paneContent(T).status?.rows.firstIndex { $0.key == "레이드" } ?? 3)) }
+        take("w521_bag_home", on: xw) { v in v.screen = .home; v.quickOpen("도구") }                   // 5.2.1: 홈's 도구 with machines had (5.2 went down here)
     } } } }
     return n
 }
