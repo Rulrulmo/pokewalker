@@ -16,7 +16,7 @@ import Foundation
         var rotom = mon(479, 40); rotom.form = 1
         s.box = [squirtle, mon(25, 9, ivs: [31, 10, 10, 10, 10, 10]), mon(25, 11, ivs: [0, 0, 0, 0, 0, 0]), mon(25, 15), mon(25, 16), rotom, mon(19, 12)]
         s.owned = Array(1...500); s.seen = s.owned
-        let w = online(s), (srv, key) = server(w), host = w.host as! TestHost
+        let host = TestHost(), w = online(s, host: host), (srv, key) = server(w)                    // (host: weak on the walker — kept here)
         @MainActor func box(_ dex: Int, _ nth: Int = 0) -> Int { w.state.box.indices.filter { w.state.box[$0].dex == dex }[nth] }
         @MainActor func page(_ i: Int) -> MonModel? { w.screen = .box(i, act: nil, confirm: false, detail: true); return w.paneContent(Date()).mon }
 
@@ -36,7 +36,7 @@ import Foundation
         let sorts = grid?.tabs == ["번호", "레벨", "V", "최근"]
         w.paneTap(4174); let chip = w.boxQuery == "즐겨찾기" && w.boxShown.count == 3 && w.boxShown.allSatisfy { w.state.box[$0].fav == true }
         w.paneTap(4174); let chipOff = w.boxQuery.isEmpty && w.boxShown.count == w.state.box.count
-        w.boxQuery = "♥ 전기"; let words = w.boxShown.map { w.state.box[$0].dex } == [25]; w.boxQuery = ""
+        w.boxQuery = "♥ 전기"; let words = Set(w.boxShown.map { w.state.box[$0].dex }) == [25, 479]; w.boxQuery = ""   // (히트로토무: 전기 · 불꽃)
         check(favCells && sorts && chip && chipOff && words, "5.2.2 즐겨찾기: the ♥ on the box's cells and the party row, the sorts 번호 · 레벨 · V · 최근, the ♥ chip (찾기 즐겨찾기: the three; again: all), 찾기 '♥ 전기'",
               "\(String(describing: grid?.cells.map(\.fav))) \(String(describing: grid?.tabs)) \(chip) \(chipOff) \(words)")
 
@@ -113,7 +113,13 @@ import Foundation
             v.screen = .box(0, act: 0, confirm: true, detail: true)
             if v.paneContent(Date()).mon?.dupes != n - 2 { bad.append("\(n): 중복 \(String(describing: v.paneContent(Date()).mon?.dupes))") }
         }
-        check(bad.isEmpty, "5.2.2 즐겨찾기, the worst cases: a ♥ one's 아니오 · 풀고 놓아주기 · 중복 12 · 110마리, a ♥ form on the LCD (설원의 모양, genderless 히트) — no words over words, past the page, cut or across a button (크기 2 · 3 · 4), the LCD inside and clear (15 % wider too)",
+        let fw = favShotsWalker()                                                                  // ♡ / ♥ and three buttons (함께 걷기 · 워커로 · 놓아주기: room on the walker)
+        for scr in [Screen.box(0, act: nil, confirm: false, detail: true), .box(2, act: nil, confirm: false, detail: true), .box(-2, act: nil, confirm: false, detail: true), .box(-1, act: nil, confirm: false, detail: true)] {
+            fw.screen = scr
+            for px in [2, 3, 4] as [CGFloat] { SIZE = px; bad += paneOverflow(fw).map { "page ×\(Int(px)) \($0)" } }
+            SIZE = size
+        }
+        check(bad.isEmpty, "5.2.2 즐겨찾기, the worst cases: a ♥ one's 아니오 · 풀고 놓아주기 · 중복 12 · 110마리, ♡ / ♥ with 함께 걷기 · 워커로 · 놓아주기, a ♥ form on the LCD (설원의 모양, genderless 히트) — no words over words, past the page, cut or across a button (크기 2 · 3 · 4), the LCD inside and clear (15 % wider too)",
               "\(bad.prefix(10))")
     } } }
     return c

@@ -529,7 +529,7 @@ extension Walker {
         var p = monPage(m, act: act, confirm: confirm); p.place = i == -1 ? 0 : i < -1 ? 1 : 2
         p.formAction = formAction(i)?.label                                                          // 5.0: 모습 바꾸기 · 합체하기 · 분리하기 on its page
         p.megaLink = Content.gen6 && !Walker.megaForms(m.dex).isEmpty; p.mega = megaLookForm.flatMap { megaLookModel(m, $0, ref: i) }   // 5.2: 메가 모습 보기
-        p.fetch = i >= 0 && state.caught.count < 3; p.dupes = i >= 0 ? releasable(state.box[i].dex).count : 0; p.fav = inBattle ? nil : m.fav == true   // (5.2.2: no ♥ in 중복; ♡ / ♥, not in a fight)
+        p.fetch = i >= 0 && state.caught.count < 3; p.dupes = i >= 0 ? releasable(state.box[i].dex).count : 0; p.fav = inBattle || m.uid == nil ? nil : m.fav == true   // (5.2.2: no ♥ in 중복; ♡ / ♥ — not in a fight, nor without the server's uid)
         p.sel = act.flatMap { $0 < boxActs(i).count - 1 ? $0 : nil }   // the LCD's pick = a button (닫기 has none)
         let mine = evolutions.filter { $0.from == m.dex }, targets = mine.map(\.to).reduce(into: [Int]()) { if !$0.contains($1) { $0.append($1) } }
         p.evos = targets.map { to in "→ " + monNames[to] + " · " + mine.filter { $0.to == to }.map { e in evoText(e).replacingOccurrences(of: " 소지", with: "") + (e.item.map { state.count($0) > 0 ? " (있음)" : " (없음)" } ?? "") }.joined(separator: " / ") }
