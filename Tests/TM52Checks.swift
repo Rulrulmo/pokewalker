@@ -70,6 +70,25 @@ import Foundation
         check(opened && tabbed && aRow && onTM && back && across && only,
               "5.2 the bag with a machine had: 홈's 도구 opens on a row of things (the tabs with 기술머신), Tab round every tab, a row, the 기술머신 tab (TM01 · TM26) and back, ◀ ▶ across all; machines only: 홈's 도구 opens on them",
               "\(opened) \(round) \(tabbed) \(aRow) \(onTM) \(back) \(stops.sorted()) \(b.itemOrder) \(only)")
+
+        // 5.2.1 (the user via 회사 10-26: "아게 기술머신은 코스에서 안나오도록", "기술머신 대신 W는 우편 형태로 전달하자"): no machine from a course — the
+        // companion's finds (courseItem) and the radar chain's every 5th (chainReward: the course's rarest) — on every course listing one; the
+        // server's W for the copies already had comes by mail (Gift.watts) and is taken.
+        var found: [String] = [], listing = 0
+        for i in courses.indices where courses[i].items.contains(where: { Machines.number($0.item) != nil }) {
+            listing += 1
+            var cw = Walk(); cw.course = i; cw.courseSteps = 1_000_000; var rr = Seeded(s: UInt64(i + 1))
+            for _ in 0..<400 { let it = cw.courseItem(&rr); if Machines.number(it) != nil { found.append(courses[i].name + " " + it) } }
+            for n in [5, 10] { if let it = cw.chainReward(n), Machines.number(it) != nil { found.append(courses[i].name + " 연쇄 " + it) } }
+        }
+        let mw = online({ var x = s; x.watts = 1_000; return x }()), (msv, mkey) = server(mw)
+        msv.giveMail(mkey, "admin", from: "운영자", title: "기술머신 정리", body: "가진 기술머신과 같은 3장 · 장당 50W", [.watts(amount: 150)])
+        mw.screen = .home; mw.tick(Date()); drain(mw); mw.openFeature("우편함"); drain(mw)
+        if let g = mw.mails.first(where: { $0.title == "기술머신 정리" }) { mw.screen = .mail(.open(id: g.id)); mw.press(1); drain(mw) }
+        let paid = mw.state.watts == 1_150 && served(mw)?.watts == 1_150
+        check(listing > 0 && found.isEmpty && paid,
+              "5.2.1 기술머신 not from courses: the \(listing) courses listing one — 400 finds each and the chain's 5th · 10th — give none; the W mail (150W) taken: 1,000 → 1,150W",
+              "\(listing) \(Set(found).sorted().prefix(8)) \(mw.state.watts) \(String(describing: served(mw)?.watts))")
     } } }
     return c
 }
