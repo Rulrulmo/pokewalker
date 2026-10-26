@@ -56,8 +56,8 @@ struct EngineRun<R: RandomNumberGenerator> {
     /// The act itself; a reason when it can't be done.
     mutating func act1(_ act: Act) -> String? {
         if p.battle != nil { switch act { case .battle, .steps: break; default: return "배틀 중이에요" } }
-        let keepsChain: Bool = { switch act { case .steps, .radar, .radarPick, .mon(.learn): true; default: act.social } }()
-        let keepsRadar: Bool = { switch act { case .steps, .radarPick: true; default: act.social } }()
+        let keepsChain: Bool = { switch act { case .steps, .radar, .radarPick, .mon(.learn), .mon(.fav): true; default: act.social } }()
+        let keepsRadar: Bool = { switch act { case .steps, .radarPick, .mon(.fav): true; default: act.social } }()   // (5.2.2: 즐겨찾기 with the bush up)
         if !keepsChain { p.chain = nil }                                  // a held chain lets only these through (the server's acts with others don't touch play)
         if p.radar != nil, !keepsRadar { p.radar = nil; p.chain = nil }   // the radar shown: anything else gives it up
         switch act {
@@ -397,7 +397,11 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .release(let u):
             guard let ref = w.ref(uid: u), ref >= 0 else { return "놓아줄 수 없어요" }
             if w.box[ref].fused != nil { return "합체를 먼저\n풀어 주세요" }                                  // (5.0)
+            if w.box[ref].fav == true { return "즐겨찾기한 포켓몬이에요\n먼저 풀어 주세요" }                   // (5.2.2, plan 25 §5: an older app has no star to see)
             out.watts = w.release(ref)
+        case .fav(let u, let on):                                                                   // 5.2.2 (plan 25 §3): the same state again is no change
+            guard let ref = w.ref(uid: u), var m = w.mon(ref) else { return "그 포켓몬은\n없어요" }
+            m.fav = on ? true : nil; w.setMon(ref, m)
         case .releaseDupes(let dex):
             let x = w.releaseDuplicates(of: dex)
             guard x.count > 0 else { return "놓아줄 포켓몬이\n없어요" }

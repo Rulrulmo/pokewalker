@@ -16,7 +16,7 @@ extension SaveDB {
     /// trades go by held items; the bag's way stays for the old 1:1 offers, ServerTrade.receive).
     func adopt(_ m0: Mon, from giverName: String, into w: inout Walk, key: String, now: Int) throws -> (Mon, [News]) {
         var m = m0
-        m.uid = try nextUID(key, w); m.ot = m.ot ?? giverName
+        m.uid = try nextUID(key, w); m.ot = m.ot ?? giverName; m.fav = nil                          // (5.2.2, plan 25 §4: the giver's 즐겨찾기 stays there)
         try record(key, m, kind: "trade", now: now)
         _ = w.keep(m)
         guard let e = Walk.tradeEvolution(of: m, giverBag: []), let ref = w.ref(uid: m.uid!) else { return (m, []) }

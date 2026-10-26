@@ -180,6 +180,31 @@ private func setWalk(_ db: SaveDB, _ key: String, _ change: (inout Walk) -> Void
 }
 extension SaveDB { func setRaw(_ key: String, _ text: String) throws { try db.rows("UPDATE trainers SET walk = :w WHERE key = :k", ["w": .text(text), "k": .text(key)]) } }
 
+@Test func favGoneWhenTraded() async throws {                                                    // 5.2.2 (docs/plans/25 §4): the 즐겨찾기 stays with its trainer
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브")
+    _ = await act(db, "앨리스", a, 1, .steps, at: 60); _ = await act(db, "보브", b, 1, .steps, at: 60)
+    func mon(_ dex: Int, _ uid: Int, fav: Bool? = true) -> Mon { var m = Mon(dex: dex, level: 30, female: false); m.uid = uid; m.fav = fav; return m }
+    try await setWalk(db, "앨리스") { $0.box = [mon(64, 1_000_001), mon(95, 1_000_002)]; $0.lastUID = 1_000_002 }
+    try await setWalk(db, "보브") { $0.box = [mon(19, 1_000_001)]; $0.lastUID = 1_000_001 }
+    func go(_ who: String, _ s: String, _ seq: Int, _ x: Act, at t: Double) async throws -> ActReply {
+        try reply(await db.act(ActReq(id: who, session: s, seq: seq, act: x, app: "5.2"), now: base.addingTimeInterval(t)))
+    }
+    #expect(try await go("앨리스", a, 2, .tradeOffer(to: "보브", give: 1_000_001, want: 1_000_001), at: 70).out.cannot == nil)   // the server doesn't stop it (the app asks)
+    guard case .tradeOffer(let id, _, _, _)? = try await go("보브", b, 2, .steps, at: 71).out.news.first else { Issue.record("no offer"); return }
+    let done = try await go("보브", b, 3, .tradeAccept(id: id, give: nil), at: 72)                    // 1:1 (ServerTrade.receive): both ways off
+    let got = try #require(done.walk?.box.last), back = try #require(try await go("앨리스", a, 3, .steps, at: 73).walk?.box.last)
+    #expect(got.dex == 65 && got.fav == nil && back.dex == 19 && back.fav == nil)
+    let mine = try #require(back.uid)
+    try await db.sendMail("앨리스", kind: "trade", from: "보브", title: "교환", gifts: [.mon(mon: mon(41, 7))], now: 74)          // the board's (adopt): off
+    try await db.sendMail("앨리스", kind: "returned", from: "게시판", title: "돌아옴", gifts: [.mon(mon: mon(95, 1_000_002))], now: 74)   // our own back: kept
+    let mails = try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: "앨리스", session: a), now: base.addingTimeInterval(75)).body).mails
+    var seq = 4
+    for m in mails { #expect(try await go("앨리스", a, seq, .mailClaim(id: m.id, pick: nil), at: 76 + Double(seq)).out.cannot == nil); seq += 1 }
+    let text = try #require(try await db.trainer("앨리스")?.walk), w = try #require(decodeWalk(text))
+    #expect(w.box.first { $0.dex == 41 }?.fav == nil && w.box.first { $0.uid == 1_000_002 }?.fav == true && w.box.first { $0.uid == mine }?.fav == nil)
+}
+
 @Test func tradesBothWays() async throws {                                                       // docs/plans/12 M2
     let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
     let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브")

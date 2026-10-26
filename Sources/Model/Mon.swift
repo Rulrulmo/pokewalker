@@ -16,6 +16,7 @@ struct Mon: Codable, Equatable {
     var item: String? = nil              // 지닌 도구 (docs/plans/13 ⑤): out of the bag while held; used up in a fight = gone (Battle/Holding.swift)
     var form: Int? = nil                 // 5.0 (content5, docs/plans/18 §5): its form, monForms' number (1...; nil = the species' own)
     var fused: [Mon]? = nil              // 5.0 (§5.1): a 큐레무's partner, inside it until 분리 (one; an array so a Mon can hold one)
+    var fav: Bool? = nil                 // 5.2.2 (docs/plans/25): 즐겨찾기 — true, or nil (off: no key); gone when another trainer gets it
 
     var points: Int { exp ?? expTable[growthRate[dex]][max(1, min(100, level))] }   // (a raid boss fights above 100: docs/plans/16)
     static func level(dex: Int, exp: Int) -> Int { let t = expTable[growthRate[dex]]; return (1...100).last { t[$0] <= exp } ?? 1 }

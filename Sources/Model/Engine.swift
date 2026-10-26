@@ -49,6 +49,7 @@ enum MonOp: Codable, Equatable {
     case hold(uid: Int, item: String?)                                // 지니게 하기 (3.7, docs/plans/13 ⑤): from the bag (what it held goes back), nil = take it back
     case rotom(uid: Int, form: Int?), fuse(uid: Int, with: Int), unfuse(uid: Int)   // 5.0 (docs/plans/18 §5): 로토무카탈로그, 큐레무 합체 / 분리
     case form(uid: Int, item: String, form: Int?)                     // 5.1 (docs/plans/19): a key item's 모습 바꾸기 — 그라시데아꽃 · 비추는거울 · 굴레의항아리 (and the catalog); nil = its own
+    case fav(uid: Int, on: Bool)                                      // 5.2.2 (docs/plans/25): 즐겨찾기 on / off — wherever it is (동료 · 워커 · 상자)
     case evolve(uid: Int, to: Int)                                    // 5.1.3 (docs/plans/23): 배루키's pick at Lv.20+ (Walk.evoChoices): 시라소몬 106 · 홍수몬 107 · 카포에라 237
 }
 

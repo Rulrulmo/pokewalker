@@ -150,10 +150,12 @@ struct Walk: Codable, Equatable {
         guard let best = plain.max(by: { rank(box[$0]) < rank(box[$1]) }) else { return [] }
         return plain.filter { $0 != best && box[$0].perfectIVs < 3 }
     }
-    /// Lets duplicates(of:) go. Returns (how many, watts).
+    /// The ones 중복 놓아주기 lets go: duplicates(of:) less a 합체 and a 즐겨찾기 (5.2.2, plan 25 §5) — the server's and the app's count alike.
+    func releasableDuplicates(of dex: Int) -> [Int] { duplicates(of: dex).filter { box[$0].fused == nil && box[$0].fav != true } }
+    /// Lets releasableDuplicates(of:) go. Returns (how many, watts).
     mutating func releaseDuplicates(of dex: Int) -> (count: Int, watts: Int) {
         var n = 0, w = 0
-        for i in duplicates(of: dex).sorted(by: >) where box[i].fused == nil { w += release(i); n += 1 }                              // from the back, so indices stay valid
+        for i in releasableDuplicates(of: dex).sorted(by: >) { w += release(i); n += 1 }                                          // from the back, so indices stay valid
         return (n, w)
     }
     /// Lets box[i] go; a few watts back as thanks (level / 2, at least 1).
