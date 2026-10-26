@@ -238,6 +238,45 @@ private func strong(_ dex: Int, _ moves: [Int]) -> Mon { var m = Mon(dex: dex, l
     } }
 }
 
+@Test func machinesNotFound() throws {                                                             // 5.2.1 (the user via 회사 10-26): no 기술머신 from a course
+    var with: [Int] { courses.indices.filter { courses[$0].items.contains { Machines.number($0.item) != nil } } }
+    on52 { #expect(with.count == 11 && with.allSatisfy { Machines.number(courses[$0].items.last!.item) == nil }) }   // (none ends on one: the fallback stays)
+    func finds(_ i: Int) -> [String] {
+        var w = Walk(); w.course = i; w.courseSteps = 20_000; var r = Seeded(s: UInt64(i + 1))
+        return (0..<2_000).map { _ in w.courseItem(&r) }
+    }
+    try on52 {
+        for i in with {
+            let got = finds(i)
+            #expect(got.allSatisfy { Machines.number($0) == nil }, "\(courses[i].name)")
+            #expect(Set(got).isSubset(of: Set(courses[i].items.map(\.item))))                    // nothing new: the others take its share
+        }
+    }
+    var first: [Int] { courses.indices.filter { Machines.number(courses[$0].items[0].item) != nil } }   // the radar chain's every-5th reward: the rarest
+    on52 { #expect(first.count == 11) }                                                            // (with 5.0's courses: 하나 동굴, 칼로스 산)
+    func reward(_ i: Int) -> String? { var w = Walk(); w.course = i; return w.chainReward(5) }
+    try on52 {
+        for i in first { #expect(reward(i) == courses[i].items.first { Machines.number($0.item) == nil }?.item && reward(i) != nil, "\(courses[i].name)") }
+        #expect(reward(course { $0.name == "어둑어둑 동굴" }) == "은빛가루" && reward(course { $0.name == "하얀 호수" }) == "으름열매")
+    }
+    try Content.$testing.withValue(true) { try Content.$testing51.withValue(true) {               // off (or a 5.1.x app): as before
+        #expect(with.contains { i in finds(i).contains { Machines.number($0) != nil } })
+        #expect(first.allSatisfy { reward($0) == courses[$0].items[0].item })
+    } }
+}
+
+@Test func machineCleanupWalk() {                                                                  // 5.2.1's pokeserver tm-cleanup, on one save
+    var w = Walk(); w.tms = [68]
+    w.bag = ["기술머신68", "상처약", "기술머신68", "기술머신07", "기술머신07", "기술머신60"]; w.items = ["기술머신68", "기술머신10", "오랭열매"]
+    let c = w.machineCleanup()
+    #expect(c.adopted == [7, 10] && c.extra == 4)                                                  // 68 ×3 (had already) and 07's second
+    #expect(w.tms == [7, 10, 68] && w.bag == ["상처약", "기술머신60"] && w.items == ["오랭열매"])     // (TM60 never had: it stays to sell)
+    let again = w.machineCleanup()
+    #expect(again.adopted.isEmpty && again.extra == 0)
+    guard case .sell(let p) = ItemKind.of("기술머신68") else { Issue.record("not a sell item"); return }
+    #expect(p == Walk.machineSale)
+}
+
 @Test func illusion() throws {                                                                    // plan 19 §11.5: 일루전 — the last one standing, broken by a hit
     func fight(_ foes: [Mon], pvp: Bool? = nil, illusion: Bool? = nil) -> Battle {
         var b = Battle(party: [strong(150, [94, 58])], trainer: "엘리트트레이너", foes: foes); b.pvp = pvp; b.illusion = illusion

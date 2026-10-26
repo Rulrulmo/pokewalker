@@ -131,7 +131,8 @@ struct Walk: Codable, Equatable {
     mutating func chainReward(_ n: Int) -> String? {
         watts = min(9999, watts + chainBonus(n)); bestChain = max(bestChain ?? 0, n)
         guard n % 5 == 0 else { return nil }
-        let i = here.items[0].item; _ = keep(i); return i
+        let i = (Content.v52 ? here.items.first { Machines.number($0.item) == nil } : here.items.first)!.item   // (5.2.1, content52: never a 기술머신 — the next rarest)
+        _ = keep(i); return i
     }
     /// IVs sure to be 31 at chain length `chain` (like Gen VII's SOS chains, scaled to how rarely a chain here gets long): 3 → 1, 5 → 2, 7 → 3, 9 → 4.
     /// 5.0 (content5, plan 18 §4): the radar's find has its hidden ability 10 % from a chain of 5, 25 % from 10 (not a legend course's legend).
@@ -355,9 +356,11 @@ struct Walk: Codable, Equatable {
         return pick(here.group(2).filter { effSteps >= $0.steps })
     }
     /// One of the course's 10 items (what the companion picks up): rarest first, by the course's steps.
+    /// 5.2.1 (the user via 회사 10-26: "기술머신은 코스에서 안나오도록"), content52: no 기술머신 — its roll goes on to the next ones (no new item).
     func courseItem<R: RandomNumberGenerator>(_ r: inout R) -> String {
-        for f in here.items { if effSteps >= f.steps, Int.random(in: 0..<100, using: &r) < f.chance { return f.item } }
-        return here.items.last!.item
+        let finds = Content.v52 ? here.items.filter { Machines.number($0.item) == nil } : here.items
+        for f in finds { if effSteps >= f.steps, Int.random(in: 0..<100, using: &r) < f.chance { return f.item } }
+        return finds.last!.item
     }
 
     /// Returns false when the walker was full and it went straight to the box / bag.

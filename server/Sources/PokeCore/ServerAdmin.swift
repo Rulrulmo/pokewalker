@@ -35,6 +35,8 @@ let usage = """
       raid-log [<n>]                     the last raid runs: who, the tier, the boss (★ shiny), bars down, won, balls left, caught (default 30)
       tower-reset [--yes]                4.1 (docs/plans/17), once: every tower streak, best and first-time reward back to zero, runs ended
                                          (without --yes: who, nothing changed; with it: stop the service first)
+      tm-cleanup [--yes]                 5.2.1, once: 기술머신 in bags and on walkers — a number not had yet had (tms), the other copies out of the
+                                         save and back as one mail of W each (50 a copy); test IDs left out (without --yes: who, nothing changed)
       content5 [on|off]                  5.0 (docs/plans/18): the Gen V–VI switch (the running server takes it within 10 s; the app at its next login)
       relogin [now|off|<unix>]           5.0 apps' sessions from before then log in once more, at their next steps act (not mid-fight, chain or live battle)
       versions                           5.0: each trainer's app as last seen, its oldest allowed, what its updater said last
@@ -203,6 +205,40 @@ extension SaveDB {
             }
             if !dry { try db.rows("DELETE FROM tower_rewards") }
             return (lines + ["\(n) trainer(s)" + (dry ? " would be reset (nothing changed: add --yes, with the service stopped)" : " reset; tower_rewards emptied")]).joined(separator: "\n")
+        }
+    }
+
+    /// 5.2.1 (the user via 회사 10-26: "기술머신 들고 있던거 다 W로 바꾸고 소유 기술머신에 넣어주면", "W는 우편 형태로 전달하자"), once: every
+    /// trainer's 기술머신 · 비전머신 in the bag and on the walker — a number not had yet is had (Walk.tms, one copy: adoptMachines's), every
+    /// other copy leaves the save and comes back as one mail of W (Walk.machineSale each). Test IDs left out. One transaction (an act waits for
+    /// it: the service can run), each changed save at rev + 1 with the old one kept as history('admin'). dry: who and what, nothing changed.
+    func machineCleanup(now: Int, dry: Bool) throws -> String {
+        try db.transaction {
+            var lines: [String] = [], n = 0, copies = 0, mailed = 0, total = 0, over = 0
+            for row in try db.rows("SELECT key AS k, name, walk, rev FROM trainers ORDER BY key") {
+                guard let k = row.text("k"), !isTestID(k), let text = row.text("walk"), var w = decodeWalk(text), let rev = row.int("rev") else { continue }
+                let c = w.machineCleanup()
+                guard !c.adopted.isEmpty || c.extra > 0 else { continue }
+                n += 1; copies += c.extra
+                let W = c.extra * Walk.machineSale, full = W > 0 && w.watts + W > 9_999                      // (a claim keeps 9,999 at most: the mail says to spend first)
+                if full { over += 1 }
+                lines.append("\(row.text("name") ?? k): " + [c.adopted.isEmpty ? nil : "had now " + c.adopted.map(Machines.name).joined(separator: ","),
+                                                             c.extra > 0 ? "\(c.extra) more → \(W) W by mail" + (full ? " (W \(w.watts) now: over 9,999)" : "") : nil]
+                                                                .compactMap { $0 }.joined(separator: " · "))
+                if dry { continue }
+                let out = savedText(w)
+                guard walkDecodes(out) else { throw ServerError(description: "\(k): the cleaned save doesn't load — nothing changed") }
+                try db.rows("INSERT OR REPLACE INTO history (key, rev, reason, at, walk) VALUES (:k, :r, 'admin', :now, :w)", ["k": .text(k), "r": .int(rev), "now": .int(now), "w": .text(text)])
+                try db.rows("UPDATE trainers SET walk = :w, rev = :r, writer = 'admin' WHERE key = :k", ["w": .text(out), "r": .int(rev + 1), "k": .text(k)])
+                if c.extra > 0 {
+                    try sendMail(k, kind: "admin", from: "운영자", title: "기술머신 정리",
+                                 body: "코스에서 기술머신이 더 이상 나오지 않아요.\n이미 가진 기술머신 \(c.extra)장을 W로 바꿔 드려요 (장당 \(Walk.machineSale)W).\nW는 9,999까지 모여요. 가득 차 있으면 쓰고 받아 주세요.",
+                                 gifts: [.watts(amount: W)], now: now)
+                    mailed += 1; total += W
+                }
+            }
+            return (lines + ["\(n) trainer(s), \(copies) copies, \(copies * Walk.machineSale) W, \(over) over 9,999 W with it"
+                             + (dry ? " (nothing changed: add --yes)" : " — saves changed, \(mailed) mail(s) sent, \(total) W")]).joined(separator: "\n")
         }
     }
 
@@ -513,6 +549,7 @@ public func run(_ arguments: [String]) async -> Int32 {
                 out = try await db.raidRunsSet(at, now: unixNow())
             } else { out = try await db.raidRunsShow(now: unixNow()) }
         case ("tower-reset", 0): out = try await db.towerReset(now: unixNow(), dry: !yes)
+        case ("tm-cleanup", 0): out = try await db.machineCleanup(now: unixNow(), dry: !yes)
         case ("raid-log", 0), ("raid-log", 1):
             guard let n = rest.count > 0 ? Int(rest[0]) : 30 else { return fail("raid-log: <n> is a number") }
             out = try await db.raidLog(last: n)
@@ -529,5 +566,25 @@ public func run(_ arguments: [String]) async -> Int32 {
         return 0
     } catch {
         return fail("\(error)")
+    }
+}
+
+extension Walk {
+    /// tm-cleanup's W for a copy: its sale price (ItemKind.of: 기술머신 50).
+    static let machineSale = 50
+    /// 5.2.1 (pokeserver tm-cleanup): the 기술머신 · 비전머신 in the bag and on the walker — a number not had yet is had (one copy, as
+    /// adoptMachines), every other copy taken out (순서미루기's TM60, never had, stays to sell). The numbers newly had and how many copies went.
+    mutating func machineCleanup() -> (adopted: [Int], extra: Int) {
+        var had = machines, adopted: [Int] = [], extra = 0
+        func sweep(_ list: inout [String]) {
+            for (k, i) in list.enumerated().reversed() {
+                guard let no = Machines.number(i), !Machines.skipped.contains(no) else { continue }
+                list.remove(at: k)
+                if had.insert(no).inserted { adopted.append(no) } else { extra += 1 }
+            }
+        }
+        sweep(&bag); sweep(&items)
+        if !adopted.isEmpty { tms = had.sorted() }
+        return (adopted.sorted(), extra)
     }
 }

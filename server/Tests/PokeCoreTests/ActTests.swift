@@ -778,6 +778,31 @@ extension SaveDB {
 
 // 10-23 (the user via 회사: "특성 성격 성별 및 기술도 … 다 최대 효율로", "이로치도 가능한지"): --ivs --evs --ability --moves, checked before anything is
 // sent; the made one passes SaveCheck and comes out of the claim as it was (its moves, EVs, 이로치 in shinyOwned)
+@Test func tmCleanup() async throws {                                                              // 5.2.1 (the user via 회사 10-26): once, the copies back as W by mail
+    let (db, path) = try tempDB(); defer { try? FileManager.default.removeItem(atPath: path) }
+    let a = try await newTrainer(db, "앨리스"), b = try await newTrainer(db, "보브"), z = try await newTrainer(db, "zz123456")
+    for (id, s) in [("앨리스", a), ("보브", b), ("zz123456", z)] { #expect(await act(db, id, s, 1, .steps, at: 30).status == 200) }   // (a save from the first act)
+    try await setWalk(db, "앨리스") { $0.tms = [68]; $0.bag += ["기술머신68", "기술머신68", "기술머신07"]; $0.items = ["기술머신68"]; $0.watts = 100 }
+    try await setWalk(db, "zz123456") { $0.bag += ["기술머신68", "기술머신68"] }                         // a test ID: left out
+    try await setWalk(db, "보브") { $0.bag += ["기술머신10", "기술머신10"]; $0.watts = 9_980 }                // near 9,999: counted (the mail says to spend first)
+    let rev0 = try #require(try await db.trainer("앨리스")).rev
+    let dry = try await db.machineCleanup(now: 100, dry: true)
+    #expect(dry == "보브: had now 기술머신10 · 1 more → 50 W by mail (W 9980 now: over 9,999)\n앨리스: had now 기술머신07 · 3 more → 150 W by mail\n2 trainer(s), 4 copies, 200 W, 1 over 9,999 W with it (nothing changed: add --yes)")
+    #expect(try #require(try await db.trainer("앨리스")).rev == rev0)
+    let done = try await db.machineCleanup(now: 100, dry: false)
+    #expect(done.hasSuffix("2 trainer(s), 4 copies, 200 W, 1 over 9,999 W with it — saves changed, 2 mail(s) sent, 200 W"))
+    #expect(try #require(try await db.trainer("앨리스")).rev == rev0 + 1)
+    #expect(try await db.machineCleanup(now: 101, dry: true) == "0 trainer(s), 0 copies, 0 W, 0 over 9,999 W with it (nothing changed: add --yes)")
+    #expect(decodeWalk(try #require(try await db.trainer("zz123456")?.walk))?.bag.filter { $0 == "기술머신68" }.count == 2)
+    let next = try reply(await act(db, "앨리스", a, 2, .steps, at: 60))                               // the next act brings the cleaned save
+    let w = try #require(next.walk)
+    #expect(w.tms == [7, 68] && !w.bag.contains { Machines.number($0) != nil } && w.items.isEmpty && w.watts == 100)
+    let mail = try #require(try JSONDecoder().decode(MailReply.self, from: await db.mailList(MailReq(id: "앨리스", session: a), now: base.addingTimeInterval(61)).body).mails.first)
+    #expect(mail.title == "기술머신 정리" && mail.gifts == [.watts(amount: 150)] && mail.body?.contains("3장") == true && mail.body?.contains("9,999") == true)
+    let claim = try reply(await db.act(ActReq(id: "앨리스", session: a, seq: 3, act: .mailClaim(id: mail.id, pick: nil), app: "5.2"), now: base.addingTimeInterval(62)))
+    #expect(claim.out.cannot == nil && claim.walk?.watts == 250)
+}
+
 @Test func mailGiftMonSet() async throws {
     try await Content.$testing.withValue(true) { try await Content.$testing51.withValue(true) {
         var r = Seeded(s: 383)
