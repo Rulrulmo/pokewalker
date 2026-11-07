@@ -203,5 +203,6 @@ struct PairView: Codable, Equatable {
 struct StoryScene: Codable, Equatable {
     var id: String, stage: Int, at: String
     var pages: [StoryPage]
+    var title: String? = nil                                             // its chapter's name ("기지로 가는 길"): the scene's head reads "3장 · 기지로 가는 길"
 }
 struct StoryPage: Codable, Equatable { var who: String? = nil; var lines: [String] }

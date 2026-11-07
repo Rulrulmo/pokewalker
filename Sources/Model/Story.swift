@@ -5,8 +5,11 @@ import Foundation
 
 enum Story {
     static let professor = "플라타느 박사", lysandre = "플라드리"
+    /// The chapters' names (ExpStage.chapter's).
+    static let chapters = [1: "수상한 무리", 2: "전설의 이야기", 3: "기지로 가는 길", 4: "플라드리", 5: "남은 하나"]
     private static func scene(_ id: String, _ stage: Int, _ at: String, _ pages: [(String?, String, String)]) -> StoryScene {
-        StoryScene(id: id, stage: stage, at: at, pages: pages.map { StoryPage(who: $0.0, lines: [$0.1, $0.2]) })
+        let ch = Expeditions.since53.first { $0.id == id }?.stages[safe: stage]?.chapter ?? 0
+        return StoryScene(id: id, stage: stage, at: at, pages: pages.map { StoryPage(who: $0.0, lines: [$0.1, $0.2]) }, title: chapters[ch])
     }
     static let scenes: [StoryScene] = {
         let s = Expeditions.story, s5 = Expeditions.story5, p = professor

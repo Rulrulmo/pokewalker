@@ -175,6 +175,8 @@ private func reply(_ r: Reply) throws -> ActReply { try JSONDecoder().decode(Act
         let wa = try #require(heard.walk)
         #expect(wa.expeditions?["레시라무"]?.on == true && wa.expeditions?["지가르데"]?.on == false)
         #expect(try await go(c, .pairInvite(to: a, id: "제크로무")).out.cannot?.hasSuffix(" 이미\n짝이 있어요") == true)
+        let cards = try JSONDecoder().decode(TeamReply.self, from: await db.team(TeamReq(id: c, session: s[c]!), now: base.addingTimeInterval(clock)).body).cards
+        #expect(cards.first { $0.name == a }?.pair == true && cards.first { $0.name == a }?.app53 == true && cards.first { $0.name == c }?.pair == nil)
         // the steps: 300,000 between them, 30,000 each — A 280,000 and B 20,000 isn't yet
         try await db.pairSteps(a, 280_000, now: Int(base.timeIntervalSince1970) + 100)
         try await db.pairSteps(b, 20_000, now: Int(base.timeIntervalSince1970) + 100)
@@ -210,4 +212,14 @@ private func reply(_ r: Reply) throws -> ActReply { try JSONDecoder().decode(Act
         #expect(report.contains("closed") && report.contains("done"))
         #expect(try await db.pairRows("state IN ('asked', 'on')").isEmpty)
     } }
+}
+
+@Test func storyScenes() {                                                                       // plan 19 §12.10: every scene on a stage that's there, its chapter named; two short lines a page
+    for s in Story.scenes {
+        let e = Expeditions.since53.first { $0.id == s.id }
+        #expect(e != nil && e!.stages.indices.contains(s.stage) && ["start", "won"].contains(s.at) && s.title != nil && !s.pages.isEmpty)
+        if s.at == "won" { #expect([.trainer, .fight].contains(e!.stages[s.stage].kind)) }
+        for p in s.pages { #expect(p.lines.count == 2 && p.lines.allSatisfy { $0.count <= 16 }, "\(p.lines)") }
+    }
+    #expect(Set(Story.scenes.map { "\($0.id)/\($0.stage)/\($0.at)" }).count == Story.scenes.count)
 }

@@ -47,6 +47,9 @@ extension SaveDB {
                 var c = TeamCard(name: row.text("name") ?? k, walk: w, today: s.today, week: s.week, idle: max(0, Int(now.timeIntervalSince1970 - last)))
                 c.raid = try raidWeekOf(k, now: now, kind: Content.v51 ? "legend" : nil)           // 16 §4.4: this week's runs (5.1: the legend raid's alone,
                 if Content.v51 { c.megaWeek = try raidWeekOf(k, now: now, kind: "mega") }          // the Mega raid's apart — plan 19 §9, the 랭킹)
+                if Content.v51, Content.on52 || isTestID(key), Content.on53 || isTestID(key) {     // 5.3 (plan 19 §12.6): who can be asked to pair
+                    c.pair = try pairOn(k) != nil ? true : nil; c.app53 = knows(try appSeen(k), content53App) || isTestID(k) ? true : nil
+                }
                 return c
             }
             let cards = try keys.compactMap(card)

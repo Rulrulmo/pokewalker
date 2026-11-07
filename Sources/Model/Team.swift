@@ -14,6 +14,7 @@ struct TeamCard: Codable, Equatable {
     var raid: RaidWeek? = nil                                          // 4.0 (docs/plans/16 §4.4): this week's runs (nil: none)
     var megaStones: Int? = nil                                         // 5.0 (docs/plans/18 §6.4, content5): 메가스톤 n / MegaRaid.stones.count
     var megaWeek: RaidWeek? = nil                                      // 5.1 (docs/plans/19 §9, content51): this week's Mega raid runs (`raid` the legend raid's then)
+    var pair: Bool? = nil, app53: Bool? = nil                           // 5.3 (plan 19 §12.6, content53): walking with a 협동 pair now; on a 5.3 app (can be asked)
 
     init(name: String, walk w: Walk, today: Int, week: Int, idle: Int) {
         self.name = name; companion = w.companion; walker = w.caught
