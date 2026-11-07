@@ -1161,7 +1161,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
                             steps: p.steps(key), theirSteps: p.steps(o.key), goal: Expeditions.pairGoal, min: Expeditions.pairMin, ends: p.ends)
         }
     }
-    func pairCard(_ k: String, _ c: inout TeamCard) { if Content.v53 { c.pair = pairIndexOn(k) != nil; c.app53 = !oldApps53.contains(k) } }
+    func pairCard(_ k: String, _ c: inout TeamCard) { if Content.v53 { c.pair = pairIndexOn(k) != nil ? true : nil; c.app53 = oldApps53.contains(k) ? nil : true } }   // (as the server's: true or no key)
     // 12 §2.4 (3.5): 친구 — pairs, requests (to → from)
     var friends: Set<String> = [], friendAsks: [String: Set<String>] = [:]
     static func pair(_ a: String, _ b: String) -> String { a < b ? a + "|" + b : b + "|" + a }

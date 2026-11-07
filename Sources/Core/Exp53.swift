@@ -389,7 +389,7 @@ extension Walker {
     func pairPickPane(_ d: Int, _ sel: Int) -> PaneContent {
         let cards = pairFriends(), s = min(max(0, sel), max(0, cards.count - 1))
         let rows = cards.map { c in
-            let paired = c.pair == true, old = c.app53 == false
+            let paired = c.pair == true, old = c.app53 != true                                              // (the server's: true, or no key — before 5.3)
             return PairPickModel.Row(name: c.name, dex: c.companion.dex, value: "이번 주 " + man(c.week) + "걸음", walking: Walker.walkingNow(c),
                                      pill: paired ? "짝 있음" : old ? "5.3 아님" : nil, off: paired || old)
         }
@@ -403,7 +403,7 @@ extension Walker {
         let cards = pairFriends()
         fb.text("짝 청하기", 2, 0); fb.text(monNames[d], 94, 1, 2, right: true, small: true); fb.fill(0, 12, 96, 1, 2)
         guard let c = cards[safe: min(sel, max(0, cards.count - 1))] else { fb.text("친구가 없다", 0, 30, 2, center: true); return }
-        let off = c.pair == true || c.app53 == false
+        let off = c.pair == true || c.app53 != true
         fb.mon(c.companion, Int(now.timeIntervalSinceReferenceDate * 2) % 2, 0, 2)
         fb.text(c.name, 94, 15, 3, right: true, small: true); fb.text("이번 주 " + man(c.week), 94, 26, 2, right: true, small: true)
         fb.text(off ? (c.pair == true ? "짝 있음" : "5.3 아님") : "● 청하기", 94, 52, off ? 1 : 3, right: true, small: true)
@@ -411,7 +411,7 @@ extension Walker {
     func pairPickPress(_ k: Int, _ d: Int, _ sel: Int, _ now: Date) {
         let cards = pairFriends(), n = max(1, cards.count)
         if k != 1 { screen = .pairPick(dex: d, sel: (sel + (k == 0 ? -1 : 1) + n) % n); return }
-        guard let c = cards[safe: sel], c.pair != true, c.app53 != false else { return }
+        guard let c = cards[safe: sel], c.pair != true, c.app53 == true else { return }
         pairInvite(c.name, monNames[d], back: .pairPick(dex: d, sel: sel), now)
     }
     /// 짝 청하기 (asked first): one ask out at a time — a new one takes the last back.
@@ -424,7 +424,7 @@ extension Walker {
         guard Content.v53, isFriend(c.name), !isMe(c) else { return nil }
         if pairs.contains(where: { $0.state == "sent" && $0.with == c.name }) { return "청했어요" }
         if c.pair == true { return "짝 있음" }
-        if c.app53 == false { return "5.3 아님" }
+        if c.app53 != true { return "5.3 아님" }
         if pairWalking != nil { return "짝 걷는 중" }
         return "짝 청하기"
     }

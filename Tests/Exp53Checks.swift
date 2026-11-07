@@ -38,8 +38,9 @@ import Foundation
             var s = Walk(); s.companion = Mon(dex: 150, level: 100, female: false); s.companion.known = [85, 58, 94, 247]   // (10만볼트 first: 델빌 is dark)
             s.caught = [Mon(dex: 94, level: 100, female: false)]; s.caught[0].known = [188, 247, 94, 85]; return s
         }
-        let a = online(strong(), server: srv, host: ha), b = online(strong(), server: srv, host: hb), d = online(Walk(), server: srv)
-        srv.befriend(a.myName, b.myName); srv.befriend(a.myName, d.myName); act(b); act(d); team(a); team(b)
+        let a = online(strong(), server: srv, host: ha), b = online(strong(), server: srv, host: hb), d = online(Walk(), server: srv), o = online(Walk(), server: srv)
+        srv.befriend(a.myName, b.myName); srv.befriend(a.myName, d.myName); srv.befriend(a.myName, o.myName); srv.oldApps53 = [o.myName.lowercased()]   // o: before 5.3 (no app53)
+        act(b); act(d); act(o); team(a); team(b)
         let ka = a.myName.lowercased(), kb = b.myName.lowercased()
 
         // the tabs and rows
@@ -60,14 +61,15 @@ import Foundation
         a.press(1)
         var picked = false; if case .pairPick(643, _) = a.screen { picked = true }
         let friends = a.paneContent(Date()).pairPick, rowB = friends?.rows.firstIndex { $0.name == b.myName }, rowD = friends?.rows.first { $0.name == d.myName }
+        let rowO = friends?.rows.first { $0.name == o.myName }, cardO = a.teamRows(0).first { $0.card.name == o.myName }.map { a.pairCardButton($0.card) }
         a.screen = .pairPick(dex: 643, sel: rowB ?? 0); a.press(1); drain(a)
         let asked = ha.asked.last == b.myName + "에게 짝을 청할까요?" && srv.acts.contains(.pairInvite(to: b.myName, id: "레시라무")) && says(a).last == "3일 안에 받으면 짝이 돼요"
         team(a); tab(a, "협동", "레시라무")
         let sentRow = a.exp52Pane(0).exp?.rows.first, sentGo = a.exp52Pane(0).exp?.go
         check(firstPage?.go == "짝 청하기" && firstPage?.go2 == "혼자 시작" && firstPage?.steps.map(\.title) == ["함께 걷기", "보스전", "볼 5개"] && picked
-              && rowD?.off == true && rowD?.pill == "짝 있음" && friends?.rows[rowB ?? 0].off == false && asked && sentRow?.chip == "협동 · 청함" && sentGo == "청하기 거두기",
-              "5.3 짝 청하기: 협동 탭 (짝 청하기 · 혼자 시작; 함께 걷기 → 보스전 → 볼 5개) → the friends (one in a pair dimmed: 짝 있음) → asked → .pairInvite; the row: 협동 · 청함, 청하기 거두기",
-              "\(String(describing: firstPage?.go)) \(String(describing: firstPage?.go2)) \(picked) \(String(describing: rowD)) \(asked) \(ha.asked) \(says(a)) \(String(describing: sentRow)) \(String(describing: sentGo))")
+              && rowD?.off == true && rowD?.pill == "짝 있음" && rowO?.off == true && rowO?.pill == "5.3 아님" && cardO == "5.3 아님" && friends?.rows[rowB ?? 0].off == false && asked && sentRow?.chip == "협동 · 청함" && sentGo == "청하기 거두기",
+              "5.3 짝 청하기: 협동 탭 (짝 청하기 · 혼자 시작; 함께 걷기 → 보스전 → 볼 5개) → the friends (one in a pair dimmed: 짝 있음; one before 5.3 — no app53 — 5.3 아님, on its card too) → asked → .pairInvite; the row: 협동 · 청함, 청하기 거두기",
+              "\(String(describing: firstPage?.go)) \(String(describing: firstPage?.go2)) \(picked) \(String(describing: rowD)) \(String(describing: rowO)) \(String(describing: cardO)) \(asked) \(ha.asked) \(says(a)) \(String(describing: sentRow)) \(String(describing: sentGo))")
 
         // the other side: the news, 홈's row, the ask's row → my dragon (two cards) → 짝 짓기; both on their dragons, the pair on
         act(b)
