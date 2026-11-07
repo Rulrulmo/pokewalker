@@ -82,6 +82,7 @@ extension Walker {
         case .companion:
             if x.steps >= s.need { return (kind + " · " + state, "받을 수 있어요", 1, false, true, false, false) }
             return (kind + " · " + state, "동행 \(man(x.steps))/\(man(s.need))", Double(x.steps) / Double(max(1, s.need)), false, false, false, false)
+        case .pair, .trainer, .dex, .pick: return (kind + " · " + state, "", 0, false, false, false, false)   // 5.3 (plan 19 §12.6): the 5.3 app's
         case .fight:
             let fight = e.legend == 384 ? "결전" : "보스전"
             if let b = x.balls { return (kind + " · 볼", x.on ? "볼 \(b)/\(s.balls) · 던질 수 있어요" : "볼 \(b)개 남음 · 멈춤", 1, false, x.on, false, false) }
@@ -97,6 +98,7 @@ extension Walker {
             case .walk: items.append(((expPlace(s) ?? "") + " 코스", "\(man(s.need))걸음", i, false))
             case .companion: items.append(("검사와 걷기", "\(man(s.need))걸음", i, false))
             case .meet: items.append(("만남", "5,000걸음마다", i, false))
+            case .pair, .trainer, .dex, .pick: break                                                   // (5.3's: the 5.3 app)
             case .fight:
                 items.append((e.legend == 384 ? "결전" : "보스전", e.legend == 384 ? "Lv.\(s.level)" : "하루 1번", i, false))
                 if s.balls > 0 { items.append(("볼 \(s.balls)개", "한 개 \(Int(RaidRules.newOdds * 100))%", i, true)) }
@@ -113,7 +115,7 @@ extension Walker {
                 case .walk, .companion: sub = "\(man(x.steps))/\(man(s.need))"
                 case .collect: sub = "\(x.n)/\(s.need)"
                 case .fight: sub = it.balls ? "남은 \(x.balls ?? 0)개" : expFought(x, now) ? "내일 다시" : "오늘 1번"
-                case .meet: break
+                case .meet, .pair, .trainer, .dex, .pick: break
                 }
             }
             return ExpModel.Step(title: it.title, sub: sub, state: st)
@@ -142,6 +144,7 @@ extension Walker {
             if !x.on { return (["멈춘 원정 · 모은 것은 그대로예요", "멈춘 동안은 걸음이 쌓이지 않아요"] + (x.balls != nil ? ["볼 \(x.balls ?? 0)개가 남아 있어요"] : []), "이어 하기", .start) }
             if expClaimable(e) { return ([s.kind == .companion ? "세 검사와 \(man(s.need))걸음을 걸었어요" : s.kind == .collect ? "모은 \(s.piece) \(s.need)개로 " + josa(name, "을", "를") + " 조립해요" : "\(man(s.need))걸음을 다 걸었어요"], expClaimLabel(e), .claim) }
             switch s.kind {
+            case .pair, .trainer, .dex, .pick: return ([], nil, nil)                                    // (5.3's: the 5.3 app)
             case .meet:
                 let rc = roamCourse(e), place = rc.map { courses[$0].name }, here = rc == state.course, meets = x.meets ?? 0
                 let first = !s.counts(state.here) ? "지금 \(state.here.name) · 만남은 하나 코스에서만 쌓여요"
@@ -253,6 +256,7 @@ extension Walker {
                 if expClaimable(e) { fb.line("\(unit) \(p.n)/\(st.need)", x, 31, 94 - x, 3); fb.line("● " + expClaimLabel(e), x, 44, 94 - x, 3); return }
                 bar(26, Double(p.n) / Double(max(1, st.need))); fb.line("\(unit) \(p.n)/\(st.need)", x, 31, 94 - x, 2)
                 fb.line("다음 \(unit)", x, 40, 94 - x); fb.line("\(max(0, st.stepsPer - p.steps).formatted())걸음", x, 49, 94 - x)
+            case .pair, .trainer, .dex, .pick: break                                                   // (5.3's: the 5.3 app)
             case .fight:
                 if let b = p.balls { fb.line("볼 \(b)/\(st.balls)", x, 26, 94 - x, 2); fb.line("한 개 \(Int(RaidRules.newOdds * 100))%", x, 37, 94 - x); fb.line("● 던지기", x, 48, 94 - x, 3); return }
                 fb.line((e.legend == 384 ? "결전" : "보스전") + " · 바 \(st.bars)", x, 26, 94 - x, 2)

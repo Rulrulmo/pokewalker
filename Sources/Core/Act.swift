@@ -141,6 +141,7 @@ extension Walker {
         case .expeditionDone: break                                                                // (its claim shows it: expPress)
         case .expeditionStage(let id, let st): showExpStage(id, st, now)                           // 5.2 (plan 19 §11.7, Exp52.swift): a step done — 홈's card
         case .expeditionGift(_, let item): screen = .say([josa(item, "을", "를") + " 받았다!"], next: .home, since: now)   // (a fight's or a claim's end says it first)
+        case .pairAsked, .pairOn, .pairClosed: break                                               // 5.3 (plan 19 §12.3): 협동's — shown once the 5.3 app is made (content53 off till then)
         case .mailNew(_, let t): mailNews(t)                                                       // 3.9 (15 §6 A): quiet — the 우편함's dot, a notification
         }
     }
