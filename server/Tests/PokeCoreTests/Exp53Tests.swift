@@ -211,6 +211,15 @@ private func reply(_ r: Reply) throws -> ActReply { try JSONDecoder().decode(Act
         let report = try await db.pairsReport(now: Int(base.timeIntervalSince1970) + Int(clock))
         #expect(report.contains("closed") && report.contains("done"))
         #expect(try await db.pairRows("state IN ('asked', 'on')").isEmpty)
+        // C deleted while paired with B: B told, C's rows gone (A · B's done pair kept)
+        _ = try await go(c, .friendRequest(to: b)); _ = try await go(b, .friendAccept(from: c))
+        #expect(try await go(c, .pairInvite(to: b, id: "레시라무")).out.cannot == nil)
+        guard case .pairAsked(let p5, _, _)? = try await go(b, .steps).out.news.first(where: { if case .pairAsked = $0 { true } else { false } }) else { Issue.record("no ask 5"); return }
+        #expect(try await go(b, .pairAccept(pair: p5, id: "레시라무")).out.cannot == nil)
+        _ = try await db.delete(c, now: Int(base.timeIntervalSince1970) + Int(clock))
+        #expect(try await go(b, .steps).out.news.contains(.pairClosed(pair: p5, with: c, why: "풀림")))
+        #expect(try await db.pairRows("a = :k OR b = :k", ["k": .text(c)]).isEmpty)
+        #expect(try await db.pairRows("state = 'done'").count == 1)
     } }
 }
 

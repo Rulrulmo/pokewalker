@@ -304,6 +304,13 @@ extension SaveDB {
             try db.rows("DELETE FROM bids WHERE key = :k OR listing IN (SELECT id FROM listings WHERE key = :k)", ["k": .text(k)])
             try db.rows("DELETE FROM listings WHERE key = :k", ["k": .text(k)])
             try db.rows("DELETE FROM duels WHERE a = :k OR b = :k", ["k": .text(k)])
+            for p in try pairRows("state IN ('asked', 'on') AND (a = :k OR b = :k)", ["k": .text(k)]) {    // 5.3: its asks and pair end, the other told;
+                let why = p.state == "on" ? "풀림" : p.a == k ? "취소" : "거절", name = k == p.a ? p.aName : p.bName    // its rows go but a pair done
+                try closePair(p, why, now: now)                                                                    // the other hasn't moved on from yet
+                try post(.pairClosed(pair: p.id, with: name, why: why), to: p.other(k).key, from: k, fromName: name, app: content53App, now: now)
+            }
+            try db.rows("DELETE FROM exp_pairs WHERE (a = :k OR b = :k) AND NOT (state = 'done' AND ((a = :k AND b_moved = 0) OR (b = :k AND a_moved = 0)))",
+                        ["k": .text(k)])
             return "\(k): deleted, \(kept)"
         }
     }
