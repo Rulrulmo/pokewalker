@@ -79,7 +79,8 @@ extension SaveDB {
                                      got: e.legend > 0 ? got.contains(e.legend) : (try encoreLeft(e, key: key, got: got)).isEmpty && s.mine >= e.min,
                                      encore: e.legend > 0 ? nil : try encoreLeft(e, key: key, got: got))
             }
-            return try JSONEncoder().encode(ExpReply(events: views))
+            let five3 = (Content.v51 && Content.on52 && Content.on53) || isTestID(key)                // 5.3 (plan 19 §12.6): the pairs and the story's scenes
+            return try JSONEncoder().encode(ExpReply(events: views, pairs: five3 ? try pairViews(key, now: unix) : nil, story: five3 ? Story.scenes : nil))
         }
     }
 

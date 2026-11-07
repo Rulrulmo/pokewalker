@@ -248,3 +248,33 @@ extension EngineRun {
         return nil
     }
 }
+
+// MARK: 5.3: 협동's pair, the server's (plan 19 §12.3) — the saves' side of it
+extension Walk {
+    /// A 협동 dragon on now (the pair's take: ours by pairAccept, the asker's by the server with it): the others stopped, its legend rolled if
+    /// new. One past its pair step (the boss's) can't pair.
+    mutating func pairTake<R: RandomNumberGenerator>(_ id: String, _ r: inout R) -> String? {
+        if let why = pairCan(id) { return why }
+        var x = expeditions?[id] ?? ExpProgress()
+        for k in (expeditions ?? [:]).keys.sorted() where k != id && expeditions?[k]?.on == true { expeditions?[k]?.on = false }   // stopped, kept
+        if x.mon == nil { x = ExpProgress(mon: Expeditions.legend(Expeditions.of(id)?.legend ?? 643, &r), done: x.done) }
+        x.on = true
+        expeditions = (expeditions ?? [:]).merging([id: x]) { $1 }
+        return nil
+    }
+    /// Whether this dragon can walk with a pair now (nil: yes).
+    func pairCan(_ id: String) -> String? {
+        guard Content.v53, let e = Expeditions.of(id), e.kind == .pair, e.steps.first?.kind == .pair else { return "레시라무 · 제크로무만\n고를 수 있어요" }
+        if let x = expeditions?[id], x.mon != nil, (x.stage ?? 0) > 0 { return "이미 함께 걷기를\n끝낸 원정이에요" }
+        return nil
+    }
+    /// The pair's walk done: this dragon's boss is next (the steps alone back to 0). Its news, or nil when it isn't at its pair step.
+    mutating func pairDone(_ id: String) -> News? {
+        guard var x = expeditions?[id], x.mon != nil, (x.stage ?? 0) == 0, Expeditions.of(id)?.steps.first?.kind == .pair else { return nil }
+        x.stage = 1; x.n = 0; x.steps = 0
+        expeditions?[id] = x
+        return .expeditionStage(id: id, stage: 1)
+    }
+    /// Whether this trainer walks this dragon now (a pair holds while it does).
+    func pairWalking(_ id: String) -> Bool { expeditions?[id]?.on == true && (expeditions?[id]?.stage ?? 0) == 0 }
+}

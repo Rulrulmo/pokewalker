@@ -243,7 +243,7 @@ struct EngineRun<R: RandomNumberGenerator> {
         if p.raid != nil, Engine.raidTurns > 0, !(beats.last?.ends ?? false), b.turnNo >= Engine.raidTurns {   // a raid fight's turns are up (if there's a limit)
             beats += [.note(.it, text: josa(monNames[b.wild.dex], "의", "의") + " 기세에 밀려났다!"), .fled]; b.over = true
         }
-        if p.exp != nil, !expBoss(b), !(beats.last?.ends ?? false), b.turnNo >= Expeditions.roamTurns { beats += [.fled]; b.over = true }   // 5.2: the roamer runs off after 3
+        if p.exp != nil, !expBoss(b), b.trainer == nil, !(beats.last?.ends ?? false), b.turnNo >= Expeditions.roamTurns { beats += [.fled]; b.over = true }   // 5.2: the roamer runs off after 3 (5.3: not the story's trainer)
         if let last = beats.last, last.ends { beats += ended(&b, last) }
         out.battle = b; out.beats = beats
         if out.end == nil { p.battle = b }

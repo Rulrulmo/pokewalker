@@ -10,7 +10,9 @@ let content52App = "5.2"                                                   // do
 /// 5.2 (plan 19 §11.6): this request by 5.2's rules or not — the app's version (5.2 on; a 5.1.x one plays as before) and a test ID's switch
 /// (on with content52 off). Around the engine's run.
 func content52Scope<T>(_ key: String, app: String?, _ body: () throws -> T) rethrows -> T {
-    try Content.$app52.withValue(knows(app, content52App)) { try Content.$testing52.withValue(isTestID(key) ? true : nil, operation: body) }
+    try Content.$app52.withValue(knows(app, content52App)) { try Content.$testing52.withValue(isTestID(key) ? true : nil) {   // 5.3 (plan 19 §12.5): content53 the same way
+        try Content.$app53.withValue(knows(app, content53App)) { try Content.$testing53.withValue(isTestID(key) ? true : nil, operation: body) }
+    } }
 }
 
 extension SaveDB {
@@ -24,7 +26,7 @@ extension SaveDB {
     /// When content5 first went on (unix; nil: never): the Mega raid's rotation counts its weeks from that one (MegaRaid.round).
     func content5Since() throws -> Int? { try db.rows("SELECT value FROM settings WHERE name = 'content5_since'").first?.text("value").flatMap { Int($0) } }
     /// Content.on (and 5.1's on51) from the settings: at start, then every few seconds (pokeserver content5 runs in another process).
-    func syncContent() { Content.on = (try? content5()) ?? false; Content.on51 = (try? content51()) ?? false; Content.onDaily = (try? raidDaily()) ?? false; Content.onSlots = (try? slotOdds()) ?? false; Content.onChoice = (try? evoChoice()) ?? false; Content.onDuelMega = (try? duelMega()) ?? false; Content.on52 = (try? content52()) ?? false }
+    func syncContent() { Content.on = (try? content5()) ?? false; Content.on51 = (try? content51()) ?? false; Content.onDaily = (try? raidDaily()) ?? false; Content.onSlots = (try? slotOdds()) ?? false; Content.onChoice = (try? evoChoice()) ?? false; Content.onDuelMega = (try? duelMega()) ?? false; Content.on52 = (try? content52()) ?? false; Content.on53 = (try? content53()) ?? false }
 
     // MARK: 5.1's raids by the day (docs/plans/20): bosses each day, 2칸 at 0:00, 10 runs a day
     func raidDaily() throws -> Bool { try db.rows("SELECT value FROM settings WHERE name = 'raid_daily'").first?.text("value") == "on" }
@@ -63,6 +65,15 @@ extension SaveDB {
         let five1 = try content51()
         return "content52 " + (on ? "on" : "off") + " — the running server takes it within \(content5Every) s, for \(content52App) apps' requests"
             + (on && !five1 ? " (content51 is off: nothing of it shows until that's on)" : "")
+    }
+
+    // MARK: 5.3's switch (docs/plans/19 §12.5): on top of content52; a request plays by it only from a 5.3 app (content53App), a test ID's always
+    func content53() throws -> Bool { try db.rows("SELECT value FROM settings WHERE name = 'content53'").first?.text("value") == "on" }
+    func setContent53(_ on: Bool) throws -> String {
+        try db.rows("INSERT INTO settings (name, value) VALUES ('content53', :v) ON CONFLICT (name) DO UPDATE SET value = :v", ["v": .text(on ? "on" : "off")])
+        let five2 = try content52()
+        return "content53 " + (on ? "on" : "off") + " — the running server takes it within \(content5Every) s, for \(content53App) apps' requests"
+            + (on && !five2 ? " (content52 is off: nothing of it shows until that's on)" : "")
     }
 
     // MARK: 5.1's switch (docs/plans/19): the 전설 원정, on top of content5

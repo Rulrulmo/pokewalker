@@ -43,6 +43,8 @@ let usage = """
       update-hint urgent|calm [<iso>]    5.0: /v1/update's hint outside the signed manifest — urgent (and install by when)
       content51 [on|off]                 5.1 (docs/plans/19): the 전설 원정 switch, on top of content5 (the server within 10 s, the app at its next login)
       content52 [on|off]                 5.2 (docs/plans/19 §11): 배회 · 시련 · 레쿠쟈 원정, 기술머신, 일루전 · 프리폴, on top of content51 — for 5.2 apps' requests only (test IDs: always)
+      content53 [on|off]                 5.3 (docs/plans/19 §12): 협동 · 스토리 원정, on top of content52 — for 5.3 apps' requests only (test IDs: always)
+      pairs                              5.3: 협동's asks and pairs (and the week's closed ones) — who, their dragons, the 14 days, the steps
       events                             5.1: the team events — each week, the team's steps against its goal, who walked enough, who got the mythical
       event-schedule <yyyy-MM-dd>        5.1: the six weeks from that day (0:00 KST), every other week, and the encore two weeks after the last
       event-cancel <id>                  5.1: one not begun goes; one on ends now
@@ -442,6 +444,11 @@ public func run(_ arguments: [String]) async -> Int32 {
         case ("content52", 1):
             guard ["on", "off"].contains(rest[0]) else { return fail("content52: on | off") }
             out = try await db.setContent52(rest[0] == "on")
+        case ("content53", 0): out = "content53 " + ((try await db.content53()) ? "on" : "off")
+        case ("content53", 1):
+            guard ["on", "off"].contains(rest[0]) else { return fail("content53: on | off") }
+            out = try await db.setContent53(rest[0] == "on")
+        case ("pairs", 0): out = try await db.pairsReport(now: unixNow())
         case ("raid-daily", 0): out = "raid-daily " + ((try await db.raidDaily()) ? "on" : "off")
         case ("raid-daily", 1):
             guard ["on", "off"].contains(rest[0]) else { return fail("raid-daily: on | off") }

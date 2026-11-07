@@ -91,7 +91,9 @@ extension SaveDB {
                     try db.rows("INSERT INTO steps_day (key, day, n) VALUES (:k, :d, :n) ON CONFLICT (key, day) DO UPDATE SET n = n + :n",
                                 ["k": .text(id.key), "d": .text(day), "n": .int(taken)])
                     try teamEventSteps(id.key, taken, now: unix)                                     // 5.1 (plan 19): a team event's week counts them
+                    try pairSteps(id.key, taken, now: unix)                                          // 5.3 (plan 19 §12.3): a 협동 pair's side
                 }
+                row.play.paired = try pairOn(id.key) != nil ? true : nil                             // (5.3: steps alone don't count while paired)
 
                 var ids = Issued(next: try nextUID(id.key, w)), g = SystemRandomNumberGenerator()
                 var refused: String? = nil                                                          // the server's no before the engine (its steps still walk)
@@ -163,6 +165,10 @@ extension SaveDB {
                         if let why { out.cannot = why; w = was } else if w != was { out.changed = true }
                     case .raidQuit:                                                                     // 16 §4.2: the ball stage given up
                         try raidRunQuit(id.key, now: now)
+                    case .pairInvite, .pairAccept, .pairCancel:                                         // 5.3 (plan 19 §12.3): ServerPair.swift (two saves at once)
+                        let was = w; var more: [News] = []
+                        if let why = try pairAct(r.act, key: id.key, name: t.name, walk: &w, news: &more, now: unix) { out.cannot = why; w = was }
+                        else { out.news += more; if w != was { out.changed = true } }
                     default: break
                     }
                 }
@@ -171,6 +177,7 @@ extension SaveDB {
                 try megaMaster(id.key, walk: w, now: unix)                                            // 5.0 (plan 18 §6.4): all 48 stones → the 칭호, as mail
                 try dexRewards(id.key, walk: &w, now: unix)                                           // 5.0 (plan 18 §15): 도감 업적, as mail
                 try teamEventGifts(id.key, now: unix)                                                 // 5.1 (plan 19): a team event's mythical, as mail
+                if Content.v53 { try pairTick(id.key, name: t.name, walk: &w, news: &out.news, now: unix) }   // 5.3 (plan 19 §12.3): a pair done, ended, out of time
                 let mail = try delivery(id.key, app: r.app, now: unix)                                 // what teammates sent (only what this app can read)
                 out.news += mail.news
                 out.news = out.news.filter { appKnows(r.app, $0) }

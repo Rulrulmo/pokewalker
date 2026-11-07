@@ -127,6 +127,7 @@ actor SaveDB {
             try? c.exec("ALTER TABLE raid_runs ADD COLUMN kind TEXT")                                // 5.0: NULL = the legend raid, 'mega' (plan 18 §6.4)
             try? c.exec("ALTER TABLE trainers ADD COLUMN session_at INTEGER")                        // 5.0.x: when the session began (pokeserver relogin)
             try c.exec(expeditionSchema)                                                                   // 5.1 (docs/plans/19): the team events
+            try c.exec(pairSchema)                                                                         // 5.3 (plan 19 §12.7): 협동's asks and pairs
             try? c.exec("ALTER TABLE mail ADD COLUMN deleted_at INTEGER")                            // 5.1 (plan 19 §9): a mail out of the list
             try? c.exec("ALTER TABLE app_reports ADD COLUMN install_log TEXT")                       // 5.1.2: the updater's install.log, its last lines
             try? c.exec("ALTER TABLE duels ADD COLUMN mega INTEGER")                                 // 5.1.4 (plan 24): Mega Evolution allowed in this duel
@@ -218,6 +219,7 @@ actor SaveDB {
                 if Content.evoChoice { reply["evoChoice"] = .b(true) }                               // 5.1.3 (plan 23): Content.onChoice, the same way
                 if Content.duelMega { reply["duelMega"] = .b(true) }                                 // 5.1.4 (plan 24): Content.onDuelMega, the same way
                 if Content.v51, Content.on52 || isTestID(id.key) { reply["content52"] = .b(true) }  // 5.2 (plan 19 §11.6): Content.on52 (its requests by the app's version)
+                if Content.v51, Content.on52 || isTestID(id.key), Content.on53 || isTestID(id.key) { reply["content53"] = .b(true) }   // 5.3 (plan 19 §12.5): the same way
                 return Reply(200, reply,
                              note: t.device != nil && t.device != r.device ? "login from \(r.device_name.prefix(64)), took it from \(t.lastDevice ?? "?")" : nil)
             }
@@ -254,6 +256,7 @@ actor SaveDB {
                 if Content.evoChoice { reply["evoChoice"] = .b(true) }
                 if Content.duelMega { reply["duelMega"] = .b(true) }
                 if Content.v51, Content.on52 || isTestID(id.key) { reply["content52"] = .b(true) }
+                if Content.v51, Content.on52 || isTestID(id.key), Content.on53 || isTestID(id.key) { reply["content53"] = .b(true) }
                 return Reply(200, reply, note: "new trainer \(id.name) from \(r.device_name.prefix(64))")
             }
         }
