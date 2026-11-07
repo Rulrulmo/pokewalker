@@ -8,7 +8,9 @@ import Foundation
 enum ExpKind: String, Codable { case collect, team, roam, trial, pair, story }
 
 /// 5.2 (docs/plans/19 §11.2): an expedition in steps, one after another (ExpProgress.stage). 지가르데 (5.1) is its own fields, one collect.
-enum ExpStep: String, Codable { case collect, walk, meet, fight, companion }
+/// 5.3 (§12.2): pair (a friend's and ours together, or ours alone), trainer (a set team, as often as it takes), dex (a region's species caught:
+/// passed by itself), pick (one of two legends, the act expPick).
+enum ExpStep: String, Codable { case collect, walk, meet, fight, companion, pair, trainer, dex, pick }
 struct ExpStage: Equatable {
     let kind: ExpStep
     var need = 0                         // collect: pieces; walk · companion: steps
@@ -20,6 +22,11 @@ struct ExpStage: Equatable {
     var level = 0, perfect = 0, bars = 0 // fight: the boss (Lv., its 31s, how many times it stands up); meet: the roamer's level
     var balls = 0                        // fight: the ball stage after a win (0: the legend comes with the win)
     var with: Set<Int> = []              // companion: the steps count while the companion is one of these
+    // 5.3 (plan 19 §12.4): the story's chapter (1–5: its scenes and the list's "3장"; 0 = none), a trainer's name and team (all at `level`,
+    // `perfect` 31s), dex: `need` species of `region` caught, pick: the two to choose from
+    var chapter = 0
+    var trainer = "", foes: [Int] = []
+    var picks: [Int] = []
     /// The steps walked on course c count here.
     func counts(_ c: Course) -> Bool { (region.map { c.region == $0 } ?? true) && (arts.map { $0.contains(c.art) } ?? true) }
 }
@@ -51,7 +58,7 @@ enum Expeditions {
     static let level = 50, perfect = 3, shinyOdds = 32
     static let patch = "특성패치"
     /// 5.1's, and 5.2's with content52 (Content.v52).
-    static var personal: [Expedition] { Content.v52 ? since51 + since52 : since51 }
+    static var personal: [Expedition] { Content.v53 ? since51 + since52 + since53 : Content.v52 ? since51 + since52 : since51 }
     static let since51: [Expedition] = [
         Expedition(id: "지가르데", kind: .collect, legend: 718, title: "지가르데 셀 모으기", need: 50, stepsPer: 3000, radarOdds: 1.0 / 30, region: 650...721,
                    piece: "지가르데 셀", gift: patch),
@@ -81,6 +88,36 @@ enum Expeditions {
                                 ExpStage(kind: .walk, need: 30_000, arts: [.mountain]), boss(70, balls: 0)]),
         ]
     }()
+    /// 5.3 (plan 19 §12.2–4, the user 11-02 "5.3 추천대로 시작하자"): 협동 — 레시라무 · 제크로무 walked with a friend (300,000 together in 14
+    /// days, 30,000 each at least) or alone (200,000, no end), then the boss; 큐레무 after both (유전자쐐기 with it). 스토리 — 칼로스 이야기's four
+    /// chapters (칼로스 20,000 steps and a 플레어단 trainer each; 칼로스 도감 5 before the third), the pick and the final fight (it comes with the
+    /// win), then 5장 for the other one (칼로스 도감 10, 칼로스 40,000 steps, the fight).
+    static let kalos = 650...721
+    static let pairGoal = 300_000, pairMin = 30_000, pairDays = 14, soloGoal = 200_000, inviteDays = 3
+    static let story = "칼로스 이야기", story5 = "칼로스 이야기 5장", storyPicks = [716, 717]   // 제르네아스 · 이벨타르
+    static let since53: [Expedition] = {
+        func boss(_ lv: Int, balls: Int, chapter: Int = 0) -> ExpStage { ExpStage(kind: .fight, level: lv, perfect: 4, bars: 3, balls: balls, chapter: chapter) }
+        func dragon(_ id: String, _ dex: Int) -> Expedition {
+            Expedition(id: id, kind: .pair, legend: dex, title: id + "와 함께 걷기", stages: [ExpStage(kind: .pair, need: pairGoal), boss(60, balls: 5)])
+        }
+        func walk(_ n: Int, _ ch: Int) -> ExpStage { ExpStage(kind: .walk, need: n, region: kalos, chapter: ch) }
+        func flare(_ ch: Int, _ who: String, _ lv: Int, _ team: [Int]) -> ExpStage { ExpStage(kind: .trainer, level: lv, perfect: 2, chapter: ch, trainer: who, foes: team) }
+        return [
+            dragon("레시라무", 643), dragon("제크로무", 644),
+            Expedition(id: "큐레무", kind: .pair, legend: 646, title: "큐레무의 동굴", gift: patch,
+                       stages: [ExpStage(kind: .walk, need: 30_000, arts: [.cave]), boss(60, balls: 5)], after: ["레시라무", "제크로무"], item: "유전자쐐기"),
+            Expedition(id: story, kind: .story, legend: 716, title: "칼로스 이야기", gift: patch, stages: [
+                walk(20_000, 1), flare(1, "플레어단 조무래기", 35, [228, 453]),
+                walk(20_000, 2), flare(2, "플레어단 간부", 45, [510, 229, 435]),
+                ExpStage(kind: .dex, need: 5, region: kalos, chapter: 3), walk(20_000, 3), flare(3, "플레어단 과학자", 55, [169, 668, 354]),
+                walk(20_000, 4), flare(4, "플레어단 보스 플라드리", 65, [620, 430, 668, 130]),
+                ExpStage(kind: .pick, chapter: 4, picks: storyPicks), boss(70, balls: 0, chapter: 4),
+            ]),
+            Expedition(id: story5, kind: .story, legend: 717, title: "칼로스 이야기 5장", stages: [
+                ExpStage(kind: .dex, need: 10, region: kalos, chapter: 5), walk(40_000, 5), boss(70, balls: 0, chapter: 5),
+            ], after: [story]),
+        ]
+    }()
     static func of(_ id: String) -> Expedition? { personal.first { $0.id == id } }
     /// 배회: where the roamer is today — one of the 하나 courses this trainer has open, the same all day (by the day and the expedition: the
     /// team sees the same course where it's open). nil: none open (the first, 하나 들판, always is with content5).
@@ -107,10 +144,13 @@ struct ExpProgress: Codable, Equatable {
     // 5.2 (plan 19 §11.7): the step on (nil = the first), meetings banked (배회), the roamer's HP and status left (nil = full, none), the day
     // of the last boss fight (Walk.key), the ball stage's balls (nil = none). `steps` and `n` are the step's own (they start over at the next).
     var stage: Int? = nil, meets: Int? = nil, hp: Int? = nil, status: Status? = nil, fought: String? = nil, balls: Int? = nil
+    // 5.3 (plan 19 §12.7): the story's pick (716 · 717), kept past its finish (5장 is the other one). A pair step's `steps` are the ones walked
+    // alone (200,000); the pair's own are the server's (PairView).
+    var pick: Int? = nil
     init(on: Bool = false, n: Int = 0, steps: Int = 0, mon: Mon? = nil, done: Int = 0, stage: Int? = nil, meets: Int? = nil, hp: Int? = nil,
-         status: Status? = nil, fought: String? = nil, balls: Int? = nil) {
+         status: Status? = nil, fought: String? = nil, balls: Int? = nil, pick: Int? = nil) {
         self.on = on; self.n = n; self.steps = steps; self.mon = mon; self.done = done
-        self.stage = stage; self.meets = meets; self.hp = hp; self.status = status; self.fought = fought; self.balls = balls
+        self.stage = stage; self.meets = meets; self.hp = hp; self.status = status; self.fought = fought; self.balls = balls; self.pick = pick
     }
     init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -120,6 +160,7 @@ struct ExpProgress: Codable, Equatable {
         stage = try c.decodeIfPresent(Int.self, forKey: .stage); meets = try c.decodeIfPresent(Int.self, forKey: .meets)
         hp = try c.decodeIfPresent(Int.self, forKey: .hp); status = try c.decodeIfPresent(Status.self, forKey: .status)
         fought = try c.decodeIfPresent(String.self, forKey: .fought); balls = try c.decodeIfPresent(Int.self, forKey: .balls)
+        pick = try c.decodeIfPresent(Int.self, forKey: .pick)
     }
 }
 
@@ -145,4 +186,22 @@ struct TeamEventView: Codable, Equatable {
     var id: Int, legend: Int, starts: Int, ends: Int, goal: Int, min: Int, team: Int, mine: Int, got: Bool
     var encore: [Int]? = nil
 }
-struct ExpReply: Codable, Equatable { var events: [TeamEventView] }      // the one on (or the next), then the past ones, newest first
+struct ExpReply: Codable, Equatable {
+    var events: [TeamEventView]                                          // the one on (or the next), then the past ones, newest first
+    var pairs: [PairView]? = nil, story: [StoryScene]? = nil             // 5.3 (plan 19 §12.7): this trainer's 협동 asks and pair; the story's scenes
+}
+/// 5.3: one 협동 ask or pair, as this trainer sees it. state: "sent" (my ask, waiting), "got" (a friend's ask to me: answer with pairAccept
+/// and my dragon, or pairCancel), "on" (walking together until `ends`). mine · theirs: each one's dragon (mine nil on a "got" one: not picked yet).
+/// steps · theirSteps: walked since it began (goal together, min each). ends: unix — an ask's last moment, a pair's.
+struct PairView: Codable, Equatable {
+    var id: Int, with: String, state: String
+    var mine: String?, theirs: String
+    var steps: Int, theirSteps: Int, goal: Int, min: Int, ends: Int
+}
+/// 5.3: a scene of the story — shown once when its stage comes (the app keeps what it showed; 다시 보기 any time). at: "start" (the stage
+/// begins), "won" (after its trainer or fight is won). pages: two lines a page, about 14 letters a line; who: the speaker (nil: the narration).
+struct StoryScene: Codable, Equatable {
+    var id: String, stage: Int, at: String
+    var pages: [StoryPage]
+}
+struct StoryPage: Codable, Equatable { var who: String? = nil; var lines: [String] }

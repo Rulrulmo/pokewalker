@@ -37,6 +37,12 @@ enum Content {
     @TaskLocal static var testing52: Bool? = nil
     @TaskLocal static var app52 = true
     static var v52: Bool { v51 && (testing52 ?? on52) && app52 }
+    /// 5.3 (docs/plans/19 §12): 협동 (레시라무 · 제크로무 → 큐레무) · 스토리 (제르네아스 · 이벨타르) 원정 (pokeserver content53), on top of
+    /// content52; the app takes it from the login reply's content53. As 5.2's: a request plays by it only from a 5.3 app (app53), a test ID always.
+    nonisolated(unsafe) static var on53 = false
+    @TaskLocal static var testing53: Bool? = nil
+    @TaskLocal static var app53 = true
+    static var v53: Bool { v52 && (testing53 ?? on53) && app53 }
 }
 
 private func patched<T>(_ base: [T], _ changes: [Int: T]) -> [T] { var a = base; for (k, v) in changes { a[k] = v }; return a }

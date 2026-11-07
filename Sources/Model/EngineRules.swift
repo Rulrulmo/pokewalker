@@ -87,13 +87,14 @@ struct EngineRun<R: RandomNumberGenerator> {
         case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .raidQuit, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
              .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept,
              .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove, .claim, .visitSend, .visitEnd, .duelQueue, .duelQueueCancel, .duelPick,
-             .mailClaim, .mailClaimAll, .mailDelete, .mailDeleteAll:
-            return nil                                                                              // the server's: other trainers' saves, the inbox, the raid, friends, the board, live battles
+             .mailClaim, .mailClaimAll, .mailDelete, .mailDeleteAll, .pairInvite, .pairAccept, .pairCancel:
+            return nil                                                                              // the server's: other trainers' saves, the inbox, the raid, friends, the board, live battles, 협동's pairs
         case .duelParty(let uids): return duelParty(uids)
         case .expStart(let id): return expStart(id)                                                // 5.1 (docs/plans/19): ExpeditionRules.swift
         case .expClaim(let id): return expClaim(id)
         case .expFight(let id, let party): return expFight(id, party)                              // 5.2 (plan 19 §11.3)
         case .expBall(let id): return expBall(id)
+        case .expPick(let id, let dex): return expPick(id, dex)                                    // 5.3 (plan 19 §12.4)
         case .raid(let party, _): return raid(party)                                               // (the tier: the server's boss, p.raidBoss)
         case .megaRaid(let party, _, _, _, _): return raid(party)                                  // (5.0: its boss, the server's, as its Mega)
         }
@@ -254,6 +255,13 @@ struct EngineRun<R: RandomNumberGenerator> {
         p.battle = nil
         var end = BattleEnd(result: result)
         if p.exp != nil, expBoss(b) {                                                               // 5.2 (plan 19 §11.3): an expedition's boss — its bars, a win's ball stage
+            w.writeBack(p.party ?? [], b.mine.map(\.mon)); p.party = nil
+            let h = p.held; p.held = 0; walkNow(h)
+            expEnded(b, last, &end)
+            growth(); out.end = end
+            return []
+        }
+        if p.exp != nil, b.trainer != nil {                                                         // 5.3 (plan 19 §12.4): the story's trainer — EXP as a fight's, a win the next step
             w.writeBack(p.party ?? [], b.mine.map(\.mon)); p.party = nil
             let h = p.held; p.held = 0; walkNow(h)
             expEnded(b, last, &end)
@@ -444,6 +452,7 @@ struct EngineRun<R: RandomNumberGenerator> {
     // MARK: the news, in home's order
     mutating func finish() {
         w.adoptMachines()                                                                           // 5.2 (plan 19 §11.4): a course's machine (or one from before) kept for good
+        expGates()                                                                                  // 5.3 (plan 19 §12.4): a dex step passed by what was caught
         for i in courses.indices where !start.unlocked(i) && w.unlocked(i) { events.append(.unlock(course: i)) }
         if (w.owned ?? []).count > (start.owned ?? []).count { events.append(.dex(count: (w.owned ?? []).count)) }
         var order: [Int] = []
@@ -486,7 +495,8 @@ extension Act {
         switch self {
         case .greet, .tradeOffer, .tradeAccept, .tradeDecline, .tradeCancel, .raidBall, .raidQuit, .friendRequest, .friendAccept, .friendDecline, .friendRemove,
              .marketList, .marketUnlist, .marketBid, .marketWithdraw, .marketAccept, .duelChallenge, .duelAccept, .duelDecline, .duelCancel, .duelMove,
-             .claim, .visitSend, .visitEnd, .duelParty, .duelQueue, .duelQueueCancel, .duelPick, .mailClaim, .mailClaimAll, .mailDelete, .mailDeleteAll: true
+             .claim, .visitSend, .visitEnd, .duelParty, .duelQueue, .duelQueueCancel, .duelPick, .mailClaim, .mailClaimAll, .mailDelete, .mailDeleteAll,
+             .pairInvite, .pairAccept, .pairCancel: true
         default: false
         }
     }

@@ -44,6 +44,8 @@ func actName(_ a: Act) -> String {
     case .expStart(let i): "expedition start \(i)"; case .expClaim(let i): "expedition claim \(i)"
     case .expFight(let i, let p): "expedition fight \(i)" + (p.map { " with \($0)" } ?? ""); case .expBall(let i): "expedition ball \(i)"
     case .mailDelete(let i): "mail delete #\(i)"; case .mailDeleteAll: "mail delete all"
+    case .pairInvite(let to, let i): "pair invite → \(to) (\(i))"; case .pairAccept(let p, let i): "pair accept #\(p) (\(i))"; case .pairCancel(let p): "pair cancel #\(p)"
+    case .expPick(let i, let d): "expedition pick \(i) \(d)"
     }
 }
 /// News kinds an app before 3.8 can't read are kept from it (the inbox's min_app does the same for teammates' mail).

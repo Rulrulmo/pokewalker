@@ -14,15 +14,23 @@ extension EngineRun {
         guard !x.on else { return "이미 하고 있는\n원정이에요" }
         if let why = expAfter(e) { return why }
         for k in (w.expeditions ?? [:]).keys.sorted() where w.expeditions?[k]?.on == true { w.expeditions?[k]?.on = false }   // stopped, kept
-        if x.mon == nil { x = ExpProgress(mon: Expeditions.legend(e.legend, &r), done: x.done) }
+        if x.mon == nil { x = ExpProgress(mon: Expeditions.legend(expLegend(e), &r), done: x.done, pick: x.pick) }
         x.on = true
         w.expeditions = (w.expeditions ?? [:]).merging([id: x]) { $1 }
+        expGates()
         return nil
+    }
+    /// What it gives: its legend — 5.3's 칼로스 이야기 제르네아스 until the pick (its 이로치 rolled now, kept through the pick), 5장 the one
+    /// 칼로스 이야기 didn't pick (its last pick).
+    func expLegend(_ e: Expedition) -> Int {
+        guard e.id == Expeditions.story5, let k = w.expeditions?[Expeditions.story]?.pick else { return e.legend }
+        return Expeditions.storyPicks.first { $0 != k } ?? e.legend
     }
     /// The ones to finish first (5.2: 랜드로스 after 토네로스 · 볼트로스, 케르디오 after the three).
     func expAfter(_ e: Expedition) -> String? {
         let left = e.after.filter { (w.expeditions?[$0]?.done ?? 0) == 0 }
         guard !left.isEmpty else { return nil }
+        if left.contains(Expeditions.story) { return "칼로스 이야기를\n먼저 끝내 주세요" }                // (5.3: 5장)
         return e.after.count == 3 ? "세 검사를\n먼저 잡아 주세요" : left.count == 1 ? josa(left[0], "을", "를") + "\n먼저 잡아 주세요" : josa(left.joined(separator: "와 "), "을", "를") + "\n먼저 잡아 주세요"
     }
     /// expClaim: its last step done — 지가르데's 50 cells (조립), 케르디오's walk with a sword — its legend into the box (Outcome.mon), the
@@ -41,7 +49,7 @@ extension EngineRun {
     mutating func expFinish(_ e: Expedition, _ x: inout ExpProgress, _ legend: Mon) {
         var m = legend
         issue(&m, "expedition"); _ = w.keep(m); out.mon = m
-        x = ExpProgress(done: x.done + 1)
+        x = ExpProgress(done: x.done + 1, pick: e.kind == .story ? x.pick : nil)               // (5.3: 칼로스 이야기's pick stays: 5장 is the other)
         let first = x.done == 1, gift = first ? e.gift : nil
         if let g = gift { w.bag.append(g) }
         w.expeditions?[e.id] = x
@@ -81,10 +89,36 @@ extension EngineRun {
                 if got > 0 { x.meets = (x.meets ?? 0) + got }
                 x.steps = (x.meets ?? 0) >= Expeditions.meetsMax ? 0 : x.steps - got * s.stepsPer
                 if got > 0 { events.append(.expedition(id: e.id, n: x.meets ?? 0, need: Expeditions.meetsMax)) }
-            case .fight: continue
+            case .pair:                                                                             // 5.3: alone (no pair on: Play.paired), 200,000 → the boss
+                guard p.paired != true, x.steps < Expeditions.soloGoal else { continue }
+                x.steps = min(Expeditions.soloGoal, x.steps + n)
+                if x.steps >= Expeditions.soloGoal { expNext(e, &x) }
+            case .fight, .trainer, .dex, .pick: continue
             }
             w.expeditions?[e.id] = x
         }
+    }
+    /// 5.3: a dex step (칼로스 도감 n) passes by itself once that many of the region are caught — at the start, and after any act.
+    mutating func expGates() {
+        guard Content.v53, w.expeditions != nil else { return }
+        for e in Expeditions.personal {
+            guard var x = w.expeditions?[e.id], x.on, x.mon != nil else { continue }
+            var moved = false
+            while e.steps.indices.contains(x.stage ?? 0), case let s = e.steps[x.stage ?? 0], s.kind == .dex,
+                  (w.owned ?? []).filter({ s.region?.contains($0) ?? true }).count >= s.need { expNext(e, &x); moved = true }
+            if moved { w.expeditions?[e.id] = x }
+        }
+    }
+    /// 5.3 (plan 19 §12.4): expPick — the story's pick: its legend now that one (the 이로치 rolled at the start kept), on to the final fight.
+    mutating func expPick(_ id: String, _ dex: Int) -> String? {
+        guard Content.v53, let e = Expeditions.of(id), var x = w.expeditions?[id], x.on, let m = x.mon, e.steps.indices.contains(x.stage ?? 0),
+              e.steps[x.stage ?? 0].kind == .pick else { return "고를 때가\n아니에요" }
+        guard e.steps[x.stage ?? 0].picks.contains(dex) else { return "고를 수 없는\n포켓몬이에요" }
+        var n = Expeditions.legend(dex, &r); n.shiny = m.shiny
+        x.mon = n; x.pick = dex
+        expNext(e, &x)
+        w.expeditions?[id] = x
+        return nil
     }
     /// A radar find on this course: the one going on's pieces, one more at its odds.
     mutating func expRadar() {
@@ -131,15 +165,32 @@ extension EngineRun {
             x.fought = w.day; w.expeditions?[id] = x
             let refs = party.map { $0.compactMap { w.ref(uid: $0) } } ?? w.party(anyLegends: true).map(\.ref)
             p.party = refs.map { w.id($0)! }
-            var boss = Mon.wild(e.legend, level: s.level, shiny: x.mon?.shiny, perfect: s.perfect, &r)
+            var boss = Mon.wild(x.mon?.dex ?? e.legend, level: s.level, shiny: x.mon?.shiny, perfect: s.perfect, &r)   // (5.3: the story's pick)
             boss.known = boss.withSignature(boss.moves)
             if e.legend == 384 { boss.known = boss.with(620, boss.moves) }                           // 레쿠쟈: 화룡점정 (no Mega: its side's is used)
             var b = Battle(wild: boss, party: refs.compactMap { w.mon($0) }); b.seed = r.next()
             b.theirs += Array(repeating: Fighter(boss), count: max(1, s.bars) - 1)                   // a bar down: it stands up again
             b.raidTier = 3; b.megaUsed = [false, true]; b.expedition = id                             // bars' EXP as a run's; the app's raid screen
-            w.see(e.legend)
+            w.see(boss.dex)
             out.beats = b.begin(weather: nil, &r); p.battle = b; p.exp = id; out.battle = b
             return nil
+        case .trainer:                                                                              // 5.3: the story's trainer — any time, until it's beaten
+            if let u = party {
+                guard (1...3).contains(u.count), Set(u).count == u.count else { return "1~3마리를\n골라 주세요" }
+                guard u.allSatisfy({ w.ref(uid: $0) != nil }) else { return "그 포켓몬은\n없어요" }
+            }
+            let refs = party.map { $0.compactMap { w.ref(uid: $0) } } ?? w.party(anyLegends: true).map(\.ref)
+            p.party = refs.map { w.id($0)! }
+            let foes = s.foes.map { d -> Mon in var m = Mon.wild(d, level: s.level, perfect: s.perfect, &r); m.known = m.towerMoves(); return m }
+            var b = Battle(party: refs.compactMap { w.mon($0) }, trainer: s.trainer, foes: foes); b.seed = r.next()
+            b.expedition = id
+            for d in s.foes { w.see(d) }
+            out.beats = b.begin(weather: nil, &r); p.battle = b; p.exp = id; out.battle = b
+            return nil
+        case .dex:
+            return "칼로스 도감이\n\(s.need)종 있어야 해요"
+        case .pick:
+            return "먼저 골라 주세요"
         default:
             return "아직 걸음이\n모자라요"
         }
@@ -172,8 +223,13 @@ extension EngineRun {
             end.bars = b.theirs.filter { !$0.alive }.count
             if last == .won {
                 if s.balls > 0 { x.balls = s.balls; end.balls = s.balls }
-                else if var m = x.mon { m.known = m.with(620, m.moves); expFinish(e, &x, m); return }   // 레쿠쟈 (R2): it comes, knowing 화룡점정
+                else if var m = x.mon {                                                             // it comes with the win: 레쿠쟈 (R2) knowing 화룡점정, 5.3's story
+                    if m.dex == 384 { m.known = m.with(620, m.moves) }
+                    expFinish(e, &x, m); return
+                }
             }
+        } else if s.kind == .trainer, last == .won {                                                // 5.3: the story's trainer beaten — the next step
+            expNext(e, &x)
         }
         w.expeditions?[id] = x
     }

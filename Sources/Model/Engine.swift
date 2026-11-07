@@ -38,6 +38,9 @@ enum Act: Codable, Equatable {
     case expStart(id: String), expClaim(id: String)              // 5.1 (docs/plans/19): a personal 전설 원정 begun (its legend rolled), its legend taken once it's all gathered
     case expFight(id: String, party: [Int]? = nil), expBall(id: String)   // 5.2 (plan 19 §11.3): meet the roamer (a meeting) or the boss (once a day, 1–3 of ours); a ball of the stage after a win
     case mailDelete(id: Int), mailDeleteAll                      // 5.1 (plan 19 §9): a mail out of the 우편함 (claimed, or nothing to claim); every such one
+    case pairInvite(to: String, id: String)                      // 5.3 (plan 19 §12.3): ask a friend to walk 협동 with me — my dragon (레시라무 · 제크로무)
+    case pairAccept(pair: Int, id: String), pairCancel(pair: Int)   // yes, with my dragon (both go on now); an ask taken back · said no to, a pair ended
+    case expPick(id: String, dex: Int)                           // 5.3 (§12.4): the story's pick — 제르네아스 716 · 이벨타르 717
 }
 enum BattleCmd: Codable, Equatable { case fight(slot: Int), ball, item(name: String, on: Int? = nil), swap(to: Int), replace(to: Int), run, forfeit
     case megaFight(slot: Int)                                          // 5.0: Mega Evolve, then this move (docs/plans/18 §14.4)
@@ -76,6 +79,9 @@ enum News: Codable, Equatable {
     case expeditionDone(id: String, dex: Int, gift: String?)                                // 5.1: it's done — its legend came (Outcome.mon); gift: its kind's first, the 특성패치
     case expeditionStage(id: String, stage: Int)                                            // 5.2 (plan 19 §11.7): the next step is on (its walk done, the fight's ball stage over …)
     case expeditionGift(id: String, item: String)                                           // 5.2: what else its first finish gave (랜드로스's 비추는거울), in the bag
+    case pairAsked(pair: Int, from: String, id: String)                                     // 5.3 (plan 19 §12.3): a friend asks me to walk 협동 (their dragon)
+    case pairOn(pair: Int, with: String, id: String)                                        // 5.3: my ask was taken — we walk together now (their dragon)
+    case pairClosed(pair: Int, with: String, why: String)                                   // 5.3: an ask or a pair is over — why: "거절" · "취소" · "풀림" · "기한"
 }
 struct RadarShown: Codable, Equatable { var bush: Int, window: Double, chain: Int }
 /// result: caught · won · lost · fled (it got away) · ran (we did) · forfeit. chain: a wild fight's (0 = over); streak · bp: the tower's.
@@ -125,6 +131,7 @@ struct Play: Codable, Equatable {
     var raid: String? = nil                                      // the week of the raid fight on (its damage goes to that week's boss)
     var raidBoss: RaidBoss? = nil                                // this week's boss as the server has it, for a raid act (set by the server)
     var exp: String? = nil                                       // 5.2 (docs/plans/19 §11.3): the 전설 원정 whose fight is on (Battle.expedition too)
+    var paired: Bool? = nil                                      // 5.3 (§12.3): a 협동 pair is on (set by the server for the act): steps go to the pair, not alone
 }
 /// 12 §4: the week's boss and what's left of the team's HP. 4.0 (16): tier set = a run's own boss (left unused).
 struct RaidBoss: Codable, Equatable { var week: String; var boss: Mon; var left: Int; var tier: Int? = nil; var mega: Int? = nil }   // mega: the Mega raid's form (5.0)
