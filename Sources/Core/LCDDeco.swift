@@ -149,7 +149,7 @@ extension Walker {
         case .tower(nil): return .tower
         case .raid(.lobby), .raid(.tier): return raidMega ? .mega : .raid
         case .card: return .card
-        case .course, .expedition: return .course
+        case .course, .expedition, .pairPick, .twoPick, .talk: return .course
         default: return nil
         }
     }

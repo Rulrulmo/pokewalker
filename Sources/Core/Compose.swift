@@ -127,6 +127,9 @@ extension Walker {
         case .traded(let gave, let got, _, let since): tradedLCD(&fb, gave, got, since, now)
         case .goals(let s): goalsLCD(&fb, s)
         case .expedition(let s): if Content.v52 { exp52LCD(&fb, s) } else { expLCD(&fb, s) }
+        case .pairPick(let d, let s): pairPickLCD(&fb, d, s, now)
+        case .twoPick(let k, let s): twoPickLCD(&fb, k, s, now)
+        case .talk(let p): talkLCD(&fb, p, now)
         case .rank(let t, let s, let a): rankLCD(&fb, t, s, a, now)
         case .assemble(let m, let since):
             let u = now.timeIntervalSince(since)
@@ -392,6 +395,9 @@ extension Walker {
             return PaneContent(radar: RadarModel(live: (1.5...(1.5 + radarWindow(chain))).contains(u) ? b : nil, cursor: c, chain: chain, season: state.season))
         case .goals(let s): return PaneContent(goals: goalsModel(s))
         case .expedition(let s): return Content.v52 ? exp52Pane(s) : expPane(s)
+        case .pairPick(let d, let s): return pairPickPane(d, s)
+        case .twoPick(let k, let s): return twoPickPane(k, s)
+        case .talk(let p): return talkPane(p)
         case .rank(let t, let s, let a): return rankPane(t, s, a)
         case .card(let p): return PaneContent(card: CardModel(page: p, title: state.shownTitle, deco: state.deco, stones: Content.gen6 ? "메가스톤 \(MegaRaid.collected(state))/\(MegaRaid.stones.count)" : nil,
                                                               titles: (state.titles ?? []).count > 1 ? Array((state.titles ?? []).reversed()) : [], picked: state.cardTitle, picking: titlePick))   // 5.0: two or more 칭호: pick the card's
@@ -455,6 +461,12 @@ extension Walker {
         case (.home, 9340): toggleMegaHome()                                                       // 5.2: 홈's 메가 pill (MegaLook.swift)
         case (.expedition(let s), 9200...9219): if code - 9200 == s { press(1) } else { screen = .expedition(code - 9200) }   // 5.1: a row; the picked one again: its button
         case (.expedition, 9230): press(1)
+        case (.expedition(let s), 9231): exp53Second(s, Date())                                                                                 // 5.3 (Exp53.swift): the grey button
+        case (.pairPick(let d, _), 9600...9619): screen = .pairPick(dex: d, sel: code - 9600)
+        case (.pairPick, 9630), (.twoPick, 9660), (.talk, 9680): press(1)
+        case (.twoPick(let k, _), 9650...9651): screen = .twoPick(kind: k, sel: code - 9650)
+        case (.twoPick(let k, _), 9661): twoPickSecond(k, Date())                                                                           // 거절 · back
+        case (.talk, 9681): talkEnd()                                                                                                          // 건너뛰기
         case (.expedition, 9240...9249): exp52Tab(code - 9240)                                                                              // 5.2: a kind's tab
         case (.goals(let s), 9100...9120): if code - 9100 == s { goalsPress(1, s) } else { screen = .goals(code - 9100) }   // 5.0: a row; the picked one again opens it
         case (.card, 5209): titlePick.toggle()                                                     // 5.0: the 칭호 pill → the 칭호 to show (two or more)
@@ -469,6 +481,7 @@ extension Walker {
         case (.team(_, TeamTab.visits, false), 6440...6479): screen = .team(sel: code - 6440, tab: TeamTab.visits, card: false)   // 3.8.5: a row: picked (the LCD shows it)
         case (.team(let sel, let tab, true), 6034): if let c = teamRows(tab)[safe: sel]?.card, isFriend(c.name), Walker.walkingNow(c), visitTo(c.name) == nil { startVisit(c.name) }   // 맡기기 (3.8.5: one a friend)
         case (.team(let sel, let tab, true), 6033): if let c = teamRows(tab)[safe: sel]?.card { friendAct(.friendRequest(to: c.name), back: screen, Date()) { _ in [josa(c.name, "에게", "에게"), "친구 신청을 했다!"] } }
+        case (.team(let sel, let tab, true), 6035): if let c = teamRows(tab)[safe: sel]?.card, pairCardButton(c) == "짝 청하기" { pairTo = c.name; screen = .twoPick(kind: 2, sel: 0) }   // 5.3: 짝 청하기 (my dragon first)
         case (.team(let sel, let tab, true), 6031): if let c = teamRows(tab)[safe: sel]?.card, !isMe(c) { unfriend(c.name) }   // 친구 끊기
         case (.team(let sel, TeamTab.requests, false), 6200..<6216):                                             // 신청: 수락 (or 거두기, mine) · 거절
             if let r = friendReqRows[safe: sel / FriendReqModel.perPage * FriendReqModel.perPage + (code - 6200) % 10] { friendReq(r, accept: code < 6210, Date()) }

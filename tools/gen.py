@@ -53,7 +53,8 @@ SRC = {
     'frames/egg.png': 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-iv/heartgold-soulsilver/egg.png',
     **{f'frames/{t}.png': f'https://play.pokemonshowdown.com/sprites/trainers/{t}.png' for t in [
         'acetrainer-gen4', 'acetrainerf-gen4', 'veteran-gen4', 'veteranf', 'lady-gen4', 'hiker-gen4', 'scientist-gen4', 'blackbelt-gen4',
-        'battlegirl-gen4', 'psychic-gen4', 'psychicf-gen4', 'dragontamer', 'schoolkid-gen4', 'pokemonranger-gen4', 'pokemonrangerf-gen4', 'palmer']},
+        'battlegirl-gen4', 'psychic-gen4', 'psychicf-gen4', 'dragontamer', 'schoolkid-gen4', 'pokemonranger-gen4', 'pokemonrangerf-gen4', 'palmer',
+        'flaregrunt', 'mable', 'xerosic', 'lysandre', 'sycamore']},   # 5.3: 플레어단 · 플라타느 박사 (Showdown's XY trainers: kyledove · Horo · Gnomowladny)
     **{f + '.csv': API + f + '.csv' for f in ['pokemon_species_names', 'item_names', 'pokemon_types', 'pokemon_types_past', 'types',
                                               'pokemon_evolution', 'pokemon_species', 'experience', 'items', 'type_names', 'pokemon_habitats',
                                               'pokemon_stats', 'pokemon', 'moves', 'move_names', 'pokemon_moves', 'type_efficacy', 'type_efficacy_past',
@@ -222,13 +223,17 @@ if ARTWORK:   # `python3 tools/gen.py data`: the tables only (Sources/Data), the
     # Per frame: 15 RGB, then 80x80 at 4 bpp. 3245 B each, in FRAMES order (Pixels.swift's frameNames mirrors it). Each stands on row 79.
     FRAMES = ['egg', 'acetrainer-gen4', 'acetrainerf-gen4', 'veteran-gen4', 'veteranf', 'lady-gen4', 'hiker-gen4', 'scientist-gen4', 'blackbelt-gen4',
               'battlegirl-gen4', 'psychic-gen4', 'psychicf-gen4', 'dragontamer', 'schoolkid-gen4', 'pokemonranger-gen4', 'pokemonrangerf-gen4',
-              'palmer']   # 3.9: 타워 타이쿤 (Pt · HGSS's Tower Tycoon)
+              'palmer',   # 3.9: 타워 타이쿤 (Pt · HGSS's Tower Tycoon)
+              'flaregrunt', 'mable', 'xerosic', 'lysandre', 'sycamore']   # 5.3 (docs/plans/19 §12): 칼로스 이야기's 플레어단 조무래기 · 간부 · 과학자 · 플라드리, 플라타느 박사
     fout = bytearray()
     for f in FRAMES:
         a = rgba(f'frames/{f}.png'); assert a.size == (80, 80), (f, a.size)
         bot = max(y for y in range(80) for x in range(80) if a.getpixel((x, y))[3] >= 128)
         b = Image.new('RGBA', (80, 80)); b.paste(a, (0, 79 - bot)); a = b
         px = list(a.getdata()); pal = sorted({p[:3] for p in px if p[3] >= 128})
+        if len(pal) > 15:   # 5.3: the XY trainers (BW-style fan sprites) have more colours: 15 by median cut, no dither
+            q = list(a.convert('RGB').quantize(colors=15, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).convert('RGB').getdata())
+            px = [q[k] + (px[k][3],) for k in range(6400)]; pal = sorted({p[:3] for p in px if p[3] >= 128})
         assert 0 < len(pal) <= 15, (f, len(pal))
         for c in pal + [(0, 0, 0)] * (15 - len(pal)): fout += bytes(c)
         cell = lambda p: pal.index(p[:3]) + 1 if p[3] >= 128 else 0

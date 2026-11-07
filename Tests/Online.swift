@@ -392,7 +392,7 @@ func giftMon(_ m: Mail?) -> Mon? { if case .mon(let x, _)? = m?.gifts.first { re
     var r49 = Battle(party: [rw.state.companion], trainer: Tower.tycoon, foes: [Mon(dex: 10, level: 2, female: false)]); r49.theirs[0].hp = 1
     fightOn(rw, r49, tower: true); rw.screen = .moves(r49, sel: 0); rw.press(1); drain(rw); playOut(rw)
     check(lobby48?.tycoon == "은" && tycoonFight && tycoonTitle.title == "타워 타이쿤 (은)" && tycoonTitle.meta.hasPrefix("타이쿤전 · 남은")
-          && says(rw).first == "타워 타이쿤을 이겼다!" && says(rw).dropFirst().first == "\(ty0 + 1)연승! +\({ var x = Walk(); x.towerStreak = ty0; return x.towerWin(tycoon: true) }()) BP" && trainerFrame(Tower.tycoon) == "palmer" && frameNames.last == "palmer" && frameData.count == frameNames.count * 3245,
+          && says(rw).first == "타워 타이쿤을 이겼다!" && says(rw).dropFirst().first == "\(ty0 + 1)연승! +\({ var x = Walk(); x.towerStreak = ty0; return x.towerWin(tycoon: true) }()) BP" && trainerFrame(Tower.tycoon) == "palmer" && frameNames.contains("palmer") && frameData.count == frameNames.count * 3245,
           "3.9 the tycoon: before its first fight the lobby's gold 타워 타이쿤에게 도전; its fight (타워 타이쿤 (은) · 타이쿤전, palmer); beaten → 타워 타이쿤을 이겼다! and BP twice", "\(String(describing: lobby48?.tycoon)) \(tycoonTitle) \(says(rw))")
 
     // the bag: a candy that levels into an evolution, a vitamin, a 진화의 돌, 전부 팔기; 중복 놓아주기

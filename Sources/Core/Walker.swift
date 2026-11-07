@@ -77,6 +77,8 @@ import Foundation
     var duel: DuelView? = nil, duelOn = false, duelSeen = 0, duelShown: Battle? = nil, duelWait = false   // 12 §5: the live battle's last view, polling, turns played, the battle shown, our pick in                              // 3.6: who 대단한 특훈 is on; an item whose target the fight's party screen asks for
     var raidOn = false, raidThen: Screen? = nil, raidPicked: [Int] = []   // 12 (M3): a raid fight is on (its menu, lines, HUD); where a raid ball's show goes after; 3.8: the last raid party (uids), offered first
     var tmSort = 0, tmTeamOnly = false, relearnWant: Int? = nil            // 5.2 (TMView.swift): the shop's 기술머신 sort and 우리 팀만; a machine to teach (기술 바꾸기 opens on it)
+    var storyScene: StoryScene? = nil, storyQueue: [StoryScene] = [], storyThen: Screen? = nil   // 5.3 (Exp53.swift): the scene on show, the ones after, where they lead
+    var pairAsk: PairView? = nil, pairTo: String? = nil                                    // 5.3: the ask being answered (my dragon's cards); a friend's card's 짝 청하기
     var expTab = 0, expBallsID: String? = nil                              // 5.2 (Exp52.swift): 전설 원정's kind tab; the boss's ball stage on (its id: a throw's lines)
     var raidStage: RaidPending? = nil, raidTier = 0                       // 4.0 (16 §8-4): the run's ball stage on screen (its boss, balls left); the tier picked for the next run (0: none yet)
 
@@ -198,8 +200,9 @@ import Foundation
         if let b = fight {
             if raidThen != nil { return expBallsID.map { (expTitle($0), "잡을 기회") } ?? ("레이드", "잡을 기회") }
             if let id = b.expedition {                                                          // 5.2 (plan 19 §11.3): the roamer, the boss
+                if let tr = b.trainer { return (tr, "\(Expeditions.of(id)?.steps[safe: state.expeditions?[id]?.stage ?? 0]?.chapter ?? 0)장 · 남은 \(b.theirs.filter(\.alive).count) : \(b.mine.filter(\.alive).count)") }   // 5.3: 플레어단
                 if b.raidTier == nil { return ("배회 전설", "깎은 HP는 다음에 이어져요") }
-                return (expTitle(id), (Expeditions.of(id)?.legend == 384 ? "결전" : "보스전") + " · 바 \(b.theirs.filter { !$0.alive }.count)/\(b.theirs.count) · 하루 1번")
+                return (expTitle(id), (Expeditions.of(id).map { $0.legend == 384 || $0.kind == .story } == true ? "결전" : "보스전") + " · 바 \(b.theirs.filter { !$0.alive }.count)/\(b.theirs.count) · 하루 1번")
             }
             if duelOn { return ("실시간 대전", "vs \(duel?.opponent ?? "")" + (duel?.opponentTitle.map { " 「\($0)」" } ?? "") + (duelLeft().map { " · \($0)초" } ?? "")) }   // 3.9: its 칭호 by its name                                       // a raid ball's throw on the battle stage
             if raidOn { return (raidMega ? "메가 레이드" : "레이드 배틀", (b.wild.shiny == true ? "★이로치 · 줄 " : "남은 줄 ") + "\(b.theirs.filter(\.alive).count)/\(b.theirs.count) · " + (Engine.raidTurns > 0 ? "\(min(b.turnNo + 1, Engine.raidTurns))/\(Engine.raidTurns)턴" : "\(b.turnNo + 1)턴")) }   // (3.8.4: no limit — 0)
@@ -213,6 +216,9 @@ import Foundation
         case .dex: return ("도감", "잡음 \(dexCount) · 봤음 \(seenList.count)")
         case .rank(let t, _, let a): return ("랭킹", "이번 주 · " + Walker.rankTabs[t] + (a && rankAll ? " · 전체" : " · 친구"))
         case .expedition: return ("전설 원정", "전설 \(Walker.expLegends.filter { (state.owned ?? []).contains($0) }.count)/\(Walker.expLegends.count)종")
+        case .pairPick(let d, _): return ("짝 청하기", monNames[d] + " · 14일 · 둘이 30만 걸음")
+        case .twoPick(let k, _): return k == 0 ? ("짝 짓기", "함께할 용 고르기") : k == 2 ? ("짝 청하기", (pairTo ?? "") + "에게") : ("칼로스 이야기 · 결전", "하나를 골라요")
+        case .talk: return (storyScene.flatMap { Expeditions.of($0.id)?.title } ?? "칼로스 이야기", storyTalkMeta)
         case .goals: return ("도감 업적", "받은 업적 \((state.dexRewards ?? []).count)개")
         case .box(let i, _, _, true) where state.mon(i)?.ot != nil: return ("포켓몬", "어버이: " + (state.mon(i)?.ot ?? ""))   // a traded one: who it came from first
         case .box, .items: return ("포켓몬", "워커 \(state.caught.count) · 상자 \(state.box.count.formatted()) · 도구 \(state.items.count + state.bag.count)")
@@ -236,7 +242,7 @@ import Foundation
         case .duel(.hub(let t, _)): return ("대전", t == 0 ? "Lv.50 · 3마리씩" : "최근 20판")
         case .duel(.queued): return ("랜덤 매칭", duelLeft().map { "\($0)초 남음" } ?? "")
         case .duel: return ("실시간 대전", duelLeft().map { "\($0)초 남음" } ?? "")
-        case .squad(let s): switch s.kind { case .tower: return ("배틀 타워", "파티 고르기 · Lv.50"); case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return (raidMega ? "메가 레이드" : "레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")); case .exp(let id): return (expTitle(id), "출전할 1~3마리 · 하루 1번") }
+        case .squad(let s): switch s.kind { case .tower: return ("배틀 타워", "파티 고르기 · Lv.50"); case .duelParty: return ("대전 파티", "3~6마리 · 대전은 Lv.50"); case .raid: return (raidMega ? "메가 레이드" : "레이드", "출전할 1~3마리"); case .duelPick: return ("실시간 대전", "3마리 고르기" + (duelLeft().map { " · \($0)초" } ?? "")); case .exp(let id): return (expTitle(id), Expeditions.of(id).flatMap { e in e.steps[safe: state.expeditions?[id]?.stage ?? 0] }?.kind == .trainer ? "출전할 1~3마리 · 몇 번이든" : "출전할 1~3마리 · 하루 1번") }
         case .hold(let r, _): return ("도구 주기", state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .formPick(let r, let it, _): return (it, state.mon(r).map { monNames[$0.dex] + " Lv.\($0.level)" } ?? "")
         case .evoPick: return ("진화", "직접 골라 진화해요")

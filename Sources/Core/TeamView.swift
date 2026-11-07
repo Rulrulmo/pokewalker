@@ -72,7 +72,7 @@ extension Walker {
                                                        remove: friend,
                                                        duel: friend ? (Walker.walkingNow(c) ? "대전 신청" : "걷는 중일 때 대전") : nil,
                                                        visit: friend ? (visitTo(c.name) != nil ? "이미 맡겼어요" : Walker.walkingNow(c) ? "맡기기" : "걷는 중일 때 맡기기") : nil,
-                                                       request: !friend && !isMe(c) ? (asked ? "신청했어요" : "친구 신청") : nil))
+                                                       request: !friend && !isMe(c) ? (asked ? "신청했어요" : "친구 신청") : nil, pair: friend ? pairCardButton(c) : nil))
         }
         let per = TeamModel.perPage, first = s / per * per
         let page = rows[first..<min(rows.count, first + per)].map { r in

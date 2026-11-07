@@ -1105,3 +1105,113 @@ import Foundation
     return failed == 0
 }
 
+
+/// `PokeWalker --live-53 <id> <pin> <pair|story|trainer|pick> [<id2> <pin2>]` (a dev build only, against a LOCAL server — POKEWALKER_SERVER —
+/// content5 · 51 · 52 on; a test ID has content53 with the switch off): 5.3 on a real server before it ships. pair (two IDs) — friends by their
+/// acts, 짝 청하기 from the 협동 tab (the friends' page), the ask's news and row on the other, 제크로무로 짝 짓기, both seeing the pair on, steps
+/// to it, 짝 풀기 and the other told; story — 칼로스 이야기 started, its first scene (the server's lines and chapter name); trainer — its stage set
+/// (1): 플레어단 조무래기's fight (its title, no turns), 기권: again any time; pick — its stage set (9): 제르네아스 picked, its scene.
+@MainActor func live53Test(_ id: String, _ pin: String, _ phase: String, _ id2: String?, _ pin2: String?) -> Bool {
+    var failed = 0
+    func check(_ ok: Bool, _ name: String) { if !ok { failed += 1 }; print((ok ? "ok   " : "FAIL ") + name) }
+    var tmps: [URL] = []
+    defer { for t in tmps { try? FileManager.default.removeItem(at: t) } }
+    func login(_ id: String, _ pin: String) -> (Walker, Cloud, TestHost) {
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("pokewalker-live53-\(ProcessInfo.processInfo.processIdentifier)-\(id)", isDirectory: true); tmps.append(tmp)
+        let h = TestHost(), w = Walker(state: Walk()); w.persist = false; w.host = h
+        let c = Cloud(link: HTTPLink(), dir: tmp); h.texts = [id]; h.pins = [pin, pin, pin]; h.answer = true
+        w.startCloud(c, file: tmp.appendingPathComponent("state.json"), bak: tmp.appendingPathComponent("state.json.bak"))
+        return (w, c, h)
+    }
+    @discardableResult func run(_ ws: [Walker], _ secs: Double, until done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(secs)
+        while Date() < end { for w in ws { w.tick(Date()) }; if done() { return true }; Thread.sleep(forTimeInterval: 0.1) }
+        return done()
+    }
+    func idle(_ w: Walker) -> Bool { w.waiting == nil && w.cloud.map { $0.inFlight == nil && $0.queued == nil && $0.out == nil } != false }
+    func settle(_ w: Walker) { run([w], 15) { idle(w) } }
+    func says(_ w: Walker) -> [String] { if case .say(let l, _, _) = w.screen { return l }; return [] }
+    func press(_ w: Walker, _ k: Int = 1) { w.calmAt = .distantPast; w.press(k); settle(w) }
+    /// An act (steps), its news shown at home.
+    func walk(_ w: Walker, _ n: Int = 1) { w.screen = .home; w.cloud!.addSteps(n); w.cloud!.saveNow(); settle(w); run([w], 3) { false } }
+    func fresh(_ w: Walker) { w.cloud!.expeditionDue = true; w.cloud!.teamDue = true; run([w], 15) { idle(w) && !w.cloud!.expeditionDue && !w.cloud!.teamDue } }
+    func row(_ w: Walker, _ id: String, tab: String) -> Int? {
+        w.expTab = Walker.expTabs.firstIndex(of: tab) ?? 0
+        return w.expRows(w.expTab).firstIndex { if case .exp(let e) = $0 { return e.id == id }; if case .ask = $0 { return id == "ask" }; return false }
+    }
+    let (a, ca, ha) = login(id, pin)
+    print("server: \(HTTPLink.base) · phase \(phase)")
+    check(run([a], 40) { ca.phase == .on && ca.base != nil }, "live 5.3: \(id) logged in (\(ca.phase))")
+    check(Content.v53, "live 5.3: content53 on (the login says so: a test ID always)")
+    switch phase {
+    case "pair":
+        guard let id2, let pin2 else { print("--live-53 … pair <id2> <pin2>"); return false }
+        let (b, cb, hb) = login(id2, pin2)
+        check(run([b], 40) { cb.phase == .on && cb.base != nil }, "pair: \(id2) logged in")
+        walk(a); walk(b)
+        a.act(.friendRequest(to: id2), back: .home) { _, _ in nil }; settle(a); walk(b)
+        b.act(.friendAccept(from: id), back: .home) { _, _ in nil }; settle(b)
+        fresh(a); fresh(b)
+        check(a.isFriend(id2), "pair: friends (\(a.cloud?.team?.cards.map(\.name) ?? []))")
+        let card = a.teamRows(0).first { $0.card.name.lowercased() == id2.lowercased() }?.card
+        check(card.map { a.pairCardButton($0) } == "짝 청하기" && card?.app53 == true && card?.pair != true, "pair: the friend's card's 짝 청하기 (app53 \(String(describing: card?.app53)), pair \(String(describing: card?.pair)))")
+        a.openFeature("전설 원정"); settle(a)
+        if let k = row(a, "레시라무", tab: "협동") { a.screen = .expedition(k); press(a) }
+        if case .pairPick(let d, _) = a.screen, let i = a.pairFriends().firstIndex(where: { $0.name.lowercased() == id2.lowercased() }) { a.screen = .pairPick(dex: d, sel: i); press(a) }
+        fresh(a)
+        check(a.pairSent("레시라무")?.with.lowercased() == id2.lowercased(), "pair: asked from the 협동 tab (\(ha.asked.last ?? ""), \(says(a)), sent \(a.pairs))")
+        walk(b); let asked = says(b); fresh(b)
+        check(asked.joined(separator: " ").contains("짝을 청했다") && b.pairAsks.first?.theirs == "레시라무", "pair: the news on the other (\(asked)), its ask (\(b.pairAsks))")
+        b.openFeature("전설 원정"); settle(b)
+        if let k = row(b, "ask", tab: "지금") { b.screen = .expedition(k); press(b) }
+        if case .twoPick(0, _) = b.screen { b.screen = .twoPick(kind: 0, sel: 1); press(b) }
+        fresh(b); walk(a); let taken = says(a); fresh(a)
+        check(b.pairOn("제크로무")?.theirs == "레시라무" && a.pairOn("레시라무")?.theirs == "제크로무" && a.state.expeditions?["레시라무"]?.on == true && b.state.expeditions?["제크로무"]?.on == true,
+              "pair: 제크로무로 짝 짓기 (\(hb.asked.last ?? "")) — both on their dragons, the pair seen both ways (\(a.pairs.map(\.state)) · \(b.pairs.map(\.state))); the asker's news \(taken)")
+        walk(a, 120); fresh(a); fresh(b)
+        check((a.pairOn("레시라무")?.steps ?? 0) >= 120 && b.pairOn("제크로무")?.theirSteps == a.pairOn("레시라무")?.steps && (a.state.expeditions?["레시라무"]?.steps ?? 0) == 0,
+              "pair: steps to the pair, not alone (\(a.pairOn("레시라무")?.steps ?? -1) · the other sees \(b.pairOn("제크로무")?.theirSteps ?? -1))")
+        a.openFeature("전설 원정"); settle(a)
+        if let k = row(a, "레시라무", tab: "협동") { a.screen = .expedition(k); a.pageTap(9231); settle(a) }
+        fresh(a); walk(b); let told = says(b); fresh(b)
+        check(a.pairOn("레시라무") == nil && b.pairOn("제크로무") == nil && told.joined(separator: " ").contains("짝이 풀렸다"), "pair: 짝 풀기 (\(ha.asked.last ?? "")) — over both ways, the other told (\(told))")
+    case "story":
+        a.openFeature("전설 원정"); settle(a)
+        if let k = row(a, Expeditions.story, tab: "스토리") { a.screen = .expedition(k); press(a) }
+        var scene = false; if case .talk(0) = a.screen { scene = a.storyScene?.pages.count == 5 && a.paneContent(Date()).talk?.chapter == "1장 · 수상한 무리" }
+        check(a.state.expeditions?[Expeditions.story]?.on == true && scene, "story: 칼로스 이야기 started, its first scene (\(a.storyScene?.pages.first?.lines ?? []), \(a.paneContent(Date()).talk?.chapter ?? ""))")
+        while case .talk = a.screen { a.press(1) }
+    case "trainer":
+        check(a.state.expeditions?[Expeditions.story]?.stage == 1, "trainer: its stage set (1)")
+        a.openFeature("전설 원정"); settle(a)
+        if let k = row(a, Expeditions.story, tab: "스토리") { a.screen = .expedition(k); press(a) }
+        if case .squad(let q) = a.screen { a.squadGo(Squad(kind: q.kind, picked: [a.state.companion.uid!], at: 0), Date()); settle(a) }
+        run([a], 20) { a.fight != nil }
+        check(a.fight?.trainer == "플레어단 조무래기" && a.fight?.expedition == Expeditions.story && a.title().meta.hasPrefix("1장 · 남은") && a.paneContent(Date()).battle?.turnsLeft == nil,
+              "trainer: 플레어단 조무래기's fight (\(a.title().title) · \(a.title().meta))")
+        var n = 0
+        while n < 40, a.inBattle || { if case .beats = a.screen { return true }; return false }() {
+            n += 1
+            switch a.screen {
+            case .beats: run([a], 30) { if case .beats = a.screen { return false }; return true }
+            case .battle(let b, _): a.screen = .battle(b, sel: a.battleMenu(b).count - 1); press(a)
+            case .forfeit(let b, _): a.screen = .forfeit(b, yes: true); press(a)
+            case .party(let b, _): a.screen = .party(b, sel: b.mine.indices.first { b.mine[$0].alive } ?? 0); press(a)
+            default: n = 99
+            }
+        }
+        settle(a)
+        check(a.state.expeditions?[Expeditions.story]?.stage == 1 && says(a).last == "다시 도전할 수 있어요", "trainer: 기권 — again any time (\(says(a)))")
+    case "pick":
+        check(a.state.expeditions?[Expeditions.story]?.stage == 9, "pick: its stage set (9)")
+        a.openFeature("전설 원정"); settle(a)
+        if let k = row(a, Expeditions.story, tab: "스토리") { a.screen = .expedition(k); press(a) }
+        if case .twoPick(1, _) = a.screen { a.screen = .twoPick(kind: 1, sel: 0); press(a) }
+        var scene = false; if case .talk = a.screen { scene = a.storyScene?.stage == 10 }
+        check(a.state.expeditions?[Expeditions.story]?.pick == 716 && a.state.expeditions?[Expeditions.story]?.stage == 10 && scene,
+              "pick: 제르네아스 (\(ha.asked.last ?? "")) — the final fight's stage, its scene (\(a.storyScene?.pages.first?.lines ?? []))")
+    default: print("--live-53: pair | story | trainer | pick"); return false
+    }
+    print(failed == 0 ? "PASS live 5.3 (\(phase))" : "FAIL \(failed)")
+    return failed == 0
+}

@@ -280,6 +280,8 @@ import Foundation
         take("w522_lcd_form", lcd: true, on: fw) { v in v.screen = .box(4, act: nil, confirm: false, detail: true) }
         take("w522_tower", on: fw) { v in v.screen = .squad(Squad(kind: .tower, picked: [v.state.box[0].uid, v.state.box[1].uid].compactMap { $0 }, at: 2)) }
     } } }
+    // 5.3 (docs/plans/19 §12): 협동 · 스토리 — the mockups' scenes and the worst cases (Tests' exp53Scenes; the scene pages' worst: the self-test's)
+    exp53Scenes(worst: true) { name, v, set in if !name.hasPrefix("w-talk") { take("w53_" + name, on: v) { set($0) } } }
     return n
 }
 #endif

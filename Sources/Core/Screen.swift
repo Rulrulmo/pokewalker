@@ -54,6 +54,9 @@ indirect enum Screen {
     case evolve(from: Mon, to: Mon, since: Date)                       // already applied to the state; this is the show
     case rank(tab: Int, sel: Int, all: Bool)                           // 5.1 (RankView.swift): 친구 ▸ 랭킹 — the tab, the row, 전체 or the friends
     case expedition(Int)                                               // 5.1 (content51, ExpView.swift): 전설 원정 — the row picked
+    case pairPick(dex: Int, sel: Int)                                  // 5.3 (Exp53.swift): 짝 청하기 — the friend picked, for this dragon
+    case twoPick(kind: Int, sel: Int)                                  // 5.3: my dragon — 0 taking a friend's ask, 2 asking from a friend's card; 1 the story's 결전
+    case talk(Int)                                                     // 5.3: a story scene's page (Walker.storyScene)
     case assemble(Mon, since: Date)                                    // 5.1: 지가르데's cells put together (already in the box; this is the show)
     case goals(Int)                                                    // 5.0 (content5): 도감 업적 — the row picked (0 전국, 1… the regions, last 해금: GoalsView.swift)
     case dex(Int, filter: Int, detail: Bool)                           // the pick's dex number; filter = the grid's tab (전체 / 잡음 / 못 잡음 / 이 코스); detail = the entry page

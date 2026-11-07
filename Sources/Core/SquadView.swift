@@ -88,13 +88,16 @@ extension Walker {
         case .exp(let id):                                                                          // 5.2 (plan 19 §11.3): the boss, once a day
             let e = Expeditions.of(id), lv = e.flatMap { $0.steps.first { $0.kind == .fight } }.map { "Lv.\($0.level)" } ?? ""
             m.title = expTitle(id) + " 출전"; m.note = (e.map { monNames[$0.legend] + " " } ?? "") + lv; m.hint = "1~3마리를 골라 주세요 · 제 레벨로 싸워요 · 하루 1번"
-            if range.contains(picked.count) { m.go = "이 \(picked.count)마리로 도전" }
+            if let st = e?.steps[safe: state.expeditions?[id]?.stage ?? 0], st.kind == .trainer {        // 5.3: 플레어단 — its team, as often as it takes
+                m.note = short(st.trainer).replacingOccurrences(of: "보스 ", with: "") + " Lv.\(st.level) · \(st.foes.count)마리"; m.hint = "1~3마리를 골라 주세요 · 제 레벨로 싸워요 · 몇 번이든"
+            } else if e?.kind == .story, let mon = state.expeditions?[id]?.mon { m.note = monNames[mon.dex] + " " + lv }
+            if range.contains(picked.count) { m.go = "이 \(picked.count)마리로 " + (e?.steps[safe: state.expeditions?[id]?.stage ?? 0]?.kind == .trainer ? "배틀" : "도전") }
         }
         return PaneContent(squad: m)
     }
     func squadLCD(_ fb: inout FB, _ s: Squad, _ now: Date) {
         let keys = squadKeys(s), picked = squadOf(s), half = Int(now.timeIntervalSinceReferenceDate * 2) % 2
-        let title: String = { switch s.kind { case .tower: "타워 파티"; case .duelParty: "대전 파티"; case .raid: raidMega ? "메가 레이드" : "레이드 출전"; case .duelPick: "3마리 고르기"; case .exp: Expeditions.of(id(s.kind))?.legend == 384 ? "결전" : "보스전" } }()   // (5.1.4: the LCD's 96 dots)
+        let title: String = { switch s.kind { case .tower: "타워 파티"; case .duelParty: "대전 파티"; case .raid: raidMega ? "메가 레이드" : "레이드 출전"; case .duelPick: "3마리 고르기"; case .exp: Expeditions.of(id(s.kind)).map { e in e.steps[safe: state.expeditions?[e.id]?.stage ?? 0]?.kind == .trainer ? "배틀" : e.legend == 384 || e.kind == .story ? "결전" : "보스전" } ?? "보스전" } }()   // (5.1.4: the LCD's 96 dots)
         guard s.at < keys.count, let m = squadMon(s, keys[s.at]) else {                          // on the button: the first picked, the count, the button
             fb.text(title, 2, 0); fb.fill(0, 12, 96, 1, 2)
             if let f = picked.first.flatMap({ squadMon(s, $0) }) { fb.mon(f, half, 0, 2, anim: animT("squad", f.art, now)) }

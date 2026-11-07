@@ -356,6 +356,7 @@ final class CloudInbox: @unchecked Sendable {
                 Content.onChoice = j["evoChoice"] as? Bool ?? false                                     // 5.1.3 (plan 23): 배루키's pick
                 Content.onDuelMega = j["duelMega"] as? Bool ?? false                                    // 5.1.4 (plan 24): Mega Evolution in live battles
                 Content.on52 = j["content52"] as? Bool ?? false                                         // 5.2 (plan 19 §11.6)
+                Content.on53 = j["content53"] as? Bool ?? false                                         // 5.3 (plan 19 §12.5)
                 Content.keep()                                                                          // 5.1.1: for the next launch
                 drop(); seat.session = j["session"] as? String; seat.trust = j["trust"] as? String ?? seat.trust; pendingPIN = nil
                 base = nil; phase = .on; lastSaved = now; stepsAt = now                                 // its first save (the starter's) comes with the first act
@@ -397,6 +398,7 @@ final class CloudInbox: @unchecked Sendable {
         Content.onChoice = j["evoChoice"] as? Bool ?? false                                   // 5.1.3 (plan 23): 배루키 waits at Lv.20 for the player's pick
         Content.onDuelMega = j["duelMega"] as? Bool ?? false                                  // 5.1.4 (plan 24): the switch (each duel's own: DuelView.mega)
         Content.on52 = j["content52"] as? Bool ?? false                                       // 5.2 (plan 19 §11.6): 배회 · 시련 · 레쿠쟈 원정, 기술머신, 일루전 · 프리폴
+        Content.on53 = j["content53"] as? Bool ?? false                                       // 5.3 (plan 19 §12.5): 협동 · 스토리 원정
         Content.keep()                                                                        // 5.1.1: for the next launch (before the login, the save is read with these)
         if let text = j["walk"] as? String {
             guard let w = Cloud.walk(text) else {                                              // one this app can't read: nothing to show it with
@@ -642,6 +644,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     var content51 = false, raidDaily = false                                                     // 5.1: … content51 (plan 19), raidDaily (plan 20)
     var evoChoice = false                                                                        // 5.1.3: … evoChoice (plan 23)
     var content52 = false                                                                        // 5.2: … content52 (plan 19 §11)
+    var content53 = false                                                                        // 5.3: … content53 (plan 19 §12)
     var duelMega = false, oldDuelApps: Set<String> = []                                          // 5.1.4 (plan 24): … duelMega; trainers whose app is before 5.1.4 (a duel with one: no Mega)
     var updateNoteSent: [String: Any]? = nil                                                     // 5.1.2 (plan 22): pokeserver update-note on, a newer app out
     var rng = Seeded(s: 77), nextUID = 1_000_001, now: Date? = nil, stepCap: Int? = nil       // stepCap: the steps allowance (the real one fills at 15 a second)
@@ -693,6 +696,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         if case .raid(_, let tier) = q.act, r.play.battle == nil { let s = raidStart(id.key, tier, w); if let why = s.why { refused = why } else { r.play.raidBoss = s.boss } }
         if case .megaRaid(_, let tier, let boss, _, _) = q.act, r.play.battle == nil { let s = megaRaidStart(id.key, tier, boss); if let why = s.why { refused = why } else { r.play.raidBoss = s.boss } }
         let fightWeek = r.play.raid
+        r.play.paired = Content.v53 && pairIndexOn(id.key) != nil ? true : nil                      // 5.3 (ServerPair): a pair on — its steps aren't the dragon's alone
         var o = Engine.apply(refused == nil ? q.act : .steps, steps: taken, walk: &w, play: &r.play, rng: &rng, now: now ?? Date(), ids: &ids)
         if let why = refused { o.cannot = why }
         if let rb = r.play.raidBoss, o.cannot == nil, o.battle != nil { raidRuns[id.key, default: []].append(RaidRun(tier: rb.tier ?? 0, boss: rb.boss, day: Walk.key(now ?? Date()), at: clockNow, mega: rb.mega != nil)) }
@@ -716,6 +720,10 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         let preVisit = w
         if o.cannot == nil, let why = visitAct(q.act, id.key, r.name, &w, &o.news) { o.cannot = why }
         if o.cannot == nil, let why = mailAct(q.act, id.key, &w, &o) { o.cannot = why }
+        let prePair = w
+        if o.cannot == nil, let why = pairAct(q.act, id.key, r.name, &w) { o.cannot = why }          // 5.3: 협동's asks and pairs (ServerPair.swift)
+        pairTick(id.key, r.name, steps: o.cannot == nil ? taken : 0, &w, &o.news)
+        if w != prePair { o.changed = true }
         let preTower = w; towerRewards(id.key, &w); if w != preTower { o.changed = true }                 // 3.9: every act, as the server's
         let preDex = w; dexRewards(id.key, &w); if w != preDex { o.changed = true }                       // 5.0: 도감 업적, as the server's
         visitTick(id.key, steps: o.cannot == nil ? taken : 0, &w, &o.news)
@@ -736,13 +744,13 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         let at = now ?? Date()
         let cards = rows.keys.sorted().compactMap { k -> TeamCard? in
             guard k == id.key || isFriend(id.key, k), let row = rows[k], let w = row.walk.flatMap(Cloud.walk) else { return nil }   // 3.5: me and my friends
-            var c = TeamCard(name: row.name, walk: w, today: w.today, week: w.today, idle: lastAct[k].map { Int(at.timeIntervalSince($0)) } ?? 999_999); c.raid = raidWeek(k, mega: Content.v51 ? false : nil); if Content.v51 { c.megaWeek = raidWeek(k, mega: true) }; return c   // 4.0: its week of runs
+            var c = TeamCard(name: row.name, walk: w, today: w.today, week: w.today, idle: lastAct[k].map { Int(at.timeIntervalSince($0)) } ?? 999_999); c.raid = raidWeek(k, mega: Content.v51 ? false : nil); if Content.v51 { c.megaWeek = raidWeek(k, mega: true) }; pairCard(k, &c); return c   // 4.0: its week of runs; 5.3: in a pair, a 5.3 app
         }
         let asked = (friendAsks[id.key] ?? []).sorted().compactMap { rows[$0]?.name }, sent = friendAsks.filter { $0.value.contains(id.key) }.keys.sorted().compactMap { rows[$0]?.name }
         let all = viewAll.contains(id.key) ? rows.keys.sorted().compactMap { k -> TeamCard? in
             guard let row = rows[k], let w = row.walk.flatMap(Cloud.walk) else { return nil }
             var c = TeamCard(name: row.name, walk: w, today: w.today, week: w.today, idle: lastAct[k].map { Int(at.timeIntervalSince($0)) } ?? 999_999)
-            c.raid = raidWeek(k, mega: Content.v51 ? false : nil); if Content.v51 { c.megaWeek = raidWeek(k, mega: true) }; return c   // (5.1: the 랭킹's 전체, as the server's)
+            c.raid = raidWeek(k, mega: Content.v51 ? false : nil); if Content.v51 { c.megaWeek = raidWeek(k, mega: true) }; pairCard(k, &c); return c   // (5.1: the 랭킹's 전체, as the server's)
         } : nil
         return (200, (try? JSONEncoder().encode(TeamReply(week: "2026-W40", cards: cards, requests: asked, sent: sent, visits: visitsOf(id.key), all: all))) ?? Data())
     }
@@ -1060,6 +1068,100 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
         return Visits(away: visitList.last { $0.on && $0.owner == key }.map(view), guests: visitList.filter { $0.on && $0.host == key }.map(view),
                       out: visitList.filter { $0.on && $0.owner == key }.map(view))
     }
+    // 5.3 (docs/plans/19 §12.3, the server's ServerPair.swift): 협동 — an ask (3 days) takes no one's place; taken, both walk their dragons (the
+    // others stopped) 14 days, 300,000 between them and 30,000 each; then each one's dragon goes on to its boss at its next act. pairCancel takes an
+    // ask back, says no, ends a pair; another expedition started ends it too. The other side hears it (news, a 3.3+ app's mail).
+    struct FakePair {
+        var id: Int; var a, aName, b, bName, aExp: String; var bExp: String? = nil; var state = "asked"; var ends: Int
+        var aSteps = 0, bSteps = 0, aMoved = false, bMoved = false
+        func other(_ k: String) -> (key: String, name: String) { k == a ? (b, bName) : (a, aName) }
+        func exp(_ k: String) -> String? { k == a ? aExp : bExp }
+        func steps(_ k: String) -> Int { k == a ? aSteps : bSteps }
+        var reached: Bool { aSteps + bSteps >= Expeditions.pairGoal && min(aSteps, bSteps) >= Expeditions.pairMin }
+    }
+    var pairList: [FakePair] = [], nextPair = 1, oldApps53: Set<String> = []                       // oldApps53: trainers whose app is before 5.3 (can't be asked)
+    func pairIndexOn(_ k: String) -> Int? { pairList.firstIndex { $0.state == "on" && ($0.a == k || $0.b == k) } }
+    func pairExpire() {
+        for i in pairList.indices where ["asked", "on"].contains(pairList[i].state) && pairList[i].ends <= clockNow {
+            let p = pairList[i]; pairList[i].state = "closed"
+            mail[p.a, default: []].append(.pairClosed(pair: p.id, with: p.bName, why: "기한"))
+            if p.state == "on" { mail[p.b, default: []].append(.pairClosed(pair: p.id, with: p.aName, why: "기한")) }
+        }
+    }
+    func pairAct(_ a: Act, _ key: String, _ name: String, _ w: inout Walk) -> String? {
+        switch a { case .pairInvite, .pairAccept, .pairCancel: break; default: return nil }
+        guard Content.v53 else { return "5.3부터예요" }
+        pairExpire()
+        switch a {
+        case .pairInvite(let raw, let id):
+            if let why = w.pairCan(id) { return why }
+            guard let to = trainerID(raw), to.key != key, let them = rows[to.key], them.walk != nil else { return "청할 수 없는\n트레이너예요" }
+            guard isFriend(key, to.key) else { return "친구에게만\n청할 수 있어요" }
+            guard !oldApps53.contains(to.key) else { return "상대가 5.3으로\n업데이트해야 해요" }
+            if pairIndexOn(key) != nil { return "이미 짝이 있어요" }
+            if pairIndexOn(to.key) != nil { return josa(them.name, "은", "는") + " 이미\n짝이 있어요" }
+            for i in pairList.indices where pairList[i].state == "asked" && pairList[i].a == key {        // one ask out at a time: the last one taken back
+                pairList[i].state = "closed"; mail[pairList[i].b, default: []].append(.pairClosed(pair: pairList[i].id, with: name, why: "취소"))
+            }
+            pairList.append(FakePair(id: nextPair, a: key, aName: name, b: to.key, bName: them.name, aExp: id, ends: clockNow + Expeditions.inviteDays * 86_400))
+            mail[to.key, default: []].append(.pairAsked(pair: nextPair, from: name, id: id)); nextPair += 1
+        case .pairAccept(let pid, let id):
+            guard let i = pairList.firstIndex(where: { $0.id == pid && $0.state == "asked" && $0.b == key }) else { return "없는 청하기예요" }
+            if let why = w.pairCan(id) { return why }
+            if pairIndexOn(key) != nil { return "이미 짝이 있어요" }
+            let p = pairList[i]
+            if pairIndexOn(p.a) != nil { pairList[i].state = "closed"; return "상대가 이미\n짝이 있어요" }
+            if rows[p.a]?.play.battle != nil { return "상대가 배틀 중이에요\n잠시 뒤에 받아 주세요" }
+            guard var theirs = walk(p.a) else { return "없는 청하기예요" }
+            if theirs.pairTake(p.aExp, &rng) != nil {
+                pairList[i].state = "closed"; mail[p.a, default: []].append(.pairClosed(pair: p.id, with: name, why: "취소")); return "상대의 원정이\n이미 보스전이에요"
+            }
+            if let why = w.pairTake(id, &rng) { return why }
+            set(p.a, theirs); stale.insert(p.a)                                                           // (their next reply brings their save)
+            pairList[i].state = "on"; pairList[i].bExp = id; pairList[i].ends = clockNow + Expeditions.pairDays * 86_400
+            for j in pairList.indices where j != i && pairList[j].state == "asked" && [p.a, key].contains(where: { $0 == pairList[j].a || $0 == pairList[j].b }) {
+                pairList[j].state = "closed"
+                for k in [pairList[j].a, pairList[j].b] where k != p.a && k != key { mail[k, default: []].append(.pairClosed(pair: pairList[j].id, with: pairList[j].other(k).name, why: "취소")) }
+            }
+            mail[p.a, default: []].append(.pairOn(pair: p.id, with: name, id: id))
+        case .pairCancel(let pid):
+            guard let i = pairList.firstIndex(where: { $0.id == pid && ["asked", "on"].contains($0.state) && ($0.a == key || $0.b == key) }) else { return "없는 짝이에요" }
+            let p = pairList[i], why = p.state == "on" ? "풀림" : p.a == key ? "취소" : "거절"
+            pairList[i].state = "closed"
+            mail[p.other(key).key, default: []].append(.pairClosed(pair: p.id, with: name, why: why))
+        default: break
+        }
+        return nil
+    }
+    /// Each act: its steps to this one's pair (300,000 · 30,000: done); a pair done moves this one's dragon on to its boss (once); a pair whose
+    /// dragon this one no longer walks ends (the other told; this one hears it too).
+    func pairTick(_ key: String, _ name: String, steps: Int, _ w: inout Walk, _ news: inout [News]) {
+        guard Content.v53 else { return }
+        pairExpire()
+        if steps > 0, let i = pairIndexOn(key), clockNow < pairList[i].ends {
+            if pairList[i].a == key { pairList[i].aSteps += steps } else { pairList[i].bSteps += steps }
+            if pairList[i].reached { pairList[i].state = "done" }
+        }
+        for i in pairList.indices where pairList[i].state == "done" && ((pairList[i].a == key && !pairList[i].aMoved) || (pairList[i].b == key && !pairList[i].bMoved)) {
+            if let id = pairList[i].exp(key), let n = w.pairDone(id) { news.append(n) }
+            if pairList[i].a == key { pairList[i].aMoved = true } else { pairList[i].bMoved = true }
+        }
+        if let i = pairIndexOn(key), let id = pairList[i].exp(key), !w.pairWalking(id) {
+            pairList[i].state = "closed"; let o = pairList[i].other(key)
+            mail[o.key, default: []].append(.pairClosed(pair: pairList[i].id, with: name, why: "풀림"))
+            news.append(.pairClosed(pair: pairList[i].id, with: o.name, why: "풀림"))
+        }
+    }
+    /// /v2/expedition's pairs: my ask out, the asks to me, my pair.
+    func pairViews(_ key: String) -> [PairView] {
+        pairExpire()
+        return pairList.filter { ["asked", "on"].contains($0.state) && ($0.a == key || $0.b == key) }.map { p in
+            let o = p.other(key)
+            return PairView(id: p.id, with: o.name, state: p.state == "on" ? "on" : p.a == key ? "sent" : "got", mine: p.exp(key), theirs: p.exp(o.key) ?? p.aExp,
+                            steps: p.steps(key), theirSteps: p.steps(o.key), goal: Expeditions.pairGoal, min: Expeditions.pairMin, ends: p.ends)
+        }
+    }
+    func pairCard(_ k: String, _ c: inout TeamCard) { if Content.v53 { c.pair = pairIndexOn(k) != nil; c.app53 = !oldApps53.contains(k) } }
     // 12 §2.4 (3.5): 친구 — pairs, requests (to → from)
     var friends: Set<String> = [], friendAsks: [String: Set<String>] = [:]
     static func pair(_ a: String, _ b: String) -> String { a < b ? a + "|" + b : b + "|" + a }
@@ -1144,7 +1246,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
     func expeditionEvents(_ d: Data) -> (Int, Data) {
         guard let q = try? JSONDecoder().decode(ExpReq.self, from: d), let id = trainerID(q.id), let r = rows[id.key] else { return err(404, ["error": "no_trainer"]) }
         guard q.session == r.session else { return err(409, ["error": "conflict", "reason": "replaced"]) }
-        return (200, (try? JSONEncoder().encode(ExpReply(events: expEvents))) ?? Data())
+        return (200, (try? JSONEncoder().encode(ExpReply(events: expEvents, pairs: Content.v53 ? pairViews(id.key) : nil, story: Content.v53 ? Story.scenes : nil))) ?? Data())   // 5.3: the pairs, the story
     }
     /// POST /v2/mail: gifts waiting first, then the newest; read = the ones just opened.
     func mailBox(_ d: Data) -> (Int, Data) {
@@ -1389,7 +1491,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             if path == "v1/create" {
                 guard !pins || Cloud.validPIN(pin) else { return (400, ["error": "bad_pin"]) }
                 rows[id.key] = Row(name: id.name, session: session, device: device, at: clock, pin: pins ? pin : nil, trusts: pins ? [device: token] : [:])   // its save: at its first act
-                return (200, ["rev": 0, "session": session, "trust": token, "starter": 1_000_000].merging(content5 ? ["content5": true] : [:]) { $1 }.merging((content51 ? ["content51": true] : [:]).merging(raidDaily ? ["raidDaily": true] : [:]) { $1 }) { $1 }.merging(evoChoice ? ["evoChoice": true] : [:]) { $1 }.merging(duelMega ? ["duelMega": true] : [:]) { $1 }.merging(content52 ? ["content52": true] : [:]) { $1 })   // (5.0: as the login's; 5.1 · 5.1.3 · 5.1.4 too)
+                return (200, ["rev": 0, "session": session, "trust": token, "starter": 1_000_000].merging(content5 ? ["content5": true] : [:]) { $1 }.merging((content51 ? ["content51": true] : [:]).merging(raidDaily ? ["raidDaily": true] : [:]) { $1 }) { $1 }.merging(evoChoice ? ["evoChoice": true] : [:]) { $1 }.merging(duelMega ? ["duelMega": true] : [:]) { $1 }.merging(content52 ? ["content52": true] : [:]) { $1 }.merging(content53 ? ["content53": true] : [:]) { $1 })   // (5.0: as the login's; 5.1 · 5.1.3 · 5.1.4 · 5.2 · 5.3 too)
             }
             return path == "v1/login" ? (200, ["exists": false]) : (404, ["error": "no_trainer"])
         }
@@ -1422,6 +1524,7 @@ final class FakeCloud: CloudLink, @unchecked Sendable {
             if evoChoice { b["evoChoice"] = true }                                                  // 5.1.3
             if duelMega { b["duelMega"] = true }                                                    // 5.1.4
             if content52 { b["content52"] = true }                                                  // 5.2
+            if content53 { b["content53"] = true }                                                  // 5.3
             return (200, b)
         case "v1/pin":
             guard j["session"] as? String == r.session else { return (409, ["error": "conflict", "reason": "replaced"]) }
@@ -1665,7 +1768,8 @@ extension Content {
         on = settings.bool("content5", false) || w.course >= coursesGen4.count || ([w.companion] + w.caught + w.box).contains { $0.dex > 493 }
         on51 = settings.bool("content51", false); onDaily = settings.bool("raidDaily", false); onChoice = settings.bool("evoChoice", false); onDuelMega = settings.bool("duelMega", false)   // (5.1.3, 5.1.4)
         on52 = settings.bool("content52", false)                                                  // 5.2
+        on53 = settings.bool("content53", false)                                                  // 5.3
     }
     /// The login's, a new trainer's or a lobby's: kept for the next launch.
-    @MainActor static func keep() { settings.set("content5", on); settings.set("content51", on51); settings.set("raidDaily", onDaily); settings.set("evoChoice", onChoice); settings.set("duelMega", onDuelMega); settings.set("content52", on52) }
+    @MainActor static func keep() { settings.set("content5", on); settings.set("content51", on51); settings.set("raidDaily", onDaily); settings.set("evoChoice", onChoice); settings.set("duelMega", onDuelMega); settings.set("content52", on52); settings.set("content53", on53) }
 }

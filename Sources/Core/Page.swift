@@ -128,7 +128,7 @@ extension Canvas {
         else if let t = p.team { drawTeam(t) } else if let t = p.teamCard { drawTeamCard(t) }
         else if let t = p.trades { drawTrades(t) } else if let o = p.offer { drawOffer(o) } else if let k = p.pick { drawPick(k) }
         else if let d = p.duel { drawDuel(d) } else if let h = p.hold { drawHold(h) } else if let v = p.visits { drawVisits(v) } else if let s = p.squad { drawSquad(s) } else if let h = p.duelHub { drawDuelHub(h) } else if let m = p.mailList { drawMailList(m) } else if let m = p.mailOpen { drawMailOpen(m) } else if let m = p.mailPick { drawMailPick(m) } else if let r = p.raid { drawRaid(r) } else if let r = p.raidTier { drawRaidTier(r) } else if let g = p.goals { drawGoals(g) } else if let r = p.raidBalls { drawRaidBalls(r) } else if let f = p.friendReqs { drawFriendReqs(f) } else if let b = p.board { drawBoard(b) } else if let o = p.post { drawPost(o) } else if let e = p.evoPick { drawEvoPick(e) }
-        else if let e = p.exp { drawExp(e) }
+        else if let e = p.exp { drawExp(e) } else if let m = p.pairPick { drawPairPick(m) } else if let m = p.twoPick { drawTwoPick(m) } else if let m = p.talk { drawTalk(m) }
         else if let s = p.status { drawStatus(s) }
         if let f = flash, Date().timeIntervalSince(f.at) < 0.15, let rc = hits.first(where: { $0.1 == f.code })?.0 {   // 5.0: the press, seen
             c.fill(.rounded(rc, min(10 * K, rc.height / 2)), Color(white: 0, alpha: 0.12))
@@ -887,7 +887,8 @@ extension Page {
         var xr = x(X1 - 2)
         if m.walking { xr = pillAt("걷는 중", xr, y(206), Ink.tint(Ink.green, 0.18), Ink.green) } else { xr -= c.say(m.when, xr, y(206), font(9, .medium), Ink.sub, 1) + x(6) }
         if m.me { xr = pillAt("나", xr, y(206), Ink.tint(Ink.blue, 0.16), Ink.blue) }
-        let tw = c.say(m.name + "의 트레이너 카드", x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: xr - x(X0 + 2) - (m.deco == nil ? 0 : x(14)))
+        let tt = m.name + "의 트레이너 카드", room = xr - x(X0 + 2) - (m.deco == nil ? 0 : x(14))
+        let tw = c.say(tt, x(X0 + 2), y(206), fitFont(tt, [12, 11, 10, 9], room, .bold), Ink.ink, maxW: room)   // (5.3: a 12-letter ID a size smaller, whole)
         if let d = m.deco { panelPic("medal|\(d == "gold")", CGPoint(x: x(X0 + 2) + tw + x(10), y: y(206) + x(2)), 1.1) { PanelArt.medal(gold: d == "gold") } }   // 3.9: its medal by the name
         let cw = (X1 - X0 - 2 * 4) / 3
         for i in 0..<3 {                                                                            // the walker's three
@@ -907,6 +908,7 @@ extension Page {
         var buttons: [(String, Int, Color, Color, Bool)] = []                                       // (3.8.1: no 인사)
         if let d = m.duel { let on = d == "대전 신청"; buttons.append((on ? d : "걸을 때 대전", 6032, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 3.6: a live battle
         if let v = m.visit { let on = v == "맡기기"; buttons.append((on || v == "이미 맡겼어요" ? v : "걸을 때 맡기기", 6034, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 3.8: 맡겨 키우기
+        if let p = m.pair { let on = p == "짝 청하기"; buttons.append((p, 6035, on ? Ink.redTint : Ink.tile, on ? Ink.red : Ink.faint, on)) }   // 5.3: 협동's ask
         if m.remove { buttons.append(("친구 끊기", 6031, Ink.tile, Ink.sub, true)) }
         if let q = m.request { let on = q == "친구 신청"; buttons = [(q, 6033, on ? Ink.red : Ink.tile, on ? .white : Ink.sub, on)] }   // the 전체 tab: someone not a friend
         let perRow = buttons.count > 3 ? 2 : buttons.count
@@ -1666,7 +1668,7 @@ extension Page {
     func drawExp52(_ m: ExpModel) {
         c.say("전설 원정", x(X0 + 2), y(206), font(12, .bold), Ink.ink)
         c.say(m.got, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
-        tabs(m.tabs, m.tab, 214, code: 9240)
+        if m.tabs.count > 6 { tabsFit(m.tabs, m.tab, 214, code: 9240) } else { tabs(m.tabs, m.tab, 214, code: 9240) }   // (5.3: seven, each as wide as its word)
         let top: CGFloat = 242, step: CGFloat = 26, h: CGFloat = 24
         if m.rows.isEmpty { emptyState("아직 없어요", x(Layout.w / 2), y(top + 40)) }
         for (i, row) in m.rows.prefix(Walker.expPerTab).enumerated() {
@@ -1676,7 +1678,7 @@ extension Page {
             }
             let dim = row.off || row.locked, tx = rc.minX + x(38), fg = dim ? Ink.sub : row.ready ? Ink.red : row.done ? Ink.c(150, 96, 16) : Ink.ink
             let cw = c.say(row.chip, rc.maxX - x(8), rc.minY + x(7.5), font(8, row.on ? .bold : .medium), row.ready || row.on ? Ink.red : Ink.sub, 1)
-            c.say(row.name, tx, rc.minY + x(7.5), font(10, .bold), fg, maxW: rc.maxX - x(14) - cw - tx)
+            c.say(row.name, tx, rc.minY + x(7.5), fitFont(row.name, [10, 9, 8.5, 8], rc.maxX - x(14) - cw - tx, .bold), fg, maxW: rc.maxX - x(14) - cw - tx)
             hits.append((rc, 9200 + i))
             if dim { c.say(row.note, tx, rc.minY + x(17.5), font(8, .medium), Ink.faint, maxW: rc.maxX - x(8) - tx); continue }
             let bx1 = tx + rc.width * 0.26
@@ -1686,14 +1688,14 @@ extension Page {
             c.say(row.note, bx1 + x(6), rc.minY + x(17.5), font(8, .medium), row.ready ? Ink.red : Ink.sub, maxW: rc.maxX - bx1 - x(12))
         }
         var yy = top + CGFloat(min(Walker.expPerTab, max(1, m.rows.count))) * step + 4
-        if !m.steps.isEmpty {
-            let n = CGFloat(m.steps.count), gap: CGFloat = 12, cw = (X1 - X0 - gap * (n - 1)) / n
+        if !m.steps.isEmpty, yy + 32 + (m.pair != nil ? 40 : 0) <= 430 {                          // (5.3: the pair's panel first where both don't fit)
+            let n = CGFloat(m.steps.count), gap: CGFloat = m.steps.count >= 5 ? 6 : 12, cw = (X1 - X0 - gap * (n - 1)) / n
             for (i, st) in m.steps.enumerated() {
                 let rc = r(X0 + CGFloat(i) * (cw + gap), yy, cw, 28)
                 c.fill(.rounded(rc, 8 * K), st.state == 1 ? Ink.redTint : st.state == 2 ? Ink.tint(Ink.green, 0.14) : Ink.board)
                 if st.state == 1 { c.stroke(.rounded(rc, 8 * K), Ink.red, width: 1.2 * K) }
                 let tc = st.state == 1 ? Ink.red : st.state == 2 ? Ink.green : Ink.sub
-                c.say((st.state == 2 ? "✓ " : "\(i + 1) ") + st.title, rc.midX, rc.minY + x(9), font(8.5, .bold), tc, 0.5, maxW: rc.width - x(6))
+                c.say((st.state == 2 ? "✓ " : st.title.first?.isNumber == true ? "" : "\(i + 1) ") + st.title, rc.midX, rc.minY + x(9), font(8.5, .bold), tc, 0.5, maxW: rc.width - x(6))
                 c.say(st.sub, rc.midX, rc.minY + x(20), font(8, .medium), st.state == 0 ? Ink.faint : Ink.sub, 0.5, maxW: rc.width - x(6))
                 if i > 0 { c.triangle(rc.minX - x(gap / 2), rc.midY, 2.5 * K, left: false, Ink.faint) }
             }
@@ -1706,8 +1708,14 @@ extension Page {
             c.say(m.hpNote, x(X1 - 4), y(yy + 20), font(9, .bold), Ink.ink, 1)
             yy += 30
         }
-        for l in m.detail where yy + 13 <= (m.go == nil ? 458 : 428) { c.say(l, x(X0 + 4), y(yy + 4), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 8)); yy += 13 }
-        if let go = m.go { let rc = r(X0, 430, X1 - X0, 28); c.fill(.rounded(rc, 10 * K), Ink.red); c.say(go, rc.midX, rc.midY, font(11, .bold), .white, 0.5, maxW: rc.width - x(10)); hits.append((rc, 9230)) }
+        if let p = m.pair { pairPanel(p, yy); yy += p.with == nil ? 30 : 40 }
+        for l in m.detail where yy + 13 <= (m.go == nil && m.go2 == nil ? 458 : 428) { c.say(l, x(X0 + 4), y(yy + 4), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 8)); yy += 13 }
+        let both = m.go != nil && m.go2 != nil, w1 = both ? ((X1 - X0 - 5) * 0.6).rounded() : X1 - X0
+        if let go = m.go { let rc = r(X0, 430, w1, 28); c.fill(.rounded(rc, 10 * K), Ink.red); c.say(go, rc.midX, rc.midY, font(11, .bold), .white, 0.5, maxW: rc.width - x(10)); hits.append((rc, 9230)) }
+        if let g2 = m.go2 {
+            let rc = both ? r(X0 + w1 + 5, 430, X1 - X0 - w1 - 5, 28) : r(X0, 430, X1 - X0, 28)
+            c.fill(.rounded(rc, 10 * K), Ink.tile); c.say(g2, rc.midX, rc.midY, font(11, .bold), Ink.ink, 0.5, maxW: rc.width - x(8)); hits.append((rc, 9231))
+        }
     }
 }
 
@@ -1763,5 +1771,109 @@ extension Page {
             let rc = r(X0 + CGFloat(i) * (cw + 5), 428, cw, 30)
             c.fill(.rounded(rc, 10 * K), i == 1 ? purple : Ink.tile); c.say(t, rc.midX, rc.midY, font(11, .bold), i == 1 ? .white : Ink.ink, 0.5, maxW: rc.width - x(8)); hits.append((rc, code))
         }
+    }
+}
+
+// MARK: - 5.3 (Exp53.swift): the tabs as wide as their words, the pair's panel, 짝 청하기's friends, a pick of two, a story page
+// MARK: - drawing
+extension Page {
+    /// Tabs each as wide as its word (seven don't fit equal cells: 스토리).
+    func tabsFit(_ labels: [String], _ sel: Int, _ top: CGFloat, code: Int) {
+        let track = r(X0, top, X1 - X0, 22), f = { (s: CGFloat, on: Bool) in font(s, on ? .bold : .medium) }
+        let size: CGFloat = [10, 9.5, 9, 8.5].first { s in labels.reduce(0) { $0 + width($1, f(s, true)) } + x(10) * CGFloat(labels.count) <= track.width } ?? 8
+        let ws = labels.map { width($0, f(size, true)) }, pad = (track.width - ws.reduce(0, +)) / CGFloat(labels.count)
+        c.pill(track, Ink.tile)
+        var cx = track.minX
+        for (i, s) in labels.enumerated() {
+            let cell = CGRect(x: cx, y: track.minY, width: ws[i] + pad, height: track.height); cx = cell.maxX
+            if i == sel { c.pill(cell.insetBy(dx: 1 * K, dy: 2 * K), Ink.red) }
+            c.say(s, cell.midX, cell.midY, f(size, i == sel), i == sel ? .white : Ink.sub, 0.5)
+            hits.append((cell, code + i))
+        }
+    }
+    /// 협동's steps: the two bars as one (mine red, the friend's blue) against the goal, each one's count with ✓ past the least, the days left.
+    func pairPanel(_ p: PairPanel, _ yy: CGFloat) {
+        let sum = p.mine + p.theirs, man = { (n: Int) -> String in n >= 10_000 ? (Double(n) / 10_000 == (Double(n) / 10_000).rounded() || n >= 100_000 ? String(n / 10_000) : String(format: "%.1f", Double(n) / 10_000)) + "만" : n.formatted() }
+        let right = (p.days.map { "\($0)일 남음" } ?? "기한 없음"), rw = c.say(right, x(X1 - 4), y(yy + 7), font(9, .bold), (p.days ?? 99) <= 3 ? Ink.red : Ink.ink, 1)
+        let label = p.with.map { josa($0, "과", "와") + " 짝" } ?? "혼자 걷기", room = x(X1 - X0 - 8) - rw - x(26)
+        let lw = c.say(label, x(X0 + 4), y(yy + 7), fitFont(label, [9.5, 8.5, 8], room, .bold), Ink.ink, maxW: room)
+        if let d = p.theirDex { c.image(iconImage(d), CGRect(x: x(X0 + 6) + lw, y: y(yy + 7) - x(9), width: x(18), height: x(18)), alpha: 1) }   // (the friend's dragon)
+        let x0 = x(X0 + 4), x1 = x(X1 - 58), bw = x1 - x0, fm = CGFloat(p.mine) / CGFloat(max(1, p.goal)), ft = CGFloat(p.theirs) / CGFloat(max(1, p.goal))
+        c.bar(x0, x1, y(yy + 19), min(1, fm + ft), Ink.blue, h: x(5))
+        c.bar(x0, x0 + bw * min(1, fm), y(yy + 19), 1, Ink.red, h: x(5), track: .clear)
+        c.say(man(sum) + "/" + man(p.goal), x(X1 - 4), y(yy + 19), font(9, .bold), Ink.ink, 1)
+        var cx = x(X0 + 4)
+        let parts: [(String, Int, Color)] = p.with.map { [("나", p.mine, Ink.red), ($0.count <= 6 ? $0 : "친구", p.theirs, Ink.blue)] } ?? []
+        for (who, n, col) in parts {
+            c.fill(.rounded(CGRect(x: cx, y: y(yy + 29) - x(3), width: x(6), height: x(6)), 3 * K), col)
+            let ok = p.least == 0 || n >= p.least
+            let t = who + " " + man(n) + (p.least == 0 ? "" : ok ? " ✓" : " · 3만까지 " + man(p.least - n))
+            cx += x(9) + c.say(t, cx + x(9), y(yy + 29), font(8.5, ok ? .semibold : .medium), ok ? (p.least == 0 ? Ink.ink : Ink.green) : Ink.sub, maxW: x(92)) + x(10)
+        }
+    }
+    func drawPairPick(_ m: PairPickModel) {
+        let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
+        c.say(m.title, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)
+        if m.rows.isEmpty { emptyState("아직 친구가 없어요", x(Layout.w / 2), y(280)) }
+        for (i, row) in m.rows.prefix(6).enumerated() {
+            let rc = r(X0, 216 + CGFloat(i) * 29, X1 - X0, 26); tile(rc, 9, on: i == m.sel)
+            c.image(iconImage(row.dex), CGRect(x: rc.minX + x(4), y: rc.midY - x(15), width: 28 * K, height: 28 * K), alpha: row.off ? 0.4 : 1)
+            var xr = rc.maxX - x(9) - c.say(row.value, rc.maxX - x(9), rc.midY, font(8.5, .semibold), row.off ? Ink.faint : Ink.sub, 1) - x(6)
+            if let p = row.pill { xr = pillAt(p, xr, rc.midY, Ink.tint(Ink.blue, 0.14), Ink.blue) }
+            if row.walking { xr = pillAt("걷는 중", xr, rc.midY, Ink.tint(Ink.green, 0.18), Ink.green) }
+            let xl = rc.minX + x(36)
+            c.say(row.name, xl, rc.midY, fitFont(row.name, [10, 9, 8.5], xr - xl, .bold), row.off ? Ink.sub : Ink.ink, maxW: xr - xl)
+            hits.append((rc, 9600 + i))
+        }
+        var yy = 216 + CGFloat(min(6, max(1, m.rows.count))) * 29 + 8
+        for l in m.lines where yy + 13 <= 428 { c.say(l, x(X0 + 4), y(yy + 4), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 8)); yy += 13 }
+        let rc = r(X0, 430, X1 - X0, 28); c.fill(.rounded(rc, 10 * K), m.go == nil ? Ink.tile : Ink.red)
+        c.say(m.go ?? "청할 수 없어요", rc.midX, rc.midY, font(11, .bold), m.go == nil ? Ink.sub : .white, 0.5, maxW: rc.width - x(10)); if m.go != nil { hits.append((rc, 9630)) }
+    }
+    func drawTwoPick(_ m: TwoPickModel) {
+        let nw = c.say(m.note, x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
+        c.say(m.title, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)
+        let gap: CGFloat = 6, cw = (X1 - X0 - gap) / 2
+        for (i, e) in m.cards.enumerated() {
+            let rc = r(X0 + CGFloat(i) * (cw + gap), 216, cw, 128); tile(rc, 10, on: i == m.sel)
+            monIcon(e.dex, shiny: false, CGRect(x: rc.minX, y: rc.minY + x(4), width: rc.width, height: x(56)), side: 56 * K)
+            if let mk = m.cards[i].mark { let f = font(7.5, .bold), w = width(mk, f) + x(10), pr = CGRect(x: rc.maxX - x(5) - w, y: rc.minY + x(5), width: w, height: x(13)); c.pill(pr, Ink.tint(Ink.blue, 0.16)); c.say(mk, pr.midX, pr.midY, f, Ink.blue, 0.5) }
+            c.say(e.name, rc.midX, rc.minY + x(68), font(11.5, .bold), Ink.ink, 0.5, maxW: rc.width - x(8))
+            let f = font(8, .bold), ws = e.types.map { width(typeKo[$0] ?? $0, f) + 9 * K }, all = ws.reduce(0, +) + x(3) * CGFloat(max(0, ws.count - 1))
+            var px = rc.midX - all / 2
+            for (t, w) in zip(e.types, ws) { c.typePill(t, px, rc.minY + x(83), h: x(13), size: 8); px += w + x(3) }
+            c.say(e.sub, rc.midX, rc.minY + x(100), font(8.5, .medium), Ink.ink, 0.5, maxW: rc.width - x(8))
+            c.say(e.note, rc.midX, rc.minY + x(114), font(8, .medium), Ink.sub, 0.5, maxW: rc.width - x(8))
+            hits.append((rc, 9650 + i))
+        }
+        var yy: CGFloat = 352
+        for l in m.lines where yy + 13 <= 428 { c.say(l, x(X0 + 4), y(yy + 4), font(9, .medium), Ink.sub, maxW: x(X1 - X0 - 8)); yy += 13 }
+        let both = m.go2 != nil, w1 = both ? ((X1 - X0 - 5) * 0.62).rounded() : X1 - X0
+        let rc = r(X0, 430, w1, 28); c.fill(.rounded(rc, 10 * K), Ink.red); c.say(m.go, rc.midX, rc.midY, font(11, .bold), .white, 0.5, maxW: rc.width - x(10)); hits.append((rc, 9660))
+        if let g2 = m.go2 { let rc2 = r(X0 + w1 + 5, 430, X1 - X0 - w1 - 5, 28); c.fill(.rounded(rc2, 10 * K), Ink.tile); c.say(g2, rc2.midX, rc2.midY, font(11, .bold), Ink.ink, 0.5, maxW: rc2.width - x(8)); hits.append((rc2, 9661)) }
+    }
+    /// A story page: the chapter, the pages before (faded), this one in its box (who on its tag, two lines, ▼), 다음 · 건너뛰기.
+    func drawTalk(_ m: TalkModel) {
+        let nw = c.say("이야기 \(m.page + 1)/\(m.of)", x(X1 - 2), y(206), font(9, .medium), Ink.sub, 1)
+        c.say(m.chapter, x(X0 + 2), y(206), font(12, .bold), Ink.ink, maxW: x(X1 - X0 - 10) - nw)
+        var bottom: CGFloat = 326 - 8
+        for s in m.log.reversed() {
+            let h = CGFloat(s.lines.count) * 13 + (s.who.isEmpty ? 0 : 11) + 5
+            guard bottom - h >= 218 else { break }
+            var yy = bottom - h; bottom = yy
+            if !s.who.isEmpty { c.say(s.who, x(X0 + 6), y(yy + 5), font(8, .bold), Ink.faint, maxW: x(X1 - X0 - 12)); yy += 11 }
+            for l in s.lines { c.say(l, x(X0 + 6), y(yy + 5), font(9.5, .medium), Ink.faint, maxW: x(X1 - X0 - 12)); yy += 13 }
+        }
+        let box = r(X0, 334, X1 - X0, 88)
+        c.fill(.rounded(box, 12 * K), Ink.tile); c.stroke(.rounded(box, 12 * K), Ink.red, width: 1.5 * K)
+        if !m.who.isEmpty {
+            let f = font(9, .bold), w = width(m.who, f) + x(14), tag = CGRect(x: box.minX + x(8), y: box.minY + x(7), width: min(w, box.width - x(20)), height: x(16))
+            c.pill(tag, Ink.red); c.say(m.who, tag.midX, tag.midY, f, .white, 0.5, maxW: tag.width - x(8))
+        }
+        for (k, l) in m.lines.prefix(2).enumerated() { c.say(l, box.minX + x(14), box.minY + x(m.who.isEmpty ? 26 : 38) + CGFloat(k) * x(19), font(13, .semibold), m.who.isEmpty ? Ink.sub : Ink.ink, maxW: box.width - x(28)) }
+        c.triangle(box.maxX - x(14), box.maxY - x(10), 3.5 * K, left: false, Ink.red)
+        let w1 = m.skip ? ((X1 - X0 - 5) * 0.66).rounded() : X1 - X0
+        let rc = r(X0, 430, w1, 28); c.fill(.rounded(rc, 10 * K), Ink.red); c.say(m.go, rc.midX, rc.midY, font(11, .bold), .white, 0.5, maxW: rc.width - x(10)); hits.append((rc, 9680))
+        if m.skip { let rc2 = r(X0 + w1 + 5, 430, X1 - X0 - w1 - 5, 28); c.fill(.rounded(rc2, 10 * K), Ink.tile); c.say("건너뛰기", rc2.midX, rc2.midY, font(11, .bold), Ink.ink, 0.5, maxW: rc2.width - x(8)); hits.append((rc2, 9681)) }
     }
 }

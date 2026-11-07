@@ -7,13 +7,14 @@ import Foundation
 // 5.1's page (ExpView.swift) is the one with content52 off.
 
 /// One row of the 5.2 page.
-enum ExpRow: Equatable { case team(TeamEventView), exp(Expedition), later(kind: String, name: String, dex: [Int]) }
+enum ExpRow: Equatable { case team(TeamEventView), exp(Expedition), later(kind: String, name: String, dex: [Int]), ask(PairView) }
 /// What the pick's button does: start (or switch to, go on with) it, claim it, meet the roamer, the boss (its party first), its balls, a
 /// course where its steps count, the 포켓몬 grid (케르디오's companion).
-enum ExpGo: Equatable { case start, claim, meet, boss, balls, course(Int), companion }
+enum ExpGo: Equatable { case start, claim, meet, boss, balls, course(Int), companion, invite, cancel, trainer, pick, talk, dex }   // (5.3: 짝 청하기 · 거두기 / 풀기, 플레어단전, 고르기, 이야기, 칼로스 도감)
 
 extension Walker {
-    static let expTabs = ["지금", "배회", "시련", "수집", "팀", "예정"], expPerTab = 5
+    static var expTabs: [String] { Content.v53 ? ["지금", "배회", "시련", "수집", "협동", "스토리", "팀"] : ["지금", "배회", "시련", "수집", "팀", "예정"] }   // (5.3: 협동 · 스토리, no 예정)
+    static let expPerTab = 5
     /// 5.3's kinds (예정).
     static let expLater53: [ExpRow] = [.later(kind: "협동", name: "레시라무 · 제크로무", dex: [643, 644]), .later(kind: "스토리", name: "제르네아스 · 이벨타르", dex: [716, 717])]
 
@@ -48,6 +49,7 @@ extension Walker {
 
     // MARK: the rows
     func expRows(_ tab: Int) -> [ExpRow] {
+        if Content.v53 { return exp53Rows(tab) }
         let all = Expeditions.personal
         switch tab {
         case 0:
@@ -63,6 +65,7 @@ extension Walker {
     func expKindName(_ e: Expedition) -> String { switch e.kind { case .roam: "배회"; case .trial: "시련"; case .collect: "수집"; case .team: "팀"; case .pair: "협동"; case .story: "스토리" } }
     /// A row's chip and short line, its bar (a roamer's: HP), what's red (something to do now), done, dimmed.
     func exp52Words(_ e: Expedition, _ now: Date = Date()) -> (chip: String, note: String, frac: Double, hp: Bool, ready: Bool, done: Bool, off: Bool) {
+        if exp53Owns(e) { return exp53Words(e, now) }
         let x = expProgress(e), kind = expKindName(e)
         if expLocked(e) { return (kind + " · 잠김", expAfterWho(e) + " 먼저", 0, false, false, false, true) }
         if x.mon == nil { return x.done > 0 ? (kind + " · 끝냄", "잡았어요 ✓ · 다시 할 수 있어요", 1, false, false, true, false) : (kind, "시작 전", 0, false, false, false, false) }
@@ -82,7 +85,7 @@ extension Walker {
         case .companion:
             if x.steps >= s.need { return (kind + " · " + state, "받을 수 있어요", 1, false, true, false, false) }
             return (kind + " · " + state, "동행 \(man(x.steps))/\(man(s.need))", Double(x.steps) / Double(max(1, s.need)), false, false, false, false)
-        case .pair, .trainer, .dex, .pick: return (kind + " · " + state, "", 0, false, false, false, false)   // 5.3 (plan 19 §12.6): the 5.3 app's
+        case .pair, .trainer, .dex, .pick: return exp53Words(e, now)
         case .fight:
             let fight = e.legend == 384 ? "결전" : "보스전"
             if let b = x.balls { return (kind + " · 볼", x.on ? "볼 \(b)/\(s.balls) · 던질 수 있어요" : "볼 \(b)개 남음 · 멈춤", 1, false, x.on, false, false) }
@@ -91,6 +94,7 @@ extension Walker {
     }
     /// The pick's steps (two or more): ① a walk → ② the boss → ③ its balls …, each with its count now.
     func expStrip(_ e: Expedition, _ now: Date = Date()) -> [ExpModel.Step] {
+        if exp53Owns(e) || e.kind == .pair && e.legend != 646 { return exp53Strip(e, now) }
         var items: [(title: String, sub: String, at: Int, balls: Bool)] = []
         for (i, s) in e.steps.enumerated() {
             switch s.kind {
@@ -98,7 +102,7 @@ extension Walker {
             case .walk: items.append(((expPlace(s) ?? "") + " 코스", "\(man(s.need))걸음", i, false))
             case .companion: items.append(("검사와 걷기", "\(man(s.need))걸음", i, false))
             case .meet: items.append(("만남", "5,000걸음마다", i, false))
-            case .pair, .trainer, .dex, .pick: break                                                   // (5.3's: the 5.3 app)
+            case .pair, .trainer, .dex, .pick: break                                                   // (5.3's: exp53Strip)
             case .fight:
                 items.append((e.legend == 384 ? "결전" : "보스전", e.legend == 384 ? "Lv.\(s.level)" : "하루 1번", i, false))
                 if s.balls > 0 { items.append(("볼 \(s.balls)개", "한 개 \(Int(RaidRules.newOdds * 100))%", i, true)) }
@@ -126,8 +130,10 @@ extension Walker {
         switch r {
         case .team(let t): let d = expDetail(.team(t)); return (d.lines, d.go, nil)
         case .later: return (["5.3 업데이트에 열려요"], nil, nil)
+        case .ask(let a): let d = askDetail(a); return (d.lines, d.go, d.act)
         case .exp(let e):
             let x = expProgress(e), name = monNames[e.legend]
+            if exp53Owns(e) { let d = exp53Detail(e, now); return (d.lines, d.go, d.act) }             // 5.3: 협동 (its pair step) · 스토리
             if expLocked(e) {
                 let gives = [e.item, e.gift.map { $0 + "(\(expKindName(e)) 첫 완료)" }].compactMap { $0 }
                 return ([(e.after.count == 3 ? "세 검사(코바르온 · 테라키온 · 비리디온)를" : expAfterWho(e)) + " 잡으면 열려요"] + (gives.isEmpty ? [] : ["끝내면 " + gives.joined(separator: " · ")]), nil, nil)
@@ -137,14 +143,15 @@ extension Walker {
             guard let (k, s) = expStage(e) else { return ([], nil, nil) }
             if let g = expGoing, g.id != e.id {
                 if x.mon != nil, expClaimable(e) { return (["멈춘 원정이지만 받을 수 있어요"], expClaimLabel(e), .claim) }   // (a claim: going on or stopped, as 5.1)
-                return (["원정은 한 번에 하나 · 지금: " + monNames[g.legend], "바꾸면 지금 것은 멈추고, 나중에 이어 할 수 있어요"] + (x.mon == nil ? [intro] : []),
-                        (x.mon != nil ? "이어 하기" : "바꾸기") + " · 지금 것은 멈춰요", .start)
+                let paired = pairOn(g.id)                                                                   // (5.3: a pair going on ends)
+                return (["원정은 한 번에 하나 · 지금: " + expRowName(g), paired.map { "바꾸면 " + josa($0.with, "과", "와") + "의 짝이 풀리고, 둘이 걸은 걸음은 사라져요" } ?? "바꾸면 지금 것은 멈추고, 나중에 이어 할 수 있어요"] + (x.mon == nil ? [intro] : []),
+                        (x.mon != nil ? "이어 하기" : "바꾸기") + (paired != nil ? " · 짝이 풀려요" : " · 지금 것은 멈춰요"), .start)
             }
             if x.mon == nil { return ([roamer ? "하나 코스를 돌아다녀요 · 5,000걸음마다 만남 1번" : intro, "원정은 한 번에 하나만 할 수 있어요"], x.done > 0 ? "다시 하기" : "시작하기", .start) }
             if !x.on { return (["멈춘 원정 · 모은 것은 그대로예요", "멈춘 동안은 걸음이 쌓이지 않아요"] + (x.balls != nil ? ["볼 \(x.balls ?? 0)개가 남아 있어요"] : []), "이어 하기", .start) }
             if expClaimable(e) { return ([s.kind == .companion ? "세 검사와 \(man(s.need))걸음을 걸었어요" : s.kind == .collect ? "모은 \(s.piece) \(s.need)개로 " + josa(name, "을", "를") + " 조립해요" : "\(man(s.need))걸음을 다 걸었어요"], expClaimLabel(e), .claim) }
             switch s.kind {
-            case .pair, .trainer, .dex, .pick: return ([], nil, nil)                                    // (5.3's: the 5.3 app)
+            case .pair, .trainer, .dex, .pick: let d = exp53Detail(e, now); return (d.lines, d.go, d.act)
             case .meet:
                 let rc = roamCourse(e), place = rc.map { courses[$0].name }, here = rc == state.course, meets = x.meets ?? 0
                 let first = !s.counts(state.here) ? "지금 \(state.here.name) · 만남은 하나 코스에서만 쌓여요"
@@ -195,14 +202,17 @@ extension Walker {
                 let w = expWords(.team(t))
                 return .init(name: teamName(t), chip: w.chip, note: w.note, dex: expDex(.team(t)), frac: Double(t.team) / Double(max(1, t.goal)), mine: Double(t.mine) / Double(max(1, t.min)), done: t.got || t.team >= t.goal)
             case .later(let kind, let name, let dex): return .init(name: name, chip: kind, note: "5.3 업데이트에 열려요", dex: dex, frac: 0, off: true)
+            case .ask(let a): return askRow(a)
             case .exp(let e):
                 let w = exp52Words(e, now)
-                return .init(name: monNames[e.legend], chip: w.chip, note: w.note, dex: [e.legend], frac: w.frac, ready: w.ready, done: w.done, hpBar: w.hp, locked: w.off, on: expProgress(e).on)
+                return .init(name: expRowName(e), chip: w.chip, note: w.note, dex: expRowDex(e), frac: w.frac, mine: pairOn(e.id).map { Double($0.steps) / Double(max(1, $0.min)) }, ready: w.ready, done: w.done, hpBar: w.hp, locked: w.off, on: expProgress(e).on)
             }
         }
         let d: (lines: [String], go: String?, act: ExpGo?) = list[safe: s].map { exp52Detail($0, now) } ?? (expTab == 0 ? (["하고 있는 원정이 없어요", "배회 · 시련 · 수집 탭에서 골라 시작해요"], nil, nil) : ([], nil, nil))
         let got = Walker.expLegends.filter { (state.owned ?? []).contains($0) }.count
         var m = ExpModel(rows: rows, sel: s, got: "전설 \(got)/\(Walker.expLegends.count)종", detail: d.lines, go: d.go, tabs: Walker.expTabs, tab: expTab)
+        if case .ask(let a)? = list[safe: s] { m.go2 = askDetail(a).go2 }
+        if case .exp(let e)? = list[safe: s], exp53Owns(e) { let d = exp53Detail(e, now); m.go2 = d.go2; m.pair = d.pair }
         if case .exp(let e)? = list[safe: s] {
             m.steps = expStrip(e, now)
             let x = expProgress(e)
@@ -222,7 +232,10 @@ extension Walker {
             for k in 0..<len { for dy in 0..<3 { fb.set(x + k, y + dy, k < done ? 3 : 1, k < done ? c : 0) } }
         }
         let grey: (UInt8, UInt32) = (3, rgb(150, 156, 168))                                                         // a shadow that shows on the colour LCD too
+        if case .ask(let a) = r { askLCD(&fb, a); return }
+        if case .exp(let e) = r, exp53Owns(e) { exp53LCD(&fb, e, now); return }
         switch r {
+        case .ask: break                                                                                 // (askLCD above)
         case .team(let t):
             if let d = expDex(.team(t)).first { fb.mon(Mon(dex: d, level: 50, female: false), 0, 0, 2) }
             fb.name(teamName(t), x, 13, 94 - x); bar(26, Double(t.team) / Double(max(1, t.goal)))
@@ -256,7 +269,7 @@ extension Walker {
                 if expClaimable(e) { fb.line("\(unit) \(p.n)/\(st.need)", x, 31, 94 - x, 3); fb.line("● " + expClaimLabel(e), x, 44, 94 - x, 3); return }
                 bar(26, Double(p.n) / Double(max(1, st.need))); fb.line("\(unit) \(p.n)/\(st.need)", x, 31, 94 - x, 2)
                 fb.line("다음 \(unit)", x, 40, 94 - x); fb.line("\(max(0, st.stepsPer - p.steps).formatted())걸음", x, 49, 94 - x)
-            case .pair, .trainer, .dex, .pick: break                                                   // (5.3's: the 5.3 app)
+            case .pair, .trainer, .dex, .pick: break                                                   // (5.3's: exp53LCD)
             case .fight:
                 if let b = p.balls { fb.line("볼 \(b)/\(st.balls)", x, 26, 94 - x, 2); fb.line("한 개 \(Int(RaidRules.newOdds * 100))%", x, 37, 94 - x); fb.line("● 던지기", x, 48, 94 - x, 3); return }
                 fb.line((e.legend == 384 ? "결전" : "보스전") + " · 바 \(st.bars)", x, 26, 94 - x, 2)
@@ -269,8 +282,9 @@ extension Walker {
     func exp52Press(_ k: Int, _ sel: Int, _ now: Date) {
         let list = expRows(expTab), n = max(1, min(Walker.expPerTab, list.count))
         if k != 1 { screen = .expedition((sel + (k == 0 ? -1 : 1) + n) % n); return }
+        if case .ask(let a)? = list[safe: sel] { pairAsk = a; screen = .twoPick(kind: 0, sel: dragonDex(a.theirs) == 643 ? 0 : 1); return }   // 5.3: a friend's ask — my dragon
         guard case .exp(let e)? = list[safe: sel], let a = exp52Detail(.exp(e), now).act else { return }
-        let here = Screen.expedition(sel), name = monNames[e.legend]
+        let here = Screen.expedition(sel)
         switch a {
         case .claim: expClaim52(e, back: here, now)
         case .meet: expFight(e.id, party: nil, back: here, now)
@@ -278,11 +292,25 @@ extension Walker {
         case .balls: expBallsID = e.id; screen = .raid(.expBalls(e.id))
         case .companion: screen = .box(-1, act: nil, confirm: false)
         case .course(let c): screen = .course(c)
-        case .start:
-            if let g = expGoing, g.id != e.id,
-               host?.confirm(name + " 원정으로 바꿀까요?", "지금 하는 " + monNames[g.legend] + " 원정은 멈추고, 모은 것은 그대로 남아요. 나중에 이어 할 수 있어요.", ok: "바꾸기") == false { return }
-            let resume = expProgress(e).mon != nil
-            act(.expStart(id: e.id), back: here, now) { [weak self] _, now in .say([name + " 원정을", resume ? "이어 간다!" : "시작했다!"], next: self?.expPage(e.id) ?? here, since: now) }
+        case .invite, .cancel, .trainer, .pick, .talk, .dex: exp53Go(a, e, sel, now)
+        case .start: expStartGo(e, sel, now)
+        }
+    }
+    /// 시작하기 · 바꾸기 · 이어 하기: the one going on stops (asked first; 5.3: a pair going on ends — said so); the story's scene for where it is.
+    func expStartGo(_ e: Expedition, _ sel: Int, _ now: Date) {
+        let here = Screen.expedition(sel), name = expRowName(e)
+        if let g = expGoing, g.id != e.id {
+            let body = pairOn(g.id).map { p in "지금 " + josa(p.with, "과", "와") + " 하는 " + monNames[g.legend] + " 협동은 짝이 풀려요.\n둘이 걸은 \(man(p.steps + p.theirSteps)) 걸음은 사라지고, " + josa(p.with, "도", "도") + " 짝이 풀려요. " + monNames[g.legend] + " 원정은 멈추고, 혼자 걸은 걸음은 남아요." }
+                ?? "지금 하는 " + expRowName(g) + " 원정은 멈추고, 모은 것은 그대로 남아요. 나중에 이어 할 수 있어요."
+            if host?.confirm(name + " 원정으로 바꿀까요?", body, ok: pairOn(g.id) != nil ? "바꾸고 짝 풀기" : "바꾸기") == false { return }
+        }
+        let resume = expProgress(e).mon != nil
+        act(.expStart(id: e.id), back: here, now) { [weak self] _, now in
+            guard let self else { return nil }
+            if Content.v53 { cloud?.expeditionDue = true }                                              // (a pair may have ended)
+            let page = expPage(e.id)
+            if e.kind == .story, case let k = expProgress(e).stage ?? 0, let s = playScenes([scene(e.id, k, "start")], then: sceneThen(e.id, k)) { return s }
+            return .say([name + " 원정을", resume ? "이어 간다!" : "시작했다!"], next: page, since: now)
         }
     }
     func exp52Tab(_ t: Int) { expTab = (t + Walker.expTabs.count) % Walker.expTabs.count; screen = .expedition(0) }
@@ -319,6 +347,7 @@ extension Walker {
     /// An expedition's fight's title: 배회 · 토네로스, 시련 · 테라키온, 레쿠쟈 원정.
     func expTitle(_ id: String) -> String {
         guard let e = Expeditions.of(id) else { return "전설 원정" }
+        if e.kind == .story { return e.title }
         return e.legend == 384 ? "레쿠쟈 원정" : expKindName(e) + " · " + monNames[e.legend]
     }
 
@@ -334,10 +363,12 @@ extension Walker {
     }
     /// An expedition's fight over (the server's end): the roamer — what's carried; the boss — its ball stage, or tomorrow.
     func expFightEnded(_ id: String, _ b: Battle, _ e: BattleEnd, _ now: Date) -> Screen {
+        if let t = b.trainer { return storyFightEnded(id, t, e, now) }                                 // 5.3: 플레어단
         let f = b.theirs[0], name = monNames[f.mon.dex], page = expPage(id)
         if b.raidTier != nil {                                                                      // the boss
             if e.result == "won" {
                 if let balls = e.balls, balls > 0 { expBallsID = id; return .say([josa(name, "을", "를") + " 이겼다!", "볼 \(balls)개 · 한 개에 \(Int(RaidRules.newOdds * 100))%"], next: .raid(.expBalls(id)), since: now) }
+                if Expeditions.of(id)?.kind == .story { return storyFinalWon(id, name, now) }                    // 5.3: 제르네아스 · 이벨타르 (its scene after)
                 return .say([josa(name, "을", "를") + " 잡았다!", "화룡점정을 알고 있다!", "상자로 보냈다"] + expDoneLines(id), next: page, since: now)   // 레쿠쟈 (R2): it comes with the win
             }
             return .say([e.result == "ran" ? "결전에서 물러났다" : josa(name, "에게", "에게") + " 졌다...", "오늘은 끝 · 내일 다시"], next: page, since: now)
@@ -386,6 +417,7 @@ extension Walker {
     // MARK: 홈 and the menu
     /// 홈's row (the user: "내 원정 먼저"): the one going on, else the team event, else one to claim, else a nudge.
     var exp52HomeRow: StatusModel.Row? {
+        if Content.v53, let r = exp53HomeRow { return r }
         if let e = expGoing, let (_, s) = expStage(e) {
             let x = expProgress(e), name = monNames[e.legend]
             switch s.kind {
@@ -405,17 +437,19 @@ extension Walker {
         return .init(key: "전설 원정", value: "원정을 골라 시작해요")
     }
     var exp52Note: String {
+        if Content.v53, let r = exp53HomeRow { return r.value }
         if let e = Expeditions.personal.first(where: expClaimable) { return monNames[e.legend] + " 받을 수 있어요" }
         if let e = expGoing { return monNames[e.legend] + " · " + exp52Words(e).note }
         return teamEvent().map { teamName($0) + " 팀 \(teamPct($0))%" } ?? "원정을 골라 시작해요"
     }
     /// The red dot: a claim, or the one going on's balls or meeting waiting.
     var exp52Dot: Bool {
-        Expeditions.personal.contains(where: expClaimable) || expGoing.map { e in let x = expProgress(e); return x.balls != nil || (x.meets ?? 0) > 0 } == true
+        (Content.v53 && exp53Dot) || Expeditions.personal.contains(where: expClaimable) || expGoing.map { e in let x = expProgress(e); return x.balls != nil || (x.meets ?? 0) > 0 } == true
     }
     /// News: a step done (홈's card and a notification), a piece or a meeting (5.1's card for 지가르데's cells).
     func showExpStage(_ id: String, _ stage: Int, _ now: Date) {
         guard let e = Expeditions.of(id) else { return }
+        if showStoryStage(e, stage, now) { return }                                                     // 5.3: the story's scene for it
         let name = monNames[e.legend], next = e.steps[safe: stage]
         let line: String = next.map { s in
             switch s.kind {

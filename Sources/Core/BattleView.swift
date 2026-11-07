@@ -55,7 +55,7 @@ extension Walker {
         if megaHere(b), megaOn { m.megaTicked = true }                                              // 5.1: ticked — the HP box's tab, till the turn's answer
         if let s = megaGathering(now) { if s == .me { m.mine.name = monNames[mine.mon.dex] } else { m.foe.name = monNames[foe.mon.dex] } }   // its own name till the light bursts
         if bossOn(b) { m.bars = .init(broken: b.theirs.filter { !$0.alive }.count, total: b.theirs.count, cur: CGFloat(foe.hp) / CGFloat(max(1, foe.maxHP))) }   // (the pane's strip by a prompt, the HP boxes' ×n)
-        if b.expedition != nil, b.raidTier == nil { m.turnsLeft = max(0, Expeditions.roamTurns - b.turnNo) }   // 5.2 (plan 19 §11.3): the roamer runs off after 3 (Battle.turnNo)
+        if b.expedition != nil, b.raidTier == nil, b.trainer == nil { m.turnsLeft = max(0, Expeditions.roamTurns - b.turnNo) }   // 5.2 (plan 19 §11.3): the roamer runs off after 3 (Battle.turnNo)
         return m
     }
     /// 메가진화 on offer now: ours may, and (5.1.4, plan 24) a live battle's says this one allows it (DuelView.mega; the server's: both apps 5.1.4 on).

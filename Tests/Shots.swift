@@ -860,6 +860,8 @@ import AppKit
         take("fav522_market_pick", fw) { v in v.screen = .market(.pick(MarketPick(listing: nil, give: nil, wish: [], side: 0, at: 0))) }
         take("fav522_tower", fw) { v in v.screen = .squad(Squad(kind: .tower, picked: [v.state.box[0].uid, v.state.box[1].uid].compactMap { $0 }, at: 2)) }
     } } }
+    // 5.3 (docs/plans/19 §12, Core/Exp53.swift): 협동 · 스토리 — the mockups' scenes (Tests/Exp53Checks.swift's exp53Scenes), the worst cases with WORST53=1
+    exp53Scenes(worst: ProcessInfo.processInfo.environment["WORST53"] == "1") { name, v, set in take("exp53_" + name, v) { set($0) } }
     return n
 }
 #endif

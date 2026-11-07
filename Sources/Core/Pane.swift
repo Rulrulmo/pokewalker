@@ -177,6 +177,9 @@ struct TeamCardModel: Equatable {
     var duel: String? = nil                                            // 3.6: 대전 신청 (a friend walking now), or why not; nil: none (my own card)
     var visit: String? = nil                                           // 3.8: 맡기기 (a friend walking now, none of mine away), or why not
     var request: String? = nil                                         // 3.8's 전체 tab: 친구 신청 on someone not a friend (or that it's been sent)
+    var pair: String? = nil                                            // 5.3 (Exp53.swift): 짝 청하기 (or why not: 짝 있음 · 5.3 아님 · 청했어요 · 짝 걷는 중)
+    /// Four buttons: two rows (the card a row taller).
+    var twoRows: Bool { [duel, visit, pair].compactMap { $0 }.count + (remove ? 1 : 0) > 3 && request == nil }
 }
 extension TeamCardModel {
     /// 5.1.4 (the user's 5.1.3 shot, "트레이너 카드 글자 잘리고"): nine lines (a 칭호, 레이드, 메가스톤, 맡김 or 코스) ran under the buttons at 380.
@@ -300,6 +303,7 @@ struct PaneContent: Equatable {
     var squad: SquadModel? = nil, duelHub: DuelHubModel? = nil
     var mailList: MailListModel? = nil, mailOpen: MailOpenModel? = nil, mailPick: MailPickModel? = nil
     var evoPick: EvoPickModel? = nil                                   // 5.1.3: 배루키's pick
+    var pairPick: PairPickModel? = nil, twoPick: TwoPickModel? = nil, talk: TalkModel? = nil   // 5.3 (Exp53.swift): 짝 청하기's friends, a pick of two, a story page
 }
 extension PaneContent {
     /// The card's height (card points) for a page: the window grows down to it. Pages keep one height while they're up (a fight doesn't jump per turn).
@@ -307,7 +311,7 @@ extension PaneContent {
     static var home: CGFloat { Content.v51 ? 468 : 446 }   // (5.1: 홈's sixth row, 전설 원정 — the user: "그냥 한줄 늘리는게 낫지 않아?")                                                                 // 홈's status sheet and the 메뉴 alike: the 메뉴 / 홈 key never resizes the card (3.5.1: 11 tiles at a comfortable size; 5.0: 홈's quick buttons)
     var height: CGFloat {
         login != nil ? 330 : battle != nil ? 316 : grid?.items != nil ? 508 : grid?.regions != nil ? 448 : grid != nil ? 422 : mon != nil ? 484 : items != nil ? 472 : dex != nil ? (dex!.form != nil ? 420 : 390) : shop != nil ? (shop!.tabs.count > 6 ? 458 : 434) : menu != nil ? PaneContent.home
-            : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? TeamCardModel.height : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil || raidTier != nil || raidBalls != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446 : mailList != nil || mailOpen != nil || mailPick != nil ? 466
-            : evoPick != nil ? 466 : radar != nil ? 327 : goals != nil || exp != nil ? 466 : card != nil ? (card!.picking ? 270 + 30 * CGFloat(card!.titles.count + 1) : card!.title != nil || card!.deco != nil || card!.stones != nil ? 254 : 230) : learn != nil ? 444 : tower != nil ? 400 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
+            : team != nil ? (team!.tabs.count > 5 ? 470 : 446) : teamCard != nil ? TeamCardModel.height + (teamCard!.twoRows ? 34 : 0) : trades != nil ? 446 : offer != nil ? 482 : pick != nil ? 480 : raid != nil || raidTier != nil || raidBalls != nil ? 464 : friendReqs != nil ? (friendReqs!.tabs.count > 5 ? 470 : 446) : board != nil ? 474 : post != nil ? 482 : duel != nil ? 330 : hold != nil ? 446 : visits != nil ? 470 : squad != nil ? 480 : duelHub != nil ? 446 : mailList != nil || mailOpen != nil || mailPick != nil ? 466
+            : evoPick != nil || pairPick != nil || twoPick != nil || talk != nil ? 466 : radar != nil ? 327 : goals != nil || exp != nil ? 466 : card != nil ? (card!.picking ? 270 + 30 * CGFloat(card!.titles.count + 1) : card!.title != nil || card!.deco != nil || card!.stones != nil ? 254 : 230) : learn != nil ? 444 : tower != nil ? 400 : course != nil ? 392 : train != nil ? 392 : relearn != nil ? 408 : status != nil ? PaneContent.home : Layout.idle
     }
 }

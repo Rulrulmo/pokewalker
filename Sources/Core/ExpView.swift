@@ -21,7 +21,11 @@ struct ExpModel: Equatable {
     var tabs: [String] = [], tab = 0                                   // 5.2 (plan 19 §11, the user's A): 지금 · 배회 · 시련 · 수집 · 팀 · 예정
     var steps: [Step] = []
     var hp: Double? = nil, hpNote = "", place = ""                     // 5.2: the roamer picked — its HP left, its status, where it is today
+    var go2: String? = nil                                             // 5.3 (Exp53.swift): a second button (grey) beside go, or alone
+    var pair: PairPanel? = nil                                         // 5.3: the pair's steps (or the ones walked alone)
 }
+/// 5.3 (Exp53.swift): 협동's steps — mine and the friend's against the goal, each one's least, the days left (nil: 혼자, no end).
+struct PairPanel: Equatable { var with: String?; var theirDex: Int?; var mine, theirs, goal, least: Int; var days: Int? }
 
 extension Walker {
     /// The kinds the next updates open (plan 19 §1.6: 5.2 roaming · trials, 5.3 the pair · the story), shown dimmed (the user: "양호").

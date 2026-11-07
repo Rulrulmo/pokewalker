@@ -242,6 +242,10 @@ extension Walker {
             case .course: screen = up("코스")
             case .goals: screen = up("도감 업적")
             case .expedition: screen = up("전설 원정")
+            case .pairPick: screen = .expedition(expTab == 0 ? 0 : expRows(expTab).firstIndex { if case .exp(let e) = $0 { return e.kind == .pair }; return false } ?? 0)   // 5.3 (Exp53.swift)
+            case .twoPick(2, _): screen = teamRows(0).firstIndex { $0.card.name == pairTo }.map { .team(sel: $0, tab: 0, card: true) } ?? .team(sel: 0, tab: 0, card: false)   // (from a friend's card)
+            case .twoPick: screen = .expedition(0)
+            case .talk: talkEnd()                                                                    // (as 건너뛰기)
             case .rank: screen = up("랭킹")
             case .train: screen = .items(state.inventory.firstIndex(of: "은색병뚜껑") ?? 0); trainRef = -1
             case .tower(let p): screen = p != nil ? .tower(pick: nil) : up("배틀 타워")                    // the picker → the lobby → the menu; a run stays on: ● in the lobby goes on
@@ -321,6 +325,7 @@ extension Walker {
             if duelOn { duelPick(.forfeit, b, back: .battle(b, sel: 0), now); return }              // a live battle: giving up is this turn's pick
             act(.battle(cmd: .forfeit), back: .battle(b, sel: 0), now) { [weak self] o, now in
                 self?.towerRun = false; self?.fight = nil
+                if let id = b.expedition { return .say(["기권했다", "다시 도전할 수 있어요"], next: self?.expPage(id) ?? .home, since: now) }   // 5.3: the story's 플레어단 (as often as it takes)
                 return .say(["기권했다", "\(o.end?.streak ?? 0)연승에서 끝"], next: .home, since: now)
             }
         case .shopConfirm(let bp, let sel, let yes):
@@ -356,6 +361,9 @@ extension Walker {
         case .card(let p): screen = k == 1 ? up("트레이너 카드") : .card((p + (k == 0 ? 2 : 1)) % 3)
         case .goals(let s): goalsPress(k, s)
         case .expedition(let s): if Content.v52 { exp52Press(k, s, now) } else { expPress(k, s, now) }
+        case .pairPick(let d, let s): pairPickPress(k, d, s, now)
+        case .twoPick(let kind, let s): if k == 1 { twoPickGo(kind, s, now) } else { screen = .twoPick(kind: kind, sel: 1 - s) }
+        case .talk(let p): if k == 1 { talkNext(p, now) }
         case .rank(let t, let s, let a): rankPress(k, t, s, a)
         case .team(let s, let t, let card):                                                      // ◀ ▶ a teammate (on a card: the next one's card), ● its card / 인사
             if k != 1 { teamStep(k == 0 ? -1 : 1); return }
